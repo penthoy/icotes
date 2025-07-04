@@ -15,6 +15,7 @@ const Home = () => {
   const [errors, setErrors] = useState<string[]>([]);
   const [isOutputVisible, setIsOutputVisible] = useState<boolean>(true);
   const [theme, setTheme] = useState<"light" | "dark">("light");
+  const [debugInfo, setDebugInfo] = useState<string[]>([]);
 
   const handleRunCode = () => {
     // Clear previous output and errors
@@ -73,6 +74,36 @@ const Home = () => {
     setIsOutputVisible(!isOutputVisible);
   };
 
+  const addDebugInfo = (message: string) => {
+    setDebugInfo((prev) => [...prev, `${new Date().toLocaleTimeString()}: ${message}`]);
+  };
+
+  const testCodeMirror = () => {
+    addDebugInfo("Testing CodeMirror initialization...");
+    try {
+      // Try to import and use CodeMirror components
+      import("@codemirror/state")
+        .then(({ EditorState }) => {
+          addDebugInfo("✓ @codemirror/state loaded successfully");
+          addDebugInfo(`EditorState type: ${typeof EditorState}`);
+        })
+        .catch((err) => {
+          addDebugInfo(`✗ Failed to load @codemirror/state: ${err.message}`);
+        });
+
+      import("@codemirror/view")
+        .then(({ EditorView }) => {
+          addDebugInfo("✓ @codemirror/view loaded successfully");
+          addDebugInfo(`EditorView type: ${typeof EditorView}`);
+        })
+        .catch((err) => {
+          addDebugInfo(`✗ Failed to load @codemirror/view: ${err.message}`);
+        });
+    } catch (error) {
+      addDebugInfo(`Error in testCodeMirror: ${error.message}`);
+    }
+  };
+
   return (
     <div
       className={`min-h-screen flex flex-col ${theme === "dark" ? "bg-gray-900 text-white" : "bg-white text-gray-900"}`}
@@ -80,6 +111,9 @@ const Home = () => {
       <header className="p-4 flex justify-between items-center border-b">
         <h1 className="text-xl font-bold">JavaScript Code Editor</h1>
         <div className="flex items-center gap-2">
+          <Button onClick={testCodeMirror} variant="outline" size="sm">
+            Test CM
+          </Button>
           <ThemeToggle theme={theme} toggleTheme={toggleTheme} />
           <Button
             onClick={handleRunCode}

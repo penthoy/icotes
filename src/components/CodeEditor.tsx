@@ -1,35 +1,10 @@
 import React, { useEffect, useRef, useState } from "react";
-import {
-  EditorView,
-  keymap,
-  lineNumbers,
-  drawSelection,
-  dropCursor,
-  rectangularSelection,
-  crosshairCursor,
-} from "@codemirror/view";
-import { Extension } from "@codemirror/state";
-import {
-  defaultKeymap,
-  history,
-  historyKeymap,
-  indentWithTab,
-} from "@codemirror/commands";
+import { EditorView, keymap, lineNumbers, drawSelection, dropCursor, rectangularSelection, crosshairCursor } from "@codemirror/view";
+import { EditorState, Extension } from "@codemirror/state";
+import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
-import {
-  autocompletion,
-  completionKeymap,
-  closeBrackets,
-  closeBracketsKeymap,
-} from "@codemirror/autocomplete";
-import {
-  defaultHighlightStyle,
-  syntaxHighlighting,
-  indentOnInput,
-  bracketMatching,
-  foldKeymap,
-  foldGutter,
-} from "@codemirror/language";
+import { autocompletion, completionKeymap, closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
+import { defaultHighlightStyle, syntaxHighlighting, indentOnInput, bracketMatching, foldKeymap, foldGutter } from "@codemirror/language";
 import { javascript } from "@codemirror/lang-javascript";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { Button } from "./ui/button";
@@ -63,59 +38,91 @@ const CodeEditor = ({
       editorView.destroy();
     }
 
-    // Create basic extensions array
-    const extensions: Extension[] = [
-      lineNumbers(),
-      foldGutter(),
-      drawSelection(),
-      dropCursor(),
-      EditorView.allowMultipleSelections.of(true),
-      indentOnInput(),
-      bracketMatching(),
-      closeBrackets(),
-      autocompletion(),
-      rectangularSelection(),
-      crosshairCursor(),
-      highlightSelectionMatches(),
-      keymap.of([
-        ...closeBracketsKeymap,
-        ...defaultKeymap,
-        ...searchKeymap,
-        ...historyKeymap,
-        ...foldKeymap,
-        ...completionKeymap,
-        indentWithTab,
-      ]),
-      history(),
-      syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
-      javascript(),
-      EditorView.updateListener.of((update) => {
-        if (update.docChanged) {
-          const newCode = update.state.doc.toString();
-          setInternalCode(newCode);
-          setCode?.(newCode);
-          onCodeChange?.(newCode);
-        }
-      }),
-    ];
-
-    // Add theme if dark mode
-    if (theme === "dark") {
-      extensions.push(oneDark);
-    }
-
-    // Create a new editor instance
-    const view = new EditorView({
-      doc: propCode || initialCode,
-      extensions,
-      parent: editorRef.current,
+    console.log('Creating CodeMirror extensions...');
+    console.log('Available packages:', {
+      EditorView: typeof EditorView,
+      EditorState: typeof EditorState,
+      javascript: typeof javascript,
+      oneDark: typeof oneDark
     });
+    
+    try {
+      // Create extensions array manually (replacing basicSetup)
+      const extensions: Extension[] = [
+        // Basic editor setup
+        lineNumbers(),
+        foldGutter(),
+        drawSelection(),
+        dropCursor(),
+        indentOnInput(),
+        bracketMatching(),
+        closeBrackets(),
+        autocompletion(),
+        rectangularSelection(),
+        crosshairCursor(),
+        highlightSelectionMatches(),
+        history(),
+        syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+        
+        // Language support
+        javascript(),
+        
+        // Keymaps
+        keymap.of([
+          ...closeBracketsKeymap,
+          ...defaultKeymap,
+          ...searchKeymap,
+          ...historyKeymap,
+          ...foldKeymap,
+          ...completionKeymap,
+          indentWithTab,
+        ]),
+        
+        // Update listener
+        EditorView.updateListener.of((update) => {
+          if (update.docChanged) {
+            const newCode = update.state.doc.toString();
+            setInternalCode(newCode);
+            setCode?.(newCode);
+            onCodeChange?.(newCode);
+          }
+        }),
+      ];
 
-    setEditorView(view);
+      console.log('Extensions created:', extensions.length);
 
-    return () => {
-      view.destroy();
-    };
+      // Add theme conditionally
+      if (theme === "dark") {
+        extensions.push(oneDark);
+        console.log('Added dark theme');
+      }
+
+      // Create initial state
+      const initialState = EditorState.create({
+        doc: propCode || initialCode,
+        extensions,
+      });
+
+      console.log('Initial state created:', initialState);
+
+      // Create a new editor instance
+      const view = new EditorView({
+        state: initialState,
+        parent: editorRef.current,
+      });
+
+      console.log('EditorView created successfully:', view);
+      console.log('Extensions used:', extensions.length);
+
+      setEditorView(view);
+
+      return () => {
+        view.destroy();
+      };
+    } catch (error) {
+      console.error('Error creating CodeMirror editor:', error);
+      console.error('Error stack:', error.stack);
+    }
   }, [theme, propCode, initialCode]);
 
   const handleRunCode = () => {
