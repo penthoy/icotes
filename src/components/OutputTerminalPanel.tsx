@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Button } from "./ui/button";
-import { ChevronDown, ChevronUp } from "lucide-react";
-import Terminal from "./Terminal";
+import { ChevronDown, ChevronUp, Plus, X } from "lucide-react";
+import XTerminal from "./XTerminal";
 
 interface OutputTerminalPanelProps {
   output: string[];
@@ -14,6 +14,13 @@ interface OutputTerminalPanelProps {
 
 type TabType = 'output' | 'terminal';
 
+interface Tab {
+  id: string;
+  type: TabType;
+  title: string;
+  closable: boolean;
+}
+
 const OutputTerminalPanel: React.FC<OutputTerminalPanelProps> = ({
   output = [],
   errors = [],
@@ -23,13 +30,47 @@ const OutputTerminalPanel: React.FC<OutputTerminalPanelProps> = ({
   onClear = () => {},
 }) => {
   const [isPanelOpen, setIsPanelOpen] = useState(isVisible);
-  const [activeTab, setActiveTab] = useState<TabType>('output');
+  const [tabs, setTabs] = useState<Tab[]>([
+    {
+      id: 'terminal-1',
+      type: 'terminal',
+      title: 'Terminal',
+      closable: false
+    }
+  ]);
+  const [activeTabId, setActiveTabId] = useState<string>('terminal-1');
 
   const handleToggle = () => {
     const newState = !isPanelOpen;
     setIsPanelOpen(newState);
     toggleVisibility?.();
   };
+
+  const addNewTab = (type: TabType) => {
+    const newTab: Tab = {
+      id: `${type}-${Date.now()}`,
+      type,
+      title: type === 'terminal' ? 'Terminal' : 'Output',
+      closable: true
+    };
+    setTabs(prev => [...prev, newTab]);
+    setActiveTabId(newTab.id);
+  };
+
+  const closeTab = (tabId: string) => {
+    const tabToClose = tabs.find(tab => tab.id === tabId);
+    if (!tabToClose || !tabToClose.closable) return;
+
+    const newTabs = tabs.filter(tab => tab.id !== tabId);
+    setTabs(newTabs);
+    
+    // If we closed the active tab, switch to the first available tab
+    if (activeTabId === tabId) {
+      setActiveTabId(newTabs[0]?.id || '');
+    }
+  };
+
+  const activeTab = tabs.find(tab => tab.id === activeTabId);
 
   const renderOutputTab = () => (
     <div className="h-full overflow-y-auto p-4">
@@ -72,15 +113,28 @@ const OutputTerminalPanel: React.FC<OutputTerminalPanelProps> = ({
   );
 
   const renderTerminalTab = () => (
-    <Terminal theme={theme} onClear={() => {}} />
+    <XTerminal theme={theme} onClear={() => {}} />
   );
 
-  const getTabClassName = (tab: TabType) => {
-    const baseClass = "px-3 py-1 text-sm border-b-2 transition-colors";
+  const renderTabContent = () => {
+    if (!activeTab) return null;
+    
+    switch (activeTab.type) {
+      case 'output':
+        return renderOutputTab();
+      case 'terminal':
+        return renderTerminalTab();
+      default:
+        return null;
+    }
+  };
+
+  const getTabClassName = (tabId: string) => {
+    const baseClass = "px-3 py-1 text-sm border-b-2 transition-colors flex items-center gap-2 relative group";
     const activeClass = "border-primary text-primary";
     const inactiveClass = "border-transparent text-muted-foreground hover:text-foreground";
     
-    return `${baseClass} ${activeTab === tab ? activeClass : inactiveClass}`;
+    return `${baseClass} ${activeTabId === tabId ? activeClass : inactiveClass}`;
   };
 
   return (
@@ -117,20 +171,45 @@ const OutputTerminalPanel: React.FC<OutputTerminalPanelProps> = ({
         <div className="flex flex-col h-full">
           {/* Tab Headers */}
           <div className="flex border-b border-border">
-            <button
-              onClick={() => setActiveTab('output')}
-              className={getTabClassName('output')}
-            >
-              Output
-            </button>
-            <button
-              onClick={() => setActiveTab('terminal')}
-              className={getTabClassName('terminal')}
-            >
-              Terminal
-            </button>
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTabId(tab.id)}
+                className={getTabClassName(tab.id)}
+              >
+                <span>{tab.title}</span>
+                {tab.closable && (
+                  <X
+                    className="h-3 w-3 opacity-0 group-hover:opacity-100 hover:bg-muted rounded transition-opacity"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      closeTab(tab.id);
+                    }}
+                  />
+                )}
+              </button>
+            ))}
+            
+            {/* Add New Tab Button */}
+            <div className="relative">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  // Simple implementation: alternate between terminal and output
+                  const hasOutput = tabs.some(tab => tab.type === 'output');
+                  addNewTab(hasOutput ? 'terminal' : 'output');
+                }}
+                className="px-2 py-1 h-8 text-muted-foreground hover:text-foreground"
+                title="Add new tab"
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
+            
             <div className="flex-1 border-b-2 border-transparent"></div>
-            {activeTab === 'output' && (output.length > 0 || errors.length > 0) && (
+            
+            {activeTab?.type === 'output' && (output.length > 0 || errors.length > 0) && (
               <Button
                 variant="ghost"
                 size="sm"
@@ -144,7 +223,7 @@ const OutputTerminalPanel: React.FC<OutputTerminalPanelProps> = ({
 
           {/* Tab Content */}
           <div className="flex-1 overflow-hidden">
-            {activeTab === 'output' ? renderOutputTab() : renderTerminalTab()}
+            {renderTabContent()}
           </div>
         </div>
       )}

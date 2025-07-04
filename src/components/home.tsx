@@ -280,9 +280,9 @@ const Home = () => {
 
   return (
     <div
-      className={`min-h-screen flex flex-col ${theme === "dark" ? "bg-gray-900 text-white" : "bg-white text-gray-900"}`}
+      className={`h-screen flex flex-col ${theme === "dark" ? "bg-gray-900 text-white" : "bg-white text-gray-900"}`}
     >
-      <header className="p-4 flex justify-between items-center border-b">
+      <header className="p-4 flex justify-between items-center border-b flex-shrink-0">
         <div className="flex items-center gap-2">
           <Button
             variant="ghost"
@@ -307,7 +307,7 @@ const Home = () => {
         </div>
       </header>
 
-      <main className="flex-grow flex">
+      <main className="flex-1 flex overflow-hidden">
         {isExplorerVisible && (
           <ResizablePanel initialWidth={240} minWidth={180} maxWidth={400}>
             <FileExplorer
@@ -321,7 +321,7 @@ const Home = () => {
           </ResizablePanel>
         )}
         
-        <div className="flex-grow flex flex-col">
+        <div className="flex-1 flex flex-col overflow-hidden">
           <FileTabs
             files={files}
             activeFileId={activeFileId}
@@ -329,7 +329,7 @@ const Home = () => {
             onFileClose={handleFileClose}
             onNewFile={handleNewFile}
           />
-          <div className="flex-grow">
+          <div className="flex-1 overflow-hidden">
             <CodeEditor
               code={activeFile?.content || ""}
               onCodeChange={handleCodeChange}
@@ -343,7 +343,7 @@ const Home = () => {
               initialHeight={300}
               minHeight={100}
               maxHeight={600}
-              className="border-t border-border"
+              className="border-t border-border flex-shrink-0"
             >
               <OutputTerminalPanel
                 output={output}

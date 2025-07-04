@@ -9,6 +9,15 @@ from typing import List, Dict, Any
 import sys
 import io
 import contextlib
+import pty
+import os
+import select
+import termios
+import struct
+import fcntl
+import signal
+import subprocess
+import threading
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -38,6 +47,7 @@ class CodeExecutionResponse(BaseModel):
 class ConnectionManager:
     def __init__(self):
         self.active_connections: List[WebSocket] = []
+        self.terminal_connections: Dict[str, Dict] = {}
 
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
@@ -47,6 +57,73 @@ class ConnectionManager:
     def disconnect(self, websocket: WebSocket):
         self.active_connections.remove(websocket)
         logger.info(f"WebSocket connection closed. Total connections: {len(self.active_connections)}")
+
+    async def connect_terminal(self, websocket: WebSocket, terminal_id: str):
+        try:
+            await websocket.accept()
+            
+            # Create a new terminal session
+            logger.info(f"Creating PTY for terminal {terminal_id}")
+            master_fd, slave_fd = pty.openpty()
+            logger.info(f"PTY created: master_fd={master_fd}, slave_fd={slave_fd}")
+            
+            # Start bash in the new terminal
+            proc = subprocess.Popen(
+                ["/bin/bash"],
+                stdin=slave_fd,
+                stdout=slave_fd,
+                stderr=slave_fd,
+                preexec_fn=os.setsid
+            )
+            logger.info(f"Bash process started with PID: {proc.pid}")
+            
+            # Close slave fd in parent process
+            os.close(slave_fd)
+            
+            # Store terminal connection info
+            self.terminal_connections[terminal_id] = {
+                'websocket': websocket,
+                'master_fd': master_fd,
+                'process': proc,
+                'read_task': None,
+                'write_task': None
+            }
+            
+            logger.info(f"Terminal connection established: {terminal_id}")
+            return master_fd, proc
+            
+        except Exception as e:
+            logger.error(f"Error creating terminal session: {e}")
+            raise e
+
+    def disconnect_terminal(self, terminal_id: str):
+        if terminal_id in self.terminal_connections:
+            conn = self.terminal_connections[terminal_id]
+            
+            # Cancel tasks
+            if conn['read_task']:
+                conn['read_task'].cancel()
+            if conn['write_task']:
+                conn['write_task'].cancel()
+            
+            # Close file descriptor
+            try:
+                os.close(conn['master_fd'])
+            except:
+                pass
+            
+            # Terminate process
+            try:
+                conn['process'].terminate()
+                conn['process'].wait(timeout=1)
+            except:
+                try:
+                    conn['process'].kill()
+                except:
+                    pass
+            
+            del self.terminal_connections[terminal_id]
+            logger.info(f"Terminal connection closed: {terminal_id}")
 
     async def send_personal_message(self, message: str, websocket: WebSocket):
         await websocket.send_text(message)
@@ -130,6 +207,74 @@ async def execute_code(request: CodeExecutionRequest):
             errors=[f"Language '{request.language}' not supported yet"],
             execution_time=0.0
         )
+
+@app.websocket("/ws/terminal/{terminal_id}")
+async def terminal_websocket(websocket: WebSocket, terminal_id: str):
+    """WebSocket endpoint for terminal connections with PTY support"""
+    logger.info(f"Terminal WebSocket connection attempt: {terminal_id}")
+    try:
+        master_fd, proc = await manager.connect_terminal(websocket, terminal_id)
+        logger.info(f"Terminal session started for {terminal_id}")
+        
+        async def read_from_terminal():
+            """Read from terminal and send to WebSocket"""
+            while True:
+                try:
+                    # Use select to check if data is available
+                    ready, _, _ = select.select([master_fd], [], [], 0.1)
+                    if ready:
+                        data = os.read(master_fd, 1024)
+                        if data:
+                            await websocket.send_text(data.decode('utf-8', errors='ignore'))
+                        else:
+                            break
+                    await asyncio.sleep(0.01)
+                except Exception as e:
+                    logger.error(f"Error reading from terminal: {e}")
+                    break
+        
+        async def write_to_terminal():
+            """Read from WebSocket and write to terminal"""
+            while True:
+                try:
+                    data = await websocket.receive_text()
+                    logger.info(f"Received terminal data: {repr(data)}")
+                    
+                    # Handle special messages
+                    if data.startswith('{"type":'):
+                        message = json.loads(data)
+                        if message.get('type') == 'resize':
+                            # Handle terminal resize
+                            cols = message.get('cols', 80)
+                            rows = message.get('rows', 24)
+                            try:
+                                # Set terminal size
+                                fcntl.ioctl(master_fd, termios.TIOCSWINSZ, struct.pack('HHHH', rows, cols, 0, 0))
+                                logger.info(f"Terminal resized to {cols}x{rows}")
+                            except Exception as e:
+                                logger.error(f"Error resizing terminal: {e}")
+                        continue
+                    
+                    # Regular terminal input
+                    os.write(master_fd, data.encode('utf-8'))
+                except WebSocketDisconnect:
+                    break
+                except Exception as e:
+                    logger.error(f"Error writing to terminal: {e}")
+                    break
+        
+        # Store tasks for cleanup
+        conn = manager.terminal_connections[terminal_id]
+        conn['read_task'] = asyncio.create_task(read_from_terminal())
+        conn['write_task'] = asyncio.create_task(write_to_terminal())
+        
+        # Wait for either task to complete
+        await asyncio.gather(conn['read_task'], conn['write_task'], return_exceptions=True)
+        
+    except Exception as e:
+        logger.error(f"Terminal WebSocket error: {e}")
+    finally:
+        manager.disconnect_terminal(terminal_id)
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):

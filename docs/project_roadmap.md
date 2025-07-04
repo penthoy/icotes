@@ -4,12 +4,37 @@
 A web-based JavaScript code editor built with React, CodeMirror 6, and modern web technologies. The goal is to create a powerful, user-friendly code editor with real-time execution capabilities.
 
 ## In Progress 🚧
-(No tasks currently in progress)
-
-## Future tasks:
-- [] add an agent chat tab on the left side same place as the Explorer.
+- [] Add agent chat tab on the left side same place as the Explorer with a tab, similar to how vs code extensions are installed on the left side.
 
 ## Recently Finished 🎉
+- ✅ **Fixed terminal layout and scrolling issues**: Improved the terminal and overall application layout:
+  - Changed main container from min-h-screen to h-screen for proper viewport sizing
+  - Added overflow-hidden to prevent double scrollbars
+  - Implemented proper flex layout with flex-shrink-0 for fixed elements
+  - Added custom scrollbar styling for xterm.js that matches the theme
+  - Terminal now automatically resizes to fit container with ResizeObserver
+  - Eliminated page-level scrolling in favor of terminal-only scrolling
+  - Custom CSS for xterm viewport scrollbars with theme-aware colors
+
+- ✅ **Updated terminal tab system with multiple tabs support**: Enhanced the terminal interface with a dynamic tab system:
+  - Terminal tab is now the default and only tab open by default
+  - Added + icon in the tab panel to create additional tabs
+  - Support for both Terminal and Output tab types
+  - Closable tabs with X button (except the first terminal tab)
+  - Improved tab management with proper state handling
+  - Better visual design with hover effects and proper spacing
+
+- ✅ **Implemented a real terminal with PTY support**: Enhanced the terminal functionality with proper PTY-based terminal emulation:
+  - Integrated xterm.js for professional terminal emulation in the browser
+  - Added backend PTY (pseudoterminal) support using Python's pty module
+  - Created WebSocket-based communication between frontend and backend terminal sessions
+  - Implemented proper terminal session management with unique terminal IDs
+  - Added terminal resizing support and proper cleanup on disconnect
+  - Created XTerminal component with connection status indicators and controls
+  - Added terminal reconnection capabilities and error handling
+  - Integrated terminal into the existing tabbed output panel interface
+  - Each terminal session runs in an isolated bash shell environment
+
 - ✅ **Created comprehensive system architecture documentation**: Designed and documented the complete system architecture:
   - Detailed current architecture overview (Vite frontend + FastAPI backend)
   - Component-level architecture diagrams and explanations

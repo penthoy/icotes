@@ -21,5 +21,9 @@ Don't open Simple Browser with http://localhost as this dev server is a remote s
 ## Codeing standards:
 Always use clean code that's human readable and easy to understand. so that its possible for human and AI to work on the same code base
 
+Try to keep code files under a thousand lines, ideally it should be around 100-500 lines long, using this as a guide and try to break up logical code into its own individual files.
+
+Always comment the code, and make sure they're properly commented.
+
 Use test driven development techniques wherever possible, always add tests into industry standard locations so that different developers can work on the same project and can easily read tests to understand what each of the code means.
 
