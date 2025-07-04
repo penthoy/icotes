@@ -4,14 +4,49 @@
 A web-based JavaScript code editor built with React, CodeMirror 6, and modern web technologies. The goal is to create a powerful, user-friendly code editor with real-time execution capabilities.
 
 ## In Progress 🚧
-- [] Make the terminal resizable
+(No tasks currently in progress)
 
 ## Future tasks:
-
-- [] Add A fastapi backend.
 - [] add an agent chat tab on the left side same place as the Explorer.
 
 ## Recently Finished 🎉
+- ✅ **Created comprehensive system architecture documentation**: Designed and documented the complete system architecture:
+  - Detailed current architecture overview (Vite frontend + FastAPI backend)
+  - Component-level architecture diagrams and explanations
+  - Data flow documentation with sequence diagrams
+  - Security considerations and current limitations
+  - Performance optimization strategies
+  - Scalability design patterns
+  - Future architecture roadmap (v2.0+ with Rust backend)
+  - Deployment architecture and production considerations
+  - Technology decision rationale and trade-offs
+  - Monitoring and observability planning
+
+- ✅ **Added FastAPI backend with WebSocket support**: Created a complete backend infrastructure:
+  - FastAPI server with CORS support for cross-origin requests
+  - Real-time WebSocket communication for code execution
+  - REST API endpoints for code execution and health monitoring
+  - Python code execution with output and error capture
+  - Comprehensive error handling and logging
+  - Connection management and reconnection logic
+  - Fallback from WebSocket to REST API if connection fails
+
+- ✅ **Created WebSocket frontend integration**: Enhanced frontend with real-time backend communication:
+  - CodeExecutor utility class with WebSocket and REST API support
+  - Automatic connection management and reconnection logic
+  - Real-time code execution with proper error handling
+  - Execution time tracking and performance monitoring
+  - Seamless fallback between WebSocket and REST API
+  - Updated UI with execution status indicators
+
+- ✅ **Made the terminal resizable**: Enhanced the terminal/output panel with vertical resizing capabilities:
+  - Created VerticalResizablePanel component for vertical resizing functionality
+  - Added drag handle at the top of the terminal panel for resizing
+  - Configurable minimum height (100px) and maximum height (600px)
+  - Smooth mouse interaction with proper cursor changes during resize
+  - Integrated resizable panel into the main layout while maintaining existing functionality
+  - Terminal can now be resized vertically by dragging the top border
+
 - ✅ **Added proper terminal with tabs in output area**: Implemented a VSCode-like tabbed interface for the bottom panel with:
   - Output tab: Shows code execution results and errors (existing functionality)
   - Terminal tab: Interactive command-line interface with:

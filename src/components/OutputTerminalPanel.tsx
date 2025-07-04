@@ -114,7 +114,7 @@ const OutputTerminalPanel: React.FC<OutputTerminalPanelProps> = ({
       </div>
 
       {isPanelOpen && (
-        <div className="flex flex-col h-[300px]">
+        <div className="flex flex-col h-full">
           {/* Tab Headers */}
           <div className="flex border-b border-border">
             <button

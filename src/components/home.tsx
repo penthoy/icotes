@@ -7,6 +7,8 @@ import ThemeToggle from "./ThemeToggle";
 import FileTabs, { FileData } from "./FileTabs";
 import FileExplorer from "./FileExplorer";
 import ResizablePanel from "./ResizablePanel";
+import VerticalResizablePanel from "./VerticalResizablePanel";
+import { CodeExecutor } from "@/lib/codeExecutor";
 
 // File explorer data structure
 interface FileNode {
@@ -45,6 +47,8 @@ const Home = () => {
   const [output, setOutput] = useState<string[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
   const [isOutputVisible, setIsOutputVisible] = useState<boolean>(true);
+  const [codeExecutor] = useState(() => new CodeExecutor());
+  const [isExecuting, setIsExecuting] = useState<boolean>(false);
   const [theme, setTheme] = useState<"light" | "dark">(() => {
     // Check system preference first
     if (typeof window !== "undefined") {
@@ -79,6 +83,25 @@ const Home = () => {
     }
   };
 
+  // Initialize code executor
+  useEffect(() => {
+    const initializeExecutor = async () => {
+      try {
+        await codeExecutor.connect();
+        console.log('Code executor connected');
+      } catch (error) {
+        console.warn('Failed to connect to backend:', error);
+      }
+    };
+
+    initializeExecutor();
+
+    // Cleanup on unmount
+    return () => {
+      codeExecutor.disconnect();
+    };
+  }, [codeExecutor]);
+
   // Update current language when active file changes
   useEffect(() => {
     if (activeFile) {
@@ -86,16 +109,17 @@ const Home = () => {
     }
   }, [activeFile]);
 
-  const handleRunCode = () => {
-    if (!activeFile) return;
+  const handleRunCode = async () => {
+    if (!activeFile || isExecuting) return;
 
     // Clear previous output and errors
     setOutput([]);
     setErrors([]);
+    setIsExecuting(true);
 
     try {
       if (currentLanguage === 'javascript') {
-        // JavaScript execution (existing logic)
+        // JavaScript execution (existing logic for client-side execution)
         const logs: string[] = [];
 
         // Override console.log to capture outputs
@@ -123,31 +147,17 @@ const Home = () => {
         }
 
         setOutput(logs);
-      } else if (currentLanguage === 'python') {
-        // Python execution simulation (until we have a backend)
-        const lines = activeFile.content.split('\n');
-        const output: string[] = [];
+      } else {
+        // Use backend execution for Python and other languages
+        const result = await codeExecutor.executeCode(activeFile.content, currentLanguage);
         
-        for (const line of lines) {
-          const trimmedLine = line.trim();
-          if (trimmedLine.startsWith('print(')) {
-            // Extract content from print statement
-            const match = trimmedLine.match(/print\(['"](.+?)['"]\)/);
-            if (match) {
-              output.push(match[1]);
-            } else {
-              // Handle more complex print statements
-              const printContent = trimmedLine.substring(6, trimmedLine.length - 1);
-              output.push(printContent.replace(/['"]/g, ''));
-            }
-          }
+        setOutput(result.output);
+        setErrors(result.errors);
+        
+        // Add execution time info
+        if (result.execution_time > 0) {
+          setOutput(prev => [...prev, `Execution time: ${(result.execution_time * 1000).toFixed(2)}ms`]);
         }
-        
-        if (output.length === 0) {
-          output.push("Python code executed (no output)");
-        }
-        
-        setOutput(output);
       }
 
       // Make sure output panel is visible
@@ -155,12 +165,14 @@ const Home = () => {
         setIsOutputVisible(true);
       }
     } catch (error) {
-      setErrors([`Error: ${error.message}`]);
+      setErrors([`Error: ${error instanceof Error ? error.message : String(error)}`]);
 
       // Make sure output panel is visible on error
       if (!isOutputVisible) {
         setIsOutputVisible(true);
       }
+    } finally {
+      setIsExecuting(false);
     }
   };
 
@@ -286,10 +298,11 @@ const Home = () => {
           <ThemeToggle theme={theme} toggleTheme={toggleTheme} />
           <Button
             onClick={handleRunCode}
-            className="bg-green-600 hover:bg-green-700 text-white"
+            disabled={isExecuting}
+            className="bg-green-600 hover:bg-green-700 text-white disabled:opacity-50"
           >
             <Play className="mr-2 h-4 w-4" />
-            Run
+            {isExecuting ? 'Running...' : 'Run'}
           </Button>
         </div>
       </header>
@@ -325,17 +338,26 @@ const Home = () => {
             />
           </div>
           
-          <OutputTerminalPanel
-            output={output}
-            errors={errors}
-            isVisible={isOutputVisible}
-            toggleVisibility={toggleOutputPanel}
-            theme={theme}
-            onClear={() => {
-              setOutput([]);
-              setErrors([]);
-            }}
-          />
+          {isOutputVisible && (
+            <VerticalResizablePanel
+              initialHeight={300}
+              minHeight={100}
+              maxHeight={600}
+              className="border-t border-border"
+            >
+              <OutputTerminalPanel
+                output={output}
+                errors={errors}
+                isVisible={isOutputVisible}
+                toggleVisibility={toggleOutputPanel}
+                theme={theme}
+                onClear={() => {
+                  setOutput([]);
+                  setErrors([]);
+                }}
+              />
+            </VerticalResizablePanel>
+          )}
         </div>
       </main>
     </div>
