@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { Play, PanelLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import CodeEditor from "./CodeEditor";
-import OutputPanel from "./OutputPanel";
+import CodeEditor, { SupportedLanguage } from "./CodeEditor";
+import OutputTerminalPanel from "./OutputTerminalPanel";
 import ThemeToggle from "./ThemeToggle";
 import FileTabs, { FileData } from "./FileTabs";
 import FileExplorer from "./FileExplorer";
@@ -22,9 +22,9 @@ const Home = () => {
   const [files, setFiles] = useState<FileData[]>([
     {
       id: "default",
-      name: "main.js",
+      name: "main.py",
       content:
-        '// Write your JavaScript code here\nconsole.log("Hello, world!");',
+        '# Write your Python code here\nprint("Hello, world!")',
       isModified: false,
     },
   ]);
@@ -33,14 +33,15 @@ const Home = () => {
   const [explorerFiles, setExplorerFiles] = useState<FileNode[]>([
     {
       id: "main",
-      name: "main.js",
+      name: "main.py",
       type: "file",
-      path: "/main.js",
+      path: "/main.py",
     },
   ]);
   
   const [activeFileId, setActiveFileId] = useState<string>("default");
   const [isExplorerVisible, setIsExplorerVisible] = useState<boolean>(true);
+  const [currentLanguage, setCurrentLanguage] = useState<SupportedLanguage>('python');
   const [output, setOutput] = useState<string[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
   const [isOutputVisible, setIsOutputVisible] = useState<boolean>(true);
@@ -64,6 +65,27 @@ const Home = () => {
 
   const activeFile = files.find((file) => file.id === activeFileId);
 
+  // Determine language based on file extension
+  const getLanguageFromFileName = (fileName: string): SupportedLanguage => {
+    const extension = fileName.split('.').pop()?.toLowerCase();
+    switch (extension) {
+      case 'js':
+      case 'jsx':
+        return 'javascript';
+      case 'py':
+        return 'python';
+      default:
+        return 'python'; // Default to Python
+    }
+  };
+
+  // Update current language when active file changes
+  useEffect(() => {
+    if (activeFile) {
+      setCurrentLanguage(getLanguageFromFileName(activeFile.name));
+    }
+  }, [activeFile]);
+
   const handleRunCode = () => {
     if (!activeFile) return;
 
@@ -72,34 +94,61 @@ const Home = () => {
     setErrors([]);
 
     try {
-      // Create a new array to capture console.log outputs
-      const logs: string[] = [];
+      if (currentLanguage === 'javascript') {
+        // JavaScript execution (existing logic)
+        const logs: string[] = [];
 
-      // Override console.log to capture outputs
-      const originalConsoleLog = console.log;
-      console.log = (...args) => {
-        logs.push(
-          args
-            .map((arg) =>
-              typeof arg === "object" ? JSON.stringify(arg) : String(arg),
-            )
-            .join(" "),
-        );
-        originalConsoleLog(...args);
-      };
+        // Override console.log to capture outputs
+        const originalConsoleLog = console.log;
+        console.log = (...args) => {
+          logs.push(
+            args
+              .map((arg) =>
+                typeof arg === "object" ? JSON.stringify(arg) : String(arg),
+              )
+              .join(" "),
+          );
+          originalConsoleLog(...args);
+        };
 
-      // Execute the code
-      const result = new Function(activeFile.content)();
+        // Execute the code
+        const result = new Function(activeFile.content)();
 
-      // Restore original console.log
-      console.log = originalConsoleLog;
+        // Restore original console.log
+        console.log = originalConsoleLog;
 
-      // Add the result to the output if it's not undefined
-      if (result !== undefined) {
-        logs.push(`Result: ${result}`);
+        // Add the result to the output if it's not undefined
+        if (result !== undefined) {
+          logs.push(`Result: ${result}`);
+        }
+
+        setOutput(logs);
+      } else if (currentLanguage === 'python') {
+        // Python execution simulation (until we have a backend)
+        const lines = activeFile.content.split('\n');
+        const output: string[] = [];
+        
+        for (const line of lines) {
+          const trimmedLine = line.trim();
+          if (trimmedLine.startsWith('print(')) {
+            // Extract content from print statement
+            const match = trimmedLine.match(/print\(['"](.+?)['"]\)/);
+            if (match) {
+              output.push(match[1]);
+            } else {
+              // Handle more complex print statements
+              const printContent = trimmedLine.substring(6, trimmedLine.length - 1);
+              output.push(printContent.replace(/['"]/g, ''));
+            }
+          }
+        }
+        
+        if (output.length === 0) {
+          output.push("Python code executed (no output)");
+        }
+        
+        setOutput(output);
       }
-
-      setOutput(logs);
 
       // Make sure output panel is visible
       if (!isOutputVisible) {
@@ -147,11 +196,11 @@ const Home = () => {
 
   const handleNewFile = () => {
     const newFileId = `file-${Date.now()}`;
-    const fileName = `untitled-${files.length}.js`;
+    const fileName = `untitled-${files.length}.py`;
     const newFile: FileData = {
       id: newFileId,
       name: fileName,
-      content: '// New file\nconsole.log("Hello from new file!");',
+      content: '# New Python file\nprint("Hello from new file!")',
       isModified: false,
     };
 
@@ -272,10 +321,11 @@ const Home = () => {
               code={activeFile?.content || ""}
               onCodeChange={handleCodeChange}
               theme={theme}
+              language={currentLanguage}
             />
           </div>
           
-          <OutputPanel
+          <OutputTerminalPanel
             output={output}
             errors={errors}
             isVisible={isOutputVisible}

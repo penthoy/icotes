@@ -4,14 +4,33 @@
 A web-based JavaScript code editor built with React, CodeMirror 6, and modern web technologies. The goal is to create a powerful, user-friendly code editor with real-time execution capabilities.
 
 ## In Progress 🚧
-(No tasks currently in progress)
+- [] Make the terminal resizable
 
 ## Future tasks:
-- [] Add a proper terminal in the same output area with tabs similar to vs code UI
+
 - [] Add A fastapi backend.
 - [] add an agent chat tab on the left side same place as the Explorer.
 
 ## Recently Finished 🎉
+- ✅ **Added proper terminal with tabs in output area**: Implemented a VSCode-like tabbed interface for the bottom panel with:
+  - Output tab: Shows code execution results and errors (existing functionality)
+  - Terminal tab: Interactive command-line interface with:
+    - Command history (up/down arrows)
+    - Built-in commands (help, clear, echo, date)
+    - Terminal-style UI with green text on black background
+    - Proper scrolling and auto-focus
+  - Tabbed interface with smooth switching between Output and Terminal
+  - Consistent styling and theme integration
+
+- ✅ **Added Python support as default language**: Enhanced the code editor with multi-language support:
+  - Installed @codemirror/lang-python for Python syntax highlighting
+  - Updated default file from main.js to main.py
+  - Added language detection based on file extensions (.py, .js, .jsx)
+  - Automatic language switching when switching between files
+  - Python code execution simulation (basic print statement parsing)
+  - Updated new file creation to default to Python (.py extension)
+  - Proper Python syntax highlighting and code completion
+
 - ✅ **Fixed Output panel layout**: The output panel was incorrectly positioned to the right of the code editor horizontally. Fixed by:
   - Restructuring the layout to position the output panel below the code editor vertically
   - Maintaining the explorer sidebar on the left

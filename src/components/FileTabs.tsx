@@ -22,9 +22,9 @@ const FileTabs = ({
   files = [
     {
       id: "default",
-      name: "main.js",
+      name: "main.py",
       content:
-        '// Write your JavaScript code here\nconsole.log("Hello, world!");',
+        '# Write your Python code here\nprint("Hello, world!")',
       isModified: false,
     },
   ],

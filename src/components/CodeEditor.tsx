@@ -31,8 +31,11 @@ import {
   foldGutter,
 } from "@codemirror/language";
 import { javascript } from "@codemirror/lang-javascript";
+import { python } from "@codemirror/lang-python";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { Button } from "./ui/button";
+
+export type SupportedLanguage = 'javascript' | 'python';
 
 interface CodeEditorProps {
   code?: string;
@@ -41,6 +44,7 @@ interface CodeEditorProps {
   onCodeChange?: (code: string) => void;
   initialCode?: string;
   onRun?: (code: string) => void;
+  language?: SupportedLanguage;
 }
 
 const CodeEditor = ({
@@ -48,12 +52,24 @@ const CodeEditor = ({
   setCode,
   theme = "light",
   onCodeChange,
-  initialCode = '// Write your JavaScript code here\nconsole.log("Hello, world!");',
+  initialCode = '# Write your Python code here\nprint("Hello, world!")',
   onRun,
+  language = 'python',
 }: CodeEditorProps) => {
   const editorRef = useRef<HTMLDivElement>(null);
   const [editorView, setEditorView] = useState<EditorView | null>(null);
   const [code, setInternalCode] = useState<string>(propCode || initialCode);
+
+  const getLanguageExtension = (lang: SupportedLanguage) => {
+    switch (lang) {
+      case 'javascript':
+        return javascript();
+      case 'python':
+        return python();
+      default:
+        return python();
+    }
+  };
 
   // Initialize editor only once
   useEffect(() => {
@@ -78,7 +94,7 @@ const CodeEditor = ({
         syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
 
         // Language support
-        javascript(),
+        getLanguageExtension(language),
 
         // Keymaps
         keymap.of([
@@ -128,7 +144,7 @@ const CodeEditor = ({
       console.error("Error creating CodeMirror editor:", error);
       console.error("Error stack:", error.stack);
     }
-  }, [theme, initialCode]);
+  }, [theme, initialCode, language]);
 
   // Update editor content when propCode changes (without recreating editor)
   useEffect(() => {
