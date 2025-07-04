@@ -1,10 +1,35 @@
 import React, { useEffect, useRef, useState } from "react";
-import { EditorView, keymap, lineNumbers, drawSelection, dropCursor, rectangularSelection, crosshairCursor } from "@codemirror/view";
+import {
+  EditorView,
+  keymap,
+  lineNumbers,
+  drawSelection,
+  dropCursor,
+  rectangularSelection,
+  crosshairCursor,
+} from "@codemirror/view";
 import { EditorState, Extension } from "@codemirror/state";
-import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
+import {
+  defaultKeymap,
+  history,
+  historyKeymap,
+  indentWithTab,
+} from "@codemirror/commands";
 import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
-import { autocompletion, completionKeymap, closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
-import { defaultHighlightStyle, syntaxHighlighting, indentOnInput, bracketMatching, foldKeymap, foldGutter } from "@codemirror/language";
+import {
+  autocompletion,
+  completionKeymap,
+  closeBrackets,
+  closeBracketsKeymap,
+} from "@codemirror/autocomplete";
+import {
+  defaultHighlightStyle,
+  syntaxHighlighting,
+  indentOnInput,
+  bracketMatching,
+  foldKeymap,
+  foldGutter,
+} from "@codemirror/language";
 import { javascript } from "@codemirror/lang-javascript";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { Button } from "./ui/button";
@@ -38,14 +63,14 @@ const CodeEditor = ({
       editorView.destroy();
     }
 
-    console.log('Creating CodeMirror extensions...');
-    console.log('Available packages:', {
+    console.log("Creating CodeMirror extensions...");
+    console.log("Available packages:", {
       EditorView: typeof EditorView,
       EditorState: typeof EditorState,
       javascript: typeof javascript,
-      oneDark: typeof oneDark
+      oneDark: typeof oneDark,
     });
-    
+
     try {
       // Create extensions array manually (replacing basicSetup)
       const extensions: Extension[] = [
@@ -63,10 +88,10 @@ const CodeEditor = ({
         highlightSelectionMatches(),
         history(),
         syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
-        
+
         // Language support
         javascript(),
-        
+
         // Keymaps
         keymap.of([
           ...closeBracketsKeymap,
@@ -77,7 +102,7 @@ const CodeEditor = ({
           ...completionKeymap,
           indentWithTab,
         ]),
-        
+
         // Update listener
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
@@ -89,12 +114,12 @@ const CodeEditor = ({
         }),
       ];
 
-      console.log('Extensions created:', extensions.length);
+      console.log("Extensions created:", extensions.length);
 
       // Add theme conditionally
       if (theme === "dark") {
         extensions.push(oneDark);
-        console.log('Added dark theme');
+        console.log("Added dark theme");
       }
 
       // Create initial state
@@ -103,7 +128,7 @@ const CodeEditor = ({
         extensions,
       });
 
-      console.log('Initial state created:', initialState);
+      console.log("Initial state created:", initialState);
 
       // Create a new editor instance
       const view = new EditorView({
@@ -111,8 +136,8 @@ const CodeEditor = ({
         parent: editorRef.current,
       });
 
-      console.log('EditorView created successfully:', view);
-      console.log('Extensions used:', extensions.length);
+      console.log("EditorView created successfully:", view);
+      console.log("Extensions used:", extensions.length);
 
       setEditorView(view);
 
@@ -120,8 +145,8 @@ const CodeEditor = ({
         view.destroy();
       };
     } catch (error) {
-      console.error('Error creating CodeMirror editor:', error);
-      console.error('Error stack:', error.stack);
+      console.error("Error creating CodeMirror editor:", error);
+      console.error("Error stack:", error.stack);
     }
   }, [theme, propCode, initialCode]);
 
@@ -131,18 +156,9 @@ const CodeEditor = ({
 
   return (
     <div className="flex flex-col h-full bg-background">
-      <div className="flex justify-end p-2 border-b">
-        <Button
-          onClick={handleRunCode}
-          className="bg-green-600 hover:bg-green-700 text-white"
-        >
-          Run
-        </Button>
-      </div>
       <div
         ref={editorRef}
-        className="flex-grow overflow-auto font-mono text-sm"
-        style={{ height: "calc(100% - 50px)" }}
+        className="flex-grow overflow-auto font-mono text-sm h-full"
       />
     </div>
   );
