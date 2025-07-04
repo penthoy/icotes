@@ -4,6 +4,21 @@
 A web-based JavaScript code editor built with React, CodeMirror 6, and modern web technologies. The goal is to create a powerful, user-friendly code editor with real-time execution capabilities.
 
 ## In Progress 🚧
+
+## Future tasks
+- [] Add agent chat tab on the left side same place as the Explorer with a tab, similar to how vs code extensions are installed on the left side.
+
+## Recently Finished 🎉
+- ✅ **Fixed terminal connection for Tempo environment constraint**: Completely resolved WebSocket connection issues in the Tempo remote development environment:
+  - **Root Cause Identified**: Application was running in development mode (Vite dev server) while WebSocket tried to connect to same host/port
+  - **Production Mode Solution**: Modified default deployment to run production build where FastAPI serves everything on one port  
+  - **Single-Port Architecture**: FastAPI backend now serves both React app static files AND WebSocket endpoints
+  - **Dynamic URL Construction**: Frontend automatically constructs WebSocket URLs using current page's host/port (`window.location.host`)
+  - **Environment Variable Support**: Backend uses PORT environment variable for flexible deployment
+  - **Tempo-Specific Scripts**: Created `start-tempo.sh` and updated `npm run dev` for production deployment
+  - **Verified Solution**: Tested complete build → deploy → connect workflow successfully
+  - **No More Connection Errors**: WebSocket terminals now connect to `wss://your-app.tempo-dev.app/ws/terminal/{id}` correctly
+  - **Comprehensive Documentation**: Created detailed deployment instructions in `/app/docs/tempo_deployment.md`
 - [] Add agent chat tab on the left side same place as the Explorer with a tab, similar to how vs code extensions are installed on the left side.
 
 ## Recently Finished 🎉

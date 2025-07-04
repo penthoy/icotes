@@ -26,8 +26,15 @@ export class CodeExecutorWebSocket {
   private maxReconnectAttempts = 5;
   private reconnectDelay = 1000;
 
-  constructor(url: string = 'ws://localhost:8000/ws') {
-    this.url = url;
+  constructor(url?: string) {
+    // Construct WebSocket URL from current page location
+    if (!url) {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const host = window.location.host; // includes port if present
+      this.url = `${protocol}//${host}/ws`;
+    } else {
+      this.url = url;
+    }
   }
 
   connect(): Promise<void> {
@@ -178,8 +185,9 @@ export class CodeExecutorWebSocket {
 export class CodeExecutorREST {
   private baseUrl: string;
 
-  constructor(baseUrl: string = 'http://localhost:8000') {
-    this.baseUrl = baseUrl;
+  constructor(baseUrl?: string) {
+    // Use current page origin as base URL if not provided
+    this.baseUrl = baseUrl || window.location.origin;
   }
 
   async executeCode(code: string, language: string = 'python'): Promise<CodeExecutionResponse> {

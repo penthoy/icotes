@@ -16,7 +16,7 @@ Use that as a guide rather than human instruction, as this is generated from mul
 ## Rules:
 When asked to "continue progress" please don't work on anything else other than the In progress section of the Project_roadmap.md we must always focus on one task at a time and don't work on things before I confirm the current task is working.
 
-Don't open Simple Browser with http://localhost as this dev server is a remote server and it cannot be accessed from localhost, currently you can visit https://bold-mahavira8-wnl6g.view-3.tempo-dev.app/ instead with simple browser instead of localhost
+Don't open Simple Browser with http://localhost as this dev server is a remote server and it cannot be accessed from localhost, currently you can visit https://frosty-volhard3-k47y8.view-3.tempo-dev.app/ instead with simple browser instead of localhost
 
 ## Codeing standards:
 Always use clean code that's human readable and easy to understand. so that its possible for human and AI to work on the same code base

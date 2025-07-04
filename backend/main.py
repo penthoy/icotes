@@ -34,6 +34,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Mount static files (React app build)
+# Check if dist directory exists (production)
+import os
+dist_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "dist")
+if os.path.exists(dist_path):
+    # Mount static files but don't catch all routes yet
+    app.mount("/assets", StaticFiles(directory=os.path.join(dist_path, "assets")), name="assets")
+    logger.info(f"Serving static files from {dist_path}")
+else:
+    logger.info("No dist directory found - running in development mode")
+
 # Data models
 class CodeExecutionRequest(BaseModel):
     code: str
@@ -329,4 +340,26 @@ async def websocket_endpoint(websocket: WebSocket):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    import os
+    
+    # Use PORT environment variable if available (for production deployment)
+    # Default to 8000 for development
+    port = int(os.environ.get("PORT", 8000))
+    host = "0.0.0.0"
+    
+    print(f"Starting server on {host}:{port}")
+    uvicorn.run(app, host=host, port=port)
+
+# Add catch-all route for React app (must be after all other routes)
+@app.get("/{catch_all:path}")
+async def serve_react_app(catch_all: str):
+    """Serve React app for all non-API routes"""
+    dist_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "dist")
+    if os.path.exists(dist_path):
+        index_path = os.path.join(dist_path, "index.html")
+        if os.path.exists(index_path):
+            from fastapi.responses import FileResponse
+            return FileResponse(index_path)
+    
+    # Fallback for development
+    return {"message": "React app not built. Run 'npm run build' first."}

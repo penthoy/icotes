@@ -31,19 +31,12 @@ const XTerminal: React.FC<XTerminalProps> = ({
 
     setIsReconnecting(true);
     
-    // Get the WebSocket URL - adapt for remote environment
+    // Get the WebSocket URL - use same host and port as main application
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    let wsUrl: string;
+    const host = window.location.host; // includes port if present
+    const wsUrl = `${protocol}//${host}/ws/terminal/${terminalId.current}`;
     
-    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-      // Local development
-      wsUrl = `${protocol}//localhost:8000/ws/terminal/${terminalId.current}`;
-    } else {
-      // Remote environment - construct the WebSocket URL properly
-      const host = window.location.hostname;
-      const port = 8000;
-      wsUrl = `${protocol}//${host}:${port}/ws/terminal/${terminalId.current}`;
-    }
+    console.log('Connecting to WebSocket:', wsUrl);
     
     websocket.current = new WebSocket(wsUrl);
 
