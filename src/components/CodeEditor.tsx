@@ -55,21 +55,9 @@ const CodeEditor = ({
   const [editorView, setEditorView] = useState<EditorView | null>(null);
   const [code, setInternalCode] = useState<string>(propCode || initialCode);
 
+  // Initialize editor only once
   useEffect(() => {
-    if (!editorRef.current) return;
-
-    // Clean up any existing editor instance
-    if (editorView) {
-      editorView.destroy();
-    }
-
-    console.log("Creating CodeMirror extensions...");
-    console.log("Available packages:", {
-      EditorView: typeof EditorView,
-      EditorState: typeof EditorState,
-      javascript: typeof javascript,
-      oneDark: typeof oneDark,
-    });
+    if (!editorRef.current || editorView) return;
 
     try {
       // Create extensions array manually (replacing basicSetup)
@@ -114,12 +102,9 @@ const CodeEditor = ({
         }),
       ];
 
-      console.log("Extensions created:", extensions.length);
-
       // Add theme conditionally
       if (theme === "dark") {
         extensions.push(oneDark);
-        console.log("Added dark theme");
       }
 
       // Create initial state
@@ -128,16 +113,11 @@ const CodeEditor = ({
         extensions,
       });
 
-      console.log("Initial state created:", initialState);
-
       // Create a new editor instance
       const view = new EditorView({
         state: initialState,
         parent: editorRef.current,
       });
-
-      console.log("EditorView created successfully:", view);
-      console.log("Extensions used:", extensions.length);
 
       setEditorView(view);
 
@@ -148,7 +128,32 @@ const CodeEditor = ({
       console.error("Error creating CodeMirror editor:", error);
       console.error("Error stack:", error.stack);
     }
-  }, [theme, propCode, initialCode]);
+  }, [theme, initialCode]);
+
+  // Update editor content when propCode changes (without recreating editor)
+  useEffect(() => {
+    if (!editorView || !propCode) return;
+    
+    const currentContent = editorView.state.doc.toString();
+    if (currentContent !== propCode) {
+      const transaction = editorView.state.update({
+        changes: { from: 0, to: currentContent.length, insert: propCode }
+      });
+      editorView.dispatch(transaction);
+    }
+  }, [propCode, editorView]);
+
+  // Update theme without recreating editor
+  useEffect(() => {
+    if (!editorView) return;
+    
+    // For theme changes, we need to recreate the editor
+    // This is less frequent than content changes
+    editorView.destroy();
+    setEditorView(null);
+    
+    // The editor will be recreated by the first useEffect
+  }, [theme]);
 
   const handleRunCode = () => {
     onRun?.(code);

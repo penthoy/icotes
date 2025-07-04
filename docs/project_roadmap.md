@@ -3,6 +3,34 @@
 ## Project Overview
 A web-based JavaScript code editor built with React, CodeMirror 6, and modern web technologies. The goal is to create a powerful, user-friendly code editor with real-time execution capabilities.
 
+## In Progress 🚧
+(No tasks currently in progress)
+
+## Future tasks:
+- [] Add a proper terminal in the same output area with tabs similar to vs code UI
+- [] Add A fastapi backend.
+- [] add an agent chat tab on the left side same place as the Explorer.
+
+## Recently Finished 🎉
+- ✅ **Fixed Output panel layout**: The output panel was incorrectly positioned to the right of the code editor horizontally. Fixed by:
+  - Restructuring the layout to position the output panel below the code editor vertically
+  - Maintaining the explorer sidebar on the left
+  - Creating a proper VSCode-like layout with file tabs, editor, and output panel stacked vertically
+  - Ensuring the output panel remains collapsible and functional
+
+- ✅ **Fixed cursor disappearing issue**: The cursor would disappear after typing each character, requiring manual mouse clicks to continue typing. This was caused by the CodeMirror editor being recreated on every keystroke. Fixed by:
+  - Separating editor initialization from content updates
+  - Using transactions to update editor content instead of recreating the entire editor
+  - Only recreating the editor when theme changes, not on content changes
+  
+- ✅ **Added VSCode-like file explorer sidebar**: Implemented a resizable file explorer on the left side with:
+  - File tree structure with folders and files
+  - File icons based on file extensions
+  - Context menu for file operations (create, rename, delete)
+  - Resizable panel that can be toggled on/off
+  - Integration with existing file tabs system
+  - Toggle button in header to show/hide explorer
+
 ## Completed Features ✅
 
 ### Core Editor Functionality
@@ -23,8 +51,6 @@ A web-based JavaScript code editor built with React, CodeMirror 6, and modern we
 - ✅ ShadCN UI component library integration
 - ✅ Proper error boundary and handling
 - ✅ Tempo platform integration for development
-
-## In Progress 🚧
 
 ### File Management System
 - 🚧 VS Code-like tabbed interface for multiple files

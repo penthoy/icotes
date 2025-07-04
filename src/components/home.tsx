@@ -1,10 +1,22 @@
 import React, { useState, useEffect } from "react";
-import { Play } from "lucide-react";
+import { Play, PanelLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import CodeEditor from "./CodeEditor";
 import OutputPanel from "./OutputPanel";
 import ThemeToggle from "./ThemeToggle";
 import FileTabs, { FileData } from "./FileTabs";
+import FileExplorer from "./FileExplorer";
+import ResizablePanel from "./ResizablePanel";
+
+// File explorer data structure
+interface FileNode {
+  id: string;
+  name: string;
+  type: 'file' | 'folder';
+  path: string;
+  children?: FileNode[];
+  isExpanded?: boolean;
+}
 
 const Home = () => {
   const [files, setFiles] = useState<FileData[]>([
@@ -16,7 +28,19 @@ const Home = () => {
       isModified: false,
     },
   ]);
+  
+  // File explorer structure
+  const [explorerFiles, setExplorerFiles] = useState<FileNode[]>([
+    {
+      id: "main",
+      name: "main.js",
+      type: "file",
+      path: "/main.js",
+    },
+  ]);
+  
   const [activeFileId, setActiveFileId] = useState<string>("default");
+  const [isExplorerVisible, setIsExplorerVisible] = useState<boolean>(true);
   const [output, setOutput] = useState<string[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
   const [isOutputVisible, setIsOutputVisible] = useState<boolean>(true);
@@ -103,7 +127,7 @@ const Home = () => {
     );
   };
 
-  const handleFileSelect = (fileId: string) => {
+  const handleFileTabSelect = (fileId: string) => {
     setActiveFileId(fileId);
   };
 
@@ -123,15 +147,58 @@ const Home = () => {
 
   const handleNewFile = () => {
     const newFileId = `file-${Date.now()}`;
+    const fileName = `untitled-${files.length}.js`;
     const newFile: FileData = {
       id: newFileId,
-      name: `untitled-${files.length}.js`,
+      name: fileName,
       content: '// New file\nconsole.log("Hello from new file!");',
       isModified: false,
     };
 
     setFiles((prevFiles) => [...prevFiles, newFile]);
     setActiveFileId(newFileId);
+    
+    // Also add to explorer
+    const newExplorerNode: FileNode = {
+      id: newFileId,
+      name: fileName,
+      type: "file",
+      path: `/${fileName}`,
+    };
+    setExplorerFiles((prevFiles) => [...prevFiles, newExplorerNode]);
+  };
+
+  // File explorer handlers
+  const handleFileSelect = (filePath: string) => {
+    // Find the file in our files array by path
+    const file = files.find(f => `/${f.name}` === filePath);
+    if (file) {
+      setActiveFileId(file.id);
+    }
+  };
+
+  const handleFileCreate = (folderPath: string) => {
+    handleNewFile();
+  };
+
+  const handleFolderCreate = (folderPath: string) => {
+    // TODO: Implement folder creation functionality
+    // For now, we'll just create a simple folder structure
+    // This can be expanded later for more complex folder management
+  };
+
+  const handleFileDelete = (filePath: string) => {
+    // Find and remove the file
+    const fileToDelete = files.find(f => `/${f.name}` === filePath);
+    if (fileToDelete) {
+      handleFileClose(fileToDelete.id);
+      // Remove from explorer too
+      setExplorerFiles(prev => prev.filter(f => f.path !== filePath));
+    }
+  };
+
+  const handleFileRename = (oldPath: string, newName: string) => {
+    // TODO: Implement file renaming functionality
   };
 
   const toggleTheme = () => {
@@ -155,7 +222,17 @@ const Home = () => {
       className={`min-h-screen flex flex-col ${theme === "dark" ? "bg-gray-900 text-white" : "bg-white text-gray-900"}`}
     >
       <header className="p-4 flex justify-between items-center border-b">
-        <h1 className="text-xl font-bold">JavaScript Code Editor</h1>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setIsExplorerVisible(!isExplorerVisible)}
+            className="h-8 w-8 p-0"
+          >
+            <PanelLeft className="h-4 w-4" />
+          </Button>
+          <h1 className="text-xl font-bold">iLabors Code</h1>
+        </div>
         <div className="flex items-center gap-2">
           <ThemeToggle theme={theme} toggleTheme={toggleTheme} />
           <Button
@@ -168,33 +245,48 @@ const Home = () => {
         </div>
       </header>
 
-      <main className="flex-grow flex flex-col">
-        <FileTabs
-          files={files}
-          activeFileId={activeFileId}
-          onFileSelect={handleFileSelect}
-          onFileClose={handleFileClose}
-          onNewFile={handleNewFile}
-        />
-        <div className="flex-grow">
-          <CodeEditor
-            code={activeFile?.content || ""}
-            onCodeChange={handleCodeChange}
+      <main className="flex-grow flex">
+        {isExplorerVisible && (
+          <ResizablePanel initialWidth={240} minWidth={180} maxWidth={400}>
+            <FileExplorer
+              files={explorerFiles}
+              onFileSelect={handleFileSelect}
+              onFileCreate={handleFileCreate}
+              onFolderCreate={handleFolderCreate}
+              onFileDelete={handleFileDelete}
+              onFileRename={handleFileRename}
+            />
+          </ResizablePanel>
+        )}
+        
+        <div className="flex-grow flex flex-col">
+          <FileTabs
+            files={files}
+            activeFileId={activeFileId}
+            onFileSelect={handleFileTabSelect}
+            onFileClose={handleFileClose}
+            onNewFile={handleNewFile}
+          />
+          <div className="flex-grow">
+            <CodeEditor
+              code={activeFile?.content || ""}
+              onCodeChange={handleCodeChange}
+              theme={theme}
+            />
+          </div>
+          
+          <OutputPanel
+            output={output}
+            errors={errors}
+            isVisible={isOutputVisible}
+            toggleVisibility={toggleOutputPanel}
             theme={theme}
+            onClear={() => {
+              setOutput([]);
+              setErrors([]);
+            }}
           />
         </div>
-
-        <OutputPanel
-          output={output}
-          errors={errors}
-          isVisible={isOutputVisible}
-          toggleVisibility={toggleOutputPanel}
-          theme={theme}
-          onClear={() => {
-            setOutput([]);
-            setErrors([]);
-          }}
-        />
       </main>
     </div>
   );
