@@ -1,7 +1,7 @@
-# Single-Port Solution for Tempo Environment
+# Single-Port Solution Architecture
 
 ## Problem Analysis
-You were correct that the application was trying to connect to `ws://localhost:8000` which doesn't work in the Tempo environment. In Tempo, the application is served from URLs like `https://frosty-volhard3-k47y8.view-3.tempo-dev.app`, and there's no direct access to other ports.
+Applications with separate frontend and backend servers often face connectivity issues in various deployment environments. The traditional approach of running frontend on one port and backend on another can create complications in remote development environments, containerized deployments, and cloud platforms.
 
 ## Solution Implemented
 
@@ -20,7 +20,7 @@ You were correct that the application was trying to connect to `ws://localhost:8
 
 ### 3. **Production Configuration**
 - Backend reads `PORT` environment variable (defaults to 8000 for dev)
-- In Tempo, the application will run on port 80
+- In production, the application can run on standard web ports (80/443)
 - All connections (HTTP, WebSocket) use the same port
 
 ## Key Changes Made
@@ -47,7 +47,7 @@ const host = window.location.host;
 const wsUrl = `${protocol}//${host}/ws/terminal/${terminalId.current}`;
 ```
 
-## Deployment for Tempo
+## Deployment for Production
 
 ### Single Command Deployment
 ```bash
@@ -60,7 +60,7 @@ const wsUrl = `${protocol}//${host}/ws/terminal/${terminalId.current}`;
 # 1. Build React app
 npm run build
 
-# 2. Start FastAPI server on port 80
+# 2. Start FastAPI server on desired port
 cd backend
 PORT=80 python3 main.py
 ```
@@ -72,16 +72,17 @@ PORT=80 python3 main.py
 - ✅ **Terminal functionality**: PTY sessions work correctly
 - ✅ **Code execution**: REST API endpoints work
 
-## Tempo Environment Compatibility
-- **Single Port**: Only needs port 80 (or whatever port Tempo exposes)
-- **Dynamic URLs**: Automatically adapts to `https://your-app.tempo-dev.app`
+## Deployment Environment Compatibility
+- **Single Port**: Only needs one port for both frontend and backend
+- **Dynamic URLs**: Automatically adapts to any domain/subdomain
 - **HTTPS Support**: WebSocket automatically uses `wss://` for HTTPS sites
 - **No Port Conflicts**: Everything runs through the same port
 
-## Why This Works in Tempo
-1. **No separate port needed**: Terminal WebSocket uses same port as web app
-2. **Dynamic host detection**: Works with any domain/subdomain
-3. **HTTPS compatible**: Automatically uses secure WebSocket (wss://) when needed
-4. **Production ready**: FastAPI serves both static files and WebSocket endpoints
+## Benefits of Single-Port Architecture
+1. **Simplified deployment**: No need to manage multiple ports
+2. **Better security**: Reduced attack surface with fewer open ports
+3. **Easier configuration**: Single endpoint for all services
+4. **Cloud-friendly**: Compatible with most cloud platforms and containers
+5. **Remote development**: Works in various remote development environments
 
-The solution is **technically sound** and **production-ready** for the Tempo environment!
+The solution is **technically sound** and **production-ready** for various deployment scenarios!

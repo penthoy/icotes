@@ -27,18 +27,19 @@ export class CodeExecutorWebSocket {
   private reconnectDelay = 1000;
 
   constructor(url?: string) {
-    // Construct WebSocket URL from environment variables or fallback to current page location
-    if (!url) {
-      const apiUrl = import.meta.env.VITE_WS_URL;
-      if (apiUrl) {
-        this.url = `${apiUrl}/ws`;
+    // Prioritize explicit URL parameter, then environment variables, then fallback to current page location
+    if (url) {
+      this.url = url;
+    } else {
+      const wsUrl = import.meta.env.VITE_WS_URL;
+      if (wsUrl) {
+        this.url = `${wsUrl}/ws`;
       } else {
+        // Fallback to dynamic URL construction
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const host = window.location.host; // includes port if present
         this.url = `${protocol}//${host}/ws`;
       }
-    } else {
-      this.url = url;
     }
   }
 
@@ -191,8 +192,18 @@ export class CodeExecutorREST {
   private baseUrl: string;
 
   constructor(baseUrl?: string) {
-    // Use environment variable or current page origin as base URL
-    this.baseUrl = baseUrl || import.meta.env.VITE_API_URL || window.location.origin;
+    // Prioritize explicit baseUrl parameter, then environment variables, then fallback to current page origin
+    if (baseUrl) {
+      this.baseUrl = baseUrl;
+    } else {
+      const apiUrl = import.meta.env.VITE_API_URL;
+      if (apiUrl) {
+        this.baseUrl = apiUrl;
+      } else {
+        // Fallback to current page origin
+        this.baseUrl = window.location.origin;
+      }
+    }
   }
 
   async executeCode(code: string, language: string = 'python'): Promise<CodeExecutionResponse> {

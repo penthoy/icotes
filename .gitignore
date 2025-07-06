@@ -32,9 +32,12 @@ core
 
 .github/
 
-# developement
+# Environment files
 .env
-backend/.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 
 # Python virtual environments
 backend/venv/

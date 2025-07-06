@@ -31,10 +31,19 @@ const XTerminal: React.FC<XTerminalProps> = ({
 
     setIsReconnecting(true);
 
-    // Get the WebSocket URL - use same host and port as main application
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const host = window.location.host; // includes port if present
-    const wsUrl = `${protocol}//${host}/ws/terminal/${terminalId.current}`;
+    // Get the WebSocket URL - prioritize environment variables over dynamic construction
+    let wsUrl: string;
+    const envWsUrl = import.meta.env.VITE_WS_URL;
+    
+    if (envWsUrl) {
+      // Use environment variable and append terminal endpoint
+      wsUrl = `${envWsUrl}/ws/terminal/${terminalId.current}`;
+    } else {
+      // Fallback to dynamic URL construction using current page
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const host = window.location.host; // includes port if present
+      wsUrl = `${protocol}//${host}/ws/terminal/${terminalId.current}`;
+    }
 
     console.log("Connecting to WebSocket:", wsUrl);
 
