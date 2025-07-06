@@ -35,3 +35,11 @@ core
 # developement
 .env
 backend/.env
+
+# Python virtual environments
+backend/venv/
+venv/
+env/
+ENV/
+.venv/
+.env/
