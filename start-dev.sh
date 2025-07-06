@@ -19,7 +19,7 @@ sleep 2
 
 # Start Vite frontend
 cd ..
-npm run dev-frontend &
+FRONTEND_HOST=${FRONTEND_HOST} FRONTEND_PORT=${FRONTEND_PORT} VITE_API_URL=${VITE_API_URL} VITE_WS_URL=${VITE_WS_URL} npm run dev-frontend &
 FRONTEND_PID=$!
 
 # Function to cleanup processes

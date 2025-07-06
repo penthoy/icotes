@@ -11,6 +11,17 @@ A web-based JavaScript code editor built with React, CodeMirror 6, and modern we
 - [] Add agent chat tab on the left side same place as the Explorer with a tab, similar to how vs code extensions are installed on the left side.
 
 ## Recently Finished 🎉
+- ✅ **Fixed frontend-backend connection issues**: Resolved connectivity problems between frontend and backend:
+  - **Root Cause**: Frontend development server was binding to localhost instead of network IP address
+  - **Environment Variables**: Updated scripts to properly load and pass environment variables to Vite
+  - **Network Binding**: Frontend now correctly binds to `192.168.2.195:5173` instead of `localhost:5173`
+  - **Proxy Configuration**: Verified proxy settings in `vite.config.ts` work correctly with environment variables
+  - **Development Scripts**: Created comprehensive `start-dev-env.sh` script with proper environment variable handling
+  - **Updated start-dev.sh**: Modified existing script to pass VITE environment variables to frontend
+  - **Connection Verification**: Both frontend and backend now properly accessible at configured IP addresses
+  - **API Connectivity**: Confirmed `/health`, `/execute`, and WebSocket endpoints work correctly
+  - **Production Build**: Environment variables now properly embedded in production builds via `.env.production`
+
 - ✅ **Cleaned up tempo-specific code and dependencies**: Removed all tempo-related code that was not being used in the core project:
   - Removed tempo-devtools import and initialization from `src/main.tsx`
   - Removed tempo-routes import and conditional rendering from `src/App.tsx`
