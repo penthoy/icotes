@@ -25,10 +25,15 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="iLabors Code Editor Backend", version="1.0.0")
 
+# Get allowed origins from environment
+allowed_origins = os.environ.get("FRONTEND_URL", "http://localhost:5173").split(",")
+if os.environ.get("NODE_ENV") == "development":
+    allowed_origins.extend(["http://localhost:3000", "http://localhost:5173", "http://127.0.0.1:5173"])
+
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify your frontend URL
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -342,10 +347,9 @@ if __name__ == "__main__":
     import uvicorn
     import os
     
-    # Use PORT environment variable if available (for production deployment)
-    # Default to 8000 for development
-    port = int(os.environ.get("PORT", 8000))
-    host = "0.0.0.0"
+    # Get host and port from environment variables
+    host = os.environ.get("BACKEND_HOST", "0.0.0.0")
+    port = int(os.environ.get("BACKEND_PORT", 8000))
     
     print(f"Starting server on {host}:{port}")
     uvicorn.run(app, host=host, port=port)

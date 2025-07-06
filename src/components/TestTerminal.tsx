@@ -11,7 +11,10 @@ const TestTerminal: React.FC = () => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     
     let wsUrl: string;
-    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    const wsBaseUrl = import.meta.env.VITE_WS_URL;
+    if (wsBaseUrl) {
+      wsUrl = `${wsBaseUrl}/ws/terminal/${terminalId}`;
+    } else if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
       wsUrl = `${protocol}//localhost:8000/ws/terminal/${terminalId}`;
     } else {
       wsUrl = `${protocol}//${window.location.hostname}:8000/ws/terminal/${terminalId}`;

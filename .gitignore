@@ -32,3 +32,6 @@ core
 
 .github/
 
+# developement
+.env
+backend/.env
