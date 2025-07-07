@@ -1,4 +1,5 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -289,7 +290,12 @@ def execute_python_code(code: str) -> tuple[List[str], List[str], float]:
 
 @app.get("/")
 async def root():
-    return {"message": "iLabors Code Editor Backend API", "version": "1.0.0"}
+    # Check if frontend build exists
+    dist_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "dist")
+    if os.path.exists(dist_path) and os.path.exists(os.path.join(dist_path, "index.html")):
+        return FileResponse(os.path.join(dist_path, "index.html"))
+    else:
+        return {"message": "iLabors Code Editor Backend API", "version": "1.0.0", "frontend": "not built"}
 
 @app.get("/health")
 async def health():
@@ -516,21 +522,34 @@ if __name__ == "__main__":
     import os
     
     # Get host and port from environment variables
-    host = os.environ.get("BACKEND_HOST", "0.0.0.0")
-    port = int(os.environ.get("BACKEND_PORT", 8000))
+    # Support multiple port environment variable names for different platforms
+    host = os.environ.get("BACKEND_HOST", os.environ.get("HOST", "0.0.0.0"))
+    port = int(os.environ.get("BACKEND_PORT", os.environ.get("PORT", 8000)))
     
-    print(f"Starting server on {host}:{port}")
+    # Log the configuration for debugging
+    logger.info(f"Starting server on {host}:{port}")
+    logger.info(f"Environment variables: PORT={os.environ.get('PORT')}, BACKEND_PORT={os.environ.get('BACKEND_PORT')}")
+    
     uvicorn.run(app, host=host, port=port)
 
 # Add catch-all route for React app (must be after all other routes)
 @app.get("/{catch_all:path}")
 async def serve_react_app(catch_all: str):
     """Serve React app for all non-API routes"""
+    # Skip API routes and WebSocket routes
+    if catch_all.startswith(('api/', 'ws/', 'docs', 'redoc', 'openapi.json')):
+        raise HTTPException(status_code=404, detail="Not found")
+    
     dist_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "dist")
     if os.path.exists(dist_path):
+        # First, check if the requested file exists (for static assets)
+        file_path = os.path.join(dist_path, catch_all)
+        if os.path.exists(file_path) and os.path.isfile(file_path):
+            return FileResponse(file_path)
+        
+        # If not a static file, serve index.html for SPA routing
         index_path = os.path.join(dist_path, "index.html")
         if os.path.exists(index_path):
-            from fastapi.responses import FileResponse
             return FileResponse(index_path)
     
     # Fallback for development
