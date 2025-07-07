@@ -1,0 +1,112 @@
+/**
+ * ICUI Framework Styles
+ * CSS for the Interactive Component UI Framework
+ */
+
+/* Frame Container Base Styles */
+.icui-frame-container {
+  box-sizing: border-box;
+  position: relative;
+  transition: border-color 0.2s ease;
+}
+
+.icui-frame-container[data-icui-border-detection="true"] {
+  border-style: solid;
+  border-width: 0;
+}
+
+/* Frame Content */
+.icui-frame-content {
+  overflow: auto;
+  box-sizing: border-box;
+}
+
+/* Resize Handles */
+.icui-resize-handle {
+  position: absolute;
+  z-index: 10;
+  transition: all 0.2s ease;
+  border-radius: 2px;
+}
+
+.icui-resize-handle:hover {
+  opacity: 1 !important;
+  background-color: #3b82f6 !important;
+}
+
+.icui-resize-handle:active {
+  opacity: 1 !important;
+  background-color: #1d4ed8 !important;
+}
+
+/* Vertical resize handle */
+.icui-resize-handle[data-icui-direction="vertical"] {
+  cursor: col-resize;
+  right: 0;
+  top: 0;
+  bottom: 0;
+}
+
+/* Horizontal resize handle */
+.icui-resize-handle[data-icui-direction="horizontal"] {
+  cursor: row-resize;
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+
+/* Debug Info */
+.icui-debug-info {
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  line-height: 1.2;
+  pointer-events: none;
+  z-index: 1000;
+}
+
+/* Animation for smooth transitions */
+.icui-frame-container.icui-animating {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Focus styles for accessibility */
+.icui-frame-container:focus-within {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+.icui-resize-handle:focus {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+/* Dark mode adjustments */
+.dark .icui-frame-container {
+  border-color: #4b5563;
+}
+
+.dark .icui-debug-info {
+  background-color: rgba(0, 0, 0, 0.8);
+  color: #f3f4f6;
+}
+
+/* High contrast mode */
+@media (prefers-contrast: high) {
+  .icui-resize-handle {
+    background-color: #000000 !important;
+    border: 1px solid #ffffff;
+  }
+  
+  .dark .icui-resize-handle {
+    background-color: #ffffff !important;
+    border: 1px solid #000000;
+  }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .icui-frame-container,
+  .icui-resize-handle {
+    transition: none;
+  }
+}
