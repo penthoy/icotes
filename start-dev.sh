@@ -1,7 +1,8 @@
 #!/bin/bash
 
 # iLabors Code Editor Development Startup Script
-# This script builds the frontend and runs the backend in development mode
+# This script builds the frontend and runs the backend in development mode with auto-reload
+# Uses SINGLE PORT setup - frontend served from backend (same as production)
 
 echo "🚀 Starting iLabors Code Editor in development mode..."
 
@@ -20,6 +21,7 @@ echo "🔧 Environment Configuration:"
 echo "   NODE_ENV: $NODE_ENV"
 echo "   BACKEND_HOST: $BACKEND_HOST"
 echo "   BACKEND_PORT: $BACKEND_PORT"
+echo "   ⚠️  SINGLE PORT SETUP: Frontend served from backend"
 echo ""
 
 # Check if we're in the correct directory
@@ -33,6 +35,7 @@ cleanup() {
     echo ""
     echo "🛑 Shutting down gracefully..."
     if [[ -n "$BACKEND_PID" ]]; then
+        echo "   Stopping backend server (PID: $BACKEND_PID)..."
         kill $BACKEND_PID 2>/dev/null || true
     fi
     exit 0
@@ -47,9 +50,13 @@ if [ ! -d "node_modules" ]; then
     npm install
 fi
 
-# Build the frontend for development
+# Build the frontend for development (with source maps and dev optimizations)
 echo "🏗️  Building frontend for development..."
 npm run build
+if [ $? -ne 0 ]; then
+    echo "❌ Frontend build failed. Please fix the errors and try again."
+    exit 1
+fi
 
 # Setup Python environment
 echo "🐍 Setting up Python environment..."
@@ -75,11 +82,11 @@ else
     exit 1
 fi
 
-# Start the backend server
+# Start the backend server with development settings
 echo ""
 echo "🎯 Starting the development server..."
 echo "   Backend will be available at: http://$BACKEND_HOST:$BACKEND_PORT"
-echo "   Frontend will be served from the backend"
+echo "   Frontend will be served from the backend (single port setup)"
 echo "   Health check: http://$BACKEND_HOST:$BACKEND_PORT/health"
 echo "   Terminal health: http://$BACKEND_PORT/api/terminal/health"
 echo ""
@@ -101,19 +108,33 @@ echo "🔍 Health Check:"
 echo "   General: http://localhost:$BACKEND_PORT/health"
 echo "   Terminal: http://localhost:$BACKEND_PORT/api/terminal/health"
 echo ""
-echo "⚠️  Note: Frontend is served from the backend server"
-echo "   This is the single-port development setup"
+echo "⚠️  Note: Frontend is served from the backend server (SINGLE PORT)"
+echo "   Don't try to access ports 5173/5174 - they're not running"
+echo ""
+echo "📝 Development Features:"
+echo "   • Backend auto-reload on Python file changes"
+echo "   • Frontend rebuilds when you restart this script"
+echo "   • Development error logging enabled"
+echo "   • Access logs enabled"
+echo ""
+echo "🔄 To see frontend changes:"
+echo "   1. Press Ctrl+C to stop"
+echo "   2. Re-run ./start-dev.sh"
+echo "   3. Frontend will be rebuilt automatically"
 echo ""
 echo "🛑 To stop: Press Ctrl+C"
 echo "=============================================="
 echo ""
 
-# Start the backend server in foreground
+# Start the backend server in foreground with development features
 python3 -m uvicorn main:app \
     --host "$BACKEND_HOST" \
     --port "$BACKEND_PORT" \
     --reload \
-    --log-level info \
+    --reload-dir . \
+    --reload-exclude "*.pyc" \
+    --reload-exclude "__pycache__" \
+    --log-level debug \
     --access-log &
 
 BACKEND_PID=$!

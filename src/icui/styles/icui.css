@@ -27,6 +27,7 @@
   z-index: 10;
   transition: all 0.2s ease;
   border-radius: 2px;
+  opacity: 0;
 }
 
 .icui-resize-handle:hover {
@@ -39,20 +40,18 @@
   background-color: #1d4ed8 !important;
 }
 
-/* Vertical resize handle */
+/* Vertical resize handle - positioned dynamically via inline styles */
 .icui-resize-handle[data-icui-direction="vertical"] {
   cursor: col-resize;
-  right: 0;
-  top: 0;
-  bottom: 0;
+  width: 4px;
+  height: 100%;
 }
 
-/* Horizontal resize handle */
+/* Horizontal resize handle - positioned dynamically via inline styles */
 .icui-resize-handle[data-icui-direction="horizontal"] {
   cursor: row-resize;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  width: 100%;
+  height: 4px;
 }
 
 /* Debug Info */

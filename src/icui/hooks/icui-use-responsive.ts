@@ -54,25 +54,43 @@ export function useICUIResponsive(): ICUIResponsiveConfig & {
           }
         });
 
-      setViewport({
-        width,
-        height,
-        isMobile,
-        isTablet,
-        isDesktop,
+      // Only update if values actually changed
+      setViewport(prev => {
+        if (prev.width === width && prev.height === height && 
+            prev.isMobile === isMobile && prev.isTablet === isTablet && 
+            prev.isDesktop === isDesktop) {
+          return prev; // No change, return same object reference
+        }
+        return {
+          width,
+          height,
+          isMobile,
+          isTablet,
+          isDesktop,
+        };
       });
 
-      setCurrentBreakpoint(newBreakpoint);
+      setCurrentBreakpoint(prev => prev === newBreakpoint ? prev : newBreakpoint);
+    };
+
+    // Debounce the resize handler
+    let timeoutId: NodeJS.Timeout;
+    const debouncedUpdateViewport = () => {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(updateViewport, 100);
     };
 
     // Initial update
     updateViewport();
 
-    // Add event listener
-    window.addEventListener('resize', updateViewport);
+    // Add event listener with debouncing
+    window.addEventListener('resize', debouncedUpdateViewport);
 
     // Cleanup
-    return () => window.removeEventListener('resize', updateViewport);
+    return () => {
+      window.removeEventListener('resize', debouncedUpdateViewport);
+      clearTimeout(timeoutId);
+    };
   }, []);
 
   const isBreakpoint = (breakpoint: ICUIBreakpoint): boolean => {

@@ -81,16 +81,24 @@ export const ICUIFrameContainer: React.FC<ICUIFrameContainerProps> = ({
     const rect = frameRef.current.getBoundingClientRect();
     const threshold = frameConfig.snapThreshold;
     
+    // More precise border detection
     const newBorders: ICUIBorder = {
       top: rect.top <= threshold,
-      right: Math.abs(rect.right - viewport.width) <= threshold,
-      bottom: Math.abs(rect.bottom - viewport.height) <= threshold,
+      right: (viewport.width - rect.right) <= threshold,
+      bottom: (viewport.height - rect.bottom) <= threshold,
       left: rect.left <= threshold,
     };
     
-    setBorders(newBorders);
-    onBorderDetected?.(newBorders);
-  }, [frameConfig.borderDetection, frameConfig.snapThreshold, viewport, onBorderDetected]);
+    // Only update if borders actually changed
+    const bordersChanged = Object.keys(newBorders).some(
+      key => newBorders[key as keyof ICUIBorder] !== borders[key as keyof ICUIBorder]
+    );
+    
+    if (bordersChanged) {
+      setBorders(newBorders);
+      onBorderDetected?.(newBorders);
+    }
+  }, [frameConfig.borderDetection, frameConfig.snapThreshold, viewport.width, viewport.height, borders, onBorderDetected]);
 
   /**
    * Update frame size and trigger callbacks
@@ -115,6 +123,7 @@ export const ICUIFrameContainer: React.FC<ICUIFrameContainerProps> = ({
     if (!frameRef.current) return;
     
     const rect = frameRef.current.getBoundingClientRect();
+    const frameRect = frameRef.current.getBoundingClientRect();
     const handles: ICUIResizeHandle[] = [];
     
     // Add vertical resize handle on the right if not at border
@@ -122,7 +131,10 @@ export const ICUIFrameContainer: React.FC<ICUIFrameContainerProps> = ({
       handles.push({
         id: `${frameConfig.id}-resize-right`,
         direction: 'vertical',
-        position: { x: rect.width - frameConfig.resizeHandleSize / 2, y: 0 },
+        position: { 
+          x: frameRect.width - frameConfig.resizeHandleSize, 
+          y: 0 
+        },
         active: false,
       });
     }
@@ -132,7 +144,10 @@ export const ICUIFrameContainer: React.FC<ICUIFrameContainerProps> = ({
       handles.push({
         id: `${frameConfig.id}-resize-bottom`,
         direction: 'horizontal',
-        position: { x: 0, y: rect.height - frameConfig.resizeHandleSize / 2 },
+        position: { 
+          x: 0, 
+          y: frameRect.height - frameConfig.resizeHandleSize 
+        },
         active: false,
       });
     }
@@ -190,19 +205,29 @@ export const ICUIFrameContainer: React.FC<ICUIFrameContainerProps> = ({
     updateFrameSize();
   }, [updateFrameSize]);
 
-  // Effect for resize observer
+  // Effect for resize observer with debouncing
   useEffect(() => {
     if (!frameRef.current) return;
     
-    const resizeObserver = new ResizeObserver(() => {
-      updateFrameSize();
-      detectBorders();
-      generateResizeHandles();
-    });
+    let timeoutId: NodeJS.Timeout;
+    
+    const debouncedUpdate = () => {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        updateFrameSize();
+        detectBorders();
+        generateResizeHandles();
+      }, 50); // 50ms debounce
+    };
+    
+    const resizeObserver = new ResizeObserver(debouncedUpdate);
     
     resizeObserver.observe(frameRef.current);
     
-    return () => resizeObserver.disconnect();
+    return () => {
+      resizeObserver.disconnect();
+      clearTimeout(timeoutId);
+    };
   }, [updateFrameSize, detectBorders, generateResizeHandles]);
 
   // Effect for mouse events during drag
@@ -218,13 +243,24 @@ export const ICUIFrameContainer: React.FC<ICUIFrameContainerProps> = ({
     }
   }, [isDragging, handleMouseMove, handleMouseUp]);
 
-  // Effect for responsive changes
+  // Effect for responsive changes with debouncing
   useEffect(() => {
-    if (frameConfig.responsive) {
-      detectBorders();
-      generateResizeHandles();
-    }
-  }, [viewport, detectBorders, generateResizeHandles, frameConfig.responsive]);
+    if (!frameConfig.responsive) return;
+    
+    let timeoutId: NodeJS.Timeout;
+    
+    const debouncedUpdate = () => {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        detectBorders();
+        generateResizeHandles();
+      }, 100); // 100ms debounce for viewport changes
+    };
+    
+    debouncedUpdate();
+    
+    return () => clearTimeout(timeoutId);
+  }, [viewport.width, viewport.height, detectBorders, generateResizeHandles, frameConfig.responsive]);
 
   // Compute frame classes
   const frameClasses = [
@@ -268,20 +304,14 @@ export const ICUIFrameContainer: React.FC<ICUIFrameContainerProps> = ({
           key={handle.id}
           className={`
             icui-resize-handle
-            absolute
             bg-blue-500
-            opacity-0
             hover:opacity-100
             transition-opacity
-            cursor-${handle.direction === 'vertical' ? 'col' : 'row'}-resize
             ${handle.active ? 'opacity-100 bg-blue-600' : ''}
-            ${handle.direction === 'vertical' ? 'w-1 h-full' : 'w-full h-1'}
           `}
           style={{
             left: handle.position.x,
             top: handle.position.y,
-            width: handle.direction === 'vertical' ? frameConfig.resizeHandleSize : '100%',
-            height: handle.direction === 'horizontal' ? frameConfig.resizeHandleSize : '100%',
           }}
           onMouseDown={() => handleMouseDown(handle)}
           data-icui-handle={handle.id}
@@ -289,13 +319,14 @@ export const ICUIFrameContainer: React.FC<ICUIFrameContainerProps> = ({
         />
       ))}
       
-      {/* Debug info in development */}
+      {/* Debug info in development - simplified to reduce spam */}
       {process.env.NODE_ENV === 'development' && (
-        <div className="icui-debug-info absolute top-2 right-2 bg-black bg-opacity-50 text-white text-xs p-2 rounded">
+        <div className="icui-debug-info absolute top-2 right-2 bg-black bg-opacity-50 text-white text-xs p-2 rounded max-w-xs">
           <div>Frame: {frameConfig.id}</div>
-          <div>Size: {frameSize.width}x{frameSize.height}</div>
-          <div>Breakpoint: {viewport.width}px</div>
+          <div>Size: {Math.round(frameSize.width)}x{Math.round(frameSize.height)}</div>
+          <div>Viewport: {viewport.width}x{viewport.height}</div>
           <div>Borders: {Object.entries(borders).filter(([_, v]) => v).map(([k]) => k).join(', ') || 'none'}</div>
+          <div>Handles: {resizeHandles.length}</div>
         </div>
       )}
     </div>
