@@ -27,8 +27,22 @@ app = FastAPI(title="iLabors Code Editor Backend", version="1.0.0")
 
 # Get allowed origins from environment
 allowed_origins = os.environ.get("FRONTEND_URL", "http://localhost:5173").split(",")
-if os.environ.get("NODE_ENV") == "development":
-    allowed_origins.extend(["http://localhost:3000", "http://localhost:5173", "http://127.0.0.1:5173"])
+# Add development origins
+allowed_origins.extend([
+    "http://localhost:3000", 
+    "http://localhost:5173", 
+    "http://localhost:5174",
+    "http://localhost:5175",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:5174",
+    "http://127.0.0.1:5175",
+    "http://192.168.2.195:5173",
+    "http://192.168.2.195:5174",
+    "http://192.168.2.195:5175"
+])
+
+# Add wildcard for development
+allowed_origins.append("*")
 
 # Add CORS middleware
 app.add_middleware(
@@ -83,18 +97,61 @@ class ConnectionManager:
             master_fd, slave_fd = pty.openpty()
             logger.info(f"PTY created: master_fd={master_fd}, slave_fd={slave_fd}")
             
+            # Set terminal size (default to 80x24 if not specified)
+            try:
+                fcntl.ioctl(slave_fd, termios.TIOCSWINSZ, struct.pack('HHHH', 24, 80, 0, 0))
+            except Exception as e:
+                logger.warning(f"Could not set terminal size: {e}")
+            
+            # Set terminal attributes for better compatibility and performance
+            try:
+                attrs = termios.tcgetattr(slave_fd)
+                # Disable canonical mode for better real-time interaction
+                attrs[3] &= ~termios.ICANON  # Disable canonical mode
+                attrs[3] |= termios.ECHO | termios.ISIG  # Enable echo and signal processing
+                # Set input/output processing for better performance
+                attrs[0] |= termios.ICRNL  # Map CR to NL on input
+                attrs[1] |= termios.ONLCR  # Map NL to CR-NL on output
+                # Set minimum characters and timeout for immediate response
+                attrs[6][termios.VMIN] = 0  # Minimum characters (0 for non-blocking)
+                attrs[6][termios.VTIME] = 0  # Timeout (0 for immediate return)
+                termios.tcsetattr(slave_fd, termios.TCSANOW, attrs)
+            except Exception as e:
+                logger.warning(f"Could not set terminal attributes: {e}")
+            
+            # Set environment variables for better terminal compatibility
+            env = os.environ.copy()
+            env.update({
+                'TERM': 'xterm-256color',
+                'SHELL': '/bin/bash',
+                'HOME': os.path.expanduser('~'),
+                'PATH': env.get('PATH', '/usr/local/bin:/usr/bin:/bin'),
+                'LANG': 'C.UTF-8',
+                'LC_ALL': 'C.UTF-8',
+                'PS1': '\\[\\033[01;32m\\]\\u@\\h\\[\\033[00m\\]:\\[\\033[01;34m\\]\\w\\[\\033[00m\\]\\$ ',
+            })
+            
             # Start bash in the new terminal
             proc = subprocess.Popen(
-                ["/bin/bash"],
+                ["/bin/bash", "-i"],  # Interactive bash
                 stdin=slave_fd,
                 stdout=slave_fd,
                 stderr=slave_fd,
-                preexec_fn=os.setsid
+                preexec_fn=os.setsid,
+                env=env,
+                cwd=os.path.expanduser('~')
             )
             logger.info(f"Bash process started with PID: {proc.pid}")
             
             # Close slave fd in parent process
             os.close(slave_fd)
+            
+            # Set master fd to non-blocking for better performance
+            try:
+                flags = fcntl.fcntl(master_fd, fcntl.F_GETFL)
+                fcntl.fcntl(master_fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+            except Exception as e:
+                logger.warning(f"Could not set master fd to non-blocking: {e}")
             
             # Store terminal connection info
             self.terminal_connections[terminal_id] = {
@@ -226,35 +283,50 @@ async def execute_code(request: CodeExecutionRequest):
 
 @app.websocket("/ws/terminal/{terminal_id}")
 async def terminal_websocket(websocket: WebSocket, terminal_id: str):
-    """WebSocket endpoint for terminal connections with PTY support"""
+    """WebSocket endpoint for terminal connections with PTY support and optimized performance"""
     logger.info(f"Terminal WebSocket connection attempt: {terminal_id}")
     try:
         master_fd, proc = await manager.connect_terminal(websocket, terminal_id)
         logger.info(f"Terminal session started for {terminal_id}")
         
         async def read_from_terminal():
-            """Read from terminal and send to WebSocket"""
+            """Read from terminal and send to WebSocket with optimized performance"""
             while True:
                 try:
-                    # Use select to check if data is available
-                    ready, _, _ = select.select([master_fd], [], [], 0.1)
+                    # Use select with very short timeout for immediate response
+                    ready, _, _ = select.select([master_fd], [], [], 0.001)
                     if ready:
-                        data = os.read(master_fd, 1024)
+                        # Read available data
+                        data = os.read(master_fd, 4096)  # Increased buffer size
                         if data:
-                            await websocket.send_text(data.decode('utf-8', errors='ignore'))
+                            # Properly decode terminal data with better error handling
+                            try:
+                                decoded_data = data.decode('utf-8')
+                            except UnicodeDecodeError:
+                                # Fallback to latin-1 for binary data
+                                decoded_data = data.decode('latin-1')
+                            
+                            # Send data to WebSocket immediately
+                            try:
+                                await websocket.send_text(decoded_data)
+                            except Exception as send_error:
+                                logger.error(f"Error sending data to WebSocket: {send_error}")
+                                break
                         else:
+                            # EOF reached
                             break
-                    await asyncio.sleep(0.01)
+                    else:
+                        # No data available, yield control briefly
+                        await asyncio.sleep(0.001)
                 except Exception as e:
                     logger.error(f"Error reading from terminal: {e}")
                     break
         
         async def write_to_terminal():
-            """Read from WebSocket and write to terminal"""
+            """Read from WebSocket and write to terminal with optimized performance"""
             while True:
                 try:
                     data = await websocket.receive_text()
-                    logger.info(f"Received terminal data: {repr(data)}")
                     
                     # Handle special messages
                     if data.startswith('{"type":'):
@@ -271,8 +343,16 @@ async def terminal_websocket(websocket: WebSocket, terminal_id: str):
                                 logger.error(f"Error resizing terminal: {e}")
                         continue
                     
-                    # Regular terminal input
-                    os.write(master_fd, data.encode('utf-8'))
+                    # Regular terminal input - write directly for maximum performance
+                    try:
+                        os.write(master_fd, data.encode('utf-8'))
+                    except BlockingIOError:
+                        # Handle non-blocking write
+                        await asyncio.sleep(0.001)
+                        try:
+                            os.write(master_fd, data.encode('utf-8'))
+                        except:
+                            pass
                 except WebSocketDisconnect:
                     break
                 except Exception as e:

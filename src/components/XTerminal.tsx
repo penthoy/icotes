@@ -52,15 +52,16 @@ const XTerminal: React.FC<XTerminalProps> = ({
     websocket.current.onopen = () => {
       setIsConnected(true);
       setIsReconnecting(false);
+      console.log("Terminal WebSocket connected successfully");
       if (terminal.current) {
-        terminal.current.write(
-          "\\r\\n\\x1b[32mTerminal connected\\x1b[0m\\r\\n",
-        );
+        // Clear any previous connection messages
+        terminal.current.clear();
       }
     };
 
     websocket.current.onmessage = (event) => {
       if (terminal.current) {
+        // Write data immediately without any processing delay
         terminal.current.write(event.data);
       }
     };
@@ -68,9 +69,11 @@ const XTerminal: React.FC<XTerminalProps> = ({
     websocket.current.onclose = (event) => {
       setIsConnected(false);
       setIsReconnecting(false);
-      if (terminal.current) {
+      console.log("Terminal WebSocket closed:", event.code, event.reason);
+      if (terminal.current && event.code !== 1000) {
+        // Only show disconnection message if it wasn't a normal close
         terminal.current.write(
-          "\\r\\n\\x1b[31mTerminal disconnected\\x1b[0m\\r\\n",
+          "\r\n\x1b[31mTerminal disconnected\x1b[0m\r\n",
         );
       }
     };
@@ -81,7 +84,7 @@ const XTerminal: React.FC<XTerminalProps> = ({
       setIsReconnecting(false);
       if (terminal.current) {
         terminal.current.write(
-          "\\r\\n\\x1b[31mTerminal connection error\\x1b[0m\\r\\n",
+          "\r\n\x1b[31mTerminal connection error\x1b[0m\r\n",
         );
       }
     };
@@ -96,36 +99,64 @@ const XTerminal: React.FC<XTerminalProps> = ({
         theme:
           theme === "dark"
             ? {
-                background: "#1a1a1a",
-                foreground: "#ffffff",
-                cursor: "#ffffff",
+                background: "#1e1e1e",
+                foreground: "#cccccc",
+                cursor: "#cccccc",
+                cursorAccent: "#1e1e1e",
+                selectionBackground: "#264f78",
                 black: "#000000",
                 brightBlack: "#666666",
-                red: "#ff6b6b",
-                brightRed: "#ff8e8e",
-                green: "#51cf66",
-                brightGreen: "#69db7c",
-                yellow: "#ffd43b",
-                brightYellow: "#ffec99",
-                blue: "#339af0",
-                brightBlue: "#74c0fc",
-                magenta: "#f06292",
-                brightMagenta: "#f48fb1",
-                cyan: "#22d3ee",
-                brightCyan: "#67e8f9",
-                white: "#f8f9fa",
+                red: "#cd3131",
+                brightRed: "#f14c4c",
+                green: "#0dbc79",
+                brightGreen: "#23d18b",
+                yellow: "#e5e510",
+                brightYellow: "#f5f543",
+                blue: "#2472c8",
+                brightBlue: "#3b8eea",
+                magenta: "#bc3fbc",
+                brightMagenta: "#d670d6",
+                cyan: "#11a8cd",
+                brightCyan: "#29b8db",
+                white: "#e5e5e5",
                 brightWhite: "#ffffff",
               }
             : {
                 background: "#ffffff",
                 foreground: "#000000",
                 cursor: "#000000",
+                cursorAccent: "#ffffff",
+                selectionBackground: "#0078d4",
+                black: "#000000",
+                brightBlack: "#666666",
+                red: "#cd3131",
+                brightRed: "#f14c4c",
+                green: "#00bc00",
+                brightGreen: "#23d18b",
+                yellow: "#949800",
+                brightYellow: "#f5f543",
+                blue: "#0451a5",
+                brightBlue: "#3b8eea",
+                magenta: "#bc05bc",
+                brightMagenta: "#d670d6",
+                cyan: "#0598bc",
+                brightCyan: "#29b8db",
+                white: "#e5e5e5",
+                brightWhite: "#ffffff",
               },
-        fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-        fontSize: 14,
+        fontFamily: '"Cascadia Code", "Fira Code", "SF Mono", Monaco, Menlo, "Courier New", monospace',
+        fontSize: 13,
+        fontWeight: "normal",
+        lineHeight: 1.2,
         cursorBlink: true,
         cursorStyle: "block",
-        allowTransparency: true,
+        cursorWidth: 1,
+        allowTransparency: false,
+        convertEol: true,
+        fastScrollModifier: "alt",
+        fastScrollSensitivity: 5,
+        scrollback: 1000,
+        tabStopWidth: 4,
       });
 
       // Create fit addon
@@ -166,6 +197,7 @@ const XTerminal: React.FC<XTerminalProps> = ({
       // Handle data from terminal (user input)
       terminal.current.onData((data) => {
         if (websocket.current?.readyState === WebSocket.OPEN) {
+          // Send data immediately without any buffering
           websocket.current.send(data);
         }
       });
@@ -186,13 +218,17 @@ const XTerminal: React.FC<XTerminalProps> = ({
       // Connect to WebSocket
       connectWebSocket();
 
-      // Show welcome message
-      terminal.current.write(
-        "\\x1b[32mConnecting to terminal...\\x1b[0m\\r\\n",
-      );
-      terminal.current.write(
-        `\\x1b[36mTerminal ID: ${terminalId.current}\\x1b[0m\\r\\n`,
-      );
+      // Show welcome message after a short delay
+      setTimeout(() => {
+        if (terminal.current) {
+          terminal.current.write(
+            "\x1b[32mConnecting to terminal...\x1b[0m\r\n",
+          );
+          terminal.current.write(
+            `\x1b[36mTerminal ID: ${terminalId.current}\x1b[0m\r\n`,
+          );
+        }
+      }, 100);
     } catch (error) {
       console.error("Error initializing terminal:", error);
     }
@@ -355,7 +391,7 @@ const XTerminal: React.FC<XTerminalProps> = ({
 
   const handleKill = () => {
     if (websocket.current) {
-      websocket.current.send("\\x03"); // Send Ctrl+C
+      websocket.current.send("\x03"); // Send Ctrl+C
     }
   };
 
