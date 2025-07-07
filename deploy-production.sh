@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Production deployment script for Tempo environment
+# Production deployment script
 # This script builds the React app and starts the FastAPI server on port 80
 
 echo "🚀 Starting production deployment..."

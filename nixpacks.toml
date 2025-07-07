@@ -1,18 +1,15 @@
 [variables]
   NODE_ENV = "production"
 
-[phases.setup]
-  nixPkgs = ["nodejs_18", "python311", "python311Packages.pip"]
+[providers]
+  python = "3.11"
+  node = "18"
 
 [phases.install]
-  cmds = [
-    "npm ci --omit=dev",
-    "cd backend && python -m pip install --upgrade pip",
-    "cd backend && python -m pip install -r requirements.txt"
-  ]
+  cmds = ["npm ci --omit=dev"]
 
-[phases.build]
+[phases.build] 
   cmds = ["npm run build"]
 
 [start]
-  cmd = "cd backend && python main.py"
+  cmd = "./start.sh"

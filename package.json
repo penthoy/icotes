@@ -11,9 +11,9 @@
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
     "types:supabase": "npx supabase gen types typescript --project-id $SUPABASE_PROJECT_ID > src/types/supabase.ts",
-    "start": "cd backend && python3 main.py",
+    "start": "./start.sh",
     "dev-backend": "cd backend && python3 main.py",
-    "prod": "npm run build && cd backend && python3 main.py"
+    "prod": "npm run build && ./start.sh"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.18.6",
