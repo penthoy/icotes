@@ -26,23 +26,35 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="iLabors Code Editor Backend", version="1.0.0")
 
 # Get allowed origins from environment
-allowed_origins = os.environ.get("FRONTEND_URL", "http://localhost:5173").split(",")
-# Add development origins
-allowed_origins.extend([
-    "http://localhost:3000", 
-    "http://localhost:5173", 
-    "http://localhost:5174",
-    "http://localhost:5175",
-    "http://127.0.0.1:5173",
-    "http://127.0.0.1:5174",
-    "http://127.0.0.1:5175",
-    "http://192.168.2.195:5173",
-    "http://192.168.2.195:5174",
-    "http://192.168.2.195:5175"
-])
+allowed_origins = []
 
-# Add wildcard for development
-allowed_origins.append("*")
+# Add production domains if available
+frontend_url = os.environ.get("FRONTEND_URL")
+if frontend_url:
+    allowed_origins.append(frontend_url)
+
+# Add development origins for local development
+if os.environ.get("NODE_ENV") != "production":
+    allowed_origins.extend([
+        "http://localhost:3000", 
+        "http://localhost:5173", 
+        "http://localhost:5174",
+        "http://localhost:5175",
+        "http://localhost:5176",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:5174",
+        "http://127.0.0.1:5175",
+        "http://127.0.0.1:5176",
+        "http://192.168.2.195:5173",
+        "http://192.168.2.195:5174",
+        "http://192.168.2.195:5175",
+        "http://192.168.2.195:5176"
+    ])
+
+# For production, allow all origins if not specified (Coolify handles this)
+if os.environ.get("NODE_ENV") == "production" and not allowed_origins:
+    allowed_origins = ["*"]
 
 # Add CORS middleware
 app.add_middleware(
@@ -55,11 +67,14 @@ app.add_middleware(
 
 # Mount static files (React app build)
 # Check if dist directory exists (production)
-import os
 dist_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "dist")
 if os.path.exists(dist_path):
-    # Mount static files but don't catch all routes yet
+    # Mount static files for production
     app.mount("/assets", StaticFiles(directory=os.path.join(dist_path, "assets")), name="assets")
+    # Mount additional static files that might be needed
+    import os
+    if os.path.exists(os.path.join(dist_path, "static")):
+        app.mount("/static", StaticFiles(directory=os.path.join(dist_path, "static")), name="static")
     logger.info(f"Serving static files from {dist_path}")
 else:
     logger.info("No dist directory found - running in development mode")
@@ -91,6 +106,10 @@ class ConnectionManager:
     async def connect_terminal(self, websocket: WebSocket, terminal_id: str):
         try:
             await websocket.accept()
+            
+            # Debug logging for production troubleshooting
+            logger.info(f"WebSocket client: {websocket.client}")
+            logger.info(f"WebSocket headers: {websocket.headers}")
             
             # Create a new terminal session
             logger.info(f"Creating PTY for terminal {terminal_id}")
@@ -125,15 +144,29 @@ class ConnectionManager:
                 'TERM': 'xterm-256color',
                 'SHELL': '/bin/bash',
                 'HOME': os.path.expanduser('~'),
-                'PATH': env.get('PATH', '/usr/local/bin:/usr/bin:/bin'),
+                'PATH': env.get('PATH', '/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin'),
                 'LANG': 'C.UTF-8',
                 'LC_ALL': 'C.UTF-8',
                 'PS1': '\\[\\033[01;32m\\]\\u@\\h\\[\\033[00m\\]:\\[\\033[01;34m\\]\\w\\[\\033[00m\\]\\$ ',
+                'USER': env.get('USER', 'app'),
+                'LOGNAME': env.get('LOGNAME', 'app'),
             })
+            
+            # Find bash executable
+            bash_path = None
+            for path in ['/bin/bash', '/usr/bin/bash', '/usr/local/bin/bash']:
+                if os.path.exists(path):
+                    bash_path = path
+                    break
+            
+            if not bash_path:
+                raise Exception("Bash executable not found")
+                
+            logger.info(f"Using bash at: {bash_path}")
             
             # Start bash in the new terminal
             proc = subprocess.Popen(
-                ["/bin/bash", "-i"],  # Interactive bash
+                [bash_path, "-i"],  # Interactive bash
                 stdin=slave_fd,
                 stdout=slave_fd,
                 stderr=slave_fd,
@@ -280,6 +313,61 @@ async def execute_code(request: CodeExecutionRequest):
             errors=[f"Language '{request.language}' not supported yet"],
             execution_time=0.0
         )
+
+@app.get("/api")
+async def api_root():
+    return {"message": "iLabors Code Editor Backend API", "version": "1.0.0"}
+
+@app.get("/api/health")
+async def api_health():
+    return {"status": "healthy", "connections": len(manager.active_connections)}
+
+@app.post("/api/execute", response_model=CodeExecutionResponse)
+async def api_execute_code(request: CodeExecutionRequest):
+    """Execute code and return results (API endpoint)"""
+    logger.info(f"Executing {request.language} code")
+    
+    if request.language.lower() == "python":
+        output, errors, execution_time = execute_python_code(request.code)
+        return CodeExecutionResponse(
+            output=output,
+            errors=errors,
+            execution_time=execution_time
+        )
+    else:
+        return CodeExecutionResponse(
+            output=[],
+            errors=[f"Language '{request.language}' not supported yet"],
+            execution_time=0.0
+        )
+
+@app.get("/api/terminal/health")
+async def terminal_health():
+    """Health check specifically for terminal functionality"""
+    try:
+        # Test if we can create a PTY
+        import pty
+        master_fd, slave_fd = pty.openpty()
+        os.close(master_fd)
+        os.close(slave_fd)
+        
+        # Test if bash is available
+        bash_available = any(os.path.exists(path) for path in ['/bin/bash', '/usr/bin/bash', '/usr/local/bin/bash'])
+        
+        return {
+            "status": "healthy",
+            "pty_available": True,
+            "bash_available": bash_available,
+            "terminal_connections": len(manager.terminal_connections)
+        }
+    except Exception as e:
+        return {
+            "status": "unhealthy",
+            "error": str(e),
+            "pty_available": False,
+            "bash_available": False,
+            "terminal_connections": len(manager.terminal_connections)
+        }
 
 @app.websocket("/ws/terminal/{terminal_id}")
 async def terminal_websocket(websocket: WebSocket, terminal_id: str):

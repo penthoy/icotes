@@ -31,15 +31,15 @@ const XTerminal: React.FC<XTerminalProps> = ({
 
     setIsReconnecting(true);
 
-    // Get the WebSocket URL - prioritize environment variables over dynamic construction
+    // Get the WebSocket URL - handle production environment properly
     let wsUrl: string;
     const envWsUrl = import.meta.env.VITE_WS_URL;
     
-    if (envWsUrl) {
+    if (envWsUrl && envWsUrl.trim() !== '') {
       // Use environment variable and append terminal endpoint
       wsUrl = `${envWsUrl}/ws/terminal/${terminalId.current}`;
     } else {
-      // Fallback to dynamic URL construction using current page
+      // Dynamic URL construction for production
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const host = window.location.host; // includes port if present
       wsUrl = `${protocol}//${host}/ws/terminal/${terminalId.current}`;
