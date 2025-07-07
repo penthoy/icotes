@@ -6,15 +6,16 @@
 
 ## Deployment Configuration
 
-### Nixpacks Configuration
-The project includes a `nixpacks.toml` file that configures the build process:
-- Uses Node.js 18 and Python 3.11
-- Installs Python dependencies during startup
-- Builds the frontend during the build phase
+### Auto-Detection Approach
+This project uses Nixpacks auto-detection for the most reliable deployment:
+- Nixpacks automatically detects Node.js and Python requirements
+- No custom `nixpacks.toml` configuration needed
+- Python dependencies are installed at runtime via `start.sh`
 
 ### Scripts
-- `start.sh` - Production startup script that installs Python deps and starts the app
-- `package.json` - Contains build and start commands
+- `start.sh` - Production startup script with robust Python dependency installation
+- `Procfile` - Process configuration for deployment platforms
+- `package.json` - Contains build commands for the frontend
 
 ## Environment Variables
 Set these in your Coolify deployment:
@@ -60,22 +61,25 @@ If the terminal shows "Connecting..." and never connects:
    - Check allowed origins in backend logs
    - Ensure proper domain configuration
 
-4. **Python/Pip Issues in Nixpacks**:
+4. **Nixpacks Configuration Errors**:
+   - Error: "invalid type: map, expected a sequence for key 'providers'"
+   - Solution: Remove custom nixpacks.toml and use auto-detection
+   - Auto-detection is often more reliable for hybrid projects
+
+5. **Python/Pip Issues in Nixpacks**:
    - Error: "No module named pip" 
-   - Solution: Use providers instead of nixPkgs in nixpacks.toml
-   - Install Python deps in start.sh script with `--user` flag
-   - Alternative: Use auto-detection by removing nixpacks.toml
+   - Solution: start.sh script tries multiple pip installation methods
+   - Falls back to manual package installation if pip unavailable
 
-5. **Build Failures**:
-   - Check nixpacks.toml configuration
-   - Ensure all required system packages are listed
-   - Verify requirements.txt is properly formatted
+6. **Build Failures**:
    - Try removing nixpacks.toml to use auto-detection
+   - Check that start.sh is executable
+   - Verify requirements.txt is properly formatted
 
-6. **Start Script Issues**:
+7. **Start Script Issues**:
    - Ensure start.sh is executable (`chmod +x start.sh`)
-   - Check that Python dependencies install successfully
-   - Verify file paths in the script
+   - Script handles multiple pip installation methods
+   - Check deployment logs for specific error messages
 
 ## Testing
 After deployment, test these endpoints:
