@@ -49,14 +49,12 @@ const XTerminal: React.ForwardRefRenderFunction<XTerminalRef, XTerminalProps> = 
       wsUrl = `${protocol}//${host}/ws/terminal/${terminalId.current}`;
     }
 
-    console.log("Connecting to WebSocket:", wsUrl);
-
     websocket.current = new WebSocket(wsUrl);
 
     websocket.current.onopen = () => {
       setIsConnected(true);
       setIsReconnecting(false);
-      console.log("Terminal WebSocket connected successfully");
+      // Terminal WebSocket connected successfully
       if (terminal.current) {
         terminal.current.clear();
       }

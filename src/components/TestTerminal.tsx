@@ -4,7 +4,7 @@ const TestTerminal: React.FC = () => {
   const [status, setStatus] = useState('Initializing...');
   
   useEffect(() => {
-    console.log('TestTerminal component mounted');
+    // TestTerminal component mounted
     setStatus('Attempting to connect...');
     
     const terminalId = Math.random().toString(36).substring(7);
@@ -20,17 +20,15 @@ const TestTerminal: React.FC = () => {
       wsUrl = `${protocol}//${window.location.hostname}:8000/ws/terminal/${terminalId}`;
     }
     
-    console.log('Connecting to:', wsUrl);
-    
     const ws = new WebSocket(wsUrl);
     
     ws.onopen = () => {
-      console.log('WebSocket connected');
+      // WebSocket connected successfully
       setStatus('Connected!');
     };
     
     ws.onclose = (event) => {
-      console.log('WebSocket closed:', event.code, event.reason);
+      // WebSocket closed
       setStatus(`Disconnected: ${event.code} - ${event.reason}`);
     };
     

@@ -91,7 +91,7 @@ const Home = () => {
     const initializeExecutor = async () => {
       try {
         await codeExecutor.connect();
-        console.log('Code executor connected');
+        // Code executor connected successfully
       } catch (error) {
         console.warn('Failed to connect to backend:', error);
       }
@@ -214,27 +214,22 @@ const Home = () => {
   // File explorer handlers (placeholder implementations)
   const handleFileSelect = (filePath: string) => {
     // TODO: Load file content and add to tabs
-    console.log("File selected:", filePath);
   };
 
   const handleFileCreate = (folderPath: string) => {
     // TODO: Create new file
-    console.log("Create file in:", folderPath);
   };
 
   const handleFolderCreate = (folderPath: string) => {
     // TODO: Create new folder
-    console.log("Create folder in:", folderPath);
   };
 
   const handleFileDelete = (filePath: string) => {
     // TODO: Delete file
-    console.log("Delete file:", filePath);
   };
 
   const handleFileRename = (oldPath: string, newName: string) => {
     // TODO: Rename file
-    console.log("Rename file:", oldPath, "to", newName);
   };
 
   const toggleTheme = () => {
