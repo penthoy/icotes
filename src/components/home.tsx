@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Play, PanelLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import CodeEditor, { SupportedLanguage } from "./CodeEditor";
 import OutputTerminalPanel from "./OutputTerminalPanel";
+import { XTerminalRef } from "./XTerminal";
 import ThemeToggle from "./ThemeToggle";
 import FileTabs, { FileData } from "./FileTabs";
 import FileExplorer from "./FileExplorer";
@@ -66,6 +67,8 @@ const Home = () => {
     }
     return "dark"; // Default to dark mode
   });
+
+  const terminalRef = useRef<XTerminalRef>({} as XTerminalRef);
 
   const activeFile = files.find((file) => file.id === activeFileId);
 
@@ -196,70 +199,42 @@ const Home = () => {
     if (files.length === 1) return; // Don't close the last file
 
     const fileIndex = files.findIndex((file) => file.id === fileId);
+    if (fileIndex === -1) return;
+
     const newFiles = files.filter((file) => file.id !== fileId);
     setFiles(newFiles);
 
-    // If closing the active file, switch to another file
-    if (fileId === activeFileId) {
+    // If we closed the active file, switch to the adjacent file
+    if (activeFileId === fileId) {
       const newActiveIndex = fileIndex > 0 ? fileIndex - 1 : 0;
       setActiveFileId(newFiles[newActiveIndex]?.id || newFiles[0]?.id);
     }
   };
 
-  const handleNewFile = () => {
-    const newFileId = `file-${Date.now()}`;
-    const fileName = `untitled-${files.length}.py`;
-    const newFile: FileData = {
-      id: newFileId,
-      name: fileName,
-      content: '# New Python file\nprint("Hello from new file!")',
-      isModified: false,
-    };
-
-    setFiles((prevFiles) => [...prevFiles, newFile]);
-    setActiveFileId(newFileId);
-    
-    // Also add to explorer
-    const newExplorerNode: FileNode = {
-      id: newFileId,
-      name: fileName,
-      type: "file",
-      path: `/${fileName}`,
-    };
-    setExplorerFiles((prevFiles) => [...prevFiles, newExplorerNode]);
-  };
-
-  // File explorer handlers
+  // File explorer handlers (placeholder implementations)
   const handleFileSelect = (filePath: string) => {
-    // Find the file in our files array by path
-    const file = files.find(f => `/${f.name}` === filePath);
-    if (file) {
-      setActiveFileId(file.id);
-    }
+    // TODO: Load file content and add to tabs
+    console.log("File selected:", filePath);
   };
 
   const handleFileCreate = (folderPath: string) => {
-    handleNewFile();
+    // TODO: Create new file
+    console.log("Create file in:", folderPath);
   };
 
   const handleFolderCreate = (folderPath: string) => {
-    // TODO: Implement folder creation functionality
-    // For now, we'll just create a simple folder structure
-    // This can be expanded later for more complex folder management
+    // TODO: Create new folder
+    console.log("Create folder in:", folderPath);
   };
 
   const handleFileDelete = (filePath: string) => {
-    // Find and remove the file
-    const fileToDelete = files.find(f => `/${f.name}` === filePath);
-    if (fileToDelete) {
-      handleFileClose(fileToDelete.id);
-      // Remove from explorer too
-      setExplorerFiles(prev => prev.filter(f => f.path !== filePath));
-    }
+    // TODO: Delete file
+    console.log("Delete file:", filePath);
   };
 
   const handleFileRename = (oldPath: string, newName: string) => {
-    // TODO: Implement file renaming functionality
+    // TODO: Rename file
+    console.log("Rename file:", oldPath, "to", newName);
   };
 
   const toggleTheme = () => {
@@ -268,6 +243,15 @@ const Home = () => {
 
   const toggleOutputPanel = () => {
     setIsOutputVisible(!isOutputVisible);
+  };
+
+  const handleTerminalResize = () => {
+    // Add a small delay to allow the panel to resize before fitting the terminal
+    setTimeout(() => {
+      if (terminalRef.current) {
+        terminalRef.current.fit();
+      }
+    }, 50);
   };
 
   // Apply theme to document on mount and theme change
@@ -279,9 +263,8 @@ const Home = () => {
   }, [theme]);
 
   return (
-    <div
-      className={`h-screen flex flex-col ${theme === "dark" ? "bg-gray-900 text-white" : "bg-white text-gray-900"}`}
-    >
+    <div className={`h-screen w-screen flex flex-col font-sans ${theme}`}>
+      {/* Top bar */}
       <header className="p-4 flex justify-between items-center border-b flex-shrink-0">
         <div className="flex items-center gap-2">
           <Button
@@ -307,58 +290,67 @@ const Home = () => {
         </div>
       </header>
 
-      <main className="flex-1 flex overflow-hidden">
-        {isExplorerVisible && (
-          <ResizablePanel initialWidth={240} minWidth={180} maxWidth={400}>
-            <FileExplorer
-              files={explorerFiles}
-              onFileSelect={handleFileSelect}
-              onFileCreate={handleFileCreate}
-              onFolderCreate={handleFolderCreate}
-              onFileDelete={handleFileDelete}
-              onFileRename={handleFileRename}
-            />
-          </ResizablePanel>
-        )}
-        
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <FileTabs
-            files={files}
-            activeFileId={activeFileId}
-            onFileSelect={handleFileTabSelect}
-            onFileClose={handleFileClose}
-            onNewFile={handleNewFile}
-          />
-          <div className="flex-1 overflow-hidden">
-            <CodeEditor
-              code={activeFile?.content || ""}
-              onCodeChange={handleCodeChange}
-              theme={theme}
-              language={currentLanguage}
-            />
-          </div>
-          
-          {isOutputVisible && (
-            <VerticalResizablePanel
-              initialHeight={300}
-              minHeight={100}
-              maxHeight={600}
-              className="border-t border-border flex-shrink-0"
+      {/* Main content */}
+      <main className="flex-1 flex flex-col overflow-hidden">
+        {/* Top section (Editor and optional File Explorer) */}
+        <div className="flex-1 flex overflow-hidden">
+          {isExplorerVisible && (
+            <ResizablePanel
+              initialWidth={250}
+              minWidth={200}
+              maxWidth={500}
             >
-              <OutputTerminalPanel
-                output={output}
-                errors={errors}
-                isVisible={isOutputVisible}
-                toggleVisibility={toggleOutputPanel}
-                theme={theme}
-                onClear={() => {
-                  setOutput([]);
-                  setErrors([]);
-                }}
+              <FileExplorer
+                files={explorerFiles}
+                onFileSelect={handleFileSelect}
+                onFileCreate={handleFileCreate}
+                onFolderCreate={handleFolderCreate}
+                onFileDelete={handleFileDelete}
+                onFileRename={handleFileRename}
               />
-            </VerticalResizablePanel>
+            </ResizablePanel>
           )}
+          <div className="flex-1 flex flex-col min-w-0">
+            <FileTabs
+              files={files}
+              activeFileId={activeFileId}
+              onFileSelect={handleFileTabSelect}
+              onFileClose={handleFileClose}
+              onNewFile={() => { /* TODO */ }}
+            />
+            <div className="flex-1 relative">
+              {activeFile && (
+                <CodeEditor
+                  code={activeFile.content}
+                  language={currentLanguage}
+                  onCodeChange={handleCodeChange}
+                  theme={theme}
+                />
+              )}
+            </div>
+          </div>
         </div>
+
+        {/* Bottom section (Output/Terminal) */}
+        {isOutputVisible && (
+          <VerticalResizablePanel
+            initialHeight={300}
+            minHeight={100}
+            maxHeight={600}
+            onResize={(height) => terminalRef.current?.fit()}
+          >
+            <OutputTerminalPanel
+              ref={terminalRef}
+              output={output}
+              errors={errors}
+              theme={theme}
+              onClear={() => {
+                setOutput([]);
+                setErrors([]);
+              }}
+            />
+          </VerticalResizablePanel>
+        )}
       </main>
     </div>
   );

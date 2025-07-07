@@ -1,7 +1,7 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, forwardRef, useRef } from "react";
 import { Button } from "./ui/button";
 import { ChevronDown, ChevronUp, Plus, X } from "lucide-react";
-import XTerminal from "./XTerminal";
+import XTerminal, { XTerminalRef } from "./XTerminal";
 
 interface OutputTerminalPanelProps {
   output: string[];
@@ -10,6 +10,7 @@ interface OutputTerminalPanelProps {
   toggleVisibility?: () => void;
   theme?: "light" | "dark";
   onClear?: () => void;
+  onResize?: (height: number) => void; // Add onResize prop
 }
 
 type TabType = 'output' | 'terminal';
@@ -21,14 +22,15 @@ interface Tab {
   closable: boolean;
 }
 
-const OutputTerminalPanel: React.FC<OutputTerminalPanelProps> = ({
+const OutputTerminalPanel: React.ForwardRefRenderFunction<XTerminalRef, OutputTerminalPanelProps> = ({
   output = [],
   errors = [],
   isVisible = true,
   toggleVisibility = () => {},
   theme = "light",
   onClear = () => {},
-}) => {
+  onResize, // Destructure onResize
+}, ref) => {
   const [isPanelOpen, setIsPanelOpen] = useState(isVisible);
   const [tabs, setTabs] = useState<Tab[]>([
     {
@@ -40,10 +42,15 @@ const OutputTerminalPanel: React.FC<OutputTerminalPanelProps> = ({
   ]);
   const [activeTabId, setActiveTabId] = useState<string>('terminal-1');
 
+  // Sync with external visibility state
+  useEffect(() => {
+    setIsPanelOpen(isVisible);
+  }, [isVisible]);
+
   const handleToggle = () => {
     const newState = !isPanelOpen;
     setIsPanelOpen(newState);
-    toggleVisibility?.();
+    toggleVisibility();
   };
 
   const addNewTab = (type: TabType) => {
@@ -68,6 +75,15 @@ const OutputTerminalPanel: React.FC<OutputTerminalPanelProps> = ({
     if (activeTabId === tabId) {
       setActiveTabId(newTabs[0]?.id || '');
     }
+  };
+
+  const getTabClassName = (tabId: string) => {
+    const isActive = tabId === activeTabId;
+    return `flex items-center gap-2 px-3 py-2 text-sm font-medium border-b-2 transition-colors group ${
+      isActive
+        ? "border-primary text-primary bg-muted"
+        : "border-transparent text-muted-foreground hover:text-foreground"
+    }`;
   };
 
   const activeTab = tabs.find(tab => tab.id === activeTabId);
@@ -112,40 +128,25 @@ const OutputTerminalPanel: React.FC<OutputTerminalPanelProps> = ({
     </div>
   );
 
-  const renderTerminalTab = () => (
-    <XTerminal theme={theme} onClear={() => {}} />
+  const renderTerminalTab = (tab: Tab) => (
+    <XTerminal
+      key={tab.id}
+      ref={ref} // Forward the ref to XTerminal
+      theme={theme}
+      className="h-full w-full"
+    />
   );
 
-  const renderTabContent = () => {
-    if (!activeTab) return null;
-    
-    switch (activeTab.type) {
-      case 'output':
-        return renderOutputTab();
-      case 'terminal':
-        return renderTerminalTab();
-      default:
-        return null;
-    }
-  };
-
-  const getTabClassName = (tabId: string) => {
-    const baseClass = "px-3 py-1 text-sm border-b-2 transition-colors flex items-center gap-2 relative group";
-    const activeClass = "border-primary text-primary";
-    const inactiveClass = "border-transparent text-muted-foreground hover:text-foreground";
-    
-    return `${baseClass} ${activeTabId === tabId ? activeClass : inactiveClass}`;
-  };
-
   return (
-    <div className="w-full bg-background border-t border-border">
-      <div className="flex items-center justify-between p-2 bg-muted/30">
+    <div className="w-full bg-background border-t border-border flex flex-col">
+      <div className="flex items-center justify-between p-2 bg-muted/30 flex-shrink-0">
         <div className="flex items-center gap-2">
           <Button
             variant="ghost"
             size="sm"
             onClick={handleToggle}
             className="p-1 h-8"
+            title={isPanelOpen ? "Collapse panel" : "Expand panel"}
           >
             {isPanelOpen ? (
               <ChevronDown className="h-4 w-4" />
@@ -168,9 +169,9 @@ const OutputTerminalPanel: React.FC<OutputTerminalPanelProps> = ({
       </div>
 
       {isPanelOpen && (
-        <div className="flex flex-col h-full">
+        <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
           {/* Tab Headers */}
-          <div className="flex border-b border-border">
+          <div className="flex border-b border-border flex-shrink-0">
             {tabs.map((tab) => (
               <button
                 key={tab.id}
@@ -222,8 +223,13 @@ const OutputTerminalPanel: React.FC<OutputTerminalPanelProps> = ({
           </div>
 
           {/* Tab Content */}
-          <div className="flex-1 overflow-hidden">
-            {renderTabContent()}
+          <div className="flex-1 min-h-0 overflow-hidden">
+            {activeTab && (
+              <div className="h-full w-full bg-background">
+                {activeTab.type === 'output' && renderOutputTab()}
+                {activeTab.type === 'terminal' && renderTerminalTab(activeTab)}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -231,4 +237,4 @@ const OutputTerminalPanel: React.FC<OutputTerminalPanelProps> = ({
   );
 };
 
-export default OutputTerminalPanel;
+export default forwardRef(OutputTerminalPanel);

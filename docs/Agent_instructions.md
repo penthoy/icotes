@@ -1,5 +1,5 @@
 ## Instructions: 
-When I said "continue progress" in the prompt, check ##In Progress section in the roadmap.md file, and proceed to work on just In progress section, after finished, move it to Recently finished section, Only if you see it in the ## Tested working section in the Project_roadmap which I'll manually test, move them to the Changelog. if you see previous task that's attempted but still under In progress, it means they're still not working or unfinished after manual testing. so they need to revisit or try another approach, if this happens, first try to assess what was tried previously and why it didn't work, revert any previous change that isn't necessary to always keep the codebase clean, before attempt another approach, make sure you explain what you tried and anything you need the user to help make it work.
+When I said "continue progress" in the prompt, check ##In Progress section in the roadmap.md file, and proceed to work on just In progress section, after finished, move it to Recently finished section, Only if you see it in the ## Tested working section in the roadmap which I'll manually test, move them to the Changelog. if you see previous task that's attempted but still under In progress, it means they're still not working or unfinished after manual testing. so they need to revisit or try another approach, if this happens, first try to assess what was tried previously and why it didn't work, revert any previous change that isn't necessary to always keep the codebase clean, before attempt another approach, make sure you explain what you tried and anything you need the user to help make it work.
 
 When I said "housekeeping" 
 1. please update both Working.md and CHANGELOG.md by reading all ## recently finished section from Project_roadmap.md and then clean them up.
@@ -14,9 +14,9 @@ Please read the Agent_optimization.md file and follow that as a guide section by
 Use that as a guide rather than human instruction, as this is generated from multiple frontier AI models and mistakes are possible, so make sure you double check if those recommendations are sound before making the changes. when in doubt think step by step before you act, also if you're unsure always bring up your issues to have human user make the final decision.
 
 ## Rules:
-When asked to "continue progress" please don't work on anything else other than the In progress section of the Project_roadmap.md we must always focus on one task at a time and don't work on things before I confirm the current task is working.
+When asked to "continue progress" please don't work on anything else other than the In progress section of the roadmap.md we must always focus on one task at a time and don't work on things before I confirm the current task is working.
 
-Don't open Simple Browser with http://localhost as this dev server is a remote server and it cannot be accessed from localhost, currently you can visit https://frosty-volhard3-k47y8.view-3.tempo-dev.app/ instead with simple browser instead of localhost
+use the start-dev.sh to run the dev server, and start.sh to run production server.
 
 ## Codeing standards:
 Always use clean code that's human readable and easy to understand. so that its possible for human and AI to work on the same code base

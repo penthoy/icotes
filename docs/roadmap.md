@@ -4,11 +4,59 @@
 A web-based JavaScript code editor built with React, CodeMirror 6, and modern web technologies. The goal is to create a powerful, user-friendly code editor with real-time execution capabilities.
 
 ## In Progress 🚧
+- [] Cleanup: remove anything under the following directories so that 
+- [] 
 
-## Future tasks
+## Future tasks:
+- [] Backend: refactor the main.py and create a terminal.py move everything terminal related from main.py to terminal.py so that it is more modular.
+
 - [] Add agent chat tab on the left side same place as the Explorer with a tab, similar to how vs code extensions are installed on the left side.
 
 ## Recently Finished 🎉
+- [x] **Updated Development Script to Single-Port Architecture**: Updated start-dev.sh to match production setup:
+  - **Root Cause**: start-dev.sh was using outdated dual-port setup (frontend on 5174, backend on 8000)
+  - **Solution**: Updated start-dev.sh to match start.sh single-port architecture
+  - **Single Port Setup**: Both development and production now use port 8000 for unified access
+  - **Script Consistency**: start-dev.sh now builds frontend and serves it from backend, matching production
+  - **Environment Variables**: Proper environment variable handling for consistent configuration
+  - **Package.json Updates**: Updated npm scripts to use uvicorn instead of direct python main.py calls
+  - **Development Experience**: Simplified development setup with consistent port usage
+
+- [x] **Enhanced Terminal Bottom Boundary Detection**: Fixed terminal scrolling and container boundaries:
+  - **Root Cause**: Terminal was not properly detecting container boundaries causing content overflow
+  - **Enhanced Fitting Logic**: Added more aggressive terminal fitting with multiple retry attempts
+  - **Improved Resize Detection**: Enhanced ResizeObserver with proper debouncing and logging
+  - **Container Constraints**: Added explicit height and overflow constraints to terminal containers
+  - **CSS Improvements**: Added comprehensive CSS rules for xterm viewport, screen, and rows
+  - **Debug Logging**: Added detailed logging for container dimensions and terminal sizing
+  - **Multiple Fit Attempts**: Terminal now attempts to fit multiple times during initialization
+  - **Scroll Configuration**: Enhanced terminal scroll settings for better user experience
+- [x] **Frontend UI Terminal Bottom Boundary Fix**: Fixed terminal not detecting bottom boundary causing output to disappear:
+  - **Root Cause**: Terminal container did not have proper height constraints and positioning
+  - **Solution**: Updated XTerminal component with proper CSS styling and height management
+  - **Improved Layout**: Added absolute positioning with proper flex layout for better container management
+  - **Enhanced Scrolling**: Added proper overflow handling to prevent content from disappearing
+  - **CSS Improvements**: Added custom CSS rules for terminal viewport to ensure proper height and scrolling behavior
+  - **Container Styling**: Added minimum height constraints to ensure terminal is always visible
+  - **Background Color**: Added proper background color to ensure terminal content is visible
+
+- [x] **Flexible UI Panel System**: Enhanced panel system to be more flexible like VS Code:
+  - **ResizablePanel Enhancement**: Added collapse/expand functionality with visual controls
+  - **Maximizable Panels**: Added maximize/restore functionality for panels to fill entire screen
+  - **VerticalResizablePanel Enhancement**: Added similar collapse/expand and maximize features for vertical panels
+  - **Control Buttons**: Added intuitive control buttons (ChevronLeft/Right, Maximize/Minimize icons)
+  - **State Management**: Proper state management for collapsed/expanded and maximized states
+  - **Callback Functions**: Added callback functions for external state synchronization
+  - **Flexible Border Expansion**: Panels can now expand to fill available space more flexibly
+  - **VS Code-like Experience**: Panel behavior now mimics VS Code's flexible panel system
+
+- [x] **V Panel Arrow Button Bug Fix**: Fixed panel disappearing issue when arrow button is clicked:
+  - **Root Cause**: Panel state was not properly synchronized between internal and external state
+  - **Solution**: Added useEffect to sync internal isPanelOpen state with external isVisible prop
+  - **State Synchronization**: Proper state management to prevent panel from disappearing permanently
+  - **Toggle Functionality**: Fixed toggle behavior to properly show/hide panels
+  - **Recovery Mechanism**: Panel can now be restored without requiring a page refresh
+  - **Improved UX**: Added proper titles and tooltips for better user experience
 - [x] **Enhanced port configuration for flexible deployment**: Improved deployment compatibility across different platforms:
   - **Flexible Port Detection**: Application now supports both `PORT` and `BACKEND_PORT` environment variables
   - **Platform Compatibility**: Automatic port detection for Coolify, Railway, Render, and other containerized platforms
