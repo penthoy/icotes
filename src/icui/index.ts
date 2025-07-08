@@ -6,9 +6,11 @@
 // Components
 export { ICUIFrameContainer } from './components/ICUIFrameContainer';
 export { ICUISplitPanel } from './components/ICUISplitPanel';
+export { ICUILayoutPresetSelector } from './components/ICUILayoutPresetSelector';
 
 // Hooks
 export { useICUIResponsive } from './hooks/icui-use-responsive';
+export { useICUILayoutState, useCurrentLayout, useLayoutPresets } from './hooks/icui-use-layout-state';
 
 // Types
 export type {
@@ -32,8 +34,19 @@ export type {
   ICUISplitPanelProps,
 } from './types/icui-split';
 
+export type {
+  ICUILayoutPresetType,
+  ICUILayoutState,
+  ICUIPanelState,
+  ICUILayoutPreset,
+  ICUILayoutManagerState,
+  ICUILayoutActions,
+  ICUILayoutPersistence,
+  ICUILayoutHookResult,
+} from './types/icui-layout-state';
+
 // Version
-export const ICUI_VERSION = '1.2.0';
+export const ICUI_VERSION = '1.3.0';
 
 // Framework info
 export const ICUI_INFO = {

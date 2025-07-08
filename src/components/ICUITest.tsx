@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { ICUIFrameContainer, ICUISplitPanel } from '../icui';
+import { ICUIFrameContainer, ICUISplitPanel, ICUILayoutPresetSelector } from '../icui';
 
 interface ICUITestProps {
   className?: string;
@@ -12,12 +12,12 @@ interface ICUITestProps {
 
 /**
  * Test component for ICUI Framework
- * Shows Frame Container (1.1) and Split Panel (1.2) functionality
+ * Shows Frame Container (1.1), Split Panel (1.2), and Layout State (1.3) functionality
  */
 export const ICUITest: React.FC<ICUITestProps> = ({ className = '' }) => {
   return (
     <div className={`icui-test-container p-4 ${className}`}>
-      <h2 className="text-xl font-bold mb-4">ICUI Framework Test - v1.2.2</h2>
+      <h2 className="text-xl font-bold mb-4">ICUI Framework Test - v1.3.0</h2>
       
       <div className="space-y-6">
         {/* Frame Container Tests (Step 1.1) */}
@@ -61,6 +61,19 @@ export const ICUITest: React.FC<ICUITestProps> = ({ className = '' }) => {
                 </p>
               </div>
             </ICUIFrameContainer>
+          </div>
+        </div>
+
+        {/* Layout State Management Tests (Step 1.3) */}
+        <div>
+          <h3 className="text-lg font-semibold mb-3">Step 1.3: Layout State Management</h3>
+          
+          <div className="mb-4">
+            <h4 className="font-medium mb-2">Layout Presets & Persistence</h4>
+            <ICUILayoutPresetSelector 
+              className="max-w-2xl"
+              showExportImport={true}
+            />
           </div>
         </div>
 
@@ -198,7 +211,7 @@ export const ICUITest: React.FC<ICUITestProps> = ({ className = '' }) => {
       
       {/* Instructions */}
       <div className="mt-6 p-4 bg-gray-100 dark:bg-gray-800 rounded">
-        <h4 className="font-semibold mb-2">ICUI Framework v1.2.2 - Testing Instructions</h4>
+        <h4 className="font-semibold mb-2">ICUI Framework v1.3.0 - Testing Instructions</h4>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
           <div>
             <h5 className="font-medium mb-1">Frame Containers (v1.1):</h5>
@@ -206,6 +219,16 @@ export const ICUITest: React.FC<ICUITestProps> = ({ className = '' }) => {
               <li>• Resize browser window to test border detection</li>
               <li>• Hover over frame edges for resize handles</li>
               <li>• Check debug info and console logs</li>
+            </ul>
+          </div>
+          <div>
+            <h5 className="font-medium mb-1">Layout State (v1.3):</h5>
+            <ul className="space-y-1">
+              <li>• Switch between layout presets (Default, Code Focused, Terminal Focused)</li>
+              <li>• Export current layout to JSON</li>
+              <li>• Import layouts from JSON</li>
+              <li>• Undo layout changes</li>
+              <li>• Persistent storage (survives browser reload)</li>
             </ul>
           </div>
           <div>
@@ -220,8 +243,8 @@ export const ICUITest: React.FC<ICUITestProps> = ({ className = '' }) => {
           </div>
         </div>
         <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900 rounded">
-          <p className="text-sm"><strong>New in v1.2:</strong> Split Panel system with horizontal/vertical splits, resize handles, collapse/expand functionality, and support for nested layouts.</p>
-          <p className="text-sm mt-1"><strong>Performance Improvements:</strong> Eliminated rubberband effect by disabling transitions during drag and reduced minimum size to 2px.</p>
+          <p className="text-sm"><strong>New in v1.3:</strong> Layout State Management with persistent storage, presets (Default, Code Focused, Terminal Focused), export/import functionality, and undo support.</p>
+          <p className="text-sm mt-1"><strong>Performance:</strong> All previous improvements maintained - smooth dragging, 2px minimum, no rubberband effect.</p>
         </div>
       </div>
     </div>
