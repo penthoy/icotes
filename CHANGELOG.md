@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2024-12-19
+
+### Added
+- **ICUI Framework Polish**: Complete cleanup and finalization of ICUI terminal panel
+  - Finalized ICUITerminalPanel as the single reference implementation
+  - Removed all legacy terminal panel versions (V2, V3)
+  - Clean export structure with proper ICUI panel integration
+- **Codebase Cleanup**: Comprehensive cleanup of development artifacts
+  - Removed debug console.log statements from all ICUI components
+  - Cleaned up development test scripts that are no longer needed
+  - Preserved production-appropriate error and warning logging
+  - Maintained development-only debug sections with proper NODE_ENV guards
+- **Documentation Updates**: Updated project documentation to reflect current state
+  - Updated roadmap.md with completed terminal implementation
+  - Updated Working.md with recently finished features
+  - Comprehensive changelog documentation
+
+### Fixed
+- Debug console.log statements in ICUITerminalPanel, ICUIEditorPanel, ICUIExplorerPanel
+- Debug console.log in ICUILayoutPresetSelector export functionality
+- Removed unnecessary debug borders and development overlays
+
+### Changed
+- ICUITerminalPanelV3 renamed to ICUITerminalPanel as single reference implementation
+- Cleaned up build output to be production-ready
+- Streamlined ICUI component structure for maintainability
+
+### Removed
+- Legacy ICUITerminalPanelV2 and ICUITerminalPanelV3 files
+- Development test scripts: test-terminal-scroll.py, test-terminal-scroll.sh, test-websocket.py, test-terminal.sh
+- Debug console.log statements and development artifacts
+
+## [1.0.0] - 2024-12-18
+
 ### Added
 - Real terminal with PTY support using xterm.js and WebSocket communication
 - Python language support as default with syntax highlighting
@@ -37,5 +71,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tempo-specific code and dependencies cleanup
 - Unused development artifacts and configurations
 
+## [4.0.0] - 2025-07-08
+
+### Added
+- ICUITerminalPanel reference implementation with WebSocket connectivity
+- ICUI Framework Phase 4 specialized panel implementations
+- ICUIEditorPanel with file tabs and multi-language support  
+- ICUIExplorerPanel with file tree operations and toolbar
+- Dark theme support with real-time switching for better IDE experience
+- RequestAnimationFrame batching for CodeEditor updates
+- Enhanced terminal configuration with 2000-line scrollback
+
+### Fixed
+- Editor freezing issues through optimized update handling
+- Panel content overflow problems with proper CSS scrolling
+- Terminal scrolling problems by removing manual viewport manipulation
+- Terminal container sizing and initialization issues
+- All panels now scroll properly when content exceeds bounds
+
+### Changed
+- Updated ICUI panel area CSS to allow proper scrolling (overflow: auto)
+- Enhanced terminal container sizing with multiple fit retry attempts
+- Improved CodeEditor update listener with useCallback optimization
+- Framework version updated to v4.0.0 (Phase 4 complete)
+
+### Removed
+- Legacy ICUITerminalPanelV2 and V3 versions for clean codebase
+- Manual viewport manipulation that conflicted with xterm.js
+
 ---
-*Last updated: July 7, 2025*
+*Last updated: July 8, 2025*

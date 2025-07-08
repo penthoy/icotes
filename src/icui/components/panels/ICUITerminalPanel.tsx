@@ -19,8 +19,6 @@ const ICUITerminalPanel: React.FC<ICUITerminalPanelProps> = ({ className = '' })
 
   useEffect(() => {
     if (!terminalRef.current) return;
-
-    console.log('ICUITerminalPanel: Creating terminal...');
     
     // Create the most basic terminal possible
     terminal.current = new Terminal({
@@ -75,8 +73,6 @@ const ICUITerminalPanel: React.FC<ICUITerminalPanelProps> = ({ className = '' })
     websocket.current.onerror = (error) => {
       terminal.current?.write("\r\n\x1b[31mTerminal connection error\x1b[0m\r\n");
     };
-
-    console.log('ICUITerminalPanel: Terminal opened and ready');
 
     return () => {
       websocket.current?.close();

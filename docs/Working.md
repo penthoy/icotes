@@ -4,6 +4,42 @@ This document tracks recently completed features and improvements to the JavaScr
 
 ## Recently Completed Features
 
+### ICUI Framework Development
+- **ICUITest4 Terminal Issues Resolution - COMPLETED**: Created ICUITerminalPanel as reference implementation
+  - Built entirely within ICUI framework with clean, minimal code
+  - Proper WebSocket connectivity to backend terminal services
+  - Clean implementation with proper scrolling behavior
+  - Consistent background colors and proper theme support
+  - No layout issues or rendering problems
+  - Terminal now fully integrated with ICUI panel system
+  - Removed legacy V2 and V3 versions for clean codebase
+
+- **ICUITest4 Critical Performance and UX Improvements**: Fixed editor freezing issues and scrolling problems
+  - Added requestAnimationFrame batching for CodeEditor updates to prevent browser freezing
+  - Optimized CodeEditor update listener with useCallback for language extensions
+  - Updated ICUI panel area CSS to allow proper scrolling (overflow: auto)
+  - Enhanced terminal container sizing and initialization with multiple fit retry attempts
+  - All panels now scroll properly when content exceeds container bounds
+
+- **ICUITest4 Polish and Bug Fixes**: Added dark theme support and fixed terminal scrolling
+  - Default dark theme for better IDE experience with real-time switching
+  - Fixed terminal scrolling problems by removing manual viewport manipulation
+  - Enhanced terminal configuration with better scrollback (2000 lines)
+  - Terminal now has properly working scrollbars and is fully usable
+
+- **Codebase Cleanup and Polish - COMPLETED**
+  - **Debug Code Removal and Production Readiness**: Comprehensive cleanup of development artifacts
+    - Removed all debug console.log statements from ICUITerminalPanel, ICUIEditorPanel, and ICUIExplorerPanel
+    - Cleaned up debug console.log in ICUILayoutPresetSelector export functionality
+    - Preserved production-appropriate error and warning logging
+    - Kept development-only debug sections properly guarded with NODE_ENV checks
+    - Removed development test scripts that are no longer needed (test-terminal-scroll.py, test-terminal-scroll.sh, test-websocket.py, test-terminal.sh)
+    - Verified codebase builds cleanly and is production-ready
+  - **Documentation Updates**: Updated project documentation to reflect current state
+    - Updated roadmap.md with completed terminal implementation and cleanup phases
+    - Updated CHANGELOG.md with version 1.1.0 release documenting cleanup work
+    - Comprehensive documentation of all completed features and improvements
+
 ### Development Environment Improvements
 - **Updated Development Script to Single-Port Architecture**: Updated start-dev.sh to match production setup with single-port architecture on port 8000
 - **Enhanced port configuration for flexible deployment**: Improved deployment compatibility across different platforms with flexible port detection

@@ -94,8 +94,7 @@ export const ICUILayoutPresetSelector: React.FC<ICUILayoutPresetSelectorProps> =
       alert('Layout exported to clipboard!');
     } catch (err) {
       console.error('Fallback copy failed:', err);
-      alert('Failed to copy to clipboard. Please copy manually from console.');
-      console.log('Layout JSON:', text);
+      alert('Failed to copy to clipboard. Layout could not be exported.');
     }
     
     document.body.removeChild(textArea);

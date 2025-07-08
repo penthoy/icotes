@@ -144,7 +144,6 @@ export const ICUIEditorPanel: React.FC<ICUIEditorPanelProps> = ({
     if (!activeFile) return;
     
     // TODO: Implement actual file saving
-    console.log('Save file:', activeFile.name);
     
     // Mark file as not modified
     if (!onFileChange) {

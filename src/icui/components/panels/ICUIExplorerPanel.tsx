@@ -78,8 +78,6 @@ export const ICUIExplorerPanel: React.FC<ICUIExplorerPanelProps> = ({
   const handleFileSelect = useCallback((filePath: string) => {
     if (onFileSelect) {
       onFileSelect(filePath);
-    } else {
-      console.log('File selected:', filePath);
     }
   }, [onFileSelect]);
 
@@ -97,7 +95,6 @@ export const ICUIExplorerPanel: React.FC<ICUIExplorerPanelProps> = ({
       };
       
       setLocalFiles(prev => [...prev, newFile]);
-      console.log('File created:', newFile.path);
     }
   }, [onFileCreate]);
 
@@ -117,7 +114,6 @@ export const ICUIExplorerPanel: React.FC<ICUIExplorerPanelProps> = ({
       };
       
       setLocalFiles(prev => [...prev, newFolder]);
-      console.log('Folder created:', newFolder.path);
     }
   }, [onFolderCreate]);
 
@@ -128,7 +124,6 @@ export const ICUIExplorerPanel: React.FC<ICUIExplorerPanelProps> = ({
     } else {
       // Remove file from local state
       setLocalFiles(prev => prev.filter(file => file.path !== filePath));
-      console.log('File deleted:', filePath);
     }
   }, [onFileDelete]);
 
@@ -145,7 +140,6 @@ export const ICUIExplorerPanel: React.FC<ICUIExplorerPanelProps> = ({
             : file
         )
       );
-      console.log('File renamed:', oldPath, '->', newName);
     }
   }, [onFileRename]);
 
@@ -154,7 +148,6 @@ export const ICUIExplorerPanel: React.FC<ICUIExplorerPanelProps> = ({
     if (onRefresh) {
       onRefresh();
     } else {
-      console.log('Explorer refresh requested');
       // Could implement local refresh logic here
     }
   }, [onRefresh]);
