@@ -62,31 +62,66 @@ This document outlines the step-by-step plan for rewriting the UI with a modular
 - Support different content types (scrollable, fixed, etc.)
 - Include error boundaries for panel content
 
-### Phase 3: Specialized Panel Implementations
-**Goal**: Create specific panel types that inherit from the base panel
+### Phase 3: Panel Docking and Tabbing System
+**Goal**: Create the foundation for IDE-style docked panels with tabbed interfaces
 
-#### Step 3.1: Terminal Panel
+#### Step 3.1: Panel Area Container
+- Create `src/components/ui/PanelArea.tsx`
+- Implement dockable panel container that holds multiple panels
+- Add tabbed interface for multiple panels in same area
+- Support drag-and-drop between different panel areas
+- Include empty state for drop zones
+- Handle tab activation, closing, and reordering
+
+#### Step 3.2: Panel Dock Manager
+- Create `src/lib/panelDockManager.ts`
+- Manage panel assignment to different dock areas
+- Handle panel movement between areas via drag-and-drop
+- Implement panel-to-area mapping and persistence
+- Support dock area creation and removal
+- Track active panels per area
+
+#### Step 3.3: Enhanced Panel Dragging
+- Enhance existing drag system to support area docking
+- Add visual feedback for valid drop zones
+- Implement tab dragging for reordering within areas
+- Support dragging panels out to create new floating instances
+- Add magnetic docking when dragging near panel areas
+- Include preview overlays during drag operations
+
+#### Step 3.4: Integration with Split Panel System
+- Modify split panels to host PanelArea components
+- Enable panels to be docked into split frame sections
+- Support dynamic creation of new split areas via drag
+- Maintain layout state when moving panels between areas
+- Ensure split resizing works with docked panel content
+
+### Phase 4: Specialized Panel Implementations
+**Goal**: Create specific panel types that work within the docking system
+
+#### Step 4.1: Terminal Panel
 - Create `src/components/panels/TerminalPanel.tsx`
 - Extend BasePanel with terminal-specific features
 - Integrate existing Terminal.tsx component
 - Add terminal-specific context menu options
-- Support multiple terminal instances
+- Support multiple terminal instances in tabs
 
-#### Step 3.2: Editor Panel
+#### Step 4.2: Editor Panel
 - Create `src/components/panels/EditorPanel.tsx`
 - Extend BasePanel with editor-specific features
 - Integrate existing CodeEditor.tsx component
 - Add editor-specific toolbar and options
 - Support multiple file tabs within single editor panel
+- Enable file drag-and-drop between editor areas
 
-#### Step 3.3: Explorer Panel
+#### Step 4.3: Explorer Panel
 - Create `src/components/panels/ExplorerPanel.tsx`
 - Extend BasePanel with file explorer features
 - Integrate existing FileExplorer.tsx component
 - Add file tree navigation
 - Support file operations (create, delete, rename)
 
-### Phase 4: Modular Menu System
+### Phase 5: Modular Menu System
 **Goal**: Create flexible file and layout menus using the same modular principles
 
 #### Step 4.1: Top Menu Bar
@@ -101,13 +136,13 @@ This document outlines the step-by-step plan for rewriting the UI with a modular
 - Include recent files list
 - Support project management
 
-#### Step 4.3: Layout Menu Implementation
+#### Step 5.3: Layout Menu Implementation
 - Create `src/components/menus/LayoutMenu.tsx`
 - Add layout presets and templates
 - Include panel creation options
 - Support layout reset functionality
 
-### Phase 5: Panel Registry and Factory
+### Phase 6: Panel Registry and Factory
 **Goal**: Create a system to register and instantiate different panel types
 
 #### Step 5.1: Panel Registry
@@ -116,13 +151,13 @@ This document outlines the step-by-step plan for rewriting the UI with a modular
 - Support dynamic panel type loading
 - Include panel metadata (icons, descriptions)
 
-#### Step 5.2: Panel Factory
+#### Step 6.2: Panel Factory
 - Create `src/lib/panelFactory.ts`
 - Handle panel instantiation based on type
 - Support panel configuration and props
 - Include error handling for unknown panel types
 
-### Phase 6: Context Menu System
+### Phase 7: Context Menu System
 **Goal**: Implement right-click context menus for panel operations
 
 #### Step 6.1: Context Menu Component
@@ -131,7 +166,7 @@ This document outlines the step-by-step plan for rewriting the UI with a modular
 - Add panel transformation options
 - Include split/merge operations
 
-#### Step 6.2: Panel Context Actions
+#### Step 7.2: Panel Context Actions
 - Create `src/lib/panelActions.ts`
 - Implement split panel horizontally/vertically
 - Add change panel type functionality
@@ -147,6 +182,7 @@ src/
 │   │   ├── BasePanel.tsx
 │   │   ├── PanelHeader.tsx
 │   │   ├── PanelContent.tsx
+│   │   ├── PanelArea.tsx          # NEW: Dockable panel container
 │   │   ├── MenuBar.tsx
 │   │   └── ContextMenu.tsx
 │   ├── panels/
@@ -161,21 +197,24 @@ src/
 │   └── [existing components remain]
 ├── lib/
 │   ├── layoutState.ts
+│   ├── panelDockManager.ts        # NEW: Panel docking management
 │   ├── panelRegistry.ts
 │   ├── panelFactory.ts
 │   └── panelActions.ts
 └── types/
     ├── panel.ts
-    └── layout.ts
+    ├── layout.ts
+    └── dock.ts                    # NEW: Docking system types
 ```
 
 ## Migration Strategy
 1. **Phase 1-2**: Build foundation without touching existing UI
-2. **Phase 3**: Create panel wrappers for existing components
-3. **Phase 4-5**: Add menu system and panel registry
-4. **Phase 6**: Implement context menus and advanced features
-5. **Phase 7**: Create toggle to switch between old and new UI
-6. **Phase 8**: Test thoroughly and migrate completely
+2. **Phase 3**: Implement docking and tabbing system - **CRITICAL FOR IDE FUNCTIONALITY**
+3. **Phase 4**: Create panel wrappers for existing components that work in dock areas
+4. **Phase 5-6**: Add menu system and panel registry
+5. **Phase 7**: Implement context menus and advanced features
+6. **Phase 8**: Create toggle to switch between old and new UI
+7. **Phase 9**: Test thoroughly and migrate completely
 
 ## Testing Strategy
 - Unit tests for each component
@@ -193,17 +232,22 @@ src/
 ## Timeline Estimate
 - Phase 1: 2-3 days (Frame foundation)
 - Phase 2: 2-3 days (Generic panel system)
-- Phase 3: 3-4 days (Specialized panels)
-- Phase 4: 2-3 days (Menu system)
-- Phase 5: 1-2 days (Registry and factory)
-- Phase 6: 2-3 days (Context menus)
+- **Phase 3: 4-5 days (Docking and tabbing system) - CRITICAL FOUNDATION**
+- Phase 4: 3-4 days (Specialized panels with docking support)
+- Phase 5: 2-3 days (Menu system)
+- Phase 6: 1-2 days (Registry and factory)
+- Phase 7: 2-3 days (Context menus)
 - Testing and refinement: 2-3 days
 
-**Total estimated time**: 14-21 days
+**Total estimated time**: 18-26 days
 
 ## Success Criteria
 - [ ] Users can create/remove panels dynamically
 - [ ] Any panel can be transformed into any other panel type
+- [ ] **Panels can be docked into areas with tabbed interfaces**
+- [ ] **Multiple panels can share the same area with tab switching**
+- [ ] **Panels can be dragged between different dock areas**
+- [ ] **Empty areas show drop zones for panel docking**
 - [ ] Layout is fully responsive and handles various screen sizes
 - [ ] Panel arrangement can be saved and restored
 - [ ] Performance remains smooth with multiple panels

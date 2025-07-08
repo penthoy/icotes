@@ -7,10 +7,15 @@
 export { ICUIFrameContainer } from './components/ICUIFrameContainer';
 export { ICUISplitPanel } from './components/ICUISplitPanel';
 export { ICUILayoutPresetSelector } from './components/ICUILayoutPresetSelector';
+export { ICUIBasePanel } from './components/ICUIBasePanel';
+export { ICUIPanelHeader } from './components/ICUIPanelHeader';
+export { ICUIPanelContent } from './components/ICUIPanelContent';
+export { ICUIPanelArea } from './components/ICUIPanelArea';
 
 // Hooks
 export { useICUIResponsive } from './hooks/icui-use-responsive';
 export { useICUILayoutState, useCurrentLayout, useLayoutPresets } from './hooks/icui-use-layout-state';
+export { useICUIPanels, createPanel, PanelUtils } from './hooks/icui-use-panels';
 
 // Types
 export type {
@@ -45,8 +50,24 @@ export type {
   ICUILayoutHookResult,
 } from './types/icui-layout-state';
 
+export type {
+  ICUIPanelType,
+  ICUIPanelState as ICUIPanelInstanceState,
+  ICUIPanelContentType,
+  ICUIPanelConfig,
+  ICUIPanelContextMenuItem,
+  ICUIPanelPosition,
+  ICUIPanelInstance,
+  ICUIPanelHeaderProps,
+  ICUIPanelContentProps,
+  ICUIBasePanelProps,
+  ICUIPanelActions,
+  ICUIPanelManagerState,
+  ICUIPanelHookResult,
+} from './types/icui-panel';
+
 // Version
-export const ICUI_VERSION = '1.3.0';
+export const ICUI_VERSION = '2.0.0';
 
 // Framework info
 export const ICUI_INFO = {

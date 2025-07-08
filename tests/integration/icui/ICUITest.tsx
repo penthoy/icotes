@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { ICUIFrameContainer, ICUISplitPanel, ICUILayoutPresetSelector } from '../icui';
+import { ICUIFrameContainer, ICUISplitPanel, ICUILayoutPresetSelector } from '../../../src/icui';
 
 interface ICUITestProps {
   className?: string;

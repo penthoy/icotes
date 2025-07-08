@@ -3,6 +3,9 @@
  * CSS for the Interactive Component UI Framework
  */
 
+@import './icui-panel.css';
+@import './icui-panel-area.css';
+
 /* Frame Container Base Styles */
 .icui-frame-container {
   box-sizing: border-box;

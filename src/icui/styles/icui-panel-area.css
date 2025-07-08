@@ -1,0 +1,346 @@
+/**
+ * ICUI Framework - Panel Area and Docking Styles
+ * CSS for panel areas, tabs, and docking system
+ */
+
+/* ===== PANEL AREA STYLES ===== */
+.icui-panel-area {
+  @apply flex flex-col h-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden;
+  min-height: 200px;
+  position: relative;
+}
+
+.icui-panel-area.icui-area-drag-over {
+  @apply border-blue-500 dark:border-blue-400 bg-blue-50 dark:bg-blue-900/20;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+.icui-panel-area.icui-area-empty {
+  @apply border-dashed border-2 border-gray-300 dark:border-gray-600;
+}
+
+/* Empty Area Styles */
+.icui-area-empty-content {
+  @apply flex flex-col items-center justify-center h-full text-gray-500 dark:text-gray-400;
+  padding: 2rem;
+}
+
+.icui-empty-icon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+  opacity: 0.5;
+}
+
+.icui-empty-text {
+  @apply text-lg font-medium;
+  opacity: 0.7;
+}
+
+.icui-area-drag-over .icui-empty-icon,
+.icui-area-drag-over .icui-empty-text {
+  @apply text-blue-600 dark:text-blue-400;
+  opacity: 1;
+}
+
+/* ===== PANEL TABS STYLES ===== */
+.icui-panel-tabs {
+  @apply flex bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600;
+  min-height: 40px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.icui-panel-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.icui-panel-tab {
+  @apply flex items-center gap-2 px-3 py-2 cursor-pointer border-r border-gray-200 dark:border-gray-600 min-w-0 flex-shrink-0;
+  user-select: none;
+  transition: all 0.2s ease-in-out;
+  max-width: 200px;
+}
+
+.icui-panel-tab:hover {
+  @apply bg-gray-200 dark:bg-gray-600;
+}
+
+.icui-panel-tab.active {
+  @apply bg-white dark:bg-gray-800 border-b-0;
+  position: relative;
+}
+
+.icui-panel-tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  @apply bg-blue-500 dark:bg-blue-400;
+}
+
+.icui-panel-tab.drag-over {
+  @apply bg-blue-100 dark:bg-blue-900/30 border-blue-300 dark:border-blue-600;
+}
+
+.icui-tab-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.icui-tab-title {
+  @apply text-sm font-medium text-gray-700 dark:text-gray-300 truncate;
+  min-width: 0;
+}
+
+.icui-panel-tab.active .icui-tab-title {
+  @apply text-gray-900 dark:text-gray-100;
+}
+
+.icui-tab-close {
+  @apply w-4 h-4 rounded-full hover:bg-gray-300 dark:hover:bg-gray-500 flex items-center justify-center text-xs transition-colors;
+  border: none;
+  background: none;
+  cursor: pointer;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.icui-tab-close:hover {
+  @apply text-red-600 dark:text-red-400;
+}
+
+/* ===== PANEL CONTENT AREA STYLES ===== */
+.icui-panel-content-area {
+  @apply flex-1 overflow-hidden;
+}
+
+.icui-docked-panel-content {
+  @apply h-full overflow-hidden;
+}
+
+.icui-docked-panel {
+  @apply border-0 rounded-none shadow-none;
+  height: 100% !important;
+  position: relative !important;
+  left: auto !important;
+  top: auto !important;
+  width: 100% !important;
+}
+
+.icui-docked-panel .icui-panel-header {
+  display: none; /* Header is replaced by tabs */
+}
+
+.icui-docked-panel .icui-panel-content {
+  border-radius: 0;
+}
+
+/* ===== PANEL TYPE CONTENT STYLES ===== */
+.icui-panel-type-content {
+  @apply h-full flex flex-col;
+}
+
+/* Editor Content */
+.icui-editor-content {
+  @apply h-full flex flex-col;
+}
+
+.icui-editor-toolbar {
+  @apply flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600;
+}
+
+.icui-editor-actions {
+  @apply flex gap-2;
+}
+
+.icui-toolbar-btn {
+  @apply px-2 py-1 text-xs bg-gray-200 dark:bg-gray-600 rounded hover:bg-gray-300 dark:hover:bg-gray-500 transition-colors;
+  border: none;
+  cursor: pointer;
+}
+
+.icui-editor-area {
+  @apply flex-1 overflow-hidden;
+}
+
+.icui-code-editor {
+  @apply h-full w-full;
+}
+
+.icui-editor-placeholder {
+  @apply h-full p-4 font-mono text-sm bg-gray-50 dark:bg-gray-900;
+}
+
+.icui-editor-lines {
+  @apply space-y-1;
+}
+
+.icui-line {
+  @apply flex;
+}
+
+.icui-line-number {
+  @apply w-8 text-gray-400 dark:text-gray-500 text-right mr-4 select-none;
+}
+
+.icui-code {
+  @apply text-gray-800 dark:text-gray-200;
+}
+
+/* Terminal Content */
+.icui-terminal-content {
+  @apply h-full flex flex-col;
+}
+
+.icui-terminal-header {
+  @apply flex items-center justify-between px-3 py-2 bg-gray-900 text-green-400 border-b border-gray-700;
+}
+
+.icui-terminal-actions {
+  @apply flex gap-2;
+}
+
+.icui-terminal-area {
+  @apply flex-1 overflow-hidden bg-black;
+}
+
+.icui-terminal-output {
+  @apply h-full p-3 font-mono text-sm text-green-400 overflow-auto;
+}
+
+.icui-terminal-line {
+  @apply whitespace-pre-wrap;
+  line-height: 1.4;
+}
+
+.icui-terminal-cursor {
+  @apply relative;
+}
+
+.icui-cursor {
+  @apply bg-green-400 text-black px-0.5;
+  animation: blink 1s infinite;
+}
+
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+/* Explorer Content */
+.icui-explorer-content {
+  @apply h-full flex flex-col;
+}
+
+.icui-explorer-header {
+  @apply flex items-center justify-between px-3 py-2 bg-blue-50 dark:bg-blue-900/20 border-b border-blue-200 dark:border-blue-800;
+}
+
+.icui-explorer-actions {
+  @apply flex gap-2;
+}
+
+.icui-explorer-tree {
+  @apply flex-1 overflow-auto p-2;
+}
+
+.icui-tree-item {
+  @apply flex items-center gap-2 px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer;
+}
+
+.icui-tree-item.icui-nested {
+  @apply ml-4;
+}
+
+.icui-tree-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.icui-tree-name {
+  @apply text-sm text-gray-700 dark:text-gray-300;
+}
+
+.icui-folder.expanded .icui-tree-icon {
+  transform: rotate(0deg);
+}
+
+/* Generic Content */
+.icui-generic-content {
+  @apply h-full flex flex-col;
+}
+
+.icui-generic-header {
+  @apply px-3 py-2 bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600;
+}
+
+.icui-generic-body {
+  @apply flex-1 p-4 overflow-auto;
+}
+
+/* ===== DRAG AND DROP VISUAL FEEDBACK ===== */
+.icui-panel-area.icui-drop-target {
+  @apply border-blue-500 dark:border-blue-400;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+}
+
+.icui-drop-zone-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(59, 130, 246, 0.1);
+  border: 2px dashed rgba(59, 130, 246, 0.5);
+  border-radius: 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  pointer-events: none;
+}
+
+.icui-drop-zone-text {
+  @apply text-blue-600 dark:text-blue-400 font-medium text-lg;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 1rem 2rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+/* ===== RESPONSIVE DESIGN ===== */
+@media (max-width: 768px) {
+  .icui-panel-tabs {
+    min-height: 36px;
+  }
+  
+  .icui-panel-tab {
+    @apply px-2 py-1;
+    max-width: 150px;
+  }
+  
+  .icui-tab-title {
+    @apply text-xs;
+  }
+  
+  .icui-toolbar-btn {
+    @apply px-1 py-0.5 text-xs;
+  }
+}
+
+@media (max-width: 480px) {
+  .icui-panel-tab {
+    max-width: 120px;
+  }
+  
+  .icui-empty-icon {
+    font-size: 2rem;
+  }
+  
+  .icui-empty-text {
+    @apply text-base;
+  }
+}
