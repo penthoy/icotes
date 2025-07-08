@@ -71,11 +71,20 @@ const CodeEditor = ({
     }
   }, []);
 
-  // Initialize editor only once
+  // Initialize editor when needed and recreate when theme or language changes
   useEffect(() => {
-    if (!editorRef.current || editorView) return;
+    if (!editorRef.current) return;
+
+    // Destroy existing editor if it exists
+    if (editorView) {
+      editorView.destroy();
+      setEditorView(null);
+    }
 
     try {
+      // Get the current content to preserve during recreation
+      const currentContent = propCode || code || initialCode;
+
       // Create extensions array manually (replacing basicSetup)
       const extensions: Extension[] = [
         // Basic editor setup
@@ -126,9 +135,9 @@ const CodeEditor = ({
         extensions.push(oneDark);
       }
 
-      // Create initial state
+      // Create initial state with current content
       const initialState = EditorState.create({
-        doc: propCode || initialCode,
+        doc: currentContent,
         extensions,
       });
 
@@ -139,6 +148,9 @@ const CodeEditor = ({
       });
 
       setEditorView(view);
+      
+      // Update internal code state to match editor content
+      setInternalCode(currentContent);
 
       return () => {
         view.destroy();
@@ -147,11 +159,11 @@ const CodeEditor = ({
       console.error("Error creating CodeMirror editor:", error);
       console.error("Error stack:", error.stack);
     }
-  }, [theme, initialCode, language]);
+  }, [theme, language, getLanguageExtension]);
 
   // Update editor content when propCode changes (without recreating editor)
   useEffect(() => {
-    if (!editorView || !propCode) return;
+    if (!editorView || propCode === undefined) return;
     
     const currentContent = editorView.state.doc.toString();
     if (currentContent !== propCode) {
@@ -159,20 +171,18 @@ const CodeEditor = ({
         changes: { from: 0, to: currentContent.length, insert: propCode }
       });
       editorView.dispatch(transaction);
+      setInternalCode(propCode);
     }
   }, [propCode, editorView]);
 
-  // Update theme without recreating editor
+  // Clean up editor on unmount
   useEffect(() => {
-    if (!editorView) return;
-    
-    // For theme changes, we need to recreate the editor
-    // This is less frequent than content changes
-    editorView.destroy();
-    setEditorView(null);
-    
-    // The editor will be recreated by the first useEffect
-  }, [theme]);
+    return () => {
+      if (editorView) {
+        editorView.destroy();
+      }
+    };
+  }, []);
 
   const handleRunCode = () => {
     onRun?.(code);
