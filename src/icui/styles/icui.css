@@ -63,6 +63,54 @@
   z-index: 1000;
 }
 
+/* Split Panel Styles */
+.icui-split-panel {
+  box-sizing: border-box;
+}
+
+.icui-split-handle {
+  position: absolute;
+  z-index: 10;
+  transition: background-color 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.icui-split-handle:hover {
+  background-color: #3b82f6 !important;
+}
+
+.icui-split-handle:active {
+  background-color: #1d4ed8 !important;
+}
+
+.icui-split-first-panel,
+.icui-split-second-panel {
+  box-sizing: border-box;
+}
+
+.icui-split-controls {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.icui-split-panel:hover .icui-split-controls {
+  opacity: 1;
+}
+
+/* Touch support for mobile */
+@media (hover: none) and (pointer: coarse) {
+  .icui-split-handle {
+    background-color: #6b7280;
+    opacity: 0.8;
+  }
+  
+  .icui-split-controls {
+    opacity: 1;
+  }
+}
+
 /* Animation for smooth transitions */
 .icui-frame-container.icui-animating {
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);

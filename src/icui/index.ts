@@ -5,6 +5,7 @@
 
 // Components
 export { ICUIFrameContainer } from './components/ICUIFrameContainer';
+export { ICUISplitPanel } from './components/ICUISplitPanel';
 
 // Hooks
 export { useICUIResponsive } from './hooks/icui-use-responsive';
@@ -22,8 +23,17 @@ export type {
   ICUIResponsiveConfig,
 } from './types/icui-layout';
 
+export type {
+  ICUISplitDirection,
+  ICUISplitMode,
+  ICUISplitConfig,
+  ICUISplitPanelState,
+  ICUISplitHandle,
+  ICUISplitPanelProps,
+} from './types/icui-split';
+
 // Version
-export const ICUI_VERSION = '1.0.0';
+export const ICUI_VERSION = '1.2.0';
 
 // Framework info
 export const ICUI_INFO = {

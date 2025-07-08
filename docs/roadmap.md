@@ -4,7 +4,7 @@
 A web-based JavaScript code editor built with React, CodeMirror 6, and modern web technologies. The goal is to create a powerful, user-friendly code editor with real-time execution capabilities.
 
 ## In Progress 🚧
-*Currently no active tasks - awaiting user testing and validation before proceeding to next step*
+- [] continue with icui 1.3 from ui_rewrite.md (Layout State Management)
 
 ## Future tasks:
 - [] Cleanup: remove anything under the following directories so that tempo templates are removed if they are not being used in this repo
@@ -46,6 +46,22 @@ A web-based JavaScript code editor built with React, CodeMirror 6, and modern we
   - Added proper cleanup for timeout handlers
   - Improved performance by preventing recursive re-renders
   - Console messages now properly controlled and non-spamming
+
+- [✅] **ICUI Framework Step 1.2 - Split Panel System**
+  - Implemented horizontal and vertical split functionality with resizable handles
+  - Added collapse/expand functionality with intuitive controls
+  - Built support for nested splits enabling complex layouts
+  - Created comprehensive TypeScript types for split panel system
+  - Added CSS styling with smooth transitions and visual feedback
+  - Enhanced test component with multiple split panel demonstrations
+  - **Performance Optimizations (v1.2.1):**
+    - Fixed drag delay by implementing requestAnimationFrame for smooth resizing
+    - Reduced minimum panel size from 100px to 2px for unrestricted dragging
+    - Added proper animation frame cleanup to prevent memory leaks
+    - Optimized state updates to reduce unnecessary re-renders during drag
+    - Split panels can now be dragged almost to edges while maintaining grab handle
+  - Successfully builds and runs without errors
+  - All split panel features working robustly with excellent performance
 
 *This section will be moved to Working.md and CHANGELOG.md during housekeeping.*
 
