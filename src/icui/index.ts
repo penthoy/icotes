@@ -12,6 +12,11 @@ export { ICUIPanelHeader } from './components/ICUIPanelHeader';
 export { ICUIPanelContent } from './components/ICUIPanelContent';
 export { ICUIPanelArea } from './components/ICUIPanelArea';
 
+// Specialized Panels (Phase 4)
+export { ICUITerminalPanel } from './components/panels/ICUITerminalPanel';
+export { ICUIEditorPanel } from './components/panels/ICUIEditorPanel';
+export { ICUIExplorerPanel } from './components/panels/ICUIExplorerPanel';
+
 // Hooks
 export { useICUIResponsive } from './hooks/icui-use-responsive';
 export { useICUILayoutState, useCurrentLayout, useLayoutPresets } from './hooks/icui-use-layout-state';
@@ -67,7 +72,7 @@ export type {
 } from './types/icui-panel';
 
 // Version
-export const ICUI_VERSION = '2.0.0';
+export const ICUI_VERSION = '4.0.0';
 
 // Framework info
 export const ICUI_INFO = {

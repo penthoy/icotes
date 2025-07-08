@@ -18,6 +18,8 @@ export interface ICUIPanelAreaProps {
   onPanelMove?: (panelId: string, targetAreaId: string) => void;
   onDrop?: (panelId: string, sourceAreaId: string) => void;
   allowDrop?: boolean;
+  /** Custom panel content renderer - if provided, uses this instead of default rendering */
+  renderPanelContent?: (panel: ICUIPanelInstance) => React.ReactNode;
 }
 
 /**
@@ -35,6 +37,7 @@ export const ICUIPanelArea: React.FC<ICUIPanelAreaProps> = ({
   onPanelMove,
   onDrop,
   allowDrop = true,
+  renderPanelContent,
 }) => {
   const areaRef = useRef<HTMLDivElement>(null);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -192,105 +195,113 @@ export const ICUIPanelArea: React.FC<ICUIPanelAreaProps> = ({
       {/* Active Panel Content */}
       {activePanel && (
         <div className="icui-panel-content-area">
-          <div className="icui-docked-panel-content">
-            {/* Render panel content without the floating header */}
-            <ICUIBasePanel
-              panel={activePanel}
-              onStateChange={() => {}} // Handled by parent
-              onPositionChange={() => {}} // Not needed for docked panels
-              onConfigChange={() => {}} // Handled by parent
-              onClose={() => handleTabClose(activePanel.id, {} as any)}
-              headerProps={{ editable: false, showControls: false }} // No header needed
-              contentProps={{ padding: true, scrollable: true }}
-              className="icui-docked-panel"
-            >
-              {/* Panel-specific content based on type */}
-              <div className="icui-panel-type-content">
-                {activePanel.config.type === 'editor' && (
-                  <div className="icui-editor-content">
-                    <div className="icui-editor-toolbar">
-                      <span>📝 Code Editor</span>
-                      <div className="icui-editor-actions">
-                        <button className="icui-toolbar-btn">Format</button>
-                        <button className="icui-toolbar-btn">Save</button>
+          {renderPanelContent ? (
+            /* Use custom renderer if provided */
+            <div className="icui-custom-panel-content">
+              {renderPanelContent(activePanel)}
+            </div>
+          ) : (
+            /* Default panel content rendering */
+            <div className="icui-docked-panel-content">
+              {/* Render panel content without the floating header */}
+              <ICUIBasePanel
+                panel={activePanel}
+                onStateChange={() => {}} // Handled by parent
+                onPositionChange={() => {}} // Not needed for docked panels
+                onConfigChange={() => {}} // Handled by parent
+                onClose={() => handleTabClose(activePanel.id, {} as any)}
+                headerProps={{ editable: false, showControls: false }} // No header needed
+                contentProps={{ padding: true, scrollable: true }}
+                className="icui-docked-panel"
+              >
+                {/* Panel-specific content based on type */}
+                <div className="icui-panel-type-content">
+                  {activePanel.config.type === 'editor' && (
+                    <div className="icui-editor-content">
+                      <div className="icui-editor-toolbar">
+                        <span>📝 Code Editor</span>
+                        <div className="icui-editor-actions">
+                          <button className="icui-toolbar-btn">Format</button>
+                          <button className="icui-toolbar-btn">Save</button>
+                        </div>
                       </div>
-                    </div>
-                    <div className="icui-editor-area">
-                      <div className="icui-code-editor">
-                        {/* This would integrate with CodeMirror */}
-                        <div className="icui-editor-placeholder">
-                          <div className="icui-editor-lines">
-                            <div className="icui-line"><span className="icui-line-number">1</span><span className="icui-code">// {activePanel.config.title}</span></div>
-                            <div className="icui-line"><span className="icui-line-number">2</span><span className="icui-code">function example() {'{'}</span></div>
-                            <div className="icui-line"><span className="icui-line-number">3</span><span className="icui-code">  console.log('Hello from {activePanel.config.title}');</span></div>
-                            <div className="icui-line"><span className="icui-line-number">4</span><span className="icui-code">{'}'}</span></div>
+                      <div className="icui-editor-area">
+                        <div className="icui-code-editor">
+                          {/* This would integrate with CodeMirror */}
+                          <div className="icui-editor-placeholder">
+                            <div className="icui-editor-lines">
+                              <div className="icui-line"><span className="icui-line-number">1</span><span className="icui-code">// {activePanel.config.title}</span></div>
+                              <div className="icui-line"><span className="icui-line-number">2</span><span className="icui-code">function example() {'{'}</span></div>
+                              <div className="icui-line"><span className="icui-line-number">3</span><span className="icui-code">  console.log('Hello from {activePanel.config.title}');</span></div>
+                              <div className="icui-line"><span className="icui-line-number">4</span><span className="icui-code">{'}'}</span></div>
+                            </div>
                           </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                )}
-                
-                {activePanel.config.type === 'terminal' && (
-                  <div className="icui-terminal-content">
-                    <div className="icui-terminal-header">
-                      <span>⌨️ Terminal</span>
-                      <div className="icui-terminal-actions">
-                        <button className="icui-toolbar-btn">Clear</button>
-                        <button className="icui-toolbar-btn">Split</button>
+                  )}
+                  
+                  {activePanel.config.type === 'terminal' && (
+                    <div className="icui-terminal-content">
+                      <div className="icui-terminal-header">
+                        <span>⌨️ Terminal</span>
+                        <div className="icui-terminal-actions">
+                          <button className="icui-toolbar-btn">Clear</button>
+                          <button className="icui-toolbar-btn">Split</button>
+                        </div>
+                      </div>
+                      <div className="icui-terminal-area">
+                        <div className="icui-terminal-output">
+                          <div className="icui-terminal-line">$ welcome to {activePanel.config.title}</div>
+                          <div className="icui-terminal-line">$ npm start</div>
+                          <div className="icui-terminal-line">Server started on port 3000...</div>
+                          <div className="icui-terminal-line icui-terminal-cursor">$ <span className="icui-cursor">_</span></div>
+                        </div>
                       </div>
                     </div>
-                    <div className="icui-terminal-area">
-                      <div className="icui-terminal-output">
-                        <div className="icui-terminal-line">$ welcome to {activePanel.config.title}</div>
-                        <div className="icui-terminal-line">$ npm start</div>
-                        <div className="icui-terminal-line">Server started on port 3000...</div>
-                        <div className="icui-terminal-line icui-terminal-cursor">$ <span className="icui-cursor">_</span></div>
-                      </div>
-                    </div>
-                  </div>
-                )}
+                  )}
 
-                {activePanel.config.type === 'explorer' && (
-                  <div className="icui-explorer-content">
-                    <div className="icui-explorer-header">
-                      <span>📁 File Explorer</span>
-                      <div className="icui-explorer-actions">
-                        <button className="icui-toolbar-btn">New File</button>
-                        <button className="icui-toolbar-btn">New Folder</button>
+                  {activePanel.config.type === 'explorer' && (
+                    <div className="icui-explorer-content">
+                      <div className="icui-explorer-header">
+                        <span>📁 File Explorer</span>
+                        <div className="icui-explorer-actions">
+                          <button className="icui-toolbar-btn">New File</button>
+                          <button className="icui-toolbar-btn">New Folder</button>
+                        </div>
+                      </div>
+                      <div className="icui-explorer-tree">
+                        <div className="icui-tree-item icui-folder expanded">
+                          <span className="icui-tree-icon">📂</span>
+                          <span className="icui-tree-name">src</span>
+                        </div>
+                        <div className="icui-tree-item icui-file icui-nested">
+                          <span className="icui-tree-icon">📄</span>
+                          <span className="icui-tree-name">App.tsx</span>
+                        </div>
+                        <div className="icui-tree-item icui-file icui-nested">
+                          <span className="icui-tree-icon">📄</span>
+                          <span className="icui-tree-name">main.tsx</span>
+                        </div>
                       </div>
                     </div>
-                    <div className="icui-explorer-tree">
-                      <div className="icui-tree-item icui-folder expanded">
-                        <span className="icui-tree-icon">📂</span>
-                        <span className="icui-tree-name">src</span>
-                      </div>
-                      <div className="icui-tree-item icui-file icui-nested">
-                        <span className="icui-tree-icon">📄</span>
-                        <span className="icui-tree-name">App.tsx</span>
-                      </div>
-                      <div className="icui-tree-item icui-file icui-nested">
-                        <span className="icui-tree-icon">📄</span>
-                        <span className="icui-tree-name">main.tsx</span>
-                      </div>
-                    </div>
-                  </div>
-                )}
+                  )}
 
-                {['output', 'properties', 'timeline', 'inspector', 'custom'].includes(activePanel.config.type) && (
-                  <div className="icui-generic-content">
-                    <div className="icui-generic-header">
-                      <span>{activePanel.config.icon || '📋'} {activePanel.config.title}</span>
+                  {['output', 'properties', 'timeline', 'inspector', 'custom'].includes(activePanel.config.type) && (
+                    <div className="icui-generic-content">
+                      <div className="icui-generic-header">
+                        <span>{activePanel.config.icon || '📋'} {activePanel.config.title}</span>
+                      </div>
+                      <div className="icui-generic-body">
+                        <p>Content for {activePanel.config.type} panel.</p>
+                        <p>This panel is docked and can be dragged to other areas.</p>
+                      </div>
                     </div>
-                    <div className="icui-generic-body">
-                      <p>Content for {activePanel.config.type} panel.</p>
-                      <p>This panel is docked and can be dragged to other areas.</p>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </ICUIBasePanel>
-          </div>
+                  )}
+                </div>
+              </ICUIBasePanel>
+            </div>
+          )}
         </div>
       )}
     </div>

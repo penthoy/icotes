@@ -382,9 +382,12 @@ export const ICUITest3: React.FC<ICUITest3Props> = ({ className = '' }) => {
             <div className="text-sm text-gray-500">
               Phase 3 - Panel Docking System (IDE Foundation)
             </div>
-            <div className="px-4 py-2 bg-gray-300 text-gray-500 rounded cursor-not-allowed">
+            <a 
+              href="/icui-test4" 
+              className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+            >
               Phase 4 Tests →
-            </div>
+            </a>
           </div>
         </div>
       </div>
