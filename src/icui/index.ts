@@ -13,7 +13,7 @@ export { ICUIPanelContent } from './components/ICUIPanelContent';
 export { ICUIPanelArea } from './components/ICUIPanelArea';
 
 // Specialized Panels (Phase 4)
-export { ICUITerminalPanel } from './components/panels/ICUITerminalPanel';
+export { default as ICUITerminalPanel } from './components/panels/ICUITerminalPanel';
 export { ICUIEditorPanel } from './components/panels/ICUIEditorPanel';
 export { ICUIExplorerPanel } from './components/panels/ICUIExplorerPanel';
 

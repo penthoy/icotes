@@ -14,7 +14,7 @@ import {
   ICUIPanelInstance
 } from '../../../src/icui';
 import { FileData } from '../../../src/components/FileTabs';
-import XTerminal from '../../../src/components/XTerminal';
+import ICUITerminalPanel from '../../../src/icui/components/panels/ICUITerminalPanel';
 import CodeEditor, { SupportedLanguage } from '../../../src/components/CodeEditor';
 import FileExplorer from '../../../src/components/FileExplorer';
 
@@ -112,7 +112,15 @@ export const ICUITest4: React.FC<ICUITest4Props> = ({ className = '' }) => {
   const { panels, actions } = useICUIPanels();
   const [editorFiles, setEditorFiles] = useState<FileData[]>(sampleFiles);
   const [activeFileId, setActiveFileId] = useState<string>('app-tsx');
+  const [theme, setTheme] = useState<'light' | 'dark'>('dark'); // Default to dark theme
   
+  // Apply theme to document root on mount and theme change
+  React.useEffect(() => {
+    const root = window.document.documentElement;
+    root.classList.remove('light', 'dark');
+    root.classList.add(theme);
+  }, [theme]);
+
   // Panel area state - tracking which panels are in which areas
   const [panelAreas, setPanelAreas] = useState<{
     leftArea: string[];
@@ -370,13 +378,7 @@ export const ICUITest4: React.FC<ICUITest4Props> = ({ className = '' }) => {
     switch (panel.config.type) {
       case 'terminal':
         return (
-          <div className="flex flex-col h-full">
-            <XTerminal
-              theme="dark"
-              onClear={() => console.log('Terminal cleared')}
-              className="flex-1"
-            />
-          </div>
+          <ICUITerminalPanel />
         );
       
       case 'editor':
@@ -416,13 +418,13 @@ export const ICUITest4: React.FC<ICUITest4Props> = ({ className = '' }) => {
               </button>
             </div>
             {/* Code Editor */}
-            <div className="flex-1 relative">
+            <div className="flex-1 relative overflow-hidden">
               {activeFile && (
                 <CodeEditor
                   code={activeFile.content}
                   language={getLanguageFromFileName(activeFile.name)}
                   onCodeChange={(newCode) => handleFileChange(activeFile.id, newCode)}
-                  theme="dark"
+                  theme={theme}
                 />
               )}
             </div>
@@ -476,7 +478,7 @@ export const ICUITest4: React.FC<ICUITest4Props> = ({ className = '' }) => {
           </div>
         );
     }
-  }, [editorFiles, activeFileId, handleFileChange, handleFileClose, handleNewFile, handleExplorerFileSelect, getLanguageFromFileName]);
+  }, [editorFiles, activeFileId, handleFileChange, handleFileClose, handleNewFile, handleExplorerFileSelect, getLanguageFromFileName, theme]);
 
   return (
     <div className={`icui-test4-container p-4 ${className}`} style={{ height: '100vh', position: 'relative' }}>
@@ -517,6 +519,13 @@ export const ICUITest4: React.FC<ICUITest4Props> = ({ className = '' }) => {
               disabled={panels.length === 0}
             >
               Clear All
+            </button>
+
+            <button
+              onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
+              className="px-4 py-2 bg-purple-500 text-white rounded hover:bg-purple-600 transition-colors"
+            >
+              {theme === 'light' ? '🌙 Dark' : '☀️ Light'} Theme
             </button>
           </div>
           

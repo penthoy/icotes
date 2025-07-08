@@ -114,11 +114,24 @@
 
 /* ===== PANEL CONTENT AREA STYLES ===== */
 .icui-panel-content-area {
-  @apply flex-1 overflow-hidden;
+  @apply flex-1 min-h-0;
+  overflow: auto; /* Allow scrolling in content area */
 }
 
 .icui-docked-panel-content {
-  @apply h-full overflow-hidden;
+  @apply h-full min-h-0;
+  overflow: auto; /* Allow scrolling in docked panels */
+}
+
+.icui-custom-panel-content {
+  @apply h-full min-h-0;
+  overflow: auto; /* Allow scrolling in custom panel content */
+}
+
+/* Special class for terminal containers to prevent double scrollbars */
+.icui-terminal-panel-content {
+  @apply h-full min-h-0;
+  overflow: hidden !important; /* Let xterm handle its own scrolling */
 }
 
 .icui-docked-panel {

@@ -1,79 +1,112 @@
 /**
- * ICUI Terminal Panel - Specialized panel for terminal functionality
- * Extends BasePanel with terminal-specific features
- * Part of Phase 4: Specialized Panel Implementations
+ * ICUI Terminal Panel - Reference Implementation
+ * A minimal, working terminal panel for the ICUI framework
  */
 
-import React, { useRef, useCallback } from 'react';
-import { ICUIBasePanel } from '../ICUIBasePanel';
-import type { ICUIBasePanelProps, ICUIPanelInstance } from '../../types/icui-panel';
-import XTerminal, { XTerminalRef } from '../../../components/XTerminal';
-import { Square, RotateCcw } from 'lucide-react';
+import React, { useRef, useEffect } from 'react';
+import { Terminal } from '@xterm/xterm';
+import '@xterm/xterm/css/xterm.css';
 
-export interface ICUITerminalPanelProps extends Omit<ICUIBasePanelProps, 'children'> {
-  /** Panel children are not needed as terminal provides its own content */
-  children?: React.ReactNode;
-  /** Overall theme */
-  theme?: 'light' | 'dark';
-  /** Terminal-specific options */
-  terminalOptions?: {
-    /** Whether to auto-connect to websocket on mount */
-    autoConnect?: boolean;
-    /** Terminal theme preference */
-    terminalTheme?: 'light' | 'dark';
-    /** Show connection status */
-    showStatus?: boolean;
-  };
+interface ICUITerminalPanelProps {
+  className?: string;
 }
 
-/**
- * Terminal Panel Component
- * Provides a dockable terminal interface with WebSocket connectivity
- */
-export const ICUITerminalPanel: React.FC<ICUITerminalPanelProps> = ({
-  panel,
-  theme = 'dark',
-  terminalOptions,
-  ...basePanelProps
-}) => {
-  const terminalRef = useRef<XTerminalRef>({} as XTerminalRef);
+const ICUITerminalPanel: React.FC<ICUITerminalPanelProps> = ({ className = '' }) => {
+  const terminalRef = useRef<HTMLDivElement>(null);
+  const websocket = useRef<WebSocket | null>(null);
+  const terminalId = useRef<string>(Math.random().toString(36).substring(2));
+  const terminal = useRef<Terminal | null>(null);
 
-  // Handle terminal resize when panel resizes
-  const handlePanelResize = useCallback(() => {
-    // Add a small delay to allow the panel to resize before fitting the terminal
-    setTimeout(() => {
-      if (terminalRef.current) {
-        terminalRef.current.fit();
+  useEffect(() => {
+    if (!terminalRef.current) return;
+
+    console.log('ICUITerminalPanel: Creating terminal...');
+    
+    // Create the most basic terminal possible
+    terminal.current = new Terminal({
+      cols: 80,
+      rows: 24,
+      fontSize: 14,
+      fontFamily: 'monospace',
+      theme: {
+        background: '#000000',
+        foreground: '#ffffff',
+      },
+    });
+
+    // Open the terminal
+    terminal.current.open(terminalRef.current);
+    
+    // Write a simple test message
+    terminal.current.write('ICUITerminalPanel initialized!\r\n');
+
+    // Handle user input and send to WebSocket if connected
+    terminal.current.onData((data) => {
+      if (websocket.current?.readyState === WebSocket.OPEN) {
+        websocket.current.send(data);
+      } else {
+        terminal.current?.write(data);
       }
-    }, 50);
-  }, []);
+    });
 
-  // Handle terminal clear
-  const handleTerminalClear = useCallback(() => {
-    // Terminal clear is handled internally by XTerminal
-    console.log('Terminal cleared');
+    // Connect to backend via WebSocket using same logic as XTerminal
+    const envWsUrl = import.meta.env.VITE_WS_URL as string | undefined;
+    let wsUrl: string;
+    if (envWsUrl && envWsUrl.trim() !== '') {
+      wsUrl = `${envWsUrl}/ws/terminal/${terminalId.current}`;
+    } else {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const host = window.location.host;
+      wsUrl = `${protocol}//${host}/ws/terminal/${terminalId.current}`;
+    }
+    websocket.current = new WebSocket(wsUrl);
+    websocket.current.onopen = () => {
+      // Clear screen on connect
+      terminal.current?.clear();
+    };
+    websocket.current.onmessage = (event) => {
+      terminal.current?.write(event.data);
+    };
+    websocket.current.onclose = (event) => {
+      if (event.code !== 1000) {
+        terminal.current?.write("\r\n\x1b[31mTerminal disconnected\x1b[0m\r\n");
+      }
+    };
+    websocket.current.onerror = (error) => {
+      terminal.current?.write("\r\n\x1b[31mTerminal connection error\x1b[0m\r\n");
+    };
+
+    console.log('ICUITerminalPanel: Terminal opened and ready');
+
+    return () => {
+      websocket.current?.close();
+      if (terminal.current) {
+        terminal.current.dispose();
+        terminal.current = null;
+      }
+    };
   }, []);
 
   return (
-    <ICUIBasePanel
-      {...basePanelProps}
-      panel={panel}
-      // Add terminal-specific header props if needed
-      headerProps={{
-        ...basePanelProps.headerProps,
-        // Could add terminal-specific header actions here
+    <div
+      className={`icui-terminal ${className}`}
+      style={{
+        height: '100%',
+        width: '100%',
+        backgroundColor: '#000000', // Match terminal background
+        overflow: 'auto', // Enable scrollbars when content overflows
       }}
     >
-      <div className="flex flex-col h-full">
-        <XTerminal
-          ref={terminalRef}
-          theme={terminalOptions?.terminalTheme ?? theme}
-          onClear={handleTerminalClear}
-          onResize={handlePanelResize}
-          className="flex-1"
-        />
-      </div>
-    </ICUIBasePanel>
+      <div
+        ref={terminalRef}
+        style={{
+          height: '100%',
+          width: '100%',
+          minHeight: '100%', // Ensure inner content expands
+          minWidth: '100%',
+        }}
+      />
+    </div>
   );
 };
 

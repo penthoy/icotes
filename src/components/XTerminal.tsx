@@ -85,7 +85,7 @@ const XTerminal: React.ForwardRefRenderFunction<XTerminalRef, XTerminalProps> = 
     };
   }, []);
 
-  // Force a custom fit that respects container boundaries
+  // Improved fit function that respects xterm.js natural scrolling
   const fitWithBoundaryConstraints = useCallback(() => {
     if (!terminal.current || !fitAddon.current || !terminalRef.current) return;
     
@@ -93,23 +93,12 @@ const XTerminal: React.ForwardRefRenderFunction<XTerminalRef, XTerminalProps> = 
     const rect = container.getBoundingClientRect();
     
     // Only fit if container has valid dimensions
-    if (rect.width > 0 && rect.height > 20) {
+    if (rect.width > 20 && rect.height > 20) {
       try {
+        // Use the FitAddon's built-in fit method which handles scrolling properly
         fitAddon.current.fit();
         
-        // Find the terminal viewport element
-        const viewportElement = container.querySelector('.xterm-viewport') as HTMLElement;
-        
-        if (viewportElement) {
-          const availableHeight = rect.height - 10;
-          viewportElement.style.height = `${availableHeight}px`;
-          viewportElement.style.maxHeight = `${availableHeight}px`;
-          viewportElement.style.overflowY = 'scroll';
-          viewportElement.style.overflowX = 'hidden';
-          viewportElement.style.scrollbarGutter = 'stable';
-        }
-        
-        console.log("Terminal fitted:", {
+        console.log("Terminal fitted successfully:", {
           width: rect.width,
           height: rect.height,
           cols: terminal.current.cols,
@@ -118,6 +107,11 @@ const XTerminal: React.ForwardRefRenderFunction<XTerminalRef, XTerminalProps> = 
       } catch (error) {
         console.warn("Error fitting terminal:", error);
       }
+    } else {
+      console.warn("Terminal container too small for fitting:", {
+        width: rect.width,
+        height: rect.height
+      });
     }
   }, []);
 
@@ -182,19 +176,31 @@ const XTerminal: React.ForwardRefRenderFunction<XTerminalRef, XTerminalProps> = 
         convertEol: true,
         fastScrollModifier: "alt",
         fastScrollSensitivity: 5,
-        scrollback: 1000,
+        scrollback: 2000, // Increased scrollback for better history
         tabStopWidth: 4,
         scrollOnUserInput: true,
         altClickMovesCursor: true,
+        rightClickSelectsWord: true,
+        macOptionIsMeta: true,
+        windowOptions: {},
       });
 
       fitAddon.current = new FitAddon();
       terminal.current.loadAddon(fitAddon.current);
       terminal.current.open(terminalRef.current);
 
+      // Multiple fit attempts to ensure proper sizing
       setTimeout(() => {
         fitWithBoundaryConstraints();
       }, 100);
+      
+      setTimeout(() => {
+        fitWithBoundaryConstraints();
+      }, 300);
+      
+      setTimeout(() => {
+        fitWithBoundaryConstraints();
+      }, 500);
 
       terminal.current.onData((data) => {
         if (websocket.current?.readyState === WebSocket.OPEN) {
@@ -278,7 +284,10 @@ const XTerminal: React.ForwardRefRenderFunction<XTerminalRef, XTerminalProps> = 
   }, [debouncedFit]);
 
   return (
-    <div className={`flex flex-col h-full bg-background ${className}`}>
+    <div className={`flex flex-col h-full ${className}`} 
+         style={{ 
+           backgroundColor: theme === "dark" ? "#1e1e1e" : "#ffffff"
+         }}>
       <div className="flex items-center justify-between p-2 bg-muted/30 border-b border-border flex-shrink-0">
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1">
@@ -312,11 +321,14 @@ const XTerminal: React.ForwardRefRenderFunction<XTerminalRef, XTerminalProps> = 
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 overflow-hidden">
+      <div className="flex-1 min-h-0 overflow-hidden" style={{ minHeight: '200px' }}>
         <div 
           ref={terminalRef} 
-          className="w-full h-full p-2"
-          style={{ minHeight: '100px' }}
+          className="w-full h-full"
+          style={{ 
+            minHeight: '150px',
+            backgroundColor: theme === "dark" ? "#1e1e1e" : "#ffffff"
+          }}
         />
       </div>
     </div>

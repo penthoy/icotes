@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import {
   EditorView,
   keymap,
@@ -60,7 +60,7 @@ const CodeEditor = ({
   const [editorView, setEditorView] = useState<EditorView | null>(null);
   const [code, setInternalCode] = useState<string>(propCode || initialCode);
 
-  const getLanguageExtension = (lang: SupportedLanguage) => {
+  const getLanguageExtension = useCallback((lang: SupportedLanguage) => {
     switch (lang) {
       case 'javascript':
         return javascript();
@@ -69,7 +69,7 @@ const CodeEditor = ({
       default:
         return python();
     }
-  };
+  }, []);
 
   // Initialize editor only once
   useEffect(() => {
@@ -107,13 +107,16 @@ const CodeEditor = ({
           indentWithTab,
         ]),
 
-        // Update listener
+        // Update listener with debouncing to prevent performance issues
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
             const newCode = update.state.doc.toString();
-            setInternalCode(newCode);
-            setCode?.(newCode);
-            onCodeChange?.(newCode);
+            // Use a single batch update to prevent multiple re-renders
+            requestAnimationFrame(() => {
+              setInternalCode(newCode);
+              setCode?.(newCode);
+              onCodeChange?.(newCode);
+            });
           }
         }),
       ];
