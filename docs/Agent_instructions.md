@@ -1,6 +1,8 @@
 ## Instructions: 
 When I said "continue progress" in the prompt, check ##In Progress section in the roadmap.md file, and proceed to work on just In progress section, after finished, move it to Recently finished section, Only if you see it in the ## Tested working section in the roadmap which I'll manually test, move them to the Changelog. if you see previous task that's attempted but still under In progress, it means they're still not working or unfinished after manual testing. so they need to revisit or try another approach, if this happens, first try to assess what was tried previously and why it didn't work, revert any previous change that isn't necessary to always keep the codebase clean, before attempt another approach, make sure you explain what you tried and anything you need the user to help make it work.
 
+Please read Agent_dev_workflow.md to learn how to iterate.
+
 When I said "housekeeping" 
 1. please update both Working.md and CHANGELOG.md by reading all ## recently finished section from Project_roadmap.md and then clean them up.
 2. do cleanups if there were any previously added debug code.

@@ -34,25 +34,6 @@ frontend_url = os.environ.get("FRONTEND_URL")
 if frontend_url:
     allowed_origins.append(frontend_url)
 
-# Add development origins for local development
-if os.environ.get("NODE_ENV") != "production":
-    allowed_origins.extend([
-        "http://localhost:3000", 
-        "http://localhost:5173", 
-        "http://localhost:5174",
-        "http://localhost:5175",
-        "http://localhost:5176",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:5174",
-        "http://127.0.0.1:5175",
-        "http://127.0.0.1:5176",
-        "http://192.168.2.195:5173",
-        "http://192.168.2.195:5174",
-        "http://192.168.2.195:5175",
-        "http://192.168.2.195:5176"
-    ])
-
 # For production, allow all origins if not specified (Coolify handles this)
 if os.environ.get("NODE_ENV") == "production" and not allowed_origins:
     allowed_origins = ["*"]

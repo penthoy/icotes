@@ -4,18 +4,7 @@
 A web-based JavaScript code editor built with React, CodeMirror 6, and modern web technologies. The goal is to create a powerful, user-friendly code editor with real-time execution capabilities.
 
 ## In Progress 🚧
-- [🚧] **ICUI Framework Phase 3 - Panel Docking and Tabbing System**
-  - **CRITICAL FOUNDATION FOR IDE FUNCTIONALITY**
-  - Implementing docked panel areas with tabbed interfaces
-  - Enabling drag-and-drop between panel areas
-  - Building the foundation for VS Code-like editor experience
-  - Step 3.1: Panel Area Container (✅ Implemented)
-  - Step 3.2: Panel Dock Manager (🚧 Basic implementation)  
-  - Step 3.3: Enhanced Panel Dragging (✅ Tab dragging working)
-  - Step 3.4: Integration with Split Panels (✅ Working)
-
-- [✅] continue with icui 2.1 from ui_rewrite.md (Base Panel Component), create a icui-test2 route, so that we don't bog down too much on a single test page.
-- [✅] create folder that follows indstry standard on test driven development, and put these test files inside. try to follow industry convention as much as possible.
+- [] Continue with icui_rewrite.md on step 4, please reference the current implementation from the / route, as they works fine except that the UI is not great.
 
 ## Future tasks:
 - [] Cleanup: remove anything under the following directories so that tempo templates are removed if they are not being used in this repo
@@ -24,6 +13,8 @@ A web-based JavaScript code editor built with React, CodeMirror 6, and modern we
 - [] Add agent chat tab on the left side same place as the Explorer with a tab, similar to how vs code extensions are installed on the left side.
 
 ## Recently Finished 🎉
+- [✅] continue with icui 2.1 from ui_rewrite.md (Base Panel Component), create a icui-test2 route, so that we don't bog down too much on a single test page.
+- [✅] create folder that follows indstry standard on test driven development, and put these test files inside. try to follow industry convention as much as possible.
 - [✅] Created comprehensive UI rewrite plan (ui_rewrite.md) for modular panel system inspired by Blender's UI design
   - Detailed 6-phase implementation plan with step-by-step breakdown
   - Modular component architecture design

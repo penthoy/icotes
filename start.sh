@@ -304,8 +304,6 @@ if [[ "$DAEMON_MODE" == "true" ]]; then
     echo "   Terminal: http://localhost:$BACKEND_PORT/api/terminal/health"
     echo ""
     echo "⚠️  Note: Frontend is served from the backend server"
-    echo "   Don't try to access ports 5173/5174 - they're not running in production"
-    echo ""
     echo "🛑 To stop: kill \$(cat logs/app.pid)"
     echo "=============================================="
 else
@@ -328,8 +326,6 @@ else
     echo "   Terminal: http://localhost:$BACKEND_PORT/api/terminal/health"
     echo ""
     echo "⚠️  Note: Frontend is served from the backend server"
-    echo "   Don't try to access ports 5173/5174 - they're not running in production"
-    echo ""
     echo "🛑 To stop: Press Ctrl+C"
     echo "=============================================="
     echo ""
