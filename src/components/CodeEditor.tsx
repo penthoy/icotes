@@ -103,85 +103,13 @@ const icuiLightTheme = EditorView.theme({
   '.cm-focused .cm-cursor': {
     borderLeftColor: 'var(--icui-text-primary)',
   },
-  '.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {
-    backgroundColor: 'var(--icui-accent)',
-    color: 'white',
+  '.cm-selectionBackground, .cm-line::selection, .cm-content ::selection, .cm-selectionLayer .cm-selectionBackground': {
+    backgroundColor: 'var(--icui-selection-bg) !important',
+    color: 'inherit',
   },
-  '.cm-panels': {
-    backgroundColor: 'var(--icui-bg-secondary)',
-    color: 'var(--icui-text-primary)',
-  },
-  '.cm-panels.cm-panels-top': {
-    borderBottom: '2px solid var(--icui-border)',
-  },
-  '.cm-panels.cm-panels-bottom': {
-    borderTop: '2px solid var(--icui-border)',
-  },
-  '.cm-searchMatch': {
-    backgroundColor: 'var(--icui-warning)',
-    color: 'var(--icui-bg-primary)',
-  },
-  '.cm-searchMatch.cm-searchMatch-selected': {
-    backgroundColor: 'var(--icui-accent)',
-  },
-  '.cm-activeLine': {
-    backgroundColor: 'var(--icui-bg-secondary)',
-  },
-  '.cm-selectionMatch': {
-    backgroundColor: 'var(--icui-bg-tertiary)',
-  },
-  '&.cm-focused .cm-matchingBracket, &.cm-focused .cm-nonmatchingBracket': {
-    backgroundColor: 'var(--icui-bg-tertiary)',
-  },
-  '.cm-gutters': {
-    backgroundColor: 'var(--icui-bg-secondary)',
-    color: 'var(--icui-text-muted)',
-    border: 'none',
-  },
-  '.cm-activeLineGutter': {
-    backgroundColor: 'var(--icui-bg-tertiary)',
-  },
-  '.cm-foldPlaceholder': {
-    backgroundColor: 'var(--icui-bg-tertiary)',
-    border: 'none',
-    color: 'var(--icui-text-secondary)',
-  },
-  '.cm-tooltip': {
-    border: '1px solid var(--icui-border)',
-    backgroundColor: 'var(--icui-bg-overlay)',
-    color: 'var(--icui-text-primary)',
-  },
-  '.cm-tooltip .cm-tooltip-arrow:before': {
-    borderTopColor: 'var(--icui-border)',
-  },
-  '.cm-tooltip .cm-tooltip-arrow:after': {
-    borderTopColor: 'var(--icui-bg-overlay)',
-  },
-  '.cm-tooltip-autocomplete': {
-    '& > ul > li[aria-selected]': {
-      backgroundColor: 'var(--icui-accent)',
-      color: 'var(--icui-bg-primary)',
-    }
-  }
-}, { dark: false });
-
-// Custom dark theme for CodeMirror using ICUI theme variables
-const icuiDarkTheme = EditorView.theme({
-  '&': {
-    color: 'var(--icui-text-primary)',
-    backgroundColor: 'var(--icui-bg-primary)',
-  },
-  '.cm-content': {
-    padding: '16px',
-    caretColor: 'var(--icui-text-primary)',
-    backgroundColor: 'var(--icui-bg-primary)',
-  },
-  '.cm-focused .cm-cursor': {
-    borderLeftColor: 'var(--icui-text-primary)',
-  },
-  '.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {
-    backgroundColor: 'var(--icui-accent)',
-    color: 'white',
+  '.cm-focused .cm-selectionBackground, .cm-selectionLayer .cm-selectionBackground': {
+    backgroundColor: 'var(--icui-selection-bg) !important',
+    color: 'inherit',
   },
   '.cm-panels': {
     backgroundColor: 'var(--icui-bg-secondary)',
@@ -238,7 +166,93 @@ const icuiDarkTheme = EditorView.theme({
       backgroundColor: 'var(--icui-accent)',
       color: 'white',
     }
-  }
+  },
+  '.cm-content ::selection': {
+    backgroundColor: 'var(--icui-selection-bg) !important',
+  },
+}, { dark: false });
+
+// Custom dark theme for CodeMirror using ICUI theme variables
+const icuiDarkTheme = EditorView.theme({
+  '&': {
+    color: 'var(--icui-text-primary)',
+    backgroundColor: 'var(--icui-bg-primary)',
+  },
+  '.cm-content': {
+    padding: '16px',
+    caretColor: 'var(--icui-text-primary)',
+    backgroundColor: 'var(--icui-bg-primary)',
+  },
+  '.cm-focused .cm-cursor': {
+    borderLeftColor: 'var(--icui-text-primary)',
+  },
+  '.cm-selectionBackground, .cm-line::selection, .cm-content ::selection, .cm-selectionLayer .cm-selectionBackground': {
+    backgroundColor: 'var(--icui-selection-bg) !important',
+    color: 'inherit',
+  },
+  '.cm-focused .cm-selectionBackground, .cm-selectionLayer .cm-selectionBackground': {
+    backgroundColor: 'var(--icui-selection-bg) !important',
+    color: 'inherit',
+  },
+  '.cm-panels': {
+    backgroundColor: 'var(--icui-bg-secondary)',
+    color: 'var(--icui-text-primary)',
+  },
+  '.cm-panels.cm-panels-top': {
+    borderBottom: '2px solid var(--icui-border)',
+  },
+  '.cm-panels.cm-panels-bottom': {
+    borderTop: '2px solid var(--icui-border)',
+  },
+  '.cm-searchMatch': {
+    backgroundColor: 'var(--icui-warning)',
+    color: 'var(--icui-bg-primary)',
+  },
+  '.cm-searchMatch.cm-searchMatch-selected': {
+    backgroundColor: 'var(--icui-accent)',
+  },
+  '.cm-activeLine': {
+    backgroundColor: 'var(--icui-bg-secondary)',
+  },
+  '.cm-selectionMatch': {
+    backgroundColor: 'var(--icui-bg-tertiary)',
+  },
+  '&.cm-focused .cm-matchingBracket, &.cm-focused .cm-nonmatchingBracket': {
+    backgroundColor: 'var(--icui-bg-tertiary)',
+  },
+  '.cm-gutters': {
+    backgroundColor: 'var(--icui-bg-secondary)',
+    color: 'var(--icui-text-muted)',
+    border: 'none',
+  },
+  '.cm-activeLineGutter': {
+    backgroundColor: 'var(--icui-bg-tertiary)',
+  },
+  '.cm-foldPlaceholder': {
+    backgroundColor: 'var(--icui-bg-tertiary)',
+    border: 'none',
+    color: 'var(--icui-text-secondary)',
+  },
+  '.cm-tooltip': {
+    border: '1px solid var(--icui-border)',
+    backgroundColor: 'var(--icui-bg-overlay)',
+    color: 'var(--icui-text-primary)',
+  },
+  '.cm-tooltip .cm-tooltip-arrow:before': {
+    borderTopColor: 'var(--icui-border)',
+  },
+  '.cm-tooltip .cm-tooltip-arrow:after': {
+    borderTopColor: 'var(--icui-bg-overlay)',
+  },
+  '.cm-tooltip-autocomplete': {
+    '& > ul > li[aria-selected]': {
+      backgroundColor: 'var(--icui-accent)',
+      color: 'white',
+    }
+  },
+  '.cm-content ::selection': {
+    backgroundColor: 'var(--icui-selection-bg) !important',
+  },
 }, { dark: true });
 
 const CodeEditor = ({

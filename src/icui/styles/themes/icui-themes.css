@@ -22,6 +22,23 @@
   --icui-github-dark-danger: #f85149;
   --icui-github-dark-warning: #d29922;
   
+  /* GitHub Dark Terminal Colors */
+  --icui-github-dark-terminal-white: #e5e5e5;
+  --icui-github-dark-terminal-bright-white: #ffffff;
+  --icui-github-dark-terminal-bright-black: #666666;
+  --icui-github-dark-terminal-green: #0dbc79;
+  --icui-github-dark-terminal-bright-green: #23d18b;
+  --icui-github-dark-terminal-yellow: #e5e510;
+  --icui-github-dark-terminal-bright-yellow: #f5f543;
+  --icui-github-dark-terminal-blue: #2472c8;
+  --icui-github-dark-terminal-bright-blue: #3b8eea;
+  --icui-github-dark-terminal-magenta: #bc3fbc;
+  --icui-github-dark-terminal-bright-magenta: #d670d6;
+  --icui-github-dark-terminal-cyan: #11a8cd;
+  --icui-github-dark-terminal-bright-cyan: #29b8db;
+  --icui-github-dark-terminal-red: #cd3131;
+  --icui-github-dark-terminal-bright-red: #f14c4c;
+  
   /* Monokai Theme Variables */
   --icui-monokai-bg-primary: #272822;
   --icui-monokai-bg-secondary: #383830;
@@ -70,6 +87,23 @@
   --icui-github-light-danger: #cf222e;
   --icui-github-light-warning: #9a6700;
   
+  /* GitHub Light Terminal Colors */
+  --icui-github-light-terminal-white: #333333;
+  --icui-github-light-terminal-bright-white: #000000;
+  --icui-github-light-terminal-bright-black: #666666;
+  --icui-github-light-terminal-green: #008000;
+  --icui-github-light-terminal-bright-green: #00a000;
+  --icui-github-light-terminal-yellow: #b58900;
+  --icui-github-light-terminal-bright-yellow: #cb4b16;
+  --icui-github-light-terminal-blue: #0451a5;
+  --icui-github-light-terminal-bright-blue: #0066cc;
+  --icui-github-light-terminal-magenta: #a020f0;
+  --icui-github-light-terminal-bright-magenta: #800080;
+  --icui-github-light-terminal-cyan: #0598bc;
+  --icui-github-light-terminal-bright-cyan: #008080;
+  --icui-github-light-terminal-red: #a31515;
+  --icui-github-light-terminal-bright-red: #cd3131;
+  
   /* VS Code Light Theme Variables */
   --icui-vscode-light-bg-primary: #ffffff;
   --icui-vscode-light-bg-secondary: #f3f3f3;
@@ -85,6 +119,23 @@
   --icui-vscode-light-success: #008000;
   --icui-vscode-light-danger: #cd3131;
   --icui-vscode-light-warning: #ff8c00;
+  
+  /* VSCode Light Terminal Colors */
+  --icui-vscode-light-terminal-white: #333333;
+  --icui-vscode-light-terminal-bright-white: #000000;
+  --icui-vscode-light-terminal-bright-black: #666666;
+  --icui-vscode-light-terminal-green: #008000;
+  --icui-vscode-light-terminal-bright-green: #00a000;
+  --icui-vscode-light-terminal-yellow: #b58900;
+  --icui-vscode-light-terminal-bright-yellow: #cb4b16;
+  --icui-vscode-light-terminal-blue: #0451a5;
+  --icui-vscode-light-terminal-bright-blue: #0066cc;
+  --icui-vscode-light-terminal-magenta: #a020f0;
+  --icui-vscode-light-terminal-bright-magenta: #800080;
+  --icui-vscode-light-terminal-cyan: #0598bc;
+  --icui-vscode-light-terminal-bright-cyan: #008080;
+  --icui-vscode-light-terminal-red: #a31515;
+  --icui-vscode-light-terminal-bright-red: #cd3131;
 }
 
 /* ===== GITHUB DARK THEME ===== */
@@ -111,6 +162,23 @@
   --icui-success: #238636;
   --icui-danger: #da3633;
   --icui-warning: #d29922;
+  
+  /* Terminal Colors */
+  --icui-terminal-white: var(--icui-github-dark-terminal-white);
+  --icui-terminal-bright-white: var(--icui-github-dark-terminal-bright-white);
+  --icui-terminal-bright-black: var(--icui-github-dark-terminal-bright-black);
+  --icui-terminal-green: var(--icui-github-dark-terminal-green);
+  --icui-terminal-bright-green: var(--icui-github-dark-terminal-bright-green);
+  --icui-terminal-yellow: var(--icui-github-dark-terminal-yellow);
+  --icui-terminal-bright-yellow: var(--icui-github-dark-terminal-bright-yellow);
+  --icui-terminal-blue: var(--icui-github-dark-terminal-blue);
+  --icui-terminal-bright-blue: var(--icui-github-dark-terminal-bright-blue);
+  --icui-terminal-magenta: var(--icui-github-dark-terminal-magenta);
+  --icui-terminal-bright-magenta: var(--icui-github-dark-terminal-bright-magenta);
+  --icui-terminal-cyan: var(--icui-github-dark-terminal-cyan);
+  --icui-terminal-bright-cyan: var(--icui-github-dark-terminal-bright-cyan);
+  --icui-terminal-red: var(--icui-github-dark-terminal-red);
+  --icui-terminal-bright-red: var(--icui-github-dark-terminal-bright-red);
 }
 
 /* Dark theme specific tab overrides */
@@ -163,6 +231,23 @@
   --icui-success: #a6e22e;
   --icui-danger: #f92672;
   --icui-warning: #e6db74;
+  
+  /* Terminal Colors - Using dark theme colors */
+  --icui-terminal-white: var(--icui-github-dark-terminal-white);
+  --icui-terminal-bright-white: var(--icui-github-dark-terminal-bright-white);
+  --icui-terminal-bright-black: var(--icui-github-dark-terminal-bright-black);
+  --icui-terminal-green: var(--icui-github-dark-terminal-green);
+  --icui-terminal-bright-green: var(--icui-github-dark-terminal-bright-green);
+  --icui-terminal-yellow: var(--icui-github-dark-terminal-yellow);
+  --icui-terminal-bright-yellow: var(--icui-github-dark-terminal-bright-yellow);
+  --icui-terminal-blue: var(--icui-github-dark-terminal-blue);
+  --icui-terminal-bright-blue: var(--icui-github-dark-terminal-bright-blue);
+  --icui-terminal-magenta: var(--icui-github-dark-terminal-magenta);
+  --icui-terminal-bright-magenta: var(--icui-github-dark-terminal-bright-magenta);
+  --icui-terminal-cyan: var(--icui-github-dark-terminal-cyan);
+  --icui-terminal-bright-cyan: var(--icui-github-dark-terminal-bright-cyan);
+  --icui-terminal-red: var(--icui-github-dark-terminal-red);
+  --icui-terminal-bright-red: var(--icui-github-dark-terminal-bright-red);
 }
 
 /* Monokai dark theme tab overrides */
@@ -215,6 +300,23 @@
   --icui-success: #98c379;
   --icui-danger: #e06c75;
   --icui-warning: #e5c07b;
+  
+  /* Terminal Colors - Using dark theme colors */
+  --icui-terminal-white: var(--icui-github-dark-terminal-white);
+  --icui-terminal-bright-white: var(--icui-github-dark-terminal-bright-white);
+  --icui-terminal-bright-black: var(--icui-github-dark-terminal-bright-black);
+  --icui-terminal-green: var(--icui-github-dark-terminal-green);
+  --icui-terminal-bright-green: var(--icui-github-dark-terminal-bright-green);
+  --icui-terminal-yellow: var(--icui-github-dark-terminal-yellow);
+  --icui-terminal-bright-yellow: var(--icui-github-dark-terminal-bright-yellow);
+  --icui-terminal-blue: var(--icui-github-dark-terminal-blue);
+  --icui-terminal-bright-blue: var(--icui-github-dark-terminal-bright-blue);
+  --icui-terminal-magenta: var(--icui-github-dark-terminal-magenta);
+  --icui-terminal-bright-magenta: var(--icui-github-dark-terminal-bright-magenta);
+  --icui-terminal-cyan: var(--icui-github-dark-terminal-cyan);
+  --icui-terminal-bright-cyan: var(--icui-github-dark-terminal-bright-cyan);
+  --icui-terminal-red: var(--icui-github-dark-terminal-red);
+  --icui-terminal-bright-red: var(--icui-github-dark-terminal-bright-red);
 }
 
 /* One Dark theme tab overrides */
@@ -260,6 +362,23 @@
   --icui-success: var(--icui-github-light-success);
   --icui-danger: var(--icui-github-light-danger);
   --icui-warning: var(--icui-github-light-warning);
+  
+  /* Terminal Colors */
+  --icui-terminal-white: var(--icui-github-light-terminal-white);
+  --icui-terminal-bright-white: var(--icui-github-light-terminal-bright-white);
+  --icui-terminal-bright-black: var(--icui-github-light-terminal-bright-black);
+  --icui-terminal-green: var(--icui-github-light-terminal-green);
+  --icui-terminal-bright-green: var(--icui-github-light-terminal-bright-green);
+  --icui-terminal-yellow: var(--icui-github-light-terminal-yellow);
+  --icui-terminal-bright-yellow: var(--icui-github-light-terminal-bright-yellow);
+  --icui-terminal-blue: var(--icui-github-light-terminal-blue);
+  --icui-terminal-bright-blue: var(--icui-github-light-terminal-bright-blue);
+  --icui-terminal-magenta: var(--icui-github-light-terminal-magenta);
+  --icui-terminal-bright-magenta: var(--icui-github-light-terminal-bright-magenta);
+  --icui-terminal-cyan: var(--icui-github-light-terminal-cyan);
+  --icui-terminal-bright-cyan: var(--icui-github-light-terminal-bright-cyan);
+  --icui-terminal-red: var(--icui-github-light-terminal-red);
+  --icui-terminal-bright-red: var(--icui-github-light-terminal-bright-red);
 }
 
 /* ===== VSCODE LIGHT THEME ===== */
@@ -278,6 +397,23 @@
   --icui-success: var(--icui-vscode-light-success);
   --icui-danger: var(--icui-vscode-light-danger);
   --icui-warning: var(--icui-vscode-light-warning);
+  
+  /* Terminal Colors */
+  --icui-terminal-white: var(--icui-vscode-light-terminal-white);
+  --icui-terminal-bright-white: var(--icui-vscode-light-terminal-bright-white);
+  --icui-terminal-bright-black: var(--icui-vscode-light-terminal-bright-black);
+  --icui-terminal-green: var(--icui-vscode-light-terminal-green);
+  --icui-terminal-bright-green: var(--icui-vscode-light-terminal-bright-green);
+  --icui-terminal-yellow: var(--icui-vscode-light-terminal-yellow);
+  --icui-terminal-bright-yellow: var(--icui-vscode-light-terminal-bright-yellow);
+  --icui-terminal-blue: var(--icui-vscode-light-terminal-blue);
+  --icui-terminal-bright-blue: var(--icui-vscode-light-terminal-bright-blue);
+  --icui-terminal-magenta: var(--icui-vscode-light-terminal-magenta);
+  --icui-terminal-bright-magenta: var(--icui-vscode-light-terminal-bright-magenta);
+  --icui-terminal-cyan: var(--icui-vscode-light-terminal-cyan);
+  --icui-terminal-bright-cyan: var(--icui-vscode-light-terminal-bright-cyan);
+  --icui-terminal-red: var(--icui-vscode-light-terminal-red);
+  --icui-terminal-bright-red: var(--icui-vscode-light-terminal-bright-red);
 }
 
 /* ===== COMPONENT THEMING ===== */
@@ -530,6 +666,24 @@
   --icui-success: var(--icui-github-dark-success);
   --icui-danger: var(--icui-github-dark-danger);
   --icui-warning: var(--icui-github-dark-warning);
+  
+  /* Terminal Colors - Default for all dark themes */
+  --icui-terminal-white: var(--icui-github-dark-terminal-white);
+  --icui-terminal-bright-white: var(--icui-github-dark-terminal-bright-white);
+  --icui-terminal-bright-black: var(--icui-github-dark-terminal-bright-black);
+  --icui-terminal-green: var(--icui-github-dark-terminal-green);
+  --icui-terminal-bright-green: var(--icui-github-dark-terminal-bright-green);
+  --icui-terminal-yellow: var(--icui-github-dark-terminal-yellow);
+  --icui-terminal-bright-yellow: var(--icui-github-dark-terminal-bright-yellow);
+  --icui-terminal-blue: var(--icui-github-dark-terminal-blue);
+  --icui-terminal-bright-blue: var(--icui-github-dark-terminal-bright-blue);
+  --icui-terminal-magenta: var(--icui-github-dark-terminal-magenta);
+  --icui-terminal-bright-magenta: var(--icui-github-dark-terminal-bright-magenta);
+  --icui-terminal-cyan: var(--icui-github-dark-terminal-cyan);
+  --icui-terminal-bright-cyan: var(--icui-github-dark-terminal-bright-cyan);
+  --icui-terminal-red: var(--icui-github-dark-terminal-red);
+  --icui-terminal-bright-red: var(--icui-github-dark-terminal-bright-red);
+  --icui-selection-bg: rgba(0, 157, 255, 0.75); /* vivid blue highlight */
 }
 
 /* Default dark theme tab overrides */
@@ -559,6 +713,11 @@
   background-color: var(--icui-bg-tertiary);
 }
 
+.dark .cm-selectionLayer .cm-selectionBackground,
+.dark .cm-editor .cm-selectionBackground {
+  background-color: rgba(88, 166, 255, 0.55) !important;
+}
+
 .light {
   /* Default to GitHub Light */
   --icui-bg-primary: var(--icui-github-light-bg-primary);
@@ -575,77 +734,92 @@
   --icui-success: var(--icui-github-light-success);
   --icui-danger: var(--icui-github-light-danger);
   --icui-warning: var(--icui-github-light-warning);
+  
+  /* Terminal Colors - Default for all light themes */
+  --icui-terminal-white: var(--icui-github-light-terminal-white);
+  --icui-terminal-bright-white: var(--icui-github-light-terminal-bright-white);
+  --icui-terminal-bright-black: var(--icui-github-light-terminal-bright-black);
+  --icui-terminal-green: var(--icui-github-light-terminal-green);
+  --icui-terminal-bright-green: var(--icui-github-light-terminal-bright-green);
+  --icui-terminal-yellow: var(--icui-github-light-terminal-yellow);
+  --icui-terminal-bright-yellow: var(--icui-github-light-terminal-bright-yellow);
+  --icui-terminal-blue: var(--icui-github-light-terminal-blue);
+  --icui-terminal-bright-blue: var(--icui-github-light-terminal-bright-blue);
+  --icui-terminal-magenta: var(--icui-github-light-terminal-magenta);
+  --icui-terminal-bright-magenta: var(--icui-github-light-terminal-bright-magenta);
+  --icui-terminal-cyan: var(--icui-github-light-terminal-cyan);
+  --icui-terminal-bright-cyan: var(--icui-github-light-terminal-bright-cyan);
+  --icui-terminal-red: var(--icui-github-light-terminal-red);
+  --icui-terminal-bright-red: var(--icui-github-light-terminal-bright-red);
+  --icui-selection-bg: rgba(0, 120, 212, 0.75); /* vivid blue highlight for light background */
 }
 
-/* Light theme specific overrides for terminal text visibility */
-.light .icui-enhanced-terminal-panel .xterm-screen,
-.light .icui-enhanced-terminal-panel .xterm-rows,
-.light .icui-enhanced-terminal-panel .xterm-viewport,
+.light .cm-selectionLayer .cm-selectionBackground,
+.light .cm-editor .cm-selectionBackground {
+  background-color: rgba(0, 120, 212, 0.6) !important;
+}
+
+/* ===== LIGHT THEME TERMINAL TEXT VISIBILITY FIXES ===== */
+/* Override any white/light text that would be invisible on light backgrounds */
+
 .icui-theme-github-light .icui-enhanced-terminal-panel .xterm-screen,
-.icui-theme-github-light .icui-enhanced-terminal-panel .xterm-rows,
-.icui-theme-github-light .icui-enhanced-terminal-panel .xterm-viewport,
 .icui-theme-vscode-light .icui-enhanced-terminal-panel .xterm-screen,
-.icui-theme-vscode-light .icui-enhanced-terminal-panel .xterm-rows,
-.icui-theme-vscode-light .icui-enhanced-terminal-panel .xterm-viewport {
+.light .icui-enhanced-terminal-panel .xterm-screen {
+  /* Ensure base terminal text is dark */
   color: #000000 !important;
 }
 
-/* Ensure all light theme terminals have dark text */
-.light .icui-enhanced-terminal-panel .xterm-fg-default,
-.icui-theme-github-light .icui-enhanced-terminal-panel .xterm-fg-default,
-.icui-theme-vscode-light .icui-enhanced-terminal-panel .xterm-fg-default {
-  color: #000000 !important;
-}
-
-/* Override any bright white text in light themes */
-.light .icui-enhanced-terminal-panel .xterm-fg-15,
-.light .icui-enhanced-terminal-panel .xterm-fg-bright-white,
+/* Fix bright white text (color 15) - would be invisible on light background */
+.icui-theme-github-light .icui-enhanced-terminal-panel .xterm-color-15,
 .icui-theme-github-light .icui-enhanced-terminal-panel .xterm-fg-15,
-.icui-theme-github-light .icui-enhanced-terminal-panel .xterm-fg-bright-white,
+.icui-theme-github-light .icui-enhanced-terminal-panel .xterm-bright-white,
+.icui-theme-vscode-light .icui-enhanced-terminal-panel .xterm-color-15,
 .icui-theme-vscode-light .icui-enhanced-terminal-panel .xterm-fg-15,
-.icui-theme-vscode-light .icui-enhanced-terminal-panel .xterm-fg-bright-white {
+.icui-theme-vscode-light .icui-enhanced-terminal-panel .xterm-bright-white,
+.light .icui-enhanced-terminal-panel .xterm-color-15,
+.light .icui-enhanced-terminal-panel .xterm-fg-15,
+.light .icui-enhanced-terminal-panel .xterm-bright-white {
+  color: #000000 !important;
+}
+
+/* Fix regular white text (color 7) - make it darker for visibility */
+.icui-theme-github-light .icui-enhanced-terminal-panel .xterm-color-7,
+.icui-theme-github-light .icui-enhanced-terminal-panel .xterm-fg-7,
+.icui-theme-vscode-light .icui-enhanced-terminal-panel .xterm-color-7,
+.icui-theme-vscode-light .icui-enhanced-terminal-panel .xterm-fg-7,
+.light .icui-enhanced-terminal-panel .xterm-color-7,
+.light .icui-enhanced-terminal-panel .xterm-fg-7 {
   color: #333333 !important;
 }
 
-/* Override any light/white text in light themes */
-.light .icui-enhanced-terminal-panel .xterm-fg-7,
-.light .icui-enhanced-terminal-panel .xterm-fg-white,
-.icui-theme-github-light .icui-enhanced-terminal-panel .xterm-fg-7,
-.icui-theme-github-light .icui-enhanced-terminal-panel .xterm-fg-white,
-.icui-theme-vscode-light .icui-enhanced-terminal-panel .xterm-fg-7,
-.icui-theme-vscode-light .icui-enhanced-terminal-panel .xterm-fg-white {
-  color: #555555 !important;
+/* Fix light gray text that might be hard to read */
+.icui-theme-github-light .icui-enhanced-terminal-panel .xterm-color-8,
+.icui-theme-github-light .icui-enhanced-terminal-panel .xterm-fg-8,
+.icui-theme-vscode-light .icui-enhanced-terminal-panel .xterm-color-8,
+.icui-theme-vscode-light .icui-enhanced-terminal-panel .xterm-fg-8,
+.light .icui-enhanced-terminal-panel .xterm-color-8,
+.light .icui-enhanced-terminal-panel .xterm-fg-8 {
+  color: #666666 !important;
 }
 
-/* Light theme specific overrides for code editor text visibility */
-.light .cm-editor,
-.light .cm-content,
-.icui-theme-github-light .cm-editor,
-.icui-theme-github-light .cm-content,
-.icui-theme-vscode-light .cm-editor,
-.icui-theme-vscode-light .cm-content {
+/* Ensure default terminal text is always dark in light themes */
+.icui-theme-github-light .icui-enhanced-terminal-panel .xterm-fg-default,
+.icui-theme-vscode-light .icui-enhanced-terminal-panel .xterm-fg-default,
+.light .icui-enhanced-terminal-panel .xterm-fg-default {
   color: #000000 !important;
 }
 
-/* Ensure no white text elements in light theme editors */
-.light .cm-editor *,
-.light .cm-content *,
-.icui-theme-github-light .cm-editor *,
-.icui-theme-github-light .cm-content *,
-.icui-theme-vscode-light .cm-editor *,
-.icui-theme-vscode-light .cm-content * {
-  color: inherit !important;
+/* Fix any remaining light colored text elements */
+.icui-theme-github-light .icui-enhanced-terminal-panel .xterm-rows,
+.icui-theme-github-light .icui-enhanced-terminal-panel .xterm-viewport,
+.icui-theme-vscode-light .icui-enhanced-terminal-panel .xterm-rows,
+.icui-theme-vscode-light .icui-enhanced-terminal-panel .xterm-viewport,
+.light .icui-enhanced-terminal-panel .xterm-rows,
+.light .icui-enhanced-terminal-panel .xterm-viewport {
+  color: #000000 !important;
 }
 
-/* Override any potential light colored text in light themes */
-.light .cm-editor .cm-tag,
-.light .cm-editor .cm-attribute,
-.light .cm-editor .cm-property,
-.icui-theme-github-light .cm-editor .cm-tag,
-.icui-theme-github-light .cm-editor .cm-attribute,
-.icui-theme-github-light .cm-editor .cm-property,
-.icui-theme-vscode-light .cm-editor .cm-tag,
-.icui-theme-vscode-light .cm-editor .cm-attribute,
-.icui-theme-vscode-light .cm-editor .cm-property {
-  color: #000080 !important;
-} 
+/* ===== LIGHT THEME CODE EDITOR SYNTAX HIGHLIGHTING ===== */
+/* Let CodeMirror handle syntax highlighting naturally - no overrides needed */
+
+ 
