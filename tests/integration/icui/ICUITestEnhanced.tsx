@@ -161,6 +161,7 @@ export const ICUITestEnhanced: React.FC<ICUITestEnhancedProps> = ({ className = 
         content = <ICUIExplorerPanel className="h-full" />;
         break;
       case 'editor':
+        // For editor panels, use placeholder content that will be updated by the effect
         content = (
           <ICUIEnhancedEditorPanel
             files={editorFiles}
@@ -220,7 +221,7 @@ export const ICUITestEnhanced: React.FC<ICUITestEnhancedProps> = ({ className = 
     }));
   }, [editorFiles, activeFileId, handleFileChange, handleFileClose, handleFileCreate, handleFileSave, handleFileRun, handleFileActivate]);
 
-  // Initialize panels on mount
+  // Initialize panels on mount - ONLY ONCE
   React.useEffect(() => {
     const initialPanels: ICUIEnhancedPanel[] = [
       {
@@ -271,6 +272,33 @@ export const ICUITestEnhanced: React.FC<ICUITestEnhancedProps> = ({ className = 
       },
     ];
     setPanels(initialPanels);
+  }, []); // Empty dependency array - only run once on mount
+
+  // Update ALL editor panel content when files change without resetting entire panels array
+  React.useEffect(() => {
+    setPanels(prev => prev.map(panel => {
+      if (panel.type === 'editor') {
+        return {
+          ...panel,
+          content: (
+            <ICUIEnhancedEditorPanel
+              files={editorFiles}
+              activeFileId={activeFileId}
+              onFileChange={handleFileChange}
+              onFileClose={handleFileClose}
+              onFileCreate={handleFileCreate}
+              onFileSave={handleFileSave}
+              onFileRun={handleFileRun}
+              onFileActivate={handleFileActivate}
+              autoSave={true}
+              autoSaveDelay={1500}
+              className="h-full"
+            />
+          )
+        };
+      }
+      return panel;
+    }));
   }, [editorFiles, activeFileId, handleFileChange, handleFileClose, handleFileCreate, handleFileSave, handleFileRun, handleFileActivate]);
 
   // Panels are now managed by state instead of hardcoded array
@@ -310,7 +338,7 @@ export const ICUITestEnhanced: React.FC<ICUITestEnhancedProps> = ({ className = 
   const currentThemeInfo = THEME_OPTIONS.find(t => t.id === currentTheme) || THEME_OPTIONS[0];
 
   return (
-    <div className={`icui-test-enhanced flex flex-col ${currentThemeInfo.class} ${className}`} style={{ height: '100vh', minHeight: '100vh' }}>
+    <div className={`icui-test-enhanced flex flex-col ${currentThemeInfo.class} ${className}`} style={{ height: '100vh', minHeight: '100vh', maxHeight: '100vh' }}>
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b shrink-0" style={{ backgroundColor: 'var(--icui-bg-secondary)', borderColor: 'var(--icui-border-subtle)', color: 'var(--icui-text-primary)' }}>
         <h2 className="text-xl font-bold">ICUI Enhanced Framework Test</h2>
@@ -350,8 +378,8 @@ export const ICUITestEnhanced: React.FC<ICUITestEnhancedProps> = ({ className = 
         </div>
       </div>
 
-      {/* Layout - Takes remaining height */}
-      <div className="flex-1 min-h-0 overflow-hidden">
+      {/* Layout - Takes remaining height with proper constraints */}
+      <div className="flex-1 min-h-0 max-h-full overflow-hidden">
         <ICUIEnhancedLayout
           panels={panels}
           layout={layout}

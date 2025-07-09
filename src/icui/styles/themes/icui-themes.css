@@ -88,57 +88,79 @@
 }
 
 /* ===== GITHUB DARK THEME ===== */
+/* GitHub Dark Theme (Default Dark) */
 .icui-theme-github-dark {
-  --icui-bg-primary: var(--icui-github-dark-bg-primary);
-  --icui-bg-secondary: var(--icui-github-dark-bg-secondary);
-  --icui-bg-tertiary: var(--icui-github-dark-bg-tertiary);
-  --icui-bg-overlay: var(--icui-github-dark-bg-overlay);
-  --icui-border: var(--icui-github-dark-border);
-  --icui-border-subtle: var(--icui-github-dark-border-subtle);
-  --icui-text-primary: var(--icui-github-dark-text-primary);
-  --icui-text-secondary: var(--icui-github-dark-text-secondary);
-  --icui-text-muted: var(--icui-github-dark-text-muted);
-  --icui-accent: var(--icui-github-dark-accent);
-  --icui-accent-hover: var(--icui-github-dark-accent-hover);
-  --icui-success: var(--icui-github-dark-success);
-  --icui-danger: var(--icui-github-dark-danger);
-  --icui-warning: var(--icui-github-dark-warning);
+  /* Background Colors */
+  --icui-bg-primary: #0d1117;
+  --icui-bg-secondary: #21262d;
+  --icui-bg-tertiary: #30363d;
+  --icui-bg-overlay: #1c2128;
+
+  /* Text Colors */
+  --icui-text-primary: #e6edf3;
+  --icui-text-secondary: #7d8590;
+  --icui-text-muted: #656d76;
+
+  /* Border Colors - DIMMED for better dark theme experience */
+  --icui-border: #30363d;
+  --icui-border-subtle: #21262d;
+
+  /* Accent Colors */
+  --icui-accent: #238636;
+  --icui-accent-hover: #2ea043;
+  --icui-success: #238636;
+  --icui-danger: #da3633;
+  --icui-warning: #d29922;
 }
 
-/* ===== MONOKAI THEME ===== */
+/* Monokai Theme */
 .icui-theme-monokai {
-  --icui-bg-primary: var(--icui-monokai-bg-primary);
-  --icui-bg-secondary: var(--icui-monokai-bg-secondary);
-  --icui-bg-tertiary: var(--icui-monokai-bg-tertiary);
-  --icui-bg-overlay: var(--icui-monokai-bg-overlay);
-  --icui-border: var(--icui-monokai-border);
-  --icui-border-subtle: var(--icui-monokai-border-subtle);
-  --icui-text-primary: var(--icui-monokai-text-primary);
-  --icui-text-secondary: var(--icui-monokai-text-secondary);
-  --icui-text-muted: var(--icui-monokai-text-muted);
-  --icui-accent: var(--icui-monokai-accent);
-  --icui-accent-hover: var(--icui-monokai-accent-hover);
-  --icui-success: var(--icui-monokai-success);
-  --icui-danger: var(--icui-monokai-danger);
-  --icui-warning: var(--icui-monokai-warning);
+  /* Background Colors */
+  --icui-bg-primary: #272822;
+  --icui-bg-secondary: #3e3d32;
+  --icui-bg-tertiary: #49483e;
+  --icui-bg-overlay: #2f3129;
+
+  /* Text Colors */
+  --icui-text-primary: #f8f8f2;
+  --icui-text-secondary: #75715e;
+  --icui-text-muted: #5e5a4e;
+
+  /* Border Colors - DIMMED */
+  --icui-border: #3e3d32;
+  --icui-border-subtle: #2f3129;
+
+  /* Accent Colors */
+  --icui-accent: #a6e22e;
+  --icui-accent-hover: #b8f040;
+  --icui-success: #a6e22e;
+  --icui-danger: #f92672;
+  --icui-warning: #e6db74;
 }
 
-/* ===== ONE DARK THEME ===== */
+/* One Dark Theme */
 .icui-theme-one-dark {
-  --icui-bg-primary: var(--icui-one-dark-bg-primary);
-  --icui-bg-secondary: var(--icui-one-dark-bg-secondary);
-  --icui-bg-tertiary: var(--icui-one-dark-bg-tertiary);
-  --icui-bg-overlay: var(--icui-one-dark-bg-overlay);
-  --icui-border: var(--icui-one-dark-border);
-  --icui-border-subtle: var(--icui-one-dark-border-subtle);
-  --icui-text-primary: var(--icui-one-dark-text-primary);
-  --icui-text-secondary: var(--icui-one-dark-text-secondary);
-  --icui-text-muted: var(--icui-one-dark-text-muted);
-  --icui-accent: var(--icui-one-dark-accent);
-  --icui-accent-hover: var(--icui-one-dark-accent-hover);
-  --icui-success: var(--icui-one-dark-success);
-  --icui-danger: var(--icui-one-dark-danger);
-  --icui-warning: var(--icui-one-dark-warning);
+  /* Background Colors */
+  --icui-bg-primary: #282c34;
+  --icui-bg-secondary: #3e4451;
+  --icui-bg-tertiary: #4b5263;
+  --icui-bg-overlay: #2c313c;
+
+  /* Text Colors */
+  --icui-text-primary: #abb2bf;
+  --icui-text-secondary: #5c6370;
+  --icui-text-muted: #4b5263;
+
+  /* Border Colors - DIMMED */
+  --icui-border: #3e4451;
+  --icui-border-subtle: #2c313c;
+
+  /* Accent Colors */
+  --icui-accent: #61afef;
+  --icui-accent-hover: #73b7f2;
+  --icui-success: #98c379;
+  --icui-danger: #e06c75;
+  --icui-warning: #e5c07b;
 }
 
 /* ===== GITHUB LIGHT THEME ===== */
@@ -221,14 +243,15 @@
 .icui-panel-tab {
   border-color: var(--icui-border-subtle);
   color: var(--icui-text-secondary);
-}
-
-.icui-panel-tab:hover {
   background-color: var(--icui-bg-tertiary);
 }
 
+.icui-panel-tab:hover {
+  background-color: var(--icui-bg-secondary);
+}
+
 .icui-panel-tab.active {
-  background-color: var(--icui-bg-primary);
+  background-color: var(--icui-bg-secondary);
   color: var(--icui-text-primary);
 }
 
@@ -254,17 +277,17 @@
 }
 
 .icui-tab-container .icui-tab {
-  background-color: var(--icui-bg-secondary);
+  background-color: var(--icui-bg-tertiary);
   border-color: var(--icui-border-subtle);
   color: var(--icui-text-secondary);
 }
 
 .icui-tab-container .icui-tab:hover {
-  background-color: var(--icui-bg-tertiary);
+  background-color: var(--icui-bg-secondary);
 }
 
 .icui-tab-container .icui-tab.active {
-  background-color: var(--icui-bg-primary);
+  background-color: var(--icui-bg-secondary);
   color: var(--icui-text-primary);
 }
 

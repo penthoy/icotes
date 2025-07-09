@@ -93,12 +93,14 @@ helloWorld();`);
 
       {/* Editor Area */}
       <div className="flex-1 min-h-0 overflow-hidden" style={{ backgroundColor: 'var(--icui-bg-primary)' }}>
-        <CodeEditor
-          code={content}
-          language={language}
-          onCodeChange={handleContentChange}
-          theme="dark"
-        />
+        <div style={{ height: '100%', backgroundColor: 'var(--icui-bg-primary)' }}>
+          <CodeEditor
+            code={content}
+            language={language}
+            onCodeChange={handleContentChange}
+            theme="dark"
+          />
+        </div>
       </div>
 
       {/* Status Bar */}

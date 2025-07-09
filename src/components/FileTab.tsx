@@ -28,8 +28,8 @@ const FileTab = ({
       <div
         className={cn(
           "flex items-center gap-2 px-3 py-2 border-r border-border cursor-pointer hover:bg-muted/50 transition-colors",
-          isActive && "bg-background border-b-2 border-b-primary",
-          !isActive && "bg-muted/30",
+          isActive && "bg-muted/20 border-b-2 border-b-primary",
+          !isActive && "bg-muted/50",
         )}
         onClick={onClick}
       >

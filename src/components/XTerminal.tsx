@@ -121,11 +121,11 @@ const XTerminal: React.ForwardRefRenderFunction<XTerminalRef, XTerminalProps> = 
     try {
       terminal.current = new Terminal({
         theme: theme === "dark" ? {
-          background: "#1e1e1e",
-          foreground: "#cccccc",
-          cursor: "#cccccc",
-          cursorAccent: "#1e1e1e",
-          selectionBackground: "#264f78",
+          background: "var(--icui-bg-primary)",
+          foreground: "var(--icui-text-primary)",
+          cursor: "var(--icui-text-primary)",
+          cursorAccent: "var(--icui-bg-primary)",
+          selectionBackground: "var(--icui-accent)",
           black: "#000000",
           brightBlack: "#666666",
           red: "#cd3131",
@@ -143,11 +143,11 @@ const XTerminal: React.ForwardRefRenderFunction<XTerminalRef, XTerminalProps> = 
           white: "#e5e5e5",
           brightWhite: "#ffffff",
         } : {
-          background: "#ffffff",
-          foreground: "#000000",
-          cursor: "#000000",
-          cursorAccent: "#ffffff",
-          selectionBackground: "#0078d4",
+          background: "var(--icui-bg-primary)",
+          foreground: "var(--icui-text-primary)",
+          cursor: "var(--icui-text-primary)",
+          cursorAccent: "var(--icui-bg-primary)",
+          selectionBackground: "var(--icui-accent)",
           black: "#000000",
           brightBlack: "#666666",
           red: "#cd3131",
@@ -286,7 +286,7 @@ const XTerminal: React.ForwardRefRenderFunction<XTerminalRef, XTerminalProps> = 
   return (
     <div className={`flex flex-col h-full ${className}`} 
          style={{ 
-           backgroundColor: theme === "dark" ? "#1e1e1e" : "#ffffff"
+           backgroundColor: 'var(--icui-bg-primary)'
          }}>
       <div className="flex items-center justify-between p-2 bg-muted/30 border-b border-border flex-shrink-0">
         <div className="flex items-center gap-2">
@@ -327,7 +327,7 @@ const XTerminal: React.ForwardRefRenderFunction<XTerminalRef, XTerminalProps> = 
           className="w-full h-full"
           style={{ 
             minHeight: '150px',
-            backgroundColor: theme === "dark" ? "#1e1e1e" : "#ffffff"
+            backgroundColor: 'var(--icui-bg-primary)'
           }}
         />
       </div>

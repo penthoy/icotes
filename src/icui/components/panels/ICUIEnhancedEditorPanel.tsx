@@ -269,7 +269,7 @@ export const ICUIEnhancedEditorPanel: React.FC<ICUIEnhancedEditorPanelProps> = (
               min-w-[140px] max-w-[200px] select-none hover:opacity-80 transition-opacity
             `}
             style={{
-              backgroundColor: file.id === currentActiveId ? 'var(--icui-bg-primary)' : 'var(--icui-bg-secondary)',
+              backgroundColor: file.id === currentActiveId ? 'var(--icui-bg-secondary)' : 'var(--icui-bg-tertiary)',
               borderRightColor: 'var(--icui-border-subtle)',
               color: file.id === currentActiveId ? 'var(--icui-text-primary)' : 'var(--icui-text-secondary)'
             }}
@@ -354,12 +354,14 @@ export const ICUIEnhancedEditorPanel: React.FC<ICUIEnhancedEditorPanelProps> = (
                 style={{ backgroundColor: 'var(--icui-bg-primary)' }}
               >
                 {/* Use CodeEditor component for syntax highlighting */}
-                <CodeEditor
-                  code={file.content}
-                  language={file.language}
-                  onCodeChange={(content: string) => handleContentChange(file.id, content)}
-                  theme={theme}
-                />
+                <div style={{ height: '100%', backgroundColor: 'var(--icui-bg-primary)' }}>
+                  <CodeEditor
+                    code={file.content}
+                    language={file.language}
+                    onCodeChange={(content: string) => handleContentChange(file.id, content)}
+                    theme={theme}
+                  />
+                </div>
               </div>
             ))}
           </div>

@@ -5,6 +5,40 @@ A web-based JavaScript code editor built with React, CodeMirror 6, and modern we
 
 ## Recently Finished
 
+### CodeEditor Background & Divider Improvements - COMPLETED ✅
+**Issue**: Code Editor unused/empty space remained bright white even in dark themes, and dividers were too bright.
+
+**Solution**:
+- **Fixed CodeEditor Background**: Added explicit dark background styling (`#1e1e1e`) to both container and editor areas
+- **Enhanced Panel Integration**: Wrapped CodeEditor components with proper theme-aware background containers
+- **Dimmed Divider Colors**: Reduced brightness of border colors in dark themes:
+  - GitHub Dark: borders now use `#30363d` and `#21262d` (much dimmer)
+  - Monokai: borders now use `#3e3d32` and `#2f3129` (subtle)
+  - One Dark: borders now use `#3e4451` and `#2c313c` (appropriate contrast)
+- **Consistent Dark Experience**: All editor areas now maintain dark backgrounds without white spaces
+
+**Components Updated**:
+- `CodeEditor.tsx`: Added explicit theme-based background styling
+- `ICUIEnhancedEditorPanel.tsx`: Wrapped CodeEditor with theme containers
+- `ICUIEditorPanel.tsx`: Added proper background containers
+- `icui-themes.css`: Dimmed all dark theme border colors
+
+### Critical Bug Fix - Panel Management - COMPLETED ✅
+**Issue**: Dynamic panels disappeared when switching tabs in Code Editor, causing infinite tab switching loops.
+
+**Root Cause**: The `useEffect` hook that initialized panels was running every time editor files changed, completely resetting the panels array and removing dynamically added panels.
+
+**Solution**: 
+- **Separated Panel Initialization**: Initial panels now created only once on component mount
+- **Dynamic Content Updates**: Editor panel content updates without resetting entire panels array 
+- **Fixed Panel Type Matching**: Content updates now affect all editor panels (initial + dynamically added)
+- **Preserved Panel State**: Dynamically added panels now persist across tab switches
+
+**Tests to Verify Fix**:
+1. ✅ Add panel via dropdown → Switch Code Editor tabs → Panel persists
+2. ✅ Multiple panel creation → Tab switching → No infinite loops
+3. ✅ Editor panels maintain file state across updates
+
 ### Theme System Refinements - COMPLETED ✅
 - **Fixed Active Tab Styling**: Active tabs now use lighter colors instead of darker ones for better visual hierarchy
 - **Fixed Code Editor Empty Area**: Code editor background now properly uses theme CSS variables instead of hardcoded white
@@ -39,6 +73,22 @@ A web-based JavaScript code editor built with React, CodeMirror 6, and modern we
 
 ## In Progress
 
-*No tasks currently in progress*
+### Layout System - Panel Footer Attachment Fix
+**Issue**: Bottom footer and panel bottoms become detached when browser is resized. The footer doesn't scale together with the panels during browser stretching.
+
+**Root Cause**: The flexbox layout system isn't properly maintaining height constraints through the component tree during browser resize events.
+
+**Solution Approach**:
+- Added `maxHeight: '100vh'` to main container to prevent overflow
+- Added `max-h-full` to flex-1 layout container for proper constraint propagation
+- Updated `ICUIEnhancedLayout` to use `flex flex-col` layout structure
+- Made `ICUIFrameContainer` use `flex-1` for proper space filling
+
+**Components Being Updated**:
+- `tests/integration/icui/ICUITestEnhanced.tsx`: Main layout container structure
+- `src/icui/components/ICUIEnhancedLayout.tsx`: Layout component flex structure
+- `src/icui/components/ICUIFrameContainer.tsx`: Frame container height handling
+
+**Expected Behavior**: When browser is resized, panels and footer should scale together maintaining proper attachment at all times.
 
 ## Future

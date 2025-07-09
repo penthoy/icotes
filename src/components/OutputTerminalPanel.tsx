@@ -81,8 +81,8 @@ const OutputTerminalPanel: React.ForwardRefRenderFunction<XTerminalRef, OutputTe
     const isActive = tabId === activeTabId;
     return `flex items-center gap-2 px-3 py-2 text-sm font-medium border-b-2 transition-colors group ${
       isActive
-        ? "border-primary text-primary bg-muted"
-        : "border-transparent text-muted-foreground hover:text-foreground"
+        ? "border-primary text-primary bg-muted/20"
+        : "border-transparent text-muted-foreground hover:text-foreground bg-muted/50"
     }`;
   };
 

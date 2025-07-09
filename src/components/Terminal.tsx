@@ -134,7 +134,19 @@ const Terminal: React.FC<TerminalProps> = ({
         return 'text-red-400';
       case 'output':
       default:
-        return 'text-foreground';
+        return '';
+    }
+  };
+
+  const getLineStyle = (type: 'input' | 'output' | 'error') => {
+    switch (type) {
+      case 'input':
+        return { color: 'var(--icui-accent)' };
+      case 'error':
+        return { color: 'var(--icui-danger)' };
+      case 'output':
+      default:
+        return { color: 'var(--icui-text-primary)' };
     }
   };
 
@@ -154,24 +166,29 @@ const Terminal: React.FC<TerminalProps> = ({
       
       <div
         ref={terminalRef}
-        className="flex-1 overflow-y-auto p-2 font-mono text-sm bg-black/90 text-green-400"
+        className="flex-1 overflow-y-auto p-2 font-mono text-sm"
+        style={{ 
+          backgroundColor: 'var(--icui-bg-primary)',
+          color: 'var(--icui-text-primary)'
+        }}
         onClick={() => inputRef.current?.focus()}
       >
         {lines.map((line) => (
-          <div key={line.id} className={`mb-1 ${getLineClassName(line.type)}`}>
+          <div key={line.id} className={`mb-1 ${getLineClassName(line.type)}`} style={getLineStyle(line.type)}>
             {line.content}
           </div>
         ))}
         
         <div className="flex items-center">
-          <span className="text-green-400 mr-2">$</span>
+          <span className="mr-2" style={{ color: 'var(--icui-accent)' }}>$</span>
           <input
             ref={inputRef}
             type="text"
             value={currentInput}
             onChange={(e) => setCurrentInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            className="flex-1 bg-transparent outline-none text-green-400"
+            className="flex-1 bg-transparent outline-none"
+            style={{ color: 'var(--icui-text-primary)' }}
             placeholder="Enter command..."
             autoFocus
           />

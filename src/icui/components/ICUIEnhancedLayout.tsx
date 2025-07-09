@@ -476,7 +476,7 @@ export const ICUIEnhancedLayout: React.FC<ICUIEnhancedLayoutProps> = ({
   );
 
   return (
-    <div className={`icui-enhanced-layout w-full h-full min-h-0 ${className}`}>
+    <div className={`icui-enhanced-layout w-full h-full min-h-0 flex flex-col ${className}`}>
       <ICUIFrameContainer
         id="enhanced-layout-frame"
         config={{
@@ -486,7 +486,7 @@ export const ICUIEnhancedLayout: React.FC<ICUIEnhancedLayoutProps> = ({
           resizeHandleSize: 6,
           snapThreshold: 20,
         }}
-        className="w-full h-full"
+        className="w-full h-full flex-1"
       >
         {currentLayout.layoutMode === 'h-layout' ? renderHLayout() : renderStandardLayout()}
       </ICUIFrameContainer>

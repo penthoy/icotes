@@ -110,7 +110,7 @@ export const ICUITabContainer: React.FC<ICUITabContainerProps> = ({
               }
             `}
             style={{
-              backgroundColor: tab.id === activeTabId ? 'var(--icui-bg-primary)' : 'var(--icui-bg-secondary)',
+              backgroundColor: tab.id === activeTabId ? 'var(--icui-bg-secondary)' : 'var(--icui-bg-tertiary)',
               borderRightColor: 'var(--icui-border-subtle)',
               borderBottomColor: tab.id === activeTabId ? 'var(--icui-accent)' : 'transparent',
               color: tab.id === activeTabId ? 'var(--icui-text-primary)' : 'var(--icui-text-secondary)'

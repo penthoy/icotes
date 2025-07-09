@@ -189,10 +189,20 @@ const CodeEditor = ({
   };
 
   return (
-    <div className="flex flex-col h-full bg-background">
+    <div 
+      className="flex flex-col h-full"
+      style={{ 
+        backgroundColor: 'var(--icui-bg-primary)',
+        color: 'var(--icui-text-primary)'
+      }}
+    >
       <div
         ref={editorRef}
         className="flex-grow overflow-auto font-mono text-sm h-full"
+        style={{ 
+          backgroundColor: 'var(--icui-bg-primary)',
+          minHeight: "100%"
+        }}
       />
     </div>
   );

@@ -85,14 +85,17 @@
   transition: all 0.2s ease-in-out;
   max-width: 200px;
   color: var(--icui-text-secondary);
-}
-
-.icui-panel-tab:hover {
+  /* Default (inactive) tabs use darker background */
   background-color: var(--icui-bg-tertiary);
 }
 
+.icui-panel-tab:hover {
+  background-color: var(--icui-bg-secondary);
+}
+
 .icui-panel-tab.active {
-  background-color: var(--icui-bg-primary);
+  /* Active tabs use lighter background */
+  background-color: var(--icui-bg-secondary);
   border-bottom: none;
   position: relative;
   color: var(--icui-text-primary);
