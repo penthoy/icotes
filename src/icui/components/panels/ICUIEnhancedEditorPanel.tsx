@@ -99,16 +99,16 @@ export const ICUIEnhancedEditorPanel: React.FC<ICUIEnhancedEditorPanelProps> = (
   const activeFile = currentFiles.find(f => f.id === currentActiveId);
 
   // Handle file content changes
-  const handleContentChange = useCallback((content: string) => {
+  const handleContentChange = useCallback((fileId: string, content: string) => {
     if (!activeFile || readOnly) return;
 
     if (onFileChange) {
       // Controlled mode
-      onFileChange(activeFile.id, content);
+      onFileChange(fileId, content);
     } else {
       // Uncontrolled mode
       setInternalFiles(prev => prev.map(f => 
-        f.id === activeFile.id 
+        f.id === fileId 
           ? { ...f, content, modified: true }
           : f
       ));
@@ -120,7 +120,7 @@ export const ICUIEnhancedEditorPanel: React.FC<ICUIEnhancedEditorPanelProps> = (
         clearTimeout(autoSaveTimeout.current);
       }
       autoSaveTimeout.current = setTimeout(() => {
-        onFileSave?.(activeFile.id);
+        onFileSave?.(fileId);
       }, autoSaveDelay);
     }
   }, [activeFile, readOnly, onFileChange, autoSave, autoSaveDelay, onFileSave]);
@@ -258,28 +258,30 @@ export const ICUIEnhancedEditorPanel: React.FC<ICUIEnhancedEditorPanelProps> = (
   }
 
   return (
-    <div className={`icui-enhanced-editor-panel h-full flex flex-col bg-gray-900 ${className}`}>
+    <div className={`icui-enhanced-editor-panel h-full flex flex-col ${className}`} style={{ backgroundColor: 'var(--icui-bg-primary)' }}>
       {/* Tab Bar */}
-      <div className="flex items-center bg-gray-800 border-b border-gray-700 overflow-x-auto">
+      <div className="flex items-center overflow-x-auto border-b" style={{ backgroundColor: 'var(--icui-bg-secondary)', borderBottomColor: 'var(--icui-border-subtle)' }}>
         {currentFiles.map(file => (
           <div
             key={file.id}
             className={`
-              flex items-center px-3 py-2 text-sm cursor-pointer border-r border-gray-700
-              min-w-[140px] max-w-[200px] select-none
-              ${file.id === currentActiveId 
-                ? 'bg-gray-900 text-white' 
-                : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-              }
+              flex items-center px-3 py-2 text-sm cursor-pointer border-r
+              min-w-[140px] max-w-[200px] select-none hover:opacity-80 transition-opacity
             `}
+            style={{
+              backgroundColor: file.id === currentActiveId ? 'var(--icui-bg-primary)' : 'var(--icui-bg-secondary)',
+              borderRightColor: 'var(--icui-border-subtle)',
+              color: file.id === currentActiveId ? 'var(--icui-text-primary)' : 'var(--icui-text-secondary)'
+            }}
             onClick={() => handleTabClick(file.id)}
           >
             <span className="mr-2">{getFileIcon(file.language)}</span>
             <span className="flex-1 truncate">{file.name}</span>
-            {file.modified && <span className="ml-1 text-orange-500 text-xs">●</span>}
+            {file.modified && <span className="ml-1 text-xs" style={{ color: 'var(--icui-warning)' }}>●</span>}
             {currentFiles.length > 1 && (
               <button
-                className="ml-2 text-gray-400 hover:text-red-500 text-xs w-4 h-4 flex items-center justify-center"
+                className="ml-2 text-xs w-4 h-4 flex items-center justify-center hover:opacity-80 transition-opacity"
+                style={{ color: 'var(--icui-text-secondary)' }}
                 onClick={(e) => {
                   e.stopPropagation();
                   handleFileClose(file.id);
@@ -293,7 +295,8 @@ export const ICUIEnhancedEditorPanel: React.FC<ICUIEnhancedEditorPanelProps> = (
         ))}
         <button
           onClick={handleNewFile}
-          className="px-3 py-2 text-sm bg-blue-500 text-white hover:bg-blue-600 border-r border-gray-700"
+          className="px-3 py-2 text-sm border-r hover:opacity-80 transition-opacity"
+          style={{ backgroundColor: 'var(--icui-accent)', borderRightColor: 'var(--icui-border-subtle)', color: 'var(--icui-text-primary)' }}
           title="New file"
         >
           +
@@ -301,13 +304,13 @@ export const ICUIEnhancedEditorPanel: React.FC<ICUIEnhancedEditorPanelProps> = (
       </div>
 
       {/* Editor Controls */}
-      <div className="flex items-center justify-between px-3 py-1 bg-gray-800 border-b border-gray-700">
+      <div className="flex items-center justify-between px-3 py-1 border-b" style={{ backgroundColor: 'var(--icui-bg-secondary)', borderBottomColor: 'var(--icui-border-subtle)' }}>
         <div className="flex items-center space-x-2">
-          <span className="text-xs text-gray-400">
+          <span className="text-xs" style={{ color: 'var(--icui-text-muted)' }}>
             {activeFile?.language.toUpperCase()}
           </span>
           {showLineNumbers && (
-            <span className="text-xs text-gray-400">
+            <span className="text-xs" style={{ color: 'var(--icui-text-muted)' }}>
               Lines: {activeFile?.content.split('\n').length || 0}
             </span>
           )}
@@ -316,41 +319,57 @@ export const ICUIEnhancedEditorPanel: React.FC<ICUIEnhancedEditorPanelProps> = (
           <button
             onClick={handleFileSave}
             disabled={!activeFile?.modified}
-            className="text-xs px-2 py-1 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded text-white"
+            className="text-xs px-2 py-1 rounded hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
+            style={{ backgroundColor: 'var(--icui-success)', color: 'var(--icui-text-primary)' }}
           >
             Save
           </button>
           <button
             onClick={handleRunCode}
             disabled={!activeFile}
-            className="text-xs px-2 py-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded text-white"
+            className="text-xs px-2 py-1 rounded hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
+            style={{ backgroundColor: 'var(--icui-accent)', color: 'var(--icui-text-primary)' }}
           >
             Run
           </button>
         </div>
       </div>
 
-      {/* Editor Content */}
-      <div className="flex-1 min-h-0 overflow-hidden">
-        {activeFile && (
-          <CodeEditor
-            code={activeFile.content}
-            language={activeFile.language}
-            onCodeChange={handleContentChange}
-            theme={theme}
-          />
+      {/* Editor Content Area */}
+      <div className="flex-1 overflow-hidden" style={{ backgroundColor: 'var(--icui-bg-primary)' }}>
+        {currentFiles.length === 0 ? (
+          <div className="h-full flex items-center justify-center" style={{ backgroundColor: 'var(--icui-bg-primary)', color: 'var(--icui-text-muted)' }}>
+            <div className="text-center">
+              <div className="text-4xl mb-4">📝</div>
+              <div className="text-lg font-medium mb-2">No files open</div>
+              <div className="text-sm">Create a new file or open an existing one to start editing</div>
+            </div>
+          </div>
+        ) : (
+          <div className="h-full" style={{ backgroundColor: 'var(--icui-bg-primary)' }}>
+            {currentFiles.map(file => (
+              <div
+                key={file.id}
+                className={`h-full ${file.id === currentActiveId ? 'block' : 'hidden'}`}
+                style={{ backgroundColor: 'var(--icui-bg-primary)' }}
+              >
+                {/* Use CodeEditor component for syntax highlighting */}
+                <CodeEditor
+                  code={file.content}
+                  language={file.language}
+                  onCodeChange={(content: string) => handleContentChange(file.id, content)}
+                  theme={theme}
+                />
+              </div>
+            ))}
+          </div>
         )}
       </div>
 
       {/* Status Bar */}
-      <div className="px-3 py-1 bg-gray-800 border-t border-gray-700 text-xs text-gray-400 flex justify-between">
-        <span>
-          {activeFile ? `${activeFile.name} - ${activeFile.language}` : 'No file selected'}
-        </span>
-        <span>
-          Ctrl+S: Save • Ctrl+N: New File • Ctrl+Enter: Run
-          {autoSave && ' • Auto-save enabled'}
-        </span>
+      <div className="px-3 py-1 border-t text-xs flex justify-between" style={{ backgroundColor: 'var(--icui-bg-secondary)', borderTopColor: 'var(--icui-border-subtle)', color: 'var(--icui-text-muted)' }}>
+        <span>{activeFile ? `${activeFile.language} • ${activeFile.name}` : 'No file selected'}</span>
+        <span>Ctrl+S to save • Ctrl+N for new file • Ctrl+Enter to run</span>
       </div>
     </div>
   );

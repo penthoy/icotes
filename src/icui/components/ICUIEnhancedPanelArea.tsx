@@ -6,6 +6,7 @@
 
 import React, { useState, useCallback, useRef } from 'react';
 import { ICUITabContainer, ICUITab } from './ICUITabContainer';
+import { ICUIPanelType } from './ICUIPanelSelector';
 
 export interface ICUIEnhancedPanel {
   id: string;
@@ -33,6 +34,10 @@ export interface ICUIEnhancedPanelAreaProps {
   emptyMessage?: string;
   orientation?: 'horizontal' | 'vertical';
   enableDragDrop?: boolean; // Add this prop to control drag/drop behavior
+  // New props for panel selector
+  availablePanelTypes?: ICUIPanelType[];
+  onPanelAdd?: (panelType: ICUIPanelType) => void;
+  showPanelSelector?: boolean;
 }
 
 export const ICUIEnhancedPanelArea: React.FC<ICUIEnhancedPanelAreaProps> = ({
@@ -49,6 +54,10 @@ export const ICUIEnhancedPanelArea: React.FC<ICUIEnhancedPanelAreaProps> = ({
   emptyMessage = 'Drop panels here',
   orientation = 'horizontal',
   enableDragDrop = true, // Default to true
+  // New props for panel selector
+  availablePanelTypes,
+  onPanelAdd,
+  showPanelSelector = false,
 }) => {
   const [dragOver, setDragOver] = useState(false);
   const dragCounter = useRef(0);
@@ -172,6 +181,9 @@ export const ICUIEnhancedPanelArea: React.FC<ICUIEnhancedPanelAreaProps> = ({
           areaId={id}
           enableDragDrop={enableDragDrop}
           className="h-full"
+          availablePanelTypes={availablePanelTypes}
+          onPanelAdd={onPanelAdd}
+          showPanelSelector={showPanelSelector}
         />
       </div>
     );
@@ -192,19 +204,20 @@ export const ICUIEnhancedPanelArea: React.FC<ICUIEnhancedPanelAreaProps> = ({
       onDrop={handleDrop}
     >
       {/* Single Panel Header */}
-      <div className="flex items-center justify-between px-3 py-1 bg-gray-800 border-b border-gray-700">
+      <div className="flex items-center justify-between px-3 py-1 border-b" style={{ backgroundColor: 'var(--icui-bg-secondary)', borderBottomColor: 'var(--icui-border-subtle)', color: 'var(--icui-text-primary)' }}>
         <div className="flex items-center space-x-2">
           {singlePanel.icon && (
             <span className="text-sm">{singlePanel.icon}</span>
           )}
-          <span className="text-sm font-medium text-white">
+          <span className="text-sm font-medium">
             {singlePanel.title}
-            {singlePanel.modified && <span className="ml-1 text-orange-500">●</span>}
+            {singlePanel.modified && <span className="ml-1" style={{ color: 'var(--icui-warning)' }}>●</span>}
           </span>
         </div>
         {singlePanel.closable && onPanelClose && (
           <button
-            className="text-gray-400 hover:text-red-500 text-sm"
+            className="text-sm hover:opacity-80 transition-opacity"
+            style={{ color: 'var(--icui-text-secondary)' }}
             onClick={() => onPanelClose(singlePanel.id)}
             title="Close panel"
           >
@@ -214,7 +227,7 @@ export const ICUIEnhancedPanelArea: React.FC<ICUIEnhancedPanelAreaProps> = ({
       </div>
 
       {/* Single Panel Content */}
-      <div className="flex-1 min-h-0 overflow-hidden bg-black">
+      <div className="flex-1 min-h-0 overflow-hidden" style={{ backgroundColor: 'var(--icui-bg-primary)' }}>
         {singlePanel.content}
       </div>
     </div>

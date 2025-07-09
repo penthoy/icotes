@@ -8,6 +8,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { ICUIFrameContainer } from './ICUIFrameContainer';
 import { ICUISplitPanel } from './ICUISplitPanel';
 import { ICUIEnhancedPanelArea, ICUIEnhancedPanel } from './ICUIEnhancedPanelArea';
+import { ICUIPanelType } from './ICUIPanelSelector';
 
 export interface ICUILayoutArea {
   id: string;
@@ -20,13 +21,13 @@ export interface ICUILayoutArea {
 }
 
 export interface ICUILayoutConfig {
+  layoutMode?: 'standard' | 'h-layout';
   areas: Record<string, ICUILayoutArea>;
-  layoutMode?: 'standard' | 'h-layout'; // New layout mode option
   splitConfig?: {
     mainVerticalSplit?: number;
     mainHorizontalSplit?: number;
     rightVerticalSplit?: number;
-    centerVerticalSplit?: number; // For H-layout center split
+    centerVerticalSplit?: number;
   };
 }
 
@@ -41,6 +42,10 @@ export interface ICUIEnhancedLayoutProps {
   enableDragDrop?: boolean;
   persistLayout?: boolean;
   layoutKey?: string;
+  // New props for panel selector
+  availablePanelTypes?: ICUIPanelType[];
+  onPanelAdd?: (panelType: ICUIPanelType, areaId: string) => void;
+  showPanelSelector?: boolean;
 }
 
 // Default layout configuration
@@ -69,6 +74,10 @@ export const ICUIEnhancedLayout: React.FC<ICUIEnhancedLayoutProps> = ({
   enableDragDrop = true,
   persistLayout = true,
   layoutKey = 'icui-layout',
+  // New props for panel selector
+  availablePanelTypes,
+  onPanelAdd,
+  showPanelSelector = false,
 }) => {
   const [currentLayout, setCurrentLayout] = useState<ICUILayoutConfig>(layout || defaultLayout);
 
@@ -191,6 +200,13 @@ export const ICUIEnhancedLayout: React.FC<ICUIEnhancedLayoutProps> = ({
     onPanelMove?.(panelId, targetAreaId, sourceAreaId);
   }, [onPanelMove]);
 
+  // Handle panel addition
+  const handlePanelAdd = useCallback((panelType: ICUIPanelType, areaId: string) => {
+    if (onPanelAdd) {
+      onPanelAdd(panelType, areaId);
+    }
+  }, [onPanelAdd]);
+
   // Handle split changes
   const handleSplitChange = useCallback((splitName: string, value: number) => {
     setCurrentLayout(prev => ({
@@ -239,6 +255,9 @@ export const ICUIEnhancedLayout: React.FC<ICUIEnhancedLayoutProps> = ({
             enableDragDrop={enableDragDrop}
             emptyMessage="Drop explorer panels here"
             className="h-full"
+            availablePanelTypes={availablePanelTypes}
+            onPanelAdd={(panelType) => handlePanelAdd(panelType, 'left')}
+            showPanelSelector={showPanelSelector}
           />
         ) : null
       }
@@ -280,6 +299,9 @@ export const ICUIEnhancedLayout: React.FC<ICUIEnhancedLayoutProps> = ({
                   enableDragDrop={enableDragDrop}
                   emptyMessage="Drop editor panels here"
                   className="h-full"
+                  availablePanelTypes={availablePanelTypes}
+                  onPanelAdd={(panelType) => handlePanelAdd(panelType, 'center')}
+                  showPanelSelector={showPanelSelector}
                 />
               }
               secondPanel={
@@ -297,6 +319,9 @@ export const ICUIEnhancedLayout: React.FC<ICUIEnhancedLayoutProps> = ({
                     emptyMessage="Drop terminal/output panels here"
                     showWhenEmpty={true}
                     className="h-full"
+                    availablePanelTypes={availablePanelTypes}
+                    onPanelAdd={(panelType) => handlePanelAdd(panelType, 'bottom')}
+                    showPanelSelector={showPanelSelector}
                   />
                 ) : null
               }
@@ -317,6 +342,9 @@ export const ICUIEnhancedLayout: React.FC<ICUIEnhancedLayoutProps> = ({
                 emptyMessage="Drop utility panels here"
                 showWhenEmpty={true}
                 className="h-full"
+                availablePanelTypes={availablePanelTypes}
+                onPanelAdd={(panelType) => handlePanelAdd(panelType, 'right')}
+                showPanelSelector={showPanelSelector}
               />
             ) : null
           }
@@ -365,6 +393,9 @@ export const ICUIEnhancedLayout: React.FC<ICUIEnhancedLayoutProps> = ({
                 enableDragDrop={enableDragDrop}
                 emptyMessage="Drop explorer panels here"
                 className="h-full"
+                availablePanelTypes={availablePanelTypes}
+                onPanelAdd={(panelType) => handlePanelAdd(panelType, 'left')}
+                showPanelSelector={showPanelSelector}
               />
             ) : null
           }
@@ -410,6 +441,9 @@ export const ICUIEnhancedLayout: React.FC<ICUIEnhancedLayoutProps> = ({
                     emptyMessage="Drop utility panels here"
                     showWhenEmpty={true}
                     className="h-full"
+                    availablePanelTypes={availablePanelTypes}
+                    onPanelAdd={(panelType) => handlePanelAdd(panelType, 'right')}
+                    showPanelSelector={showPanelSelector}
                   />
                 ) : null
               }
@@ -432,6 +466,9 @@ export const ICUIEnhancedLayout: React.FC<ICUIEnhancedLayoutProps> = ({
             emptyMessage="Drop terminal/output panels here"
             showWhenEmpty={true}
             className="h-full"
+            availablePanelTypes={availablePanelTypes}
+            onPanelAdd={(panelType) => handlePanelAdd(panelType, 'bottom')}
+            showPanelSelector={showPanelSelector}
           />
         ) : null
       }

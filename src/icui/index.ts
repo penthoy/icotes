@@ -16,6 +16,7 @@ export { ICUIPanelArea } from './components/ICUIPanelArea';
 export { ICUITabContainer } from './components/ICUITabContainer';
 export { ICUIEnhancedPanelArea } from './components/ICUIEnhancedPanelArea';
 export { ICUIEnhancedLayout } from './components/ICUIEnhancedLayout';
+export { ICUIPanelSelector } from './components/ICUIPanelSelector';
 
 // Enhanced Panels
 export { default as ICUIEnhancedEditorPanel } from './components/panels/ICUIEnhancedEditorPanel';

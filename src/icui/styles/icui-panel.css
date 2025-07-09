@@ -5,21 +5,25 @@
 
 /* ===== BASE PANEL STYLES ===== */
 .icui-base-panel {
-  @apply border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded-lg shadow-lg;
+  border: 1px solid var(--icui-border);
+  background-color: var(--icui-bg-primary);
+  border-radius: 8px;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
   min-width: 200px;
   min-height: 100px;
   display: flex;
   flex-direction: column;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: var(--icui-text-primary);
 }
 
 .icui-base-panel.icui-panel-active {
-  @apply border-blue-500 dark:border-blue-400;
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+  border-color: var(--icui-accent);
+  box-shadow: 0 0 0 2px var(--icui-accent);
 }
 
 .icui-base-panel.icui-panel-dragging {
-  @apply cursor-move;
+  cursor: move;
   transform: rotate(1deg) scale(1.02);
   opacity: 0.9;
   z-index: 9999 !important;
@@ -28,7 +32,7 @@
 }
 
 .icui-base-panel.icui-panel-maximized {
-  @apply rounded-none;
+  border-radius: 0;
   box-shadow: none;
 }
 
@@ -39,15 +43,21 @@
 
 /* ===== PANEL HEADER STYLES ===== */
 .icui-panel-header {
-  @apply flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600;
-  border-radius: 0.5rem 0.5rem 0 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+  background-color: var(--icui-bg-secondary);
+  border-bottom: 1px solid var(--icui-border-subtle);
+  border-radius: 8px 8px 0 0;
   cursor: move;
   user-select: none;
   min-height: 40px;
+  color: var(--icui-text-primary);
 }
 
 .icui-panel-header:hover {
-  @apply bg-gray-100 dark:bg-gray-600;
+  background-color: var(--icui-bg-tertiary);
 }
 
 .icui-panel-maximized .icui-panel-header {
@@ -56,11 +66,24 @@
 
 /* Panel Type Section */
 .icui-panel-type-section {
-  @apply relative flex items-center;
+  position: relative;
+  display: flex;
+  align-items: center;
 }
 
 .icui-panel-icon {
-  @apply flex items-center justify-center w-8 h-8 rounded cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.icui-panel-icon:hover {
+  background-color: var(--icui-bg-tertiary);
 }
 
 .icui-panel-icon-emoji {
@@ -69,213 +92,191 @@
 
 /* Type Selector Dropdown */
 .icui-panel-type-selector {
-  @apply absolute top-full left-0 mt-1 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg z-50;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 0.25rem;
+  background-color: var(--icui-bg-overlay);
+  border: 1px solid var(--icui-border);
+  border-radius: 8px;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  z-index: 50;
   min-width: 120px;
 }
 
-.icui-type-option {
-  @apply flex items-center gap-2 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors cursor-pointer;
-  border: none;
-  background: none;
-  width: 100%;
-  text-align: left;
+.icui-panel-type-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  color: var(--icui-text-primary);
+  border-radius: 4px;
 }
 
-.icui-type-option.active {
-  @apply bg-blue-50 dark:bg-blue-900 text-blue-700 dark:text-blue-300;
+.icui-panel-type-option:hover {
+  background-color: var(--icui-bg-tertiary);
 }
 
-.icui-type-option:first-child {
-  border-radius: 0.5rem 0.5rem 0 0;
+.icui-panel-type-option:first-child {
+  border-radius: 8px 8px 4px 4px;
 }
 
-.icui-type-option:last-child {
-  border-radius: 0 0 0.5rem 0.5rem;
+.icui-panel-type-option:last-child {
+  border-radius: 4px 4px 8px 8px;
 }
 
-.icui-type-icon {
-  font-size: 14px;
+.icui-panel-type-option.selected {
+  background-color: var(--icui-accent);
+  color: var(--icui-bg-primary);
 }
 
-.icui-type-label {
-  @apply text-sm;
-}
-
-/* Panel Title Section */
+/* Title Section */
 .icui-panel-title-section {
-  @apply flex-1 mx-3;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 0;
 }
 
 .icui-panel-title {
-  @apply text-sm font-medium text-gray-900 dark:text-gray-100 cursor-default;
-  display: block;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--icui-text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.icui-panel-title:hover {
-  @apply text-blue-600 dark:text-blue-400;
+  min-width: 0;
+  flex: 1;
 }
 
 .icui-panel-title-input {
-  @apply w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100;
-  outline: none;
+  font-size: 0.875rem;
+  font-weight: 600;
+  background: var(--icui-bg-primary);
+  border: 1px solid var(--icui-border);
+  border-radius: 4px;
+  padding: 0.25rem 0.5rem;
+  color: var(--icui-text-primary);
+  flex: 1;
+  min-width: 0;
 }
 
 .icui-panel-title-input:focus {
-  @apply border-blue-500 dark:border-blue-400;
+  outline: none;
+  border-color: var(--icui-accent);
+  box-shadow: 0 0 0 2px var(--icui-accent);
 }
 
-/* Panel Controls */
+/* Controls Section */
 .icui-panel-controls {
-  @apply flex items-center gap-1;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
 }
 
 .icui-panel-control {
-  @apply flex items-center justify-center w-6 h-6 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors;
-  border: none;
-  background: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 4px;
   cursor: pointer;
-  font-size: 12px;
+  transition: background-color 0.2s ease;
+  font-size: 0.75rem;
+  color: var(--icui-text-secondary);
+  background: none;
+  border: none;
 }
 
 .icui-panel-control:hover {
-  transform: scale(1.1);
+  background-color: var(--icui-bg-tertiary);
 }
 
-.icui-panel-control:active {
-  transform: scale(0.95);
+.icui-panel-control.minimize {
+  color: var(--icui-warning);
 }
 
-.icui-minimize-btn:hover {
-  @apply bg-yellow-100 dark:bg-yellow-900;
+.icui-panel-control.maximize {
+  color: var(--icui-accent);
 }
 
-.icui-maximize-btn:hover {
-  @apply bg-green-100 dark:bg-green-900;
+.icui-panel-control.close {
+  color: var(--icui-danger);
 }
 
-.icui-close-btn:hover {
-  @apply bg-red-100 dark:bg-red-900;
+.icui-panel-control:hover.minimize {
+  background-color: var(--icui-warning);
+  color: var(--icui-bg-primary);
+}
+
+.icui-panel-control:hover.maximize {
+  background-color: var(--icui-accent);
+  color: var(--icui-bg-primary);
+}
+
+.icui-panel-control:hover.close {
+  background-color: var(--icui-danger);
+  color: var(--icui-bg-primary);
 }
 
 /* ===== PANEL CONTENT STYLES ===== */
 .icui-panel-content {
-  @apply flex-1 overflow-hidden;
-  border-radius: 0 0 0.5rem 0.5rem;
+  flex: 1;
+  min-height: 0;
+  background-color: var(--icui-bg-primary);
+  border-radius: 0 0 8px 8px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
-.icui-content-padded {
-  @apply p-4;
-}
-
-.icui-content-no-padding {
-  padding: 0;
+.icui-panel-maximized .icui-panel-content {
+  border-radius: 0;
 }
 
 .icui-content-scrollable {
   overflow: auto;
+  flex: 1;
+  min-height: 0;
 }
 
-.icui-content-fixed {
-  overflow: hidden;
+.icui-content-padded {
+  padding: 1rem;
 }
 
-.icui-content-flexible {
-  @apply flex flex-col;
-  overflow: hidden;
+.icui-content-unpadded {
+  padding: 0;
 }
 
-/* Panel Content Error Boundary */
-.icui-panel-error {
-  @apply flex items-center justify-center h-full p-4;
-}
-
-.icui-error-content {
-  @apply text-center;
-}
-
-.icui-error-icon {
-  @apply text-4xl mb-2;
-}
-
-.icui-error-title {
-  @apply text-lg font-semibold text-red-700 dark:text-red-400 mb-2;
-}
-
-.icui-error-message {
-  @apply text-sm text-gray-600 dark:text-gray-400 mb-4;
-}
-
-.icui-error-actions {
-  @apply flex justify-center gap-2;
-}
-
-.icui-error-retry {
-  @apply px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors text-sm;
-}
-
-.icui-error-details {
-  @apply mt-4 text-left;
-}
-
-.icui-error-details summary {
-  @apply cursor-pointer text-sm text-gray-500 dark:text-gray-400;
-}
-
-.icui-error-stack {
-  @apply mt-2 p-2 bg-gray-100 dark:bg-gray-800 rounded text-xs font-mono overflow-auto max-h-40;
-}
-
-/* ===== RESIZE HANDLES ===== */
+/* ===== PANEL RESIZE HANDLES ===== */
 .icui-panel-resize-handles {
   position: absolute;
-  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
   pointer-events: none;
+  z-index: 10;
 }
 
 .icui-resize-handle {
   position: absolute;
-  pointer-events: auto;
-  background: transparent;
-  z-index: 10;
+  pointer-events: all;
+  opacity: 0;
+  transition: opacity 0.2s ease-in-out;
+  background: var(--icui-accent);
+  border: 1px solid var(--icui-bg-primary);
 }
 
-/* Corner handles */
-.icui-resize-nw {
-  top: -4px;
-  left: -4px;
-  width: 8px;
-  height: 8px;
-  cursor: nw-resize;
+.icui-resize-handle.active {
+  opacity: 1;
 }
 
-.icui-resize-ne {
-  top: -4px;
-  right: -4px;
-  width: 8px;
-  height: 8px;
-  cursor: ne-resize;
-}
-
-.icui-resize-sw {
-  bottom: -4px;
-  left: -4px;
-  width: 8px;
-  height: 8px;
-  cursor: sw-resize;
-}
-
-.icui-resize-se {
-  bottom: -4px;
-  right: -4px;
-  width: 8px;
-  height: 8px;
-  cursor: se-resize;
-}
-
-/* Edge handles */
+/* North resize handle */
 .icui-resize-n {
   top: -4px;
   left: 8px;
@@ -284,6 +285,7 @@
   cursor: n-resize;
 }
 
+/* South resize handle */
 .icui-resize-s {
   bottom: -4px;
   left: 8px;
@@ -292,6 +294,7 @@
   cursor: s-resize;
 }
 
+/* West resize handle */
 .icui-resize-w {
   left: -4px;
   top: 8px;
@@ -300,6 +303,7 @@
   cursor: w-resize;
 }
 
+/* East resize handle */
 .icui-resize-e {
   right: -4px;
   top: 8px;
@@ -310,14 +314,14 @@
 
 /* Resize handle hover effects */
 .icui-resize-handle:hover {
-  background: rgba(59, 130, 246, 0.5);
-  border: 1px solid rgba(59, 130, 246, 0.8);
+  background: var(--icui-accent);
+  border: 1px solid var(--icui-bg-primary);
   border-radius: 2px;
   transition: all 0.2s ease-in-out;
 }
 
 .icui-resize-handle:active {
-  background: rgba(59, 130, 246, 0.7);
+  background: var(--icui-accent-hover);
   transform: scale(1.1);
 }
 
@@ -330,7 +334,7 @@
   transform: translate(-50%, -50%);
   width: 4px;
   height: 4px;
-  background: rgba(59, 130, 246, 0.6);
+  background: var(--icui-accent);
   border-radius: 50%;
   opacity: 0;
   transition: opacity 0.2s ease-in-out;
@@ -342,35 +346,37 @@
 
 /* ===== PANEL TYPE SPECIFIC STYLES ===== */
 .icui-panel-terminal {
-  @apply bg-black text-green-400;
+  background-color: var(--icui-bg-primary);
+  color: var(--icui-text-primary);
 }
 
 .icui-panel-terminal .icui-panel-header {
-  @apply bg-gray-900 border-gray-700;
+  background-color: var(--icui-bg-secondary);
+  border-color: var(--icui-border-subtle);
 }
 
 .icui-panel-editor {
-  @apply bg-gray-50 dark:bg-gray-900;
+  background-color: var(--icui-bg-primary);
 }
 
 .icui-panel-explorer {
-  @apply bg-blue-50 dark:bg-blue-950;
+  background-color: var(--icui-bg-primary);
 }
 
 .icui-panel-output {
-  @apply bg-yellow-50 dark:bg-yellow-950;
+  background-color: var(--icui-bg-primary);
 }
 
 .icui-panel-properties {
-  @apply bg-purple-50 dark:bg-purple-950;
+  background-color: var(--icui-bg-primary);
 }
 
 .icui-panel-timeline {
-  @apply bg-orange-50 dark:bg-orange-950;
+  background-color: var(--icui-bg-primary);
 }
 
 .icui-panel-inspector {
-  @apply bg-teal-50 dark:bg-teal-950;
+  background-color: var(--icui-bg-primary);
 }
 
 /* ===== RESPONSIVE DESIGN ===== */
@@ -381,21 +387,22 @@
   }
   
   .icui-panel-header {
-    @apply px-2 py-1;
+    padding: 0.25rem 0.5rem;
     min-height: 36px;
   }
   
   .icui-panel-title {
-    @apply text-xs;
+    font-size: 0.75rem;
   }
   
   .icui-panel-control {
-    @apply w-5 h-5;
+    width: 1.25rem;
+    height: 1.25rem;
     font-size: 10px;
   }
   
   .icui-content-padded {
-    @apply p-2;
+    padding: 0.5rem;
   }
 }
 
@@ -411,37 +418,43 @@
   }
 }
 
-.icui-base-panel {
-  animation: panelSlideIn 0.2s ease-out;
+.icui-panel-slide-in {
+  animation: panelSlideIn 0.3s ease-out;
 }
 
 /* ===== ACCESSIBILITY ===== */
+.icui-panel-header:focus {
+  outline: 2px solid var(--icui-accent);
+  outline-offset: 2px;
+}
+
 .icui-panel-control:focus {
-  @apply outline-none ring-2 ring-blue-500 ring-offset-2;
+  outline: 2px solid var(--icui-accent);
+  outline-offset: 2px;
 }
 
-.icui-panel-title-input:focus {
-  @apply outline-none ring-2 ring-blue-500 ring-offset-2;
+/* ===== THEME OVERRIDES ===== */
+/* Allow themes to override specific panel styles */
+.icui-theme-monokai .icui-panel-terminal {
+  background-color: var(--icui-bg-primary);
 }
 
-/* High contrast mode support */
-@media (prefers-contrast: high) {
-  .icui-base-panel {
-    @apply border-2;
-  }
-  
-  .icui-panel-header {
-    @apply border-b-2;
-  }
+.icui-theme-monokai .icui-panel-terminal .icui-panel-header {
+  background-color: var(--icui-bg-secondary);
 }
 
-/* Reduced motion support */
-@media (prefers-reduced-motion: reduce) {
-  .icui-base-panel,
-  .icui-panel-content,
-  .icui-panel-control,
-  .icui-resize-handle {
-    transition: none !important;
-    animation: none !important;
-  }
+.icui-theme-one-dark .icui-panel-editor {
+  background-color: var(--icui-bg-primary);
+}
+
+.icui-theme-github-dark .icui-panel-content {
+  background-color: var(--icui-bg-primary);
+}
+
+.icui-theme-github-light .icui-panel-content {
+  background-color: var(--icui-bg-primary);
+}
+
+.icui-theme-vscode-light .icui-panel-content {
+  background-color: var(--icui-bg-primary);
 }

@@ -89,16 +89,20 @@ const ICUIExplorerPanel: React.FC<ICUIExplorerPanelProps> = ({ className = '' })
     return nodes.map(node => (
       <div key={node.id}>
         <div
-          className={`flex items-center py-1 px-2 cursor-pointer hover:bg-gray-700 ${
-            selectedFile === node.id ? 'bg-blue-600' : ''
+          className={`flex items-center py-1 px-2 cursor-pointer hover:opacity-80 transition-opacity ${
+            selectedFile === node.id ? 'opacity-100' : ''
           }`}
-          style={{ paddingLeft: `${(level * 16) + 8}px` }}
+          style={{ 
+            paddingLeft: `${(level * 16) + 8}px`,
+            backgroundColor: selectedFile === node.id ? 'var(--icui-accent)' : 'transparent',
+            color: 'var(--icui-text-primary)'
+          }}
           onClick={() => handleItemClick(node)}
         >
           <span className="mr-2 text-sm">
             {node.type === 'folder' ? (node.isExpanded ? '📂' : '📁') : '📄'}
           </span>
-          <span className="text-sm text-white">{node.name}</span>
+          <span className="text-sm">{node.name}</span>
         </div>
         {node.type === 'folder' && node.isExpanded && node.children && (
           <div>
@@ -116,13 +120,14 @@ const ICUIExplorerPanel: React.FC<ICUIExplorerPanelProps> = ({ className = '' })
   };
 
   return (
-    <div className={`icui-explorer-panel h-full flex flex-col bg-black text-white ${className}`}>
+    <div className={`icui-explorer-panel h-full flex flex-col ${className}`} style={{ backgroundColor: 'var(--icui-bg-primary)', color: 'var(--icui-text-primary)' }}>
       {/* Header */}
-      <div className="flex items-center justify-between p-2 bg-gray-800 border-b border-gray-700">
-        <span className="text-sm font-medium">Explorer</span>
+      <div className="flex items-center justify-between p-2 border-b" style={{ backgroundColor: 'var(--icui-bg-secondary)', borderBottomColor: 'var(--icui-border-subtle)' }}>
+        <span className="text-sm font-medium" style={{ color: 'var(--icui-text-primary)' }}>Explorer</span>
         <button
           onClick={handleRefresh}
-          className="text-xs px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded"
+          className="text-xs px-2 py-1 rounded hover:opacity-80 transition-opacity"
+          style={{ backgroundColor: 'var(--icui-bg-tertiary)', color: 'var(--icui-text-primary)' }}
         >
           Refresh
         </button>
@@ -136,7 +141,7 @@ const ICUIExplorerPanel: React.FC<ICUIExplorerPanelProps> = ({ className = '' })
       </div>
 
       {/* Status bar */}
-      <div className="px-3 py-1 bg-gray-800 border-t border-gray-700 text-xs text-gray-400">
+      <div className="px-3 py-1 border-t text-xs" style={{ backgroundColor: 'var(--icui-bg-secondary)', borderTopColor: 'var(--icui-border-subtle)', color: 'var(--icui-text-muted)' }}>
         {selectedFile ? `Selected: ${files.find(f => f.id === selectedFile)?.name || 'Unknown'}` : 'No file selected'}
       </div>
     </div>

@@ -1,17 +1,17 @@
 /**
  * ICUI Editor Panel - Reference Implementation
- * A minimal, working code editor panel for the ICUI framework
+ * A minimal, working code editor for the ICUI framework
  * Following the same pattern as ICUITerminalPanel
  */
 
 import React, { useRef, useEffect, useState } from 'react';
+import CodeEditor, { SupportedLanguage } from '../../../components/CodeEditor';
 
 interface ICUIEditorPanelProps {
   className?: string;
 }
 
 const ICUIEditorPanel: React.FC<ICUIEditorPanelProps> = ({ className = '' }) => {
-  const editorRef = useRef<HTMLTextAreaElement>(null);
   const [content, setContent] = useState<string>(`// ICUIEditorPanel initialized!
 // This is a minimal code editor implementation
 
@@ -22,11 +22,11 @@ function helloWorld() {
 
 helloWorld();`);
   const [isModified, setIsModified] = useState(false);
-  const [language, setLanguage] = useState('javascript');
+  const [language, setLanguage] = useState<SupportedLanguage>('javascript');
 
   // Handle content changes
-  const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setContent(e.target.value);
+  const handleContentChange = (newContent: string) => {
+    setContent(newContent);
     setIsModified(true);
   };
 
@@ -49,78 +49,62 @@ helloWorld();`);
     }
   };
 
-  // Handle keyboard shortcuts
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.ctrlKey && e.key === 's') {
-      e.preventDefault();
-      handleSave();
-    }
-    if (e.ctrlKey && e.key === 'Enter') {
-      e.preventDefault();
-      handleRunCode();
-    }
-  };
-
   return (
-    <div className={`icui-editor-panel h-full flex flex-col bg-black text-white ${className}`}>
+    <div className="flex flex-col h-full w-full" style={{ backgroundColor: 'var(--icui-bg-primary)' }}>
       {/* Header */}
-      <div className="flex items-center justify-between p-2 bg-gray-800 border-b border-gray-700">
+      <div className="flex items-center justify-between px-4 py-2 border-b" style={{ backgroundColor: 'var(--icui-bg-secondary)', borderBottomColor: 'var(--icui-border-subtle)' }}>
         <div className="flex items-center space-x-2">
-          <span className="text-sm font-medium">
-            untitled.{language} {isModified ? '●' : ''}
+          <span className="text-sm font-medium" style={{ color: 'var(--icui-text-primary)' }}>
+            {language?.toUpperCase() || 'PLAIN TEXT'}
           </span>
           <select
             value={language}
-            onChange={(e) => setLanguage(e.target.value)}
-            className="text-xs bg-gray-700 text-white border border-gray-600 rounded px-1 py-0.5"
+            onChange={(e) => setLanguage(e.target.value as SupportedLanguage)}
+            className="text-xs px-2 py-1 rounded border"
+            style={{ backgroundColor: 'var(--icui-bg-primary)', color: 'var(--icui-text-primary)', borderColor: 'var(--icui-border-subtle)' }}
           >
             <option value="javascript">JavaScript</option>
             <option value="typescript">TypeScript</option>
             <option value="python">Python</option>
             <option value="html">HTML</option>
             <option value="css">CSS</option>
+            <option value="json">JSON</option>
+            <option value="md">Markdown</option>
           </select>
         </div>
-        <div className="flex items-center space-x-1">
+        <div className="flex items-center space-x-2">
           <button
+            className="px-2 py-1 text-xs rounded hover:opacity-80 transition-opacity"
+            style={{ backgroundColor: 'var(--icui-success)', color: 'var(--icui-text-primary)' }}
             onClick={handleSave}
             disabled={!isModified}
-            className="text-xs px-2 py-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded"
           >
             Save
           </button>
           <button
+            className="px-2 py-1 text-xs rounded hover:opacity-80 transition-opacity"
+            style={{ backgroundColor: 'var(--icui-accent)', color: 'var(--icui-text-primary)' }}
             onClick={handleRunCode}
-            className="text-xs px-2 py-1 bg-green-600 hover:bg-green-700 rounded"
           >
             Run
           </button>
         </div>
       </div>
 
-      {/* Editor area */}
-      <div className="flex-1 relative">
-        <textarea
-          ref={editorRef}
-          value={content}
-          onChange={handleContentChange}
-          onKeyDown={handleKeyDown}
-          className="w-full h-full p-3 bg-black text-white font-mono text-sm resize-none border-none outline-none"
-          style={{
-            fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
-            lineHeight: '1.5',
-            scrollbarWidth: 'thin',
-            scrollbarColor: '#4B5563 #1F2937'
-          }}
-          placeholder="Start typing your code..."
-          spellCheck={false}
+      {/* Editor Area */}
+      <div className="flex-1 min-h-0 overflow-hidden" style={{ backgroundColor: 'var(--icui-bg-primary)' }}>
+        <CodeEditor
+          code={content}
+          language={language}
+          onCodeChange={handleContentChange}
+          theme="dark"
         />
       </div>
 
-      {/* Status bar */}
-      <div className="px-3 py-1 bg-gray-800 border-t border-gray-700 text-xs text-gray-400 flex justify-between">
+      {/* Status Bar */}
+      <div className="px-3 py-1 border-t text-xs flex justify-between" style={{ backgroundColor: 'var(--icui-bg-secondary)', borderTopColor: 'var(--icui-border-subtle)', color: 'var(--icui-text-muted)' }}>
         <span>Line 1, Column 1</span>
-        <span>Ctrl+S to save • Ctrl+Enter to run</span>
+        <span>Ctrl+S to save • Ctrl+Enter to run {isModified && '• Modified'}</span>
       </div>
     </div>
   );

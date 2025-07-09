@@ -1,0 +1,447 @@
+/**
+ * ICUI Framework Theme System
+ * Comprehensive theming for all ICUI components
+ * Includes multiple dark and light theme variations
+ */
+
+/* ===== BASE THEME VARIABLES ===== */
+:root {
+  /* GitHub Dark Theme Variables */
+  --icui-github-dark-bg-primary: #0d1117;
+  --icui-github-dark-bg-secondary: #161b22;
+  --icui-github-dark-bg-tertiary: #21262d;
+  --icui-github-dark-bg-overlay: #30363d;
+  --icui-github-dark-border: #30363d;
+  --icui-github-dark-border-subtle: #21262d;
+  --icui-github-dark-text-primary: #e6edf3;
+  --icui-github-dark-text-secondary: #7d8590;
+  --icui-github-dark-text-muted: #656d76;
+  --icui-github-dark-accent: #58a6ff;
+  --icui-github-dark-accent-hover: #1f6feb;
+  --icui-github-dark-success: #3fb950;
+  --icui-github-dark-danger: #f85149;
+  --icui-github-dark-warning: #d29922;
+  
+  /* Monokai Theme Variables */
+  --icui-monokai-bg-primary: #272822;
+  --icui-monokai-bg-secondary: #383830;
+  --icui-monokai-bg-tertiary: #49483e;
+  --icui-monokai-bg-overlay: #75715e;
+  --icui-monokai-border: #49483e;
+  --icui-monokai-border-subtle: #383830;
+  --icui-monokai-text-primary: #f8f8f2;
+  --icui-monokai-text-secondary: #cfcfc2;
+  --icui-monokai-text-muted: #75715e;
+  --icui-monokai-accent: #66d9ef;
+  --icui-monokai-accent-hover: #a6e22e;
+  --icui-monokai-success: #a6e22e;
+  --icui-monokai-danger: #f92672;
+  --icui-monokai-warning: #e6db74;
+  
+  /* One Dark Theme Variables */
+  --icui-one-dark-bg-primary: #282c34;
+  --icui-one-dark-bg-secondary: #21252b;
+  --icui-one-dark-bg-tertiary: #2c313c;
+  --icui-one-dark-bg-overlay: #3e4451;
+  --icui-one-dark-border: #3e4451;
+  --icui-one-dark-border-subtle: #2c313c;
+  --icui-one-dark-text-primary: #abb2bf;
+  --icui-one-dark-text-secondary: #828997;
+  --icui-one-dark-text-muted: #5c6370;
+  --icui-one-dark-accent: #61afef;
+  --icui-one-dark-accent-hover: #528bff;
+  --icui-one-dark-success: #98c379;
+  --icui-one-dark-danger: #e06c75;
+  --icui-one-dark-warning: #e5c07b;
+  
+  /* GitHub Light Theme Variables */
+  --icui-github-light-bg-primary: #ffffff;
+  --icui-github-light-bg-secondary: #f6f8fa;
+  --icui-github-light-bg-tertiary: #f1f3f4;
+  --icui-github-light-bg-overlay: #ffffff;
+  --icui-github-light-border: #d0d7de;
+  --icui-github-light-border-subtle: #d8dee4;
+  --icui-github-light-text-primary: #24292f;
+  --icui-github-light-text-secondary: #656d76;
+  --icui-github-light-text-muted: #8b949e;
+  --icui-github-light-accent: #0969da;
+  --icui-github-light-accent-hover: #0550ae;
+  --icui-github-light-success: #1a7f37;
+  --icui-github-light-danger: #cf222e;
+  --icui-github-light-warning: #9a6700;
+  
+  /* VS Code Light Theme Variables */
+  --icui-vscode-light-bg-primary: #ffffff;
+  --icui-vscode-light-bg-secondary: #f3f3f3;
+  --icui-vscode-light-bg-tertiary: #eeeeee;
+  --icui-vscode-light-bg-overlay: #ffffff;
+  --icui-vscode-light-border: #cccccc;
+  --icui-vscode-light-border-subtle: #e5e5e5;
+  --icui-vscode-light-text-primary: #333333;
+  --icui-vscode-light-text-secondary: #666666;
+  --icui-vscode-light-text-muted: #999999;
+  --icui-vscode-light-accent: #007acc;
+  --icui-vscode-light-accent-hover: #005a9e;
+  --icui-vscode-light-success: #008000;
+  --icui-vscode-light-danger: #cd3131;
+  --icui-vscode-light-warning: #ff8c00;
+}
+
+/* ===== GITHUB DARK THEME ===== */
+.icui-theme-github-dark {
+  --icui-bg-primary: var(--icui-github-dark-bg-primary);
+  --icui-bg-secondary: var(--icui-github-dark-bg-secondary);
+  --icui-bg-tertiary: var(--icui-github-dark-bg-tertiary);
+  --icui-bg-overlay: var(--icui-github-dark-bg-overlay);
+  --icui-border: var(--icui-github-dark-border);
+  --icui-border-subtle: var(--icui-github-dark-border-subtle);
+  --icui-text-primary: var(--icui-github-dark-text-primary);
+  --icui-text-secondary: var(--icui-github-dark-text-secondary);
+  --icui-text-muted: var(--icui-github-dark-text-muted);
+  --icui-accent: var(--icui-github-dark-accent);
+  --icui-accent-hover: var(--icui-github-dark-accent-hover);
+  --icui-success: var(--icui-github-dark-success);
+  --icui-danger: var(--icui-github-dark-danger);
+  --icui-warning: var(--icui-github-dark-warning);
+}
+
+/* ===== MONOKAI THEME ===== */
+.icui-theme-monokai {
+  --icui-bg-primary: var(--icui-monokai-bg-primary);
+  --icui-bg-secondary: var(--icui-monokai-bg-secondary);
+  --icui-bg-tertiary: var(--icui-monokai-bg-tertiary);
+  --icui-bg-overlay: var(--icui-monokai-bg-overlay);
+  --icui-border: var(--icui-monokai-border);
+  --icui-border-subtle: var(--icui-monokai-border-subtle);
+  --icui-text-primary: var(--icui-monokai-text-primary);
+  --icui-text-secondary: var(--icui-monokai-text-secondary);
+  --icui-text-muted: var(--icui-monokai-text-muted);
+  --icui-accent: var(--icui-monokai-accent);
+  --icui-accent-hover: var(--icui-monokai-accent-hover);
+  --icui-success: var(--icui-monokai-success);
+  --icui-danger: var(--icui-monokai-danger);
+  --icui-warning: var(--icui-monokai-warning);
+}
+
+/* ===== ONE DARK THEME ===== */
+.icui-theme-one-dark {
+  --icui-bg-primary: var(--icui-one-dark-bg-primary);
+  --icui-bg-secondary: var(--icui-one-dark-bg-secondary);
+  --icui-bg-tertiary: var(--icui-one-dark-bg-tertiary);
+  --icui-bg-overlay: var(--icui-one-dark-bg-overlay);
+  --icui-border: var(--icui-one-dark-border);
+  --icui-border-subtle: var(--icui-one-dark-border-subtle);
+  --icui-text-primary: var(--icui-one-dark-text-primary);
+  --icui-text-secondary: var(--icui-one-dark-text-secondary);
+  --icui-text-muted: var(--icui-one-dark-text-muted);
+  --icui-accent: var(--icui-one-dark-accent);
+  --icui-accent-hover: var(--icui-one-dark-accent-hover);
+  --icui-success: var(--icui-one-dark-success);
+  --icui-danger: var(--icui-one-dark-danger);
+  --icui-warning: var(--icui-one-dark-warning);
+}
+
+/* ===== GITHUB LIGHT THEME ===== */
+.icui-theme-github-light {
+  --icui-bg-primary: var(--icui-github-light-bg-primary);
+  --icui-bg-secondary: var(--icui-github-light-bg-secondary);
+  --icui-bg-tertiary: var(--icui-github-light-bg-tertiary);
+  --icui-bg-overlay: var(--icui-github-light-bg-overlay);
+  --icui-border: var(--icui-github-light-border);
+  --icui-border-subtle: var(--icui-github-light-border-subtle);
+  --icui-text-primary: var(--icui-github-light-text-primary);
+  --icui-text-secondary: var(--icui-github-light-text-secondary);
+  --icui-text-muted: var(--icui-github-light-text-muted);
+  --icui-accent: var(--icui-github-light-accent);
+  --icui-accent-hover: var(--icui-github-light-accent-hover);
+  --icui-success: var(--icui-github-light-success);
+  --icui-danger: var(--icui-github-light-danger);
+  --icui-warning: var(--icui-github-light-warning);
+}
+
+/* ===== VSCODE LIGHT THEME ===== */
+.icui-theme-vscode-light {
+  --icui-bg-primary: var(--icui-vscode-light-bg-primary);
+  --icui-bg-secondary: var(--icui-vscode-light-bg-secondary);
+  --icui-bg-tertiary: var(--icui-vscode-light-bg-tertiary);
+  --icui-bg-overlay: var(--icui-vscode-light-bg-overlay);
+  --icui-border: var(--icui-vscode-light-border);
+  --icui-border-subtle: var(--icui-vscode-light-border-subtle);
+  --icui-text-primary: var(--icui-vscode-light-text-primary);
+  --icui-text-secondary: var(--icui-vscode-light-text-secondary);
+  --icui-text-muted: var(--icui-vscode-light-text-muted);
+  --icui-accent: var(--icui-vscode-light-accent);
+  --icui-accent-hover: var(--icui-vscode-light-accent-hover);
+  --icui-success: var(--icui-vscode-light-success);
+  --icui-danger: var(--icui-vscode-light-danger);
+  --icui-warning: var(--icui-vscode-light-warning);
+}
+
+/* ===== COMPONENT THEMING ===== */
+/* All themes use CSS variables for consistency */
+
+/* Panel Base Styles */
+.icui-base-panel {
+  background-color: var(--icui-bg-primary);
+  border-color: var(--icui-border);
+  color: var(--icui-text-primary);
+}
+
+.icui-base-panel.icui-panel-active {
+  border-color: var(--icui-accent);
+}
+
+/* Panel Headers */
+.icui-panel-header {
+  background-color: var(--icui-bg-secondary);
+  border-color: var(--icui-border-subtle);
+  color: var(--icui-text-primary);
+}
+
+.icui-panel-header:hover {
+  background-color: var(--icui-bg-tertiary);
+}
+
+/* Panel Areas */
+.icui-panel-area {
+  background-color: var(--icui-bg-primary);
+  border-color: var(--icui-border);
+}
+
+.icui-panel-area.icui-area-empty {
+  border-color: var(--icui-border-subtle);
+}
+
+/* Panel Tabs */
+.icui-panel-tabs {
+  background-color: var(--icui-bg-secondary);
+  border-color: var(--icui-border-subtle);
+}
+
+.icui-panel-tab {
+  border-color: var(--icui-border-subtle);
+  color: var(--icui-text-secondary);
+}
+
+.icui-panel-tab:hover {
+  background-color: var(--icui-bg-tertiary);
+}
+
+.icui-panel-tab.active {
+  background-color: var(--icui-bg-primary);
+  color: var(--icui-text-primary);
+}
+
+.icui-panel-tab.active::after {
+  background-color: var(--icui-accent);
+}
+
+/* Enhanced Panel Areas */
+.icui-enhanced-panel-area {
+  background-color: var(--icui-bg-primary);
+  border-color: var(--icui-border);
+}
+
+/* Tab Container */
+.icui-tab-container {
+  background-color: var(--icui-bg-primary);
+  border-color: var(--icui-border);
+}
+
+.icui-tab-container .icui-tab-bar {
+  background-color: var(--icui-bg-secondary);
+  border-color: var(--icui-border-subtle);
+}
+
+.icui-tab-container .icui-tab {
+  background-color: var(--icui-bg-secondary);
+  border-color: var(--icui-border-subtle);
+  color: var(--icui-text-secondary);
+}
+
+.icui-tab-container .icui-tab:hover {
+  background-color: var(--icui-bg-tertiary);
+}
+
+.icui-tab-container .icui-tab.active {
+  background-color: var(--icui-bg-primary);
+  color: var(--icui-text-primary);
+}
+
+/* Panel Selector */
+.icui-panel-selector-button {
+  background-color: var(--icui-accent);
+  border-color: var(--icui-border);
+  color: var(--icui-text-primary);
+}
+
+.icui-panel-selector-button:hover {
+  background-color: var(--icui-accent-hover);
+}
+
+.icui-panel-selector-dropdown {
+  background-color: var(--icui-bg-overlay);
+  border-color: var(--icui-border);
+  color: var(--icui-text-primary);
+}
+
+.icui-panel-selector-dropdown button {
+  color: var(--icui-text-primary);
+}
+
+.icui-panel-selector-dropdown button:hover {
+  background-color: var(--icui-bg-tertiary);
+}
+
+/* Terminal Specific */
+.icui-terminal-panel {
+  background-color: var(--icui-bg-primary);
+}
+
+.icui-terminal-header {
+  background-color: var(--icui-bg-secondary);
+  border-color: var(--icui-border-subtle);
+}
+
+/* Editor Specific */
+.icui-editor-panel {
+  background-color: var(--icui-bg-primary);
+}
+
+.icui-editor-toolbar {
+  background-color: var(--icui-bg-secondary);
+  border-color: var(--icui-border-subtle);
+}
+
+.icui-editor-placeholder {
+  background-color: var(--icui-bg-primary);
+}
+
+/* Explorer Specific */
+.icui-explorer-panel {
+  background-color: var(--icui-bg-primary);
+}
+
+.icui-explorer-header {
+  background-color: var(--icui-bg-secondary);
+  border-color: var(--icui-border-subtle);
+}
+
+.icui-tree-item:hover {
+  background-color: var(--icui-bg-tertiary);
+}
+
+/* Chat Specific */
+.icui-chat-panel {
+  background-color: var(--icui-bg-primary);
+  color: var(--icui-text-primary);
+}
+
+.icui-chat-header {
+  background-color: var(--icui-bg-secondary);
+  border-color: var(--icui-border-subtle);
+}
+
+/* Scrollbar Theming */
+.icui-theme-github-dark *::-webkit-scrollbar,
+.icui-theme-monokai *::-webkit-scrollbar,
+.icui-theme-one-dark *::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+.icui-theme-github-dark *::-webkit-scrollbar-track,
+.icui-theme-monokai *::-webkit-scrollbar-track,
+.icui-theme-one-dark *::-webkit-scrollbar-track {
+  background: var(--icui-bg-secondary);
+  border-radius: 6px;
+}
+
+.icui-theme-github-dark *::-webkit-scrollbar-thumb,
+.icui-theme-monokai *::-webkit-scrollbar-thumb,
+.icui-theme-one-dark *::-webkit-scrollbar-thumb {
+  background: #6e7681;
+  border-radius: 6px;
+  border: 2px solid var(--icui-bg-secondary);
+}
+
+.icui-theme-github-dark *::-webkit-scrollbar-thumb:hover,
+.icui-theme-monokai *::-webkit-scrollbar-thumb:hover,
+.icui-theme-one-dark *::-webkit-scrollbar-thumb:hover {
+  background: #8b949e;
+}
+
+.icui-theme-github-light *::-webkit-scrollbar,
+.icui-theme-vscode-light *::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+.icui-theme-github-light *::-webkit-scrollbar-track,
+.icui-theme-vscode-light *::-webkit-scrollbar-track {
+  background: var(--icui-bg-secondary);
+  border-radius: 6px;
+}
+
+.icui-theme-github-light *::-webkit-scrollbar-thumb,
+.icui-theme-vscode-light *::-webkit-scrollbar-thumb {
+  background: #d0d7de;
+  border-radius: 6px;
+  border: 2px solid var(--icui-bg-secondary);
+}
+
+.icui-theme-github-light *::-webkit-scrollbar-thumb:hover,
+.icui-theme-vscode-light *::-webkit-scrollbar-thumb:hover {
+  background: #8b949e;
+}
+
+/* Firefox scrollbar support */
+.icui-theme-github-dark *,
+.icui-theme-monokai *,
+.icui-theme-one-dark * {
+  scrollbar-width: thin;
+  scrollbar-color: #6e7681 var(--icui-bg-secondary);
+}
+
+.icui-theme-github-light *,
+.icui-theme-vscode-light * {
+  scrollbar-width: thin;
+  scrollbar-color: #d0d7de var(--icui-bg-secondary);
+}
+
+/* Default theme mapping */
+.dark {
+  /* Default to GitHub Dark */
+  --icui-bg-primary: var(--icui-github-dark-bg-primary);
+  --icui-bg-secondary: var(--icui-github-dark-bg-secondary);
+  --icui-bg-tertiary: var(--icui-github-dark-bg-tertiary);
+  --icui-bg-overlay: var(--icui-github-dark-bg-overlay);
+  --icui-border: var(--icui-github-dark-border);
+  --icui-border-subtle: var(--icui-github-dark-border-subtle);
+  --icui-text-primary: var(--icui-github-dark-text-primary);
+  --icui-text-secondary: var(--icui-github-dark-text-secondary);
+  --icui-text-muted: var(--icui-github-dark-text-muted);
+  --icui-accent: var(--icui-github-dark-accent);
+  --icui-accent-hover: var(--icui-github-dark-accent-hover);
+  --icui-success: var(--icui-github-dark-success);
+  --icui-danger: var(--icui-github-dark-danger);
+  --icui-warning: var(--icui-github-dark-warning);
+}
+
+.light {
+  /* Default to GitHub Light */
+  --icui-bg-primary: var(--icui-github-light-bg-primary);
+  --icui-bg-secondary: var(--icui-github-light-bg-secondary);
+  --icui-bg-tertiary: var(--icui-github-light-bg-tertiary);
+  --icui-bg-overlay: var(--icui-github-light-bg-overlay);
+  --icui-border: var(--icui-github-light-border);
+  --icui-border-subtle: var(--icui-github-light-border-subtle);
+  --icui-text-primary: var(--icui-github-light-text-primary);
+  --icui-text-secondary: var(--icui-github-light-text-secondary);
+  --icui-text-muted: var(--icui-github-light-text-muted);
+  --icui-accent: var(--icui-github-light-accent);
+  --icui-accent-hover: var(--icui-github-light-accent-hover);
+  --icui-success: var(--icui-github-light-success);
+  --icui-danger: var(--icui-github-light-danger);
+  --icui-warning: var(--icui-github-light-warning);
+} 

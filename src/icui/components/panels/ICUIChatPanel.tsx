@@ -84,16 +84,17 @@ const ICUIChatPanel: React.FC<ICUIChatPanelProps> = ({ className = '' }) => {
   };
 
   return (
-    <div className={`icui-chat-panel h-full flex flex-col bg-black text-white ${className}`}>
+    <div className={`icui-chat-panel h-full flex flex-col ${className}`} style={{ backgroundColor: 'var(--icui-bg-primary)', color: 'var(--icui-text-primary)' }}>
       {/* Header */}
-      <div className="flex items-center justify-between p-2 bg-gray-800 border-b border-gray-700">
+      <div className="flex items-center justify-between p-2 border-b" style={{ backgroundColor: 'var(--icui-bg-secondary)', borderBottomColor: 'var(--icui-border-subtle)' }}>
         <div className="flex items-center space-x-2">
           <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
-          <span className="text-sm font-medium">AI Assistant</span>
+          <span className="text-sm font-medium" style={{ color: 'var(--icui-text-primary)' }}>AI Assistant</span>
         </div>
         <button
           onClick={handleClearChat}
-          className="text-xs px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded"
+          className="text-xs px-2 py-1 rounded hover:opacity-80 transition-opacity"
+          style={{ backgroundColor: 'var(--icui-bg-tertiary)', color: 'var(--icui-text-primary)' }}
         >
           Clear
         </button>
@@ -103,10 +104,6 @@ const ICUIChatPanel: React.FC<ICUIChatPanelProps> = ({ className = '' }) => {
       <div 
         ref={chatContainerRef}
         className="flex-1 overflow-y-auto p-2 space-y-2"
-        style={{ 
-          scrollbarWidth: 'thin',
-          scrollbarColor: '#4B5563 #1F2937' 
-        }}
       >
         {messages.map((message) => (
           <div
@@ -114,11 +111,11 @@ const ICUIChatPanel: React.FC<ICUIChatPanelProps> = ({ className = '' }) => {
             className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}
           >
             <div
-              className={`max-w-[80%] p-2 rounded-lg text-sm ${
-                message.sender === 'user'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-700 text-gray-100'
-              }`}
+              className="max-w-[80%] p-2 rounded-lg text-sm"
+              style={{
+                backgroundColor: message.sender === 'user' ? 'var(--icui-accent)' : 'var(--icui-bg-tertiary)',
+                color: 'var(--icui-text-primary)'
+              }}
             >
               <div>{message.content}</div>
               <div className="text-xs opacity-60 mt-1">
@@ -130,7 +127,7 @@ const ICUIChatPanel: React.FC<ICUIChatPanelProps> = ({ className = '' }) => {
       </div>
 
       {/* Input area */}
-      <div className="p-2 bg-gray-800 border-t border-gray-700">
+      <div className="p-2 border-t" style={{ backgroundColor: 'var(--icui-bg-secondary)', borderTopColor: 'var(--icui-border-subtle)' }}>
         <div className="flex space-x-2">
           <input
             type="text"
@@ -138,17 +135,23 @@ const ICUIChatPanel: React.FC<ICUIChatPanelProps> = ({ className = '' }) => {
             onChange={(e) => setInputValue(e.target.value)}
             onKeyPress={handleKeyPress}
             placeholder="Type your message..."
-            className="flex-1 px-3 py-2 bg-gray-900 text-white rounded-md border border-gray-600 focus:border-blue-500 focus:outline-none text-sm"
+            className="flex-1 px-3 py-2 rounded-md border focus:outline-none text-sm"
+            style={{ 
+              backgroundColor: 'var(--icui-bg-primary)', 
+              color: 'var(--icui-text-primary)',
+              borderColor: 'var(--icui-border-subtle)'
+            }}
           />
           <button
             onClick={handleSendMessage}
             disabled={!inputValue.trim()}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-sm"
+            className="px-4 py-2 rounded-md hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed text-sm transition-opacity"
+            style={{ backgroundColor: 'var(--icui-accent)', color: 'var(--icui-text-primary)' }}
           >
             Send
           </button>
         </div>
-        <div className="text-xs text-gray-400 mt-1">
+        <div className="text-xs mt-1" style={{ color: 'var(--icui-text-muted)' }}>
           Press Enter to send • Shift+Enter for new line
         </div>
       </div>

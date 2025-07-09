@@ -15,68 +15,47 @@ import {
 import type { ICUILayoutConfig } from '../../../src/icui/components/ICUIEnhancedLayout';
 import type { ICUIEnhancedPanel } from '../../../src/icui/components/ICUIEnhancedPanelArea';
 import type { ICUIEditorFile } from '../../../src/icui/components/panels/ICUIEnhancedEditorPanel';
+import type { ICUIPanelType } from '../../../src/icui/components/ICUIPanelSelector';
 
 interface ICUITestEnhancedProps {
   className?: string;
 }
 
-// Sample editor files
+// Available theme options
+const THEME_OPTIONS = [
+  { id: 'github-dark', name: 'GitHub Dark', class: 'icui-theme-github-dark' },
+  { id: 'monokai', name: 'Monokai', class: 'icui-theme-monokai' },
+  { id: 'one-dark', name: 'One Dark', class: 'icui-theme-one-dark' },
+  { id: 'github-light', name: 'GitHub Light', class: 'icui-theme-github-light' },
+  { id: 'vscode-light', name: 'VS Code Light', class: 'icui-theme-vscode-light' },
+];
+
+// Sample files for the editor
 const sampleFiles: ICUIEditorFile[] = [
   {
     id: 'main-js',
     name: 'main.js',
-    content: `// Enhanced ICUI Editor with Tabs!
-// Much cleaner implementation using the framework
-
-function enhancedExample() {
-  console.log("Framework does the heavy lifting!");
-  return "Less code, more functionality";
-}
-
-enhancedExample();`,
     language: 'javascript',
+    content: '// Enhanced ICUI Editor with Tabs!\n// Much cleaner implementation using the Framework\n\nfunction enhancedExample() {\n  console.log("Framework does the heavy lifting!");\n  return "Less code, more functionality";\n}\n\nenhancedExample();',
     modified: false,
   },
   {
     id: 'utils-py',
     name: 'utils.py',
-    content: `# Python utilities
-# Multi-file support built into the framework
-
-def calculate_sum(a, b):
-    """Calculate sum of two numbers"""
-    return a + b
-
-def main():
-    result = calculate_sum(5, 3)
-    print(f"Result: {result}")
-
-if __name__ == "__main__":
-    main()`,
     language: 'python',
+    content: '# Python utilities\n\ndef hello_world():\n    """A simple hello world function"""\n    print("Hello from Python!")\n    return "success"\n\n# Enhanced with framework support\nif __name__ == "__main__":\n    hello_world()',
     modified: true,
   },
   {
     id: 'config-json',
     name: 'config.json',
-    content: `{
-  "name": "icui-enhanced-test",
-  "version": "1.0.0",
-  "description": "Testing enhanced ICUI framework with multiple files",
-  "features": [
-    "tab-switching",
-    "drag-and-drop",
-    "auto-save",
-    "syntax-highlighting"
-  ],
-  "theme": "dark"
-}`,
     language: 'javascript',
+    content: '{\n  "name": "icui-enhanced",\n  "version": "1.0.0",\n  "description": "Enhanced ICUI Framework Test",\n  "main": "main.js",\n  "features": {\n    "tabs": true,\n    "dragDrop": true,\n    "themes": true\n  }\n}',
     modified: false,
-  }
+  },
 ];
 
-// Default layout configuration - H Layout as default
+// Default layout configuration
 const defaultLayout: ICUILayoutConfig = {
   layoutMode: 'h-layout',
   areas: {
@@ -85,10 +64,10 @@ const defaultLayout: ICUILayoutConfig = {
     right: { id: 'right', name: 'Chat', panelIds: ['chat'], activePanelId: 'chat', size: 25, visible: true },
     bottom: { id: 'bottom', name: 'Terminal', panelIds: ['terminal'], activePanelId: 'terminal', size: 40 },
   },
-  splitConfig: {
-    mainHorizontalSplit: 25,
-    rightVerticalSplit: 75,
-    centerVerticalSplit: 65,
+  splitConfig: { 
+    mainHorizontalSplit: 25, 
+    rightVerticalSplit: 75, 
+    centerVerticalSplit: 65 
   }
 };
 
@@ -96,27 +75,22 @@ export const ICUITestEnhanced: React.FC<ICUITestEnhancedProps> = ({ className = 
   const [layout, setLayout] = useState<ICUILayoutConfig>(defaultLayout);
   const [editorFiles, setEditorFiles] = useState<ICUIEditorFile[]>(sampleFiles);
   const [activeFileId, setActiveFileId] = useState<string>('main-js');
-  const [theme, setTheme] = useState<'light' | 'dark'>('dark');
+  const [currentTheme, setCurrentTheme] = useState<string>('github-dark');
+  const [panels, setPanels] = useState<ICUIEnhancedPanel[]>([]);
 
   // Handle file changes
-  const handleFileChange = useCallback((fileId: string, content: string) => {
-    setEditorFiles(prev => prev.map(f => 
-      f.id === fileId ? { ...f, content, modified: true } : f
+  const handleFileChange = useCallback((fileId: string, newContent: string) => {
+    setEditorFiles(prev => prev.map(file => 
+      file.id === fileId 
+        ? { ...file, content: newContent, modified: true }
+        : file
     ));
-  }, []);
-
-  // Handle file save
-  const handleFileSave = useCallback((fileId: string) => {
-    setEditorFiles(prev => prev.map(f => 
-      f.id === fileId ? { ...f, modified: false } : f
-    ));
-    console.log('File saved:', fileId);
   }, []);
 
   // Handle file close
   const handleFileClose = useCallback((fileId: string) => {
     setEditorFiles(prev => {
-      const newFiles = prev.filter(f => f.id !== fileId);
+      const newFiles = prev.filter(file => file.id !== fileId);
       if (fileId === activeFileId && newFiles.length > 0) {
         setActiveFileId(newFiles[0].id);
       }
@@ -124,13 +98,22 @@ export const ICUITestEnhanced: React.FC<ICUITestEnhancedProps> = ({ className = 
     });
   }, [activeFileId]);
 
-  // Handle new file creation
+  // Handle file save
+  const handleFileSave = useCallback((fileId: string) => {
+    setEditorFiles(prev => prev.map(file => 
+      file.id === fileId 
+        ? { ...file, modified: false }
+        : file
+    ));
+  }, []);
+
+  // Handle file creation
   const handleFileCreate = useCallback(() => {
     const newFile: ICUIEditorFile = {
-      id: `file-${Date.now()}`,
+      id: `new-file-${Date.now()}`,
       name: `untitled-${editorFiles.length + 1}.js`,
-      content: '// New file\nconsole.log("Hello from new file!");',
       language: 'javascript',
+      content: '// New file\nconsole.log("Hello from new file!");',
       modified: true,
     };
     setEditorFiles(prev => [...prev, newFile]);
@@ -154,56 +137,143 @@ export const ICUITestEnhanced: React.FC<ICUITestEnhancedProps> = ({ className = 
     setActiveFileId(fileId);
   }, []);
 
-  // Create panels using the enhanced framework
-  const panels: ICUIEnhancedPanel[] = [
-    {
-      id: 'explorer',
-      type: 'explorer',
-      title: 'Explorer',
-      icon: '📁',
-      closable: false,
-      content: <ICUIExplorerPanel className="h-full" />
-    },
-    {
-      id: 'editor',
-      type: 'editor',
-      title: 'Code Editor',
-      icon: '📝',
-      closable: false,
-      content: (
-        <ICUIEnhancedEditorPanel
-          files={editorFiles}
-          activeFileId={activeFileId}
-          onFileChange={handleFileChange}
-          onFileClose={handleFileClose}
-          onFileCreate={handleFileCreate}
-          onFileSave={handleFileSave}
-          onFileRun={handleFileRun}
-          onFileActivate={handleFileActivate}
-          theme={theme}
-          autoSave={true}
-          autoSaveDelay={1500}
-          className="h-full"
-        />
-      )
-    },
-    {
-      id: 'terminal',
-      type: 'terminal',
-      title: 'Terminal',
-      icon: '💻',
-      closable: true,
-      content: <ICUITerminalPanel className="h-full" />
-    },
-    {
-      id: 'chat',
-      type: 'chat',
-      title: 'AI Assistant',
-      icon: '🤖',
-      closable: true,
-      content: <ICUIChatPanel className="h-full" />
-    },
+  // Available panel types for the selector
+  const availablePanelTypes: ICUIPanelType[] = [
+    { id: 'explorer', name: 'Explorer', icon: '📁', description: 'File and folder browser' },
+    { id: 'editor', name: 'Code Editor', icon: '📝', description: 'Code editor with syntax highlighting' },
+    { id: 'terminal', name: 'Terminal', icon: '💻', description: 'Integrated terminal' },
+    { id: 'chat', name: 'AI Assistant', icon: '🤖', description: 'AI-powered code assistant' },
+    { id: 'output', name: 'Output', icon: '📤', description: 'Build and execution output' },
+    { id: 'debug', name: 'Debug Console', icon: '🐛', description: 'Debug console and variables' },
   ];
+
+  // Handle panel addition
+  const handlePanelAdd = useCallback((panelType: ICUIPanelType, areaId: string) => {
+    console.log(`Adding panel ${panelType.name} to area ${areaId}`);
+    
+    // Generate unique ID for the new panel
+    const newPanelId = `${panelType.id}-${Date.now()}`;
+    
+    // Create panel content based on type
+    let content: React.ReactNode;
+    switch (panelType.id) {
+      case 'explorer':
+        content = <ICUIExplorerPanel className="h-full" />;
+        break;
+      case 'editor':
+        content = (
+          <ICUIEnhancedEditorPanel
+            files={editorFiles}
+            activeFileId={activeFileId}
+            onFileChange={handleFileChange}
+            onFileClose={handleFileClose}
+            onFileCreate={handleFileCreate}
+            onFileSave={handleFileSave}
+            onFileRun={handleFileRun}
+            onFileActivate={handleFileActivate}
+            autoSave={true}
+            autoSaveDelay={1500}
+            className="h-full"
+          />
+        );
+        break;
+      case 'terminal':
+        content = <ICUITerminalPanel className="h-full" />;
+        break;
+      case 'chat':
+        content = <ICUIChatPanel className="h-full" />;
+        break;
+      case 'output':
+        content = <div className="h-full p-4" style={{ backgroundColor: 'var(--icui-bg-primary)', color: 'var(--icui-text-primary)' }}>Output Panel - Build and execution output will appear here</div>;
+        break;
+      case 'debug':
+        content = <div className="h-full p-4" style={{ backgroundColor: 'var(--icui-bg-primary)', color: 'var(--icui-text-primary)' }}>Debug Console - Debug information and variables will appear here</div>;
+        break;
+      default:
+        content = <div className="h-full p-4" style={{ backgroundColor: 'var(--icui-bg-primary)', color: 'var(--icui-text-primary)' }}>Custom Panel: {panelType.name}</div>;
+    }
+    
+    // Create new panel
+    const newPanel: ICUIEnhancedPanel = {
+      id: newPanelId,
+      type: panelType.id,
+      title: panelType.name,
+      icon: panelType.icon,
+      closable: true,
+      content
+    };
+    
+    // Add panel to state
+    setPanels(prev => [...prev, newPanel]);
+    
+    // Update layout to include the new panel in the specified area
+    setLayout(prev => ({
+      ...prev,
+      areas: {
+        ...prev.areas,
+        [areaId]: {
+          ...prev.areas[areaId],
+          panelIds: [...prev.areas[areaId].panelIds, newPanelId],
+          activePanelId: newPanelId
+        }
+      }
+    }));
+  }, [editorFiles, activeFileId, handleFileChange, handleFileClose, handleFileCreate, handleFileSave, handleFileRun, handleFileActivate]);
+
+  // Initialize panels on mount
+  React.useEffect(() => {
+    const initialPanels: ICUIEnhancedPanel[] = [
+      {
+        id: 'explorer',
+        type: 'explorer',
+        title: 'Explorer',
+        icon: '📁',
+        closable: true,
+        content: <ICUIExplorerPanel className="h-full" />
+      },
+      {
+        id: 'editor',
+        type: 'editor',
+        title: 'Code Editor',
+        icon: '📝',
+        closable: true,
+        content: (
+          <ICUIEnhancedEditorPanel
+            files={editorFiles}
+            activeFileId={activeFileId}
+            onFileChange={handleFileChange}
+            onFileClose={handleFileClose}
+            onFileCreate={handleFileCreate}
+            onFileSave={handleFileSave}
+            onFileRun={handleFileRun}
+            onFileActivate={handleFileActivate}
+            autoSave={true}
+            autoSaveDelay={1500}
+            className="h-full"
+          />
+        )
+      },
+      {
+        id: 'terminal',
+        type: 'terminal',
+        title: 'Terminal',
+        icon: '💻',
+        closable: true,
+        content: <ICUITerminalPanel className="h-full" />
+      },
+      {
+        id: 'chat',
+        type: 'chat',
+        title: 'AI Assistant',
+        icon: '🤖',
+        closable: true,
+        content: <ICUIChatPanel className="h-full" />
+      },
+    ];
+    setPanels(initialPanels);
+  }, [editorFiles, activeFileId, handleFileChange, handleFileClose, handleFileCreate, handleFileSave, handleFileRun, handleFileActivate]);
+
+  // Panels are now managed by state instead of hardcoded array
 
   // Layout presets
   const createIDELayout = useCallback(() => {
@@ -236,32 +306,47 @@ export const ICUITestEnhanced: React.FC<ICUITestEnhancedProps> = ({ className = 
     });
   }, []);
 
+  // Get current theme info
+  const currentThemeInfo = THEME_OPTIONS.find(t => t.id === currentTheme) || THEME_OPTIONS[0];
+
   return (
-    <div className={`icui-test-enhanced flex flex-col ${className}`} style={{ height: '100vh', minHeight: '100vh' }}>
+    <div className={`icui-test-enhanced flex flex-col ${currentThemeInfo.class} ${className}`} style={{ height: '100vh', minHeight: '100vh' }}>
       {/* Header */}
-      <div className="flex items-center justify-between p-4 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 shrink-0">
+      <div className="flex items-center justify-between p-4 border-b shrink-0" style={{ backgroundColor: 'var(--icui-bg-secondary)', borderColor: 'var(--icui-border-subtle)', color: 'var(--icui-text-primary)' }}>
         <h2 className="text-xl font-bold">ICUI Enhanced Framework Test</h2>
         <div className="flex items-center space-x-2">
           <button
             onClick={createHLayout}
-            className="px-3 py-1 text-sm bg-orange-500 text-black rounded hover:bg-orange-600"
+            className="px-3 py-1 text-sm text-white rounded hover:opacity-80 transition-opacity"
+            style={{ backgroundColor: 'var(--icui-warning)' }}
           >
             H Layout (Default)
           </button>
 
           <button
             onClick={createIDELayout}
-            className="px-3 py-1 text-sm bg-blue-500 text-black rounded hover:bg-blue-600"
+            className="px-3 py-1 text-sm text-white rounded hover:opacity-80 transition-opacity"
+            style={{ backgroundColor: 'var(--icui-accent)' }}
           >
             IDE Layout
           </button>
 
-          <button
-            onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
-            className="px-3 py-1 text-sm bg-gray-500 text-white rounded hover:bg-gray-600"
+          <select
+            value={currentTheme}
+            onChange={(e) => setCurrentTheme(e.target.value)}
+            className="px-3 py-1 text-sm rounded border"
+            style={{ 
+              backgroundColor: 'var(--icui-bg-primary)', 
+              borderColor: 'var(--icui-border)', 
+              color: 'var(--icui-text-primary)' 
+            }}
           >
-            {theme === 'light' ? '🌙' : '☀️'}
-          </button>
+            {THEME_OPTIONS.map(theme => (
+              <option key={theme.id} value={theme.id}>
+                {theme.name}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 
@@ -275,14 +360,17 @@ export const ICUITestEnhanced: React.FC<ICUITestEnhancedProps> = ({ className = 
           persistLayout={true}
           layoutKey="icui-test-enhanced"
           className="h-full w-full"
+          availablePanelTypes={availablePanelTypes}
+          onPanelAdd={handlePanelAdd}
+          showPanelSelector={true}
         />
       </div>
 
       {/* Status */}
-      <div className="p-2 bg-gray-100 dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 text-sm text-gray-600 dark:text-gray-400 shrink-0">
+      <div className="p-2 border-t text-sm shrink-0" style={{ backgroundColor: 'var(--icui-bg-secondary)', borderColor: 'var(--icui-border-subtle)', color: 'var(--icui-text-secondary)' }}>
         Active Files: {editorFiles.length} | 
         Modified: {editorFiles.filter(f => f.modified).length} | 
-        Theme: {theme} | 
+        Theme: {currentThemeInfo.name} | 
         Layout: Persistent
       </div>
     </div>

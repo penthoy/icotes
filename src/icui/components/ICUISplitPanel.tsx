@@ -284,7 +284,8 @@ export const ICUISplitPanel: React.FC<ICUISplitPanelProps> = ({
       </div>
 
       {/* Collapse/Expand Controls */}
-      {splitConfig.collapsible && (
+      {/* REMOVED: Arrow navigation buttons as requested */}
+      {/* {splitConfig.collapsible && (
         <div className="icui-split-controls absolute top-2 right-2 flex gap-1 z-20">
           <button
             className="px-2 py-1 text-xs bg-gray-200 hover:bg-gray-300 rounded"
@@ -301,7 +302,7 @@ export const ICUISplitPanel: React.FC<ICUISplitPanelProps> = ({
             {splitState.isSecondPanelCollapsed ? '←' : '→'}
           </button>
         </div>
-      )}
+      )} */}
 
       {/* Debug info in development */}
       {process.env.NODE_ENV === 'development' && (
