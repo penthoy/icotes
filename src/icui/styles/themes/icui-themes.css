@@ -113,6 +113,33 @@
   --icui-warning: #d29922;
 }
 
+/* Dark theme specific tab overrides */
+.icui-theme-github-dark .icui-panel-tab {
+  background-color: var(--icui-bg-tertiary);
+  color: var(--icui-text-secondary);
+}
+
+.icui-theme-github-dark .icui-panel-tab:hover {
+  background-color: var(--icui-bg-secondary);
+}
+
+.icui-theme-github-dark .icui-panel-tab.active {
+  background-color: var(--icui-bg-secondary);
+  color: var(--icui-text-primary);
+}
+
+.icui-theme-github-dark .icui-tab-container .icui-tab {
+  background-color: var(--icui-bg-secondary);
+}
+
+.icui-theme-github-dark .icui-tab-container .icui-tab:hover {
+  background-color: var(--icui-bg-tertiary);
+}
+
+.icui-theme-github-dark .icui-tab-container .icui-tab.active {
+  background-color: var(--icui-bg-tertiary);
+}
+
 /* Monokai Theme */
 .icui-theme-monokai {
   /* Background Colors */
@@ -138,6 +165,33 @@
   --icui-warning: #e6db74;
 }
 
+/* Monokai dark theme tab overrides */
+.icui-theme-monokai .icui-panel-tab {
+  background-color: var(--icui-bg-tertiary);
+  color: var(--icui-text-secondary);
+}
+
+.icui-theme-monokai .icui-panel-tab:hover {
+  background-color: var(--icui-bg-secondary);
+}
+
+.icui-theme-monokai .icui-panel-tab.active {
+  background-color: var(--icui-bg-secondary);
+  color: var(--icui-text-primary);
+}
+
+.icui-theme-monokai .icui-tab-container .icui-tab {
+  background-color: var(--icui-bg-secondary);
+}
+
+.icui-theme-monokai .icui-tab-container .icui-tab:hover {
+  background-color: var(--icui-bg-tertiary);
+}
+
+.icui-theme-monokai .icui-tab-container .icui-tab.active {
+  background-color: var(--icui-bg-tertiary);
+}
+
 /* One Dark Theme */
 .icui-theme-one-dark {
   /* Background Colors */
@@ -161,6 +215,33 @@
   --icui-success: #98c379;
   --icui-danger: #e06c75;
   --icui-warning: #e5c07b;
+}
+
+/* One Dark theme tab overrides */
+.icui-theme-one-dark .icui-panel-tab {
+  background-color: var(--icui-bg-tertiary);
+  color: var(--icui-text-secondary);
+}
+
+.icui-theme-one-dark .icui-panel-tab:hover {
+  background-color: var(--icui-bg-secondary);
+}
+
+.icui-theme-one-dark .icui-panel-tab.active {
+  background-color: var(--icui-bg-secondary);
+  color: var(--icui-text-primary);
+}
+
+.icui-theme-one-dark .icui-tab-container .icui-tab {
+  background-color: var(--icui-bg-secondary);
+}
+
+.icui-theme-one-dark .icui-tab-container .icui-tab:hover {
+  background-color: var(--icui-bg-tertiary);
+}
+
+.icui-theme-one-dark .icui-tab-container .icui-tab.active {
+  background-color: var(--icui-bg-tertiary);
 }
 
 /* ===== GITHUB LIGHT THEME ===== */
@@ -451,6 +532,33 @@
   --icui-warning: var(--icui-github-dark-warning);
 }
 
+/* Default dark theme tab overrides */
+.dark .icui-panel-tab {
+  background-color: var(--icui-bg-tertiary);
+  color: var(--icui-text-secondary);
+}
+
+.dark .icui-panel-tab:hover {
+  background-color: var(--icui-bg-secondary);
+}
+
+.dark .icui-panel-tab.active {
+  background-color: var(--icui-bg-secondary);
+  color: var(--icui-text-primary);
+}
+
+.dark .icui-tab-container .icui-tab {
+  background-color: var(--icui-bg-secondary);
+}
+
+.dark .icui-tab-container .icui-tab:hover {
+  background-color: var(--icui-bg-tertiary);
+}
+
+.dark .icui-tab-container .icui-tab.active {
+  background-color: var(--icui-bg-tertiary);
+}
+
 .light {
   /* Default to GitHub Light */
   --icui-bg-primary: var(--icui-github-light-bg-primary);
@@ -467,4 +575,77 @@
   --icui-success: var(--icui-github-light-success);
   --icui-danger: var(--icui-github-light-danger);
   --icui-warning: var(--icui-github-light-warning);
+}
+
+/* Light theme specific overrides for terminal text visibility */
+.light .icui-enhanced-terminal-panel .xterm-screen,
+.light .icui-enhanced-terminal-panel .xterm-rows,
+.light .icui-enhanced-terminal-panel .xterm-viewport,
+.icui-theme-github-light .icui-enhanced-terminal-panel .xterm-screen,
+.icui-theme-github-light .icui-enhanced-terminal-panel .xterm-rows,
+.icui-theme-github-light .icui-enhanced-terminal-panel .xterm-viewport,
+.icui-theme-vscode-light .icui-enhanced-terminal-panel .xterm-screen,
+.icui-theme-vscode-light .icui-enhanced-terminal-panel .xterm-rows,
+.icui-theme-vscode-light .icui-enhanced-terminal-panel .xterm-viewport {
+  color: #000000 !important;
+}
+
+/* Ensure all light theme terminals have dark text */
+.light .icui-enhanced-terminal-panel .xterm-fg-default,
+.icui-theme-github-light .icui-enhanced-terminal-panel .xterm-fg-default,
+.icui-theme-vscode-light .icui-enhanced-terminal-panel .xterm-fg-default {
+  color: #000000 !important;
+}
+
+/* Override any bright white text in light themes */
+.light .icui-enhanced-terminal-panel .xterm-fg-15,
+.light .icui-enhanced-terminal-panel .xterm-fg-bright-white,
+.icui-theme-github-light .icui-enhanced-terminal-panel .xterm-fg-15,
+.icui-theme-github-light .icui-enhanced-terminal-panel .xterm-fg-bright-white,
+.icui-theme-vscode-light .icui-enhanced-terminal-panel .xterm-fg-15,
+.icui-theme-vscode-light .icui-enhanced-terminal-panel .xterm-fg-bright-white {
+  color: #333333 !important;
+}
+
+/* Override any light/white text in light themes */
+.light .icui-enhanced-terminal-panel .xterm-fg-7,
+.light .icui-enhanced-terminal-panel .xterm-fg-white,
+.icui-theme-github-light .icui-enhanced-terminal-panel .xterm-fg-7,
+.icui-theme-github-light .icui-enhanced-terminal-panel .xterm-fg-white,
+.icui-theme-vscode-light .icui-enhanced-terminal-panel .xterm-fg-7,
+.icui-theme-vscode-light .icui-enhanced-terminal-panel .xterm-fg-white {
+  color: #555555 !important;
+}
+
+/* Light theme specific overrides for code editor text visibility */
+.light .cm-editor,
+.light .cm-content,
+.icui-theme-github-light .cm-editor,
+.icui-theme-github-light .cm-content,
+.icui-theme-vscode-light .cm-editor,
+.icui-theme-vscode-light .cm-content {
+  color: #000000 !important;
+}
+
+/* Ensure no white text elements in light theme editors */
+.light .cm-editor *,
+.light .cm-content *,
+.icui-theme-github-light .cm-editor *,
+.icui-theme-github-light .cm-content *,
+.icui-theme-vscode-light .cm-editor *,
+.icui-theme-vscode-light .cm-content * {
+  color: inherit !important;
+}
+
+/* Override any potential light colored text in light themes */
+.light .cm-editor .cm-tag,
+.light .cm-editor .cm-attribute,
+.light .cm-editor .cm-property,
+.icui-theme-github-light .cm-editor .cm-tag,
+.icui-theme-github-light .cm-editor .cm-attribute,
+.icui-theme-github-light .cm-editor .cm-property,
+.icui-theme-vscode-light .cm-editor .cm-tag,
+.icui-theme-vscode-light .cm-editor .cm-attribute,
+.icui-theme-vscode-light .cm-editor .cm-property {
+  color: #000080 !important;
 } 

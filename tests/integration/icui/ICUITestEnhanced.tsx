@@ -8,7 +8,7 @@ import React, { useState, useCallback } from 'react';
 import { 
   ICUIEnhancedLayout,
   ICUIEnhancedEditorPanel,
-  ICUITerminalPanel,
+  ICUIEnhancedTerminalPanel,
   ICUIExplorerPanel,
   ICUIChatPanel
 } from '../../../src/icui';
@@ -179,7 +179,7 @@ export const ICUITestEnhanced: React.FC<ICUITestEnhancedProps> = ({ className = 
         );
         break;
       case 'terminal':
-        content = <ICUITerminalPanel className="h-full" />;
+        content = <ICUIEnhancedTerminalPanel className="h-full" />;
         break;
       case 'chat':
         content = <ICUIChatPanel className="h-full" />;
@@ -260,7 +260,7 @@ export const ICUITestEnhanced: React.FC<ICUITestEnhancedProps> = ({ className = 
         title: 'Terminal',
         icon: '💻',
         closable: true,
-        content: <ICUITerminalPanel className="h-full" />
+        content: <ICUIEnhancedTerminalPanel className="h-full" />
       },
       {
         id: 'chat',

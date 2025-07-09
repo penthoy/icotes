@@ -4,7 +4,7 @@
  * Handles tab management, drag/drop reordering, and panel switching
  */
 
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { ICUIPanelSelector, ICUIPanelType } from './ICUIPanelSelector';
 
 export interface ICUITab {
@@ -52,8 +52,43 @@ export const ICUITabContainer: React.FC<ICUITabContainerProps> = ({
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [hoveredTab, setHoveredTab] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [isDarkTheme, setIsDarkTheme] = useState(false);
+
+  // Detect theme on mount and when it changes
+  useEffect(() => {
+    const detectTheme = () => {
+      const htmlElement = document.documentElement;
+      const isDark = htmlElement.classList.contains('dark') || 
+                     htmlElement.classList.contains('icui-theme-github-dark') ||
+                     htmlElement.classList.contains('icui-theme-monokai') ||
+                     htmlElement.classList.contains('icui-theme-one-dark');
+      setIsDarkTheme(isDark);
+    };
+
+    detectTheme();
+    
+    // Create observer to watch for theme changes
+    const observer = new MutationObserver(detectTheme);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class']
+    });
+
+    return () => observer.disconnect();
+  }, []);
 
   const activeTab = tabs.find(tab => tab.id === activeTabId);
+
+  // Get background colors based on theme - FIXED: Active tabs should be lighter
+  const getTabBackgroundColor = (isActive: boolean) => {
+    if (isDarkTheme) {
+      // Dark themes: active tabs are LIGHTER, inactive tabs are DARKER
+      return isActive ? 'var(--icui-bg-secondary)' : 'var(--icui-bg-tertiary)';
+    } else {
+      // Light themes: active tabs are lighter, inactive tabs are darker  
+      return isActive ? 'var(--icui-bg-secondary)' : 'var(--icui-bg-tertiary)';
+    }
+  };
 
   // Drag and Drop Handlers
   const handleDragStart = useCallback((e: React.DragEvent, tab: ICUITab, index: number) => {
@@ -110,7 +145,7 @@ export const ICUITabContainer: React.FC<ICUITabContainerProps> = ({
               }
             `}
             style={{
-              backgroundColor: tab.id === activeTabId ? 'var(--icui-bg-secondary)' : 'var(--icui-bg-tertiary)',
+              backgroundColor: getTabBackgroundColor(tab.id === activeTabId),
               borderRightColor: 'var(--icui-border-subtle)',
               borderBottomColor: tab.id === activeTabId ? 'var(--icui-accent)' : 'transparent',
               color: tab.id === activeTabId ? 'var(--icui-text-primary)' : 'var(--icui-text-secondary)'

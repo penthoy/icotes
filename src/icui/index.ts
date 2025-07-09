@@ -1,6 +1,7 @@
 /**
  * ICUI Framework - Main Entry Point
- * Exports all ICUI components, hooks, and types
+ * This is the main entry point for the ICUI framework
+ * It exports all the components, layouts, and utilities
  */
 
 // Components
@@ -11,15 +12,15 @@ export { ICUIBasePanel } from './components/ICUIBasePanel';
 export { ICUIPanelHeader } from './components/ICUIPanelHeader';
 export { ICUIPanelContent } from './components/ICUIPanelContent';
 export { ICUIPanelArea } from './components/ICUIPanelArea';
+export { default as ICUITabContainer } from './components/ICUITabContainer';
+export { ICUIEnhancedLayout } from './components/ICUIEnhancedLayout';
 
 // Enhanced Components (New)
-export { ICUITabContainer } from './components/ICUITabContainer';
-export { ICUIEnhancedPanelArea } from './components/ICUIEnhancedPanelArea';
-export { ICUIEnhancedLayout } from './components/ICUIEnhancedLayout';
-export { ICUIPanelSelector } from './components/ICUIPanelSelector';
+// export { ICUITest1, ICUITest2, ICUITest3, ICUITest4, ICUITest5, ICUITest6, ICUITest7, ICUITest8, ICUITest9, ICUITest10 } from './tests';
 
 // Enhanced Panels
 export { default as ICUIEnhancedEditorPanel } from './components/panels/ICUIEnhancedEditorPanel';
+export { default as ICUIEnhancedTerminalPanel } from './components/panels/ICUIEnhancedTerminalPanel';
 
 // Original Specialized Panels
 export { default as ICUITerminalPanel } from './components/panels/ICUITerminalPanel';

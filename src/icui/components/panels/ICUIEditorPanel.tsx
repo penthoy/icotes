@@ -23,6 +23,30 @@ function helloWorld() {
 helloWorld();`);
   const [isModified, setIsModified] = useState(false);
   const [language, setLanguage] = useState<SupportedLanguage>('javascript');
+  const [isDarkTheme, setIsDarkTheme] = useState(false);
+
+  // Detect theme on mount and when it changes
+  useEffect(() => {
+    const detectTheme = () => {
+      const htmlElement = document.documentElement;
+      const isDark = htmlElement.classList.contains('dark') || 
+                     htmlElement.classList.contains('icui-theme-github-dark') ||
+                     htmlElement.classList.contains('icui-theme-monokai') ||
+                     htmlElement.classList.contains('icui-theme-one-dark');
+      setIsDarkTheme(isDark);
+    };
+
+    detectTheme();
+    
+    // Create observer to watch for theme changes
+    const observer = new MutationObserver(detectTheme);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class']
+    });
+
+    return () => observer.disconnect();
+  }, []);
 
   // Handle content changes
   const handleContentChange = (newContent: string) => {
@@ -98,7 +122,7 @@ helloWorld();`);
             code={content}
             language={language}
             onCodeChange={handleContentChange}
-            theme="dark"
+            theme={isDarkTheme ? 'dark' : 'light'}
           />
         </div>
       </div>

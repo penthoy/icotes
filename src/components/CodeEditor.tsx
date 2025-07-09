@@ -29,7 +29,9 @@ import {
   bracketMatching,
   foldKeymap,
   foldGutter,
+  HighlightStyle,
 } from "@codemirror/language";
+import { tags as t } from "@lezer/highlight";
 import { javascript } from "@codemirror/lang-javascript";
 import { python } from "@codemirror/lang-python";
 import { oneDark } from "@codemirror/theme-one-dark";
@@ -46,6 +48,198 @@ interface CodeEditorProps {
   onRun?: (code: string) => void;
   language?: SupportedLanguage;
 }
+
+// Create light theme syntax highlighting
+const lightHighlightStyle = HighlightStyle.define([
+  { tag: t.keyword, color: "#0000ff" },
+  { tag: [t.name, t.deleted, t.character, t.propertyName, t.macroName], color: "#008080" },
+  { tag: [t.function(t.variableName), t.labelName], color: "#795e26" },
+  { tag: [t.color, t.constant(t.name), t.standard(t.name)], color: "#0e07d3" },
+  { tag: [t.definition(t.name), t.separator], color: "#001080" },
+  { tag: [t.typeName, t.className, t.number, t.changed, t.annotation, t.modifier, t.self, t.namespace], color: "#267f99" },
+  { tag: [t.operator, t.operatorKeyword, t.url, t.escape, t.regexp, t.link, t.special(t.string)], color: "#a31515" },
+  { tag: [t.meta, t.comment], color: "#008000" },
+  { tag: t.strong, fontWeight: "bold" },
+  { tag: t.emphasis, fontStyle: "italic" },
+  { tag: t.strikethrough, textDecoration: "line-through" },
+  { tag: t.link, color: "#0000ee", textDecoration: "underline" },
+  { tag: t.heading, fontWeight: "bold", color: "#0000ff" },
+  { tag: [t.atom, t.bool, t.special(t.variableName)], color: "#795e26" },
+  { tag: [t.processingInstruction, t.string, t.inserted], color: "#a31515" },
+  { tag: t.invalid, color: "#ff0000" },
+]);
+
+// Create dark theme syntax highlighting
+const darkHighlightStyle = HighlightStyle.define([
+  { tag: t.keyword, color: "#569cd6" },
+  { tag: [t.name, t.deleted, t.character, t.propertyName, t.macroName], color: "#4ec9b0" },
+  { tag: [t.function(t.variableName), t.labelName], color: "#dcdcaa" },
+  { tag: [t.color, t.constant(t.name), t.standard(t.name)], color: "#4fc1ff" },
+  { tag: [t.definition(t.name), t.separator], color: "#9cdcfe" },
+  { tag: [t.typeName, t.className, t.number, t.changed, t.annotation, t.modifier, t.self, t.namespace], color: "#4ec9b0" },
+  { tag: [t.operator, t.operatorKeyword, t.url, t.escape, t.regexp, t.link, t.special(t.string)], color: "#d16969" },
+  { tag: [t.meta, t.comment], color: "#6a9955" },
+  { tag: t.strong, fontWeight: "bold" },
+  { tag: t.emphasis, fontStyle: "italic" },
+  { tag: t.strikethrough, textDecoration: "line-through" },
+  { tag: t.link, color: "#569cd6", textDecoration: "underline" },
+  { tag: t.heading, fontWeight: "bold", color: "#569cd6" },
+  { tag: [t.atom, t.bool, t.special(t.variableName)], color: "#dcdcaa" },
+  { tag: [t.processingInstruction, t.string, t.inserted], color: "#ce9178" },
+  { tag: t.invalid, color: "#f44747" },
+]);
+
+// Custom light theme for CodeMirror using ICUI theme variables
+const icuiLightTheme = EditorView.theme({
+  '&': {
+    color: 'var(--icui-text-primary)',
+    backgroundColor: 'var(--icui-bg-primary)',
+  },
+  '.cm-content': {
+    padding: '16px',
+    caretColor: 'var(--icui-text-primary)',
+    backgroundColor: 'var(--icui-bg-primary)',
+  },
+  '.cm-focused .cm-cursor': {
+    borderLeftColor: 'var(--icui-text-primary)',
+  },
+  '.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {
+    backgroundColor: 'var(--icui-accent)',
+    color: 'white',
+  },
+  '.cm-panels': {
+    backgroundColor: 'var(--icui-bg-secondary)',
+    color: 'var(--icui-text-primary)',
+  },
+  '.cm-panels.cm-panels-top': {
+    borderBottom: '2px solid var(--icui-border)',
+  },
+  '.cm-panels.cm-panels-bottom': {
+    borderTop: '2px solid var(--icui-border)',
+  },
+  '.cm-searchMatch': {
+    backgroundColor: 'var(--icui-warning)',
+    color: 'var(--icui-bg-primary)',
+  },
+  '.cm-searchMatch.cm-searchMatch-selected': {
+    backgroundColor: 'var(--icui-accent)',
+  },
+  '.cm-activeLine': {
+    backgroundColor: 'var(--icui-bg-secondary)',
+  },
+  '.cm-selectionMatch': {
+    backgroundColor: 'var(--icui-bg-tertiary)',
+  },
+  '&.cm-focused .cm-matchingBracket, &.cm-focused .cm-nonmatchingBracket': {
+    backgroundColor: 'var(--icui-bg-tertiary)',
+  },
+  '.cm-gutters': {
+    backgroundColor: 'var(--icui-bg-secondary)',
+    color: 'var(--icui-text-muted)',
+    border: 'none',
+  },
+  '.cm-activeLineGutter': {
+    backgroundColor: 'var(--icui-bg-tertiary)',
+  },
+  '.cm-foldPlaceholder': {
+    backgroundColor: 'var(--icui-bg-tertiary)',
+    border: 'none',
+    color: 'var(--icui-text-secondary)',
+  },
+  '.cm-tooltip': {
+    border: '1px solid var(--icui-border)',
+    backgroundColor: 'var(--icui-bg-overlay)',
+    color: 'var(--icui-text-primary)',
+  },
+  '.cm-tooltip .cm-tooltip-arrow:before': {
+    borderTopColor: 'var(--icui-border)',
+  },
+  '.cm-tooltip .cm-tooltip-arrow:after': {
+    borderTopColor: 'var(--icui-bg-overlay)',
+  },
+  '.cm-tooltip-autocomplete': {
+    '& > ul > li[aria-selected]': {
+      backgroundColor: 'var(--icui-accent)',
+      color: 'var(--icui-bg-primary)',
+    }
+  }
+}, { dark: false });
+
+// Custom dark theme for CodeMirror using ICUI theme variables
+const icuiDarkTheme = EditorView.theme({
+  '&': {
+    color: 'var(--icui-text-primary)',
+    backgroundColor: 'var(--icui-bg-primary)',
+  },
+  '.cm-content': {
+    padding: '16px',
+    caretColor: 'var(--icui-text-primary)',
+    backgroundColor: 'var(--icui-bg-primary)',
+  },
+  '.cm-focused .cm-cursor': {
+    borderLeftColor: 'var(--icui-text-primary)',
+  },
+  '.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {
+    backgroundColor: 'var(--icui-accent)',
+    color: 'white',
+  },
+  '.cm-panels': {
+    backgroundColor: 'var(--icui-bg-secondary)',
+    color: 'var(--icui-text-primary)',
+  },
+  '.cm-panels.cm-panels-top': {
+    borderBottom: '2px solid var(--icui-border)',
+  },
+  '.cm-panels.cm-panels-bottom': {
+    borderTop: '2px solid var(--icui-border)',
+  },
+  '.cm-searchMatch': {
+    backgroundColor: 'var(--icui-warning)',
+    color: 'var(--icui-bg-primary)',
+  },
+  '.cm-searchMatch.cm-searchMatch-selected': {
+    backgroundColor: 'var(--icui-accent)',
+  },
+  '.cm-activeLine': {
+    backgroundColor: 'var(--icui-bg-secondary)',
+  },
+  '.cm-selectionMatch': {
+    backgroundColor: 'var(--icui-bg-tertiary)',
+  },
+  '&.cm-focused .cm-matchingBracket, &.cm-focused .cm-nonmatchingBracket': {
+    backgroundColor: 'var(--icui-bg-tertiary)',
+  },
+  '.cm-gutters': {
+    backgroundColor: 'var(--icui-bg-secondary)',
+    color: 'var(--icui-text-muted)',
+    border: 'none',
+  },
+  '.cm-activeLineGutter': {
+    backgroundColor: 'var(--icui-bg-tertiary)',
+  },
+  '.cm-foldPlaceholder': {
+    backgroundColor: 'var(--icui-bg-tertiary)',
+    border: 'none',
+    color: 'var(--icui-text-secondary)',
+  },
+  '.cm-tooltip': {
+    border: '1px solid var(--icui-border)',
+    backgroundColor: 'var(--icui-bg-overlay)',
+    color: 'var(--icui-text-primary)',
+  },
+  '.cm-tooltip .cm-tooltip-arrow:before': {
+    borderTopColor: 'var(--icui-border)',
+  },
+  '.cm-tooltip .cm-tooltip-arrow:after': {
+    borderTopColor: 'var(--icui-bg-overlay)',
+  },
+  '.cm-tooltip-autocomplete': {
+    '& > ul > li[aria-selected]': {
+      backgroundColor: 'var(--icui-accent)',
+      color: 'white',
+    }
+  }
+}, { dark: true });
 
 const CodeEditor = ({
   code: propCode,
@@ -100,7 +294,6 @@ const CodeEditor = ({
         crosshairCursor(),
         highlightSelectionMatches(),
         history(),
-        syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
 
         // Language support
         getLanguageExtension(language),
@@ -130,9 +323,13 @@ const CodeEditor = ({
         }),
       ];
 
-      // Add theme conditionally
+      // Add theme and syntax highlighting conditionally
       if (theme === "dark") {
-        extensions.push(oneDark);
+        extensions.push(icuiDarkTheme);
+        extensions.push(syntaxHighlighting(darkHighlightStyle));
+      } else {
+        extensions.push(icuiLightTheme);
+        extensions.push(syntaxHighlighting(lightHighlightStyle));
       }
 
       // Create initial state with current content
