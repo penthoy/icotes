@@ -121,6 +121,43 @@ This document outlines the step-by-step plan for rewriting the UI with a modular
 - Add file tree navigation
 - Support file operations (create, delete, rename)
 
+#### Step 4.4: Create ICUITest4.5 Test Page
+- Create `tests/integration/icui/ICUITest4.5.tsx`
+- Demonstrate the refactored minimal panel implementations
+- Test chat panel integration
+- Validate that all panels follow the same minimal pattern as ICUITerminalPanel
+
+#### Step 4.5: Refactor EditorPanel and ExplorerPanel to Minimal Implementation
+- Refactor `src/icui/components/panels/ICUIEditorPanel.tsx` to be minimal like ICUITerminalPanel
+- Refactor `src/icui/components/panels/ICUIExplorerPanel.tsx` to be minimal like ICUITerminalPanel
+- Both should be minimal implementations that can be inherited by more complete implementations
+- Focus on core functionality only, remove complex features for the base implementation
+- Ensure consistent architecture across all panel types
+
+#### Step 4.6: Create ChatPanel Similar to ICUITerminalPanel
+- Create `src/icui/components/panels/ICUIChatPanel.tsx`
+- Follow the same minimal implementation pattern as ICUITerminalPanel
+- Provide AI/LLM/Agent interface capabilities
+- Include basic chat interface with message history
+- Support for sending/receiving messages
+- Maintain consistent styling and behavior with other panels
+
+#### Step 4.7: Create Reference Layout Implementations
+- Create layout configurations including:
+  - Top/bottom (editor/terminal) split
+  - Left (explorer), middle (editor), right (chat) layout
+  - "H" layout with split top/bottom in the middle section
+- Similar to ICUITEST4 page structure but with these specific layouts
+- Create preset configurations for each layout type
+- Demonstrate panel docking and area management
+
+#### Step 4.8: Create Reference Implementation for Main Page
+- Create new implementation that includes all functionality from current home page
+- Use ICUI framework similar to ICUITEST4 page structure
+- Integrate with the reference layout implementations from 4.7
+- Use this as the foundation for further ICUI development
+- Maintain all existing functionality while using the new panel system
+
 ### Phase 5: Modular Menu System
 **Goal**: Create flexible file and layout menus using the same modular principles
 

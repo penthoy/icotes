@@ -1,5 +1,13 @@
 /**
- * ICUI Framework - Main Entry Point
+ * ICUI Fr# Sp// Specialized Panels (Phase 4)
+export { default as ICUITerminalPanel } from './components/panels/ICUITerminalPanel';
+export { default as ICUIEditorPanel } from './components/panels/ICUIEditorPanel';
+export { default as ICUIExplorerPanel } from './components/panels/ICUIExplorerPanel';
+export { default as ICUIChatPanel } from './components/panels/ICUIChatPanel';lized Panels (Phase 4)
+export { default as ICUITerminalPanel } from './components/panels/ICUITerminalPanel';
+export { default as ICUIEditorPanel } from './components/panels/ICUIEditorPanel';
+export { default as ICUIExplorerPanel } from './components/panels/ICUIExplorerPanel';
+export { default as ICUIChatPanel } from './components/panels/ICUIChatPanel';ork - Main Entry Point
  * Exports all ICUI components, hooks, and types
  */
 
@@ -14,8 +22,9 @@ export { ICUIPanelArea } from './components/ICUIPanelArea';
 
 // Specialized Panels (Phase 4)
 export { default as ICUITerminalPanel } from './components/panels/ICUITerminalPanel';
-export { ICUIEditorPanel } from './components/panels/ICUIEditorPanel';
-export { ICUIExplorerPanel } from './components/panels/ICUIExplorerPanel';
+export { default as ICUIEditorPanel } from './components/panels/ICUIEditorPanel';
+export { default as ICUIExplorerPanel } from './components/panels/ICUIExplorerPanel';
+export { default as ICUIChatPanel } from './components/panels/ICUIChatPanel';
 
 // Hooks
 export { useICUIResponsive } from './hooks/icui-use-responsive';
