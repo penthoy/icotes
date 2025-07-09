@@ -8,6 +8,7 @@ import { ICUITest4 } from "../tests/integration/icui/ICUITest4";
 import { ICUITest45 } from "../tests/integration/icui/ICUITest4.5";
 import { ICUIReferenceLayouts } from "../tests/integration/icui/ICUIReferenceLayouts";
 import { ICUIMainPage } from "../tests/integration/icui/ICUIMainPage";
+import { ICUITestEnhanced } from "../tests/integration/icui/ICUITestEnhanced";
 
 function App() {
   return (
@@ -21,6 +22,7 @@ function App() {
         <Route path="/icui-test4.5" element={<ICUITest45 />} />
         <Route path="/icui-layouts" element={<ICUIReferenceLayouts />} />
         <Route path="/icui-main" element={<ICUIMainPage />} />
+        <Route path="/icui-enhanced" element={<ICUITestEnhanced />} />
       </Routes>
     </Suspense>
   );

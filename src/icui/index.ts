@@ -1,13 +1,5 @@
 /**
- * ICUI Fr# Sp// Specialized Panels (Phase 4)
-export { default as ICUITerminalPanel } from './components/panels/ICUITerminalPanel';
-export { default as ICUIEditorPanel } from './components/panels/ICUIEditorPanel';
-export { default as ICUIExplorerPanel } from './components/panels/ICUIExplorerPanel';
-export { default as ICUIChatPanel } from './components/panels/ICUIChatPanel';lized Panels (Phase 4)
-export { default as ICUITerminalPanel } from './components/panels/ICUITerminalPanel';
-export { default as ICUIEditorPanel } from './components/panels/ICUIEditorPanel';
-export { default as ICUIExplorerPanel } from './components/panels/ICUIExplorerPanel';
-export { default as ICUIChatPanel } from './components/panels/ICUIChatPanel';ork - Main Entry Point
+ * ICUI Framework - Main Entry Point
  * Exports all ICUI components, hooks, and types
  */
 
@@ -20,7 +12,15 @@ export { ICUIPanelHeader } from './components/ICUIPanelHeader';
 export { ICUIPanelContent } from './components/ICUIPanelContent';
 export { ICUIPanelArea } from './components/ICUIPanelArea';
 
-// Specialized Panels (Phase 4)
+// Enhanced Components (New)
+export { ICUITabContainer } from './components/ICUITabContainer';
+export { ICUIEnhancedPanelArea } from './components/ICUIEnhancedPanelArea';
+export { ICUIEnhancedLayout } from './components/ICUIEnhancedLayout';
+
+// Enhanced Panels
+export { default as ICUIEnhancedEditorPanel } from './components/panels/ICUIEnhancedEditorPanel';
+
+// Original Specialized Panels
 export { default as ICUITerminalPanel } from './components/panels/ICUITerminalPanel';
 export { default as ICUIEditorPanel } from './components/panels/ICUIEditorPanel';
 export { default as ICUIExplorerPanel } from './components/panels/ICUIExplorerPanel';
@@ -79,6 +79,28 @@ export type {
   ICUIPanelManagerState,
   ICUIPanelHookResult,
 } from './types/icui-panel';
+
+// Enhanced Component Types
+export type {
+  ICUILayoutArea,
+  ICUILayoutConfig,
+  ICUIEnhancedLayoutProps,
+} from './components/ICUIEnhancedLayout';
+
+export type {
+  ICUIEnhancedPanel,
+  ICUIEnhancedPanelAreaProps,
+} from './components/ICUIEnhancedPanelArea';
+
+export type {
+  ICUITab,
+  ICUITabContainerProps,
+} from './components/ICUITabContainer';
+
+export type {
+  ICUIEditorFile,
+  ICUIEnhancedEditorPanelProps,
+} from './components/panels/ICUIEnhancedEditorPanel';
 
 // Version
 export const ICUI_VERSION = '4.0.0';

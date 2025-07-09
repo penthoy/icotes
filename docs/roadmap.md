@@ -4,9 +4,18 @@
 A web-based JavaScript code editor built with React, CodeMirror 6, and modern web technologies. The goal is to create a powerful, user-friendly code editor with real-time execution capabilities.
 
 ## In Progress 🚧
-
+- [] icui-enhanced: using this to add features to icui
 
 ## Future tasks:
+-[] ICUI 4.5 feedbacks:
+Great work on the minimalist implementation, this is great, lets now add in some essential features back in bit by bit, be very aware that we're still trying to get this as light as possible, for icui-main, ICUITest45 and ICUIReferenceLayouts, 
+1. we still want resizable edges on all the panels.
+2. while minimalistic, we still want tabs for script editor and syntax highlighting line number()
+3. dragable panels similar to icui-test3, these features should be made relatively easy to implement on the implementation itself, and the heavy lifting should be inside the abstraction of the framework itself, if you think these feature require too much code to implement inside these files, then delegate them into the framework, using this as an opportunity to develope the framework.
+4. lastly for these implementations the bottom edge should be sticking to the bottom of the browser(see screenshot), and it should stretch according to the edge of the browser, if the edge is squeezed/squashed, make sure there are scroll bars on all the windows to accomodate the squeeze, and the panel window should not grow bigger if its content inside got bigger, such as chat panel got more chat content, the scroll bar length should grow instead. 
+
+Every feature mentioned here are the most basic features essential for this frame work, if they're require too much code to implement abstract them into the framework itself which should do the heavy lifting.
+
 - [] Continue with icui_rewrite.md on step 5 (Modular Menu System), implementing top menu bar and file/layout menus
 1. rename the current home route / and rewrite a new home page base
 
