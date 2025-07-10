@@ -7,14 +7,14 @@
 import React, { useState, useCallback } from 'react';
 import { 
   ICUIEnhancedLayout,
-  ICUIEnhancedEditorPanel,
+  ICUIEditorPanel,
   ICUIEnhancedTerminalPanel,
   ICUIExplorerPanel,
   ICUIChatPanel
 } from '../../../src/icui';
 import type { ICUILayoutConfig } from '../../../src/icui/components/ICUIEnhancedLayout';
 import type { ICUIEnhancedPanel } from '../../../src/icui/components/ICUIEnhancedPanelArea';
-import type { ICUIEditorFile } from '../../../src/icui/components/panels/ICUIEnhancedEditorPanel';
+import type { ICUIEditorFile } from '../../../src/icui/components/panels/ICUIEditorPanel';
 import type { ICUIPanelType } from '../../../src/icui/components/ICUIPanelSelector';
 
 interface ICUITestEnhancedProps {
@@ -163,7 +163,7 @@ export const ICUITestEnhanced: React.FC<ICUITestEnhancedProps> = ({ className = 
       case 'editor':
         // For editor panels, use placeholder content that will be updated by the effect
         content = (
-          <ICUIEnhancedEditorPanel
+          <ICUIEditorPanel
             files={editorFiles}
             activeFileId={activeFileId}
             onFileChange={handleFileChange}
@@ -239,7 +239,7 @@ export const ICUITestEnhanced: React.FC<ICUITestEnhancedProps> = ({ className = 
         icon: '📝',
         closable: true,
         content: (
-          <ICUIEnhancedEditorPanel
+          <ICUIEditorPanel
             files={editorFiles}
             activeFileId={activeFileId}
             onFileChange={handleFileChange}
@@ -281,7 +281,7 @@ export const ICUITestEnhanced: React.FC<ICUITestEnhancedProps> = ({ className = 
         return {
           ...panel,
           content: (
-            <ICUIEnhancedEditorPanel
+            <ICUIEditorPanel
               files={editorFiles}
               activeFileId={activeFileId}
               onFileChange={handleFileChange}

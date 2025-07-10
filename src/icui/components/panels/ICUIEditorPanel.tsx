@@ -6,8 +6,28 @@
 
 import React, { useState, useRef } from 'react';
 
+// Export interface for compatibility with enhanced version
+export interface ICUIEditorFile {
+  id: string;
+  name: string;
+  language: string;
+  content: string;
+  modified: boolean;
+}
+
 interface ICUIEditorPanelProps {
   className?: string;
+  // Accept enhanced props for compatibility but ignore them
+  files?: ICUIEditorFile[];
+  activeFileId?: string;
+  onFileChange?: (fileId: string, newContent: string) => void;
+  onFileClose?: (fileId: string) => void;
+  onFileCreate?: () => void;
+  onFileSave?: (fileId: string) => void;
+  onFileRun?: (fileId: string, content: string, language: string) => void;
+  onFileActivate?: (fileId: string) => void;
+  autoSave?: boolean;
+  autoSaveDelay?: number;
 }
 
 const ICUIEditorPanel: React.FC<ICUIEditorPanelProps> = ({ className = '' }) => {
