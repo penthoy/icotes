@@ -4,7 +4,7 @@
  * Shows how the heavy lifting is now abstracted into the framework
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { 
   ICUIEnhancedLayout,
   ICUIEnhancedEditorPanel,
@@ -77,6 +77,43 @@ export const ICUITestEnhanced: React.FC<ICUITestEnhancedProps> = ({ className = 
   const [activeFileId, setActiveFileId] = useState<string>('main-js');
   const [currentTheme, setCurrentTheme] = useState<string>('github-dark');
   const [panels, setPanels] = useState<ICUIEnhancedPanel[]>([]);
+
+  /*
+   * Apply selected theme classes to the <html> element so that
+   * components (like ICUIEnhancedEditorPanel) that look for these
+   * classes on document.documentElement can correctly detect the
+   * active dark / light theme. This mirrors the behaviour used in
+   * ICUITest4.9 (from-scratch editor test).
+   */
+  useEffect(() => {
+    const htmlElement = document.documentElement;
+
+    // Remove any previously applied ICUI theme classes
+    THEME_OPTIONS.forEach((theme) => {
+      htmlElement.classList.remove(theme.class);
+    });
+
+    // Add the new theme class (if found)
+    const themeClass = THEME_OPTIONS.find((t) => t.id === currentTheme)?.class;
+    if (themeClass) {
+      htmlElement.classList.add(themeClass);
+    }
+
+    // Toggle the generic `dark` class for Tailwind dark: utilities
+    if (currentTheme.includes('dark')) {
+      htmlElement.classList.add('dark');
+    } else {
+      htmlElement.classList.remove('dark');
+    }
+
+    // Cleanup on component unmount
+    return () => {
+      THEME_OPTIONS.forEach((theme) => {
+        htmlElement.classList.remove(theme.class);
+      });
+      htmlElement.classList.remove('dark');
+    };
+  }, [currentTheme]);
 
   // Handle file changes
   const handleFileChange = useCallback((fileId: string, newContent: string) => {

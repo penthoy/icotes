@@ -4,7 +4,41 @@
  */
 
 import { HighlightStyle } from "@codemirror/language";
+import { EditorView } from "@codemirror/view";
 import { tags as t } from "@lezer/highlight";
+
+// Hardcoded theme colors for CodeMirror (independent of CSS variables)
+// Using darker colors similar to the from-scratch editor for better dark theme
+export const ICUI_EDITOR_THEME_COLORS = {
+  dark: {
+    bg: '#111827',      // Much darker - similar to gray-900
+    bgSecondary: '#1f2937',  // Darker secondary - similar to gray-800
+    bgTertiary: '#374151',   // Darker tertiary - similar to gray-700
+    text: '#f9fafb',         // Lighter text - similar to gray-100
+    textMuted: '#9ca3af',    // Muted text - similar to gray-400
+    textSecondary: '#e5e7eb', // Secondary text - similar to gray-200
+    border: '#374151',       // Border - similar to gray-700
+    borderSubtle: '#1f2937', // Subtle border - similar to gray-800
+    accent: '#3b82f6',       // Blue accent
+    selection: '#1e40af',    // Blue selection
+    activeLine: '#1f2937',   // Active line - similar to gray-800
+    gutter: '#1f2937',       // Gutter - similar to gray-800
+  },
+  light: {
+    bg: '#ffffff',
+    bgSecondary: '#f8f8f8',
+    bgTertiary: '#e8e8e8',
+    text: '#333333',
+    textMuted: '#666666',
+    textSecondary: '#555555',
+    border: '#e1e1e1',
+    borderSubtle: '#f0f0f0',
+    accent: '#0066cc',
+    selection: '#add6ff',
+    activeLine: '#f5f5f5',
+    gutter: '#f8f8f8',
+  }
+};
 
 // Create syntax highlighting styles optimized for ICUI themes
 export const createICUISyntaxHighlighting = (isDark: boolean) => {
@@ -123,6 +157,89 @@ export const createICUIEditorTheme = (isDark: boolean) => {
     '.cm-tooltip-autocomplete ul li[aria-selected]': {
       backgroundColor: 'var(--icui-accent)',
       color: 'var(--icui-text-primary)',
+    },
+  };
+};
+
+// Create enhanced CodeMirror theme with hardcoded colors (for consistent editor appearance)
+export const createICUIEnhancedEditorTheme = (isDark: boolean) => {
+  const themeColors = isDark ? ICUI_EDITOR_THEME_COLORS.dark : ICUI_EDITOR_THEME_COLORS.light;
+
+  // Map key colors to CSS variables so background synchronises with current theme
+  const cssVars = {
+    bg: 'var(--icui-bg-primary)',
+    bgSecondary: 'var(--icui-bg-secondary)',
+    bgTertiary: 'var(--icui-bg-tertiary)',
+    text: 'var(--icui-text-primary)',
+    textMuted: 'var(--icui-text-muted)',
+    border: 'var(--icui-border-subtle)',
+  } as const;
+
+  return {
+    '&': {
+      color: cssVars.text,
+      backgroundColor: cssVars.bg,
+      fontSize: '14px',
+      fontFamily: 'Monaco, Menlo, "Ubuntu Mono", Consolas, monospace',
+      height: '100%',
+    },
+    '.cm-content': {
+      padding: '16px',
+      caretColor: cssVars.text,
+      backgroundColor: cssVars.bg,
+      minHeight: '100%',
+    },
+    '.cm-focused .cm-cursor': {
+      borderLeftColor: cssVars.text,
+    },
+    '.cm-selectionBackground, .cm-line::selection, .cm-content ::selection, .cm-selectionLayer .cm-selectionBackground': {
+      backgroundColor: `${themeColors.selection} !important`,
+      color: 'inherit',
+      backgroundImage: 'none !important',
+    },
+    '.cm-focused .cm-selectionBackground, .cm-selectionLayer .cm-selectionBackground': {
+      backgroundColor: `${themeColors.selection} !important`,
+      color: 'inherit',
+      backgroundImage: 'none !important',
+    },
+    '.cm-activeLine': {
+      backgroundColor: themeColors.activeLine,
+    },
+    '.cm-gutters': {
+      backgroundColor: cssVars.bgSecondary,
+      color: cssVars.textMuted,
+      border: 'none',
+    },
+    '.cm-activeLineGutter': {
+      backgroundColor: cssVars.bgTertiary,
+    },
+    '.cm-lineNumbers .cm-gutterElement': {
+      color: themeColors.textMuted,
+    },
+    '.cm-foldPlaceholder': {
+      backgroundColor: themeColors.bgTertiary,
+      border: 'none',
+      color: themeColors.textSecondary,
+    },
+    '.cm-tooltip': {
+      border: `1px solid ${cssVars.border}`,
+      backgroundColor: cssVars.bgSecondary,
+      color: cssVars.text,
+    },
+    '.cm-scroller': {
+      backgroundColor: cssVars.bg,
+    },
+    '.cm-editor': {
+      backgroundColor: cssVars.bg,
+    },
+    '.cm-editor.cm-focused': {
+      outline: 'none',
+    },
+    '.cm-tooltip-autocomplete': {
+      '& > ul > li[aria-selected]': {
+        backgroundColor: themeColors.accent,
+        color: themeColors.bg,
+      }
     },
   };
 };

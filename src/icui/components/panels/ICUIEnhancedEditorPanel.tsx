@@ -37,7 +37,7 @@ import {
   foldKeymap,
   foldGutter,
 } from "@codemirror/language";
-import { createICUISyntaxHighlighting, createICUIEditorTheme, getLanguageExtension } from '../../utils/syntaxHighlighting';
+import { createICUISyntaxHighlighting, createICUIEnhancedEditorTheme, getLanguageExtension } from '../../utils/syntaxHighlighting';
 import { python } from '@codemirror/lang-python';
 import { javascript } from '@codemirror/lang-javascript';
 
@@ -162,108 +162,8 @@ if __name__ == "__main__":
       viewRef.current = null;
     }
 
-    // Create ICUI-compatible standalone theme colors
-    const icuiThemeColors = {
-      dark: {
-        bg: '#1e1e1e',
-        bgSecondary: '#2d2d2d',
-        bgTertiary: '#3e3e3e',
-        text: '#d4d4d4',
-        textMuted: '#969696',
-        textSecondary: '#cccccc',
-        border: '#3e3e3e',
-        borderSubtle: '#2d2d2d',
-        accent: '#007acc',
-        selection: '#264f78',
-        activeLine: '#2a2a2a',
-        gutter: '#1e1e1e',
-      },
-      light: {
-        bg: '#ffffff',
-        bgSecondary: '#f8f8f8',
-        bgTertiary: '#e8e8e8',
-        text: '#333333',
-        textMuted: '#666666',
-        textSecondary: '#555555',
-        border: '#e1e1e1',
-        borderSubtle: '#f0f0f0',
-        accent: '#0066cc',
-        selection: '#add6ff',
-        activeLine: '#f5f5f5',
-        gutter: '#f8f8f8',
-      }
-    };
-
-    const themeColors = isDarkTheme ? icuiThemeColors.dark : icuiThemeColors.light;
-
-    // Create enhanced theme for CodeMirror with hardcoded colors
-    const enhancedTheme = EditorView.theme({
-      '&': {
-        color: themeColors.text,
-        backgroundColor: themeColors.bg,
-        fontSize: '14px',
-        fontFamily: 'Monaco, Menlo, "Ubuntu Mono", Consolas, monospace',
-        height: '100%',
-      },
-      '.cm-content': {
-        padding: '16px',
-        caretColor: themeColors.text,
-        backgroundColor: themeColors.bg,
-        minHeight: '100%',
-      },
-      '.cm-focused .cm-cursor': {
-        borderLeftColor: themeColors.text,
-      },
-      '.cm-selectionBackground, .cm-line::selection, .cm-content ::selection, .cm-selectionLayer .cm-selectionBackground': {
-        backgroundColor: `${themeColors.selection} !important`,
-        color: 'inherit',
-        backgroundImage: 'none !important',
-      },
-      '.cm-focused .cm-selectionBackground, .cm-selectionLayer .cm-selectionBackground': {
-        backgroundColor: `${themeColors.selection} !important`,
-        color: 'inherit',
-        backgroundImage: 'none !important',
-      },
-      '.cm-activeLine': {
-        backgroundColor: themeColors.activeLine,
-      },
-      '.cm-gutters': {
-        backgroundColor: themeColors.gutter,
-        color: themeColors.textMuted,
-        border: 'none',
-      },
-      '.cm-activeLineGutter': {
-        backgroundColor: themeColors.bgTertiary,
-      },
-      '.cm-lineNumbers .cm-gutterElement': {
-        color: themeColors.textMuted,
-      },
-      '.cm-foldPlaceholder': {
-        backgroundColor: themeColors.bgTertiary,
-        border: 'none',
-        color: themeColors.textSecondary,
-      },
-      '.cm-tooltip': {
-        border: `1px solid ${themeColors.border}`,
-        backgroundColor: themeColors.bgSecondary,
-        color: themeColors.text,
-      },
-      '.cm-scroller': {
-        backgroundColor: themeColors.bg,
-      },
-      '.cm-editor': {
-        backgroundColor: themeColors.bg,
-      },
-      '.cm-editor.cm-focused': {
-        outline: 'none',
-      },
-      '.cm-tooltip-autocomplete': {
-        '& > ul > li[aria-selected]': {
-          backgroundColor: themeColors.accent,
-          color: themeColors.bg,
-        }
-      },
-    });
+    // Create enhanced theme for CodeMirror using abstracted function
+    const enhancedTheme = EditorView.theme(createICUIEnhancedEditorTheme(isDarkTheme));
 
     // Create extensions array with proper ordering
     const extensions: Extension[] = [
@@ -494,7 +394,7 @@ if __name__ == "__main__":
         </div>
       </div>
 
-      {/* Editor Area - Only the editor uses hardcoded colors */}
+      {/* Editor Area - CodeMirror uses hardcoded dark colors, container uses CSS variables */}
       <div className="flex-1 min-h-0 overflow-hidden" style={{ backgroundColor: 'var(--icui-bg-primary)' }}>
         <div ref={editorRef} className="h-full w-full" />
       </div>
