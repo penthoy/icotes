@@ -55,7 +55,8 @@ export const ICUISplitPanel: React.FC<ICUISplitPanelProps> = ({
     direction: splitConfig.direction,
     position: splitConfig.initialSplit,
     active: false,
-    size: 6,
+    // Thinner handle for a sleeker look (can still be grabbed easily)
+    size: 4,
   });
 
   /**
@@ -199,12 +200,13 @@ export const ICUISplitPanel: React.FC<ICUISplitPanelProps> = ({
   const handleClasses = [
     'icui-split-handle',
     'absolute',
-    'bg-gray-300',
-    'hover:bg-blue-500',
+    // Neutral border / handle colour that adapts to theme
+    'bg-gray-200 dark:bg-gray-700',
+    'hover:bg-blue-400 dark:hover:bg-blue-600',
     'transition-colors',
     'duration-200',
     splitConfig.direction === 'horizontal' ? 'cursor-col-resize' : 'cursor-row-resize',
-    splitHandle.active && 'bg-blue-600',
+    splitHandle.active && 'bg-blue-500 dark:bg-blue-600',
     !splitConfig.resizable && 'pointer-events-none opacity-50',
   ].filter(Boolean).join(' ');
 
@@ -264,7 +266,7 @@ export const ICUISplitPanel: React.FC<ICUISplitPanelProps> = ({
         >
           {/* Handle grip indicator */}
           <div className="absolute inset-0 flex items-center justify-center">
-            <div className={`bg-gray-500 ${
+            <div className={`bg-gray-400 dark:bg-gray-500 ${
               splitConfig.direction === 'horizontal' 
                 ? 'w-0.5 h-6' 
                 : 'w-6 h-0.5'
