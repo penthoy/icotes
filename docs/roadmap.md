@@ -3,6 +3,9 @@
 ## Project Overview
 A web-based JavaScript code editor built with React, CodeMirror 6, and modern web technologies. The goal is to create a powerful, user-friendly code editor with real-time execution capabilities.
 
+## In Progress
+- [] update icui_rewrite for 4.9: create a editor rewrite that is from scratch, the previous editor(ICUIEnhancedEditorPanelOld.tsx) was importing from the CodeEditor.tsx and had some longstanding issues, that we couldn't solve, so now we'll rewrite it from scratch. please only edit icui_rewrite and stop for my approval before proceeding
+
 ## Recently Finished
 
 ### CodeEditor Background & Divider Improvements - COMPLETED ✅
@@ -71,7 +74,6 @@ A web-based JavaScript code editor built with React, CodeMirror 6, and modern we
 - **Framework Integration**: Updated all ICUI components to use the new theme system
 - **Test Application**: Enhanced `tests/integration/icui/ICUITestEnhanced.tsx` with theme selection dropdown
 
-## In Progress
 
 ### Layout System - Panel Footer Attachment Fix
 **Issue**: Bottom footer and panel bottoms become detached when browser is resized. The footer doesn't scale together with the panels during browser stretching.

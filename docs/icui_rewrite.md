@@ -158,6 +158,35 @@ This document outlines the step-by-step plan for rewriting the UI with a modular
 - Use this as the foundation for further ICUI development
 - Maintain all existing functionality while using the new panel system
 
+#### Step 4.9: Create From-Scratch Editor Implementation
+**Problem**: The existing `ICUIEnhancedEditorPanelOld.tsx` imports from `CodeEditor.tsx` and has longstanding issues that couldn't be resolved due to complex CodeMirror configurations and theme conflicts.
+
+**Solution**: Create a completely from-scratch editor implementation that:
+- **No Dependencies on CodeEditor.tsx**: Build editor functionality directly without importing existing CodeEditor component
+- **Simplified CodeMirror Integration**: Use minimal CodeMirror setup with only essential extensions
+- **ICUI Theme Native**: Design theme system to work natively with ICUI CSS variables from the start
+- **Minimal but Functional**: Focus on core editor functionality without complex features
+- **Clean Architecture**: Follow the same minimal pattern as ICUITerminalPanel
+
+**Implementation Details**:
+- Create `src/icui/components/panels/ICUIEditorPanelFromScratch.tsx`
+- Use direct CodeMirror 6 setup with minimal extensions:
+  - Basic editing (EditorView, EditorState)
+  - Syntax highlighting for Python
+  - Line numbers and basic editing features
+  - Theme integration using ICUI CSS variables
+- Maintain consistent styling with other ICUI panels
+
+**Key Differences from Old Implementation**:
+- No import of `CodeEditor.tsx` component
+- Direct CodeMirror configuration optimized for ICUI
+- Simplified theme handling using only ICUI variables
+- Streamlined state management
+- Minimal external dependencies
+
+**Extra details**:
+- Create a ICUITEST4.9 for test
+
 ### Phase 5: Modular Menu System
 **Goal**: Create flexible file and layout menus using the same modular principles
 

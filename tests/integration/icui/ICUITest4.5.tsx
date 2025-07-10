@@ -74,6 +74,27 @@ export const ICUITest45: React.FC<ICUITest45Props> = ({ className = '' }) => {
       <div className="bg-gray-100 dark:bg-gray-800 p-2 text-xs">
         <strong>Debug Info:</strong> All minimal panels loaded successfully
       </div>
+      
+      {/* Navigation */}
+      <div className="bg-gray-800 text-white p-4 border-t border-gray-700">
+        <div className="flex justify-between items-center">
+          <a 
+            href="/icui-test4" 
+            className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
+          >
+            ← Test 4
+          </a>
+          <div className="text-sm text-gray-400">
+            Step 4.5 - Minimal Panel Implementations
+          </div>
+          <a 
+            href="/icui-test4.9" 
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+          >
+            Test 4.9 →
+          </a>
+        </div>
+      </div>
     </div>
   );
 };
