@@ -252,11 +252,15 @@ print(f"Sum of squares: {sum_squares}")
       '.cm-focused .cm-cursor': {
         borderLeftColor: themeColors.text,
       },
-      '.cm-selectionBackground': {
-        backgroundColor: themeColors.selection,
+      '.cm-selectionBackground, .cm-line::selection, .cm-content ::selection, .cm-selectionLayer .cm-selectionBackground': {
+        backgroundColor: `${themeColors.selection} !important`,
+        color: 'inherit',
+        backgroundImage: 'none !important',
       },
-      '.cm-focused .cm-selectionBackground': {
-        backgroundColor: themeColors.selection,
+      '.cm-focused .cm-selectionBackground, .cm-selectionLayer .cm-selectionBackground': {
+        backgroundColor: `${themeColors.selection} !important`,
+        color: 'inherit',
+        backgroundImage: 'none !important',
       },
       '.cm-activeLine': {
         backgroundColor: themeColors.activeLine,
@@ -306,7 +310,6 @@ print(f"Sum of squares: {sum_squares}")
     const extensions = [
       lineNumbers(),
       foldGutter(),
-      drawSelection(),
       dropCursor(),
       EditorState.allowMultipleSelections.of(true),
       indentOnInput(),
@@ -326,7 +329,7 @@ print(f"Sum of squares: {sum_squares}")
         ...completionKeymap,
         indentWithTab,
       ]),
-      syntaxHighlighting(standaloneSyntaxHighlighting, { fallback: true }),
+      syntaxHighlighting(standaloneSyntaxHighlighting),
       python(),
       standaloneTheme,
       EditorView.updateListener.of((update) => {

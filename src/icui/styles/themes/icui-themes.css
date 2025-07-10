@@ -718,6 +718,12 @@
   background-color: rgba(88, 166, 255, 0.55) !important;
 }
 
+/* --- ICUI selection highlight override to defeat Tailwind selection utilities --- */
+.cm-selectionLayer .cm-selectionBackground,
+.cm-editor .cm-selectionBackground {
+  background-image: none !important;
+}
+
 .light {
   /* Default to GitHub Light */
   --icui-bg-primary: var(--icui-github-light-bg-primary);

@@ -3,7 +3,6 @@ import {
   EditorView,
   keymap,
   lineNumbers,
-  drawSelection,
   dropCursor,
   rectangularSelection,
   crosshairCursor,
@@ -298,7 +297,6 @@ const CodeEditor = ({
         // Basic editor setup
         lineNumbers(),
         foldGutter(),
-        drawSelection(),
         dropCursor(),
         indentOnInput(),
         bracketMatching(),
