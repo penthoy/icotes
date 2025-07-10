@@ -19,7 +19,8 @@ export { ICUIEnhancedLayout } from './components/ICUIEnhancedLayout';
 // export { ICUITest1, ICUITest2, ICUITest3, ICUITest4, ICUITest5, ICUITest6, ICUITest7, ICUITest8, ICUITest9, ICUITest10 } from './tests';
 
 // Enhanced Panels
-export { default as ICUIEnhancedEditorPanel } from './components/panels/ICUIEnhancedEditorPanelOld';
+export { default as ICUIEnhancedEditorPanel } from './components/panels/ICUIEnhancedEditorPanel';
+export { default as ICUIEnhancedEditorPanelOld } from './components/panels/ICUIEnhancedEditorPanelOld';
 export { default as ICUIEditorPanelFromScratch } from './components/panels/ICUIEditorPanelFromScratch';
 export { default as ICUIEnhancedTerminalPanel } from './components/panels/ICUIEnhancedTerminalPanel';
 
@@ -103,7 +104,7 @@ export type {
 export type {
   ICUIEditorFile,
   ICUIEnhancedEditorPanelProps,
-} from './components/panels/ICUIEnhancedEditorPanelOld';
+} from './components/panels/ICUIEnhancedEditorPanel';
 
 // Version
 export const ICUI_VERSION = '4.0.0';
