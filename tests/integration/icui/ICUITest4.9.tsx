@@ -126,13 +126,22 @@ const ICUITest49: React.FC = () => {
           <div className="text-xs" style={{ color: 'var(--icui-text-muted)' }}>
             Step 4.9 - From Scratch Editor Implementation
           </div>
-          <a 
-            href="/icui-enhanced" 
-            className="px-4 py-2 text-xs rounded hover:opacity-80 transition-opacity"
-            style={{ backgroundColor: 'var(--icui-bg-tertiary)', color: 'var(--icui-text-primary)' }}
-          >
-            Enhanced Test →
-          </a>
+          <div className="flex space-x-2">
+            <a 
+              href="/icui-editor-comparison" 
+              className="px-4 py-2 text-xs rounded hover:opacity-80 transition-opacity"
+              style={{ backgroundColor: 'var(--icui-accent)', color: 'var(--icui-text-primary)' }}
+            >
+              Compare →
+            </a>
+            <a 
+              href="/icui-enhanced" 
+              className="px-4 py-2 text-xs rounded hover:opacity-80 transition-opacity"
+              style={{ backgroundColor: 'var(--icui-bg-tertiary)', color: 'var(--icui-text-primary)' }}
+            >
+              Enhanced Test →
+            </a>
+          </div>
         </div>
       </div>
     </div>
