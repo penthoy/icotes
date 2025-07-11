@@ -18,7 +18,6 @@ export const ICUIEnhancedTerminalPanel: React.FC<ICUIEnhancedTerminalPanelProps>
   const terminalId = useRef<string>(Math.random().toString(36).substring(2));
   const terminal = useRef<Terminal | null>(null);
   const [isDarkTheme, setIsDarkTheme] = useState(false);
-
   // Enhanced theme detection - matches ICUIEnhancedEditorPanel pattern
   useEffect(() => {
     const detectTheme = () => {
@@ -129,25 +128,6 @@ export const ICUIEnhancedTerminalPanel: React.FC<ICUIEnhancedTerminalPanelProps>
 
   return (
     <div className={`icui-enhanced-terminal-panel h-full flex flex-col ${className}`} style={{ backgroundColor: 'var(--icui-bg-primary)' }}>
-      {/* Header - following enhanced panel pattern */}
-      <div className="flex items-center justify-between px-3 py-2 border-b" style={{ backgroundColor: 'var(--icui-bg-secondary)', borderBottomColor: 'var(--icui-border-subtle)' }}>
-        <div className="flex items-center space-x-2">
-          <span className="text-sm font-medium" style={{ color: 'var(--icui-text-primary)' }}>Terminal</span>
-          <span className="text-xs px-2 py-1 rounded" style={{ backgroundColor: 'var(--icui-bg-tertiary)', color: 'var(--icui-text-muted)' }}>
-            {isDarkTheme ? 'Dark' : 'Light'} Theme
-          </span>
-        </div>
-        <div className="flex items-center space-x-2">
-          <button
-            onClick={() => terminal.current?.clear()}
-            className="text-xs px-2 py-1 rounded hover:opacity-80 transition-opacity"
-            style={{ backgroundColor: 'var(--icui-bg-tertiary)', color: 'var(--icui-text-primary)' }}
-          >
-            Clear
-          </button>
-        </div>
-      </div>
-
       {/* Terminal Content Area */}
       <div className="flex-1 overflow-hidden" style={{ backgroundColor: 'var(--icui-bg-primary)' }}>
         <div
@@ -169,12 +149,6 @@ export const ICUIEnhancedTerminalPanel: React.FC<ICUIEnhancedTerminalPanelProps>
             }}
           />
         </div>
-      </div>
-
-      {/* Status Bar - following enhanced panel pattern */}
-      <div className="px-3 py-1 border-t text-xs flex justify-between" style={{ backgroundColor: 'var(--icui-bg-secondary)', borderTopColor: 'var(--icui-border-subtle)', color: 'var(--icui-text-muted)' }}>
-        <span>Terminal Session: {terminalId.current}</span>
-        <span>Enhanced Terminal • Theme: {isDarkTheme ? 'Dark' : 'Light'}</span>
       </div>
     </div>
   );

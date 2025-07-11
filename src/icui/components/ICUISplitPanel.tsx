@@ -251,12 +251,15 @@ export const ICUISplitPanel: React.FC<ICUISplitPanelProps> = ({
           ref={handleRef}
           className={handleClasses}
           style={{
+            // Positioning & size
             [splitConfig.direction === 'horizontal' ? 'left' : 'top']: `${handlePosition}%`,
             [splitConfig.direction === 'horizontal' ? 'width' : 'height']: `${splitHandle.size}px`,
             [splitConfig.direction === 'horizontal' ? 'height' : 'width']: '100%',
             transform: splitConfig.direction === 'horizontal' 
               ? `translateX(-${splitHandle.size / 2}px)` 
               : `translateY(-${splitHandle.size / 2}px)`,
+            // Use CSS variable so it adapts to any theme (Monokai, etc.)
+            backgroundColor: 'var(--icui-border-subtle)',
             zIndex: 10,
           }}
           onMouseDown={handleMouseDown}

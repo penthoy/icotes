@@ -305,12 +305,12 @@ if __name__ == "__main__":
     <div className={`flex flex-col h-full w-full ${className}`} style={{ backgroundColor: 'var(--icui-bg-primary)' }}>
       {/* Tab Bar */}
       {files.length > 0 && (
-        <div className="flex items-center border-b overflow-x-auto" style={{ backgroundColor: 'var(--icui-bg-secondary)', borderBottomColor: 'var(--icui-border-subtle)' }}>
+        <div className="flex items-center border-b overflow-x-auto overflow-y-hidden h-8 whitespace-nowrap" style={{ backgroundColor: 'var(--icui-bg-secondary)', borderBottomColor: 'var(--icui-border-subtle)' }}>
           <div className="flex min-w-0 flex-1">
             {files.map((file) => (
               <div
                 key={file.id}
-                className={`flex items-center px-4 py-2 border-r cursor-pointer hover:opacity-80 transition-opacity ${
+                className={`flex items-center px-3 py-1 border-r cursor-pointer hover:opacity-80 transition-opacity ${
                   file.id === activeFileId ? 'bg-opacity-20' : ''
                 }`}
                 style={{ 
@@ -330,7 +330,7 @@ if __name__ == "__main__":
                 )}
                 {files.length > 1 && (
                   <button
-                    className="ml-2 p-1 hover:opacity-60 transition-opacity"
+                    className="ml-2 p-0.5 hover:opacity-60 transition-opacity"
                     onClick={(e) => handleTabClose(e, file.id)}
                     style={{ color: 'var(--icui-text-muted)' }}
                   >
@@ -342,7 +342,7 @@ if __name__ == "__main__":
           </div>
           {onFileCreate && (
             <button
-              className="flex items-center px-3 py-2 hover:opacity-80 transition-opacity"
+              className="flex items-center px-2 py-1 hover:opacity-80 transition-opacity"
               onClick={onFileCreate}
               style={{ color: 'var(--icui-text-muted)' }}
             >
@@ -352,47 +352,7 @@ if __name__ == "__main__":
         </div>
       )}
 
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2 border-b" style={{ backgroundColor: 'var(--icui-bg-secondary)', borderBottomColor: 'var(--icui-border-subtle)' }}>
-        <div className="flex items-center space-x-3">
-          <span className="text-sm font-medium" style={{ color: 'var(--icui-text-primary)' }}>
-            {currentFile.language.toUpperCase()}
-          </span>
-          <span className="text-xs" style={{ color: 'var(--icui-text-muted)' }}>
-            {currentFile.name}
-          </span>
-        </div>
-        
-        <div className="flex items-center space-x-2">
-          {currentFile.modified && (
-            <span className="text-xs" style={{ color: 'var(--icui-warning)' }}>
-              Modified
-            </span>
-          )}
-          <button
-            onClick={handleSave}
-            disabled={!currentFile.modified}
-            className={`px-3 py-1 text-xs rounded transition-colors ${
-              currentFile.modified 
-                ? 'opacity-100 hover:opacity-80' 
-                : 'opacity-50 cursor-not-allowed'
-            }`}
-            style={{ 
-              backgroundColor: currentFile.modified ? 'var(--icui-success)' : 'var(--icui-bg-tertiary)',
-              color: 'var(--icui-text-primary)'
-            }}
-          >
-            Save
-          </button>
-          <button
-            onClick={handleRun}
-            className="px-3 py-1 text-xs rounded hover:opacity-80 transition-opacity"
-            style={{ backgroundColor: 'var(--icui-accent)', color: 'var(--icui-text-primary)' }}
-          >
-            Run
-          </button>
-        </div>
-      </div>
+      {/* Header removed for more code space */}
 
       {/* Editor Area - CodeMirror uses hardcoded dark colors, container uses CSS variables */}
       <div className="flex-1 min-h-0 overflow-hidden" style={{ backgroundColor: 'var(--icui-bg-primary)' }}>

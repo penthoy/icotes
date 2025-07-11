@@ -184,7 +184,8 @@ export const createICUIEnhancedEditorTheme = (isDark: boolean) => {
       height: '100%',
     },
     '.cm-content': {
-      padding: '16px',
+      // Reduce padding for tighter look (especially left side)
+      padding: '4px 8px',
       caretColor: cssVars.text,
       backgroundColor: cssVars.bg,
       minHeight: '100%',
@@ -209,12 +210,17 @@ export const createICUIEnhancedEditorTheme = (isDark: boolean) => {
       backgroundColor: cssVars.bgSecondary,
       color: cssVars.textMuted,
       border: 'none',
+      paddingLeft: '4px',
+    },
+    '.cm-lineNumbers': {
+      // Slightly smaller gutter width
+      minWidth: '32px',
+    },
+    '.cm-lineNumbers .cm-gutterElement': {
+      padding: '0 4px',
     },
     '.cm-activeLineGutter': {
       backgroundColor: cssVars.bgTertiary,
-    },
-    '.cm-lineNumbers .cm-gutterElement': {
-      color: themeColors.textMuted,
     },
     '.cm-foldPlaceholder': {
       backgroundColor: themeColors.bgTertiary,

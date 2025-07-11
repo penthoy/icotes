@@ -14,6 +14,7 @@ export interface ICUITab {
   closable?: boolean;
   modified?: boolean;
   icon?: string;
+  status?: 'connected' | 'disconnected';
 }
 
 export interface ICUITabContainerProps {
@@ -163,6 +164,8 @@ export const ICUITabContainer: React.FC<ICUITabContainerProps> = ({
             )}
             <span className="flex-1 truncate">{tab.title}</span>
             {tab.modified && <span className="ml-1 text-xs" style={{ color: 'var(--icui-warning)' }}>●</span>}
+            {tab.status === 'connected' && <span className="ml-1 text-green-500" title="Connected">●</span>}
+            {tab.status === 'disconnected' && <span className="ml-1 text-red-500" title="Disconnected">●</span>}
             {tab.closable && onTabClose && (
               <button
                 className="ml-2 text-xs w-4 h-4 flex items-center justify-center rounded transition-all hover:opacity-80"

@@ -297,6 +297,7 @@ export const ICUITestEnhanced: React.FC<ICUITestEnhancedProps> = ({ className = 
         title: 'Terminal',
         icon: '💻',
         closable: true,
+        status: 'connected', // Test: Set to connected to verify the dot shows
         content: <ICUIEnhancedTerminalPanel className="h-full" />
       },
       {
@@ -305,6 +306,7 @@ export const ICUITestEnhanced: React.FC<ICUITestEnhancedProps> = ({ className = 
         title: 'AI Assistant',
         icon: '🤖',
         closable: true,
+        status: 'connected', // Test: Set to connected to verify the dot shows
         content: <ICUIChatPanel className="h-full" />
       },
     ];

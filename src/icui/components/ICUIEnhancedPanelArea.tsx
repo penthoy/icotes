@@ -17,6 +17,7 @@ export interface ICUIEnhancedPanel {
   resizable?: boolean;
   modified?: boolean;
   icon?: string;
+  status?: 'connected' | 'disconnected';
   config?: Record<string, any>;
 }
 
@@ -72,6 +73,7 @@ export const ICUIEnhancedPanelArea: React.FC<ICUIEnhancedPanelAreaProps> = ({
     closable: panel.closable,
     modified: panel.modified,
     icon: panel.icon,
+    status: panel.status,
   }));
 
   // Handle tab operations
@@ -212,6 +214,8 @@ export const ICUIEnhancedPanelArea: React.FC<ICUIEnhancedPanelAreaProps> = ({
           <span className="text-sm font-medium">
             {singlePanel.title}
             {singlePanel.modified && <span className="ml-1" style={{ color: 'var(--icui-warning)' }}>●</span>}
+            {singlePanel.status === 'connected' && <span className="ml-1 text-green-500">●</span>}
+            {singlePanel.status === 'disconnected' && <span className="ml-1 text-red-500">●</span>}
           </span>
         </div>
         {singlePanel.closable && onPanelClose && (
