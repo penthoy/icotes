@@ -1,10 +1,10 @@
 #!/bin/bash
 
-# iLabors Code Editor Development Startup Script
+# icotes Development Startup Script
 # This script builds the frontend and runs the backend in development mode with auto-reload
 # Uses SINGLE PORT setup - frontend served from backend (same as production)
 
-echo "🚀 Starting iLabors Code Editor in development mode..."
+echo "🚀 Starting icotes in development mode..."
 
 # Load environment variables from .env if it exists
 if [ -f ".env" ]; then
@@ -93,7 +93,7 @@ echo ""
 echo "   Press Ctrl+C to stop the server"
 echo ""
 echo "=============================================="
-echo "🚀 iLabors Code Editor is now running!"
+echo "🚀 icotes is now running!"
 echo "=============================================="
 echo ""
 echo "📱 Frontend Access:"

@@ -1,7 +1,7 @@
 #!/bin/bash
 # Verification script to check if both servers are running
 
-echo "🔍 Checking iLabors Code Editor servers..."
+echo "🔍 Checking icotes servers..."
 
 # Check backend
 echo -n "Backend (port 8000): "

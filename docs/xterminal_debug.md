@@ -1,7 +1,7 @@
 # XTerminal Debug Analysis
 
 ## Overview
-This document summarizes the debugging process for implementing a real terminal with PTY support in the iLabors Code Editor project. The goal was to replace the mock terminal with a proper terminal emulator using xterm.js on the frontend and PTY on the backend.
+This document summarizes the debugging process for implementing a real terminal with PTY support in the icotes project. The goal was to replace the mock terminal with a proper terminal emulator using xterm.js on the frontend and PTY on the backend.
 
 ## Implementation Summary
 

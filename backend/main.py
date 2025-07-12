@@ -24,7 +24,7 @@ import threading
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="iLabors Code Editor Backend", version="1.0.0")
+app = FastAPI(title="icotes Backend", version="1.0.0")
 
 # Get allowed origins from environment
 allowed_origins = []
@@ -276,7 +276,7 @@ async def root():
     if os.path.exists(dist_path) and os.path.exists(os.path.join(dist_path, "index.html")):
         return FileResponse(os.path.join(dist_path, "index.html"))
     else:
-        return {"message": "iLabors Code Editor Backend API", "version": "1.0.0", "frontend": "not built"}
+        return {"message": "icotes Backend API", "version": "1.0.0", "frontend": "not built"}
 
 @app.get("/health")
 async def health():
@@ -303,7 +303,7 @@ async def execute_code(request: CodeExecutionRequest):
 
 @app.get("/api")
 async def api_root():
-    return {"message": "iLabors Code Editor Backend API", "version": "1.0.0"}
+    return {"message": "icotes Backend API", "version": "1.0.0"}
 
 @app.get("/api/health")
 async def api_health():

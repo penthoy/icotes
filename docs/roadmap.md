@@ -5,14 +5,21 @@ A web-based JavaScript code editor built with React, CodeMirror 6, and modern we
 
 ## In Progress
 
+
+
 ## Future task
 
 -- Fix UI issues
+- [] Narrower header
+- [] Fix Terminal speed issue
 - [] Fix panel flickering issue.
 - [] Terminal should auto go to botthom after typed something and pressed enter
 - [] Active Panel tabs should high lighter in color while inactive tabs are darker just like Editor Panel tabs
 - [] create an api layer between the front end and backend.
 - [] This api layer can also be used in the comand line which also have hooks to the UI to do things like open a file in editor or have AI assistant use tools to edit file etc.
+- [] dragable panel tabs, should allow reordering
+- [] dragable editor tabs
+
 - api feature: detect what view is active so that the AI can have the correct context when you talk to it, it saves the state of the
 - we'll add these endpoints later, but first we need to create a design document named api_design.md in docs folder and wait for me to review/edit it before proceed with building this layer.
 
@@ -21,6 +28,20 @@ A Panel installer,
 maya style code executor.
 
 ## Recently Finished
+
+### December 2024 - Brand Update & Visual Identity
+- **Complete Brand Rename** ✅
+  - Renamed application from "iLabors Code Editor" to "icotes" across all files
+  - Updated README.md, documentation, shell scripts, and backend API titles
+  - Changed HTML document title to "icotes" in index.html
+- **Favicon Update** ✅
+  - Replaced vite.svg with logo.svg as the favicon
+  - Updated index.html to use `/logo.svg` instead of `/vite.svg`
+  - Removed old vite.svg file from public directory
+- **Logo Integration** ✅
+  - Replaced "JavaScript Code Editor" text with logo image in header
+  - Updated home.tsx to use `/logo.png` image instead of text title
+  - Maintained proper responsive design with appropriate logo height
 
 ### December 2024 - ICUI Framework Migration & Home Component Rewrite
 - **Archived Pre-ICUI Components** ✅

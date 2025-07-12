@@ -2,7 +2,7 @@
 
 # Start development environment with proper environment variables
 
-echo "Starting iLabors Code Editor Development Environment..."
+echo "Starting icotes Development Environment..."
 
 # Load environment variables from .env file
 if [ -f ".env" ]; then

@@ -1,10 +1,10 @@
 #!/bin/bash
 set -e
 
-# iLabors Code Editor Production Startup Script
+# icotes Production Startup Script
 # This script can be used for VM deployment or local production setup
 
-echo "🚀 Starting iLabors Code Editor in production mode..."
+echo "🚀 Starting icotes in production mode..."
 
 # Function to check if running as root
 check_root() {
@@ -28,7 +28,7 @@ setup_systemd() {
         # Create systemd service file
         cat > /tmp/ilaborcode.service << EOF
 [Unit]
-Description=iLabors Code Editor
+Description=icotes
 After=network.target
 
 [Service]
@@ -288,7 +288,7 @@ if [[ "$DAEMON_MODE" == "true" ]]; then
     # Display final access information
     echo ""
     echo "=============================================="
-    echo "🚀 iLabors Code Editor is now running!"
+    echo "🚀 icotes is now running!"
     echo "=============================================="
     echo ""
     echo "📱 Frontend Access:"
@@ -310,7 +310,7 @@ else
     echo "   Press Ctrl+C to stop the server"
     echo ""
     echo "=============================================="
-    echo "🚀 iLabors Code Editor is now running!"
+    echo "🚀 icotes is now running!"
     echo "=============================================="
     echo ""
     echo "📱 Frontend Access:"

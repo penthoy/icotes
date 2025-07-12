@@ -1,7 +1,7 @@
 # Port Configuration Guide
 
 ## Overview
-The iLabors Code Editor supports flexible port configuration for different deployment environments.
+icotes supports flexible port configuration for different deployment environments.
 
 ## Port Configuration Priority
 

@@ -1,4 +1,4 @@
-# iLabors Code Editor
+# icotes
 
 A modern web-based code editor with real-time execution, terminal access, and collaborative features.
 

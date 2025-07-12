@@ -1,6 +1,6 @@
-# iLabors Code Editor Backend
+# icotes Backend
 
-A FastAPI backend for the iLabors Code Editor that provides code execution capabilities and WebSocket communication.
+A FastAPI backend for icotes that provides code execution capabilities and WebSocket communication.
 
 ## Features
 

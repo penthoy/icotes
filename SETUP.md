@@ -1,6 +1,6 @@
-# iLabors Code Editor - Development Setup
+# icotes - Development Setup
 
-This guide will help you set up the development environment for the iLabors Code Editor.
+This guide will help you set up the development environment for icotes.
 
 ## Prerequisites
 
@@ -134,7 +134,7 @@ The frontend will run on: `http://localhost:5173`
 ## Testing the Setup
 
 1. Open your browser to `http://localhost:5173`
-2. You should see the iLabors Code Editor interface
+2. You should see the icotes interface
 3. The backend API should be accessible at `http://localhost:8000`
 4. API documentation is available at `http://localhost:8000/docs`
 

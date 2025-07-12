@@ -1,6 +1,6 @@
 # Deployment Guide
 
-This guide covers multiple deployment options for the iLabors Code Editor application.
+This guide covers multiple deployment options for the icotes application.
 
 ## Quick Start
 

@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-# iLabors Code Editor - Production Deployment Script
+# icotes - Production Deployment Script
 # This script sets up the application for production deployment on Ubuntu/Debian servers
 # with nginx reverse proxy, systemd service, and security best practices
 
@@ -117,7 +117,7 @@ execute_cmd() {
 
 # Main deployment function
 main() {
-    print_status "Starting production deployment of iLabors Code Editor"
+    print_status "Starting production deployment of icotes"
     
     if [[ "$DRY_RUN" == "true" ]]; then
         print_warning "Running in dry-run mode - no changes will be made"
@@ -246,7 +246,7 @@ setup_systemd_service() {
     
     cat > /tmp/$APP_NAME.service << EOF
 [Unit]
-Description=iLabors Code Editor
+Description=icotes
 After=network.target
 
 [Service]

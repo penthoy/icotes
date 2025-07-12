@@ -1,7 +1,7 @@
 #!/bin/bash
-# Comprehensive connectivity test for iLabors Code Editor
+# Comprehensive connectivity test for icotes
 
-echo "🔍 Testing iLabors Code Editor connectivity on 192.168.2.195..."
+echo "🔍 Testing icotes connectivity on 192.168.2.195..."
 echo ""
 
 # Test backend health

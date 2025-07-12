@@ -1,7 +1,7 @@
 #!/bin/bash
 # Quick installation verification script
 
-echo "🔍 Verifying iLabors Code Editor installation..."
+echo "🔍 Verifying icotes installation..."
 echo ""
 
 # Check if required files exist

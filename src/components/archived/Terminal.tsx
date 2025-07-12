@@ -23,7 +23,7 @@ const Terminal: React.FC<TerminalProps> = ({
   const [lines, setLines] = useState<TerminalLine[]>([
     {
       id: "welcome",
-      content: "Welcome to iLabors Code Terminal",
+      content: "Welcome to icotes Terminal",
       type: "output",
       timestamp: new Date(),
     },

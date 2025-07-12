@@ -270,7 +270,7 @@ const Home = () => {
           >
             <PanelLeft className="h-4 w-4" />
           </Button>
-          <h1 className="text-xl font-bold">iLabors Code</h1>
+          <h1 className="text-xl font-bold">icotes</h1>
         </div>
         <div className="flex items-center gap-2">
           <ThemeToggle theme={theme} toggleTheme={toggleTheme} />

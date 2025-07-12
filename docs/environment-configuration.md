@@ -1,6 +1,6 @@
 # Environment Configuration Guide
 
-This guide explains how to configure the iLabors Code Editor for different deployment environments using environment variables.
+This guide explains how to configure icotes for different deployment environments using environment variables.
 
 ## Environment Variables
 

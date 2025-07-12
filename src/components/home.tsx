@@ -363,7 +363,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
     <div className={`home-container flex flex-col ${currentThemeInfo.class} ${className}`} style={{ height: '100vh', minHeight: '100vh', maxHeight: '100vh' }}>
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b shrink-0" style={{ backgroundColor: 'var(--icui-bg-secondary)', borderColor: 'var(--icui-border-subtle)', color: 'var(--icui-text-primary)' }}>
-        <h1 className="text-xl font-bold">JavaScript Code Editor</h1>
+        <img src="/logo.png" alt="icotes" className="h-8" />
         <div className="flex items-center space-x-2">
           <button
             onClick={createHLayout}
@@ -408,7 +408,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
           onLayoutChange={setLayout}
           enableDragDrop={true}
           persistLayout={true}
-          layoutKey="javascript-code-editor"
+          layoutKey="icotes"
           className="h-full w-full"
           availablePanelTypes={availablePanelTypes}
           onPanelAdd={handlePanelAdd}

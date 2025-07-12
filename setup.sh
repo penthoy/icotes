@@ -1,5 +1,5 @@
 #!/bin/bash
-# iLabors Code Editor - Automated Setup Script
+# icotes - Automated Setup Script
 # This script sets up the complete development environment
 
 set -e  # Exit on any error
@@ -125,7 +125,7 @@ setup_environment() {
         LOCAL_IP=$(hostname -I | awk '{print $1}')
         
         cat > .env << EOF
-# Environment Configuration for iLabors Code Editor
+# Environment Configuration for icotes
 
 # Backend Configuration
 BACKEND_HOST=${LOCAL_IP}
@@ -203,7 +203,7 @@ test_installation() {
 # Main installation function
 main() {
     echo "=========================================="
-    echo "iLabors Code Editor - Setup Script"
+    echo "icotes - Setup Script"
     echo "=========================================="
     echo ""
     

@@ -1,8 +1,8 @@
-# iLabors Code Editor - System Architecture
+# icotes - System Architecture
 
 ## Overview
 
-The iLabors Code Editor is a web-based code editor designed as a progressive web application with a modern, scalable architecture. The system follows a client-server model with real-time communication capabilities and modular design principles.
+icotes is a web-based code editor designed as a progressive web application with a modern, scalable architecture. The system follows a client-server model with real-time communication capabilities and modular design principles.
 
 ## Current Architecture (v1.0)
 
