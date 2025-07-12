@@ -35,7 +35,6 @@ const ICUIEditorPanel: React.FC<ICUIEditorPanelProps> = ({ className = '' }) => 
 // No CodeMirror - just a plain textarea
 
 function example() {
-  console.log("Hello from the simple editor!");
   return "This is a basic implementation";
 }
 
@@ -58,7 +57,6 @@ example();`);
 
   // Handle save
   const handleSave = () => {
-    console.log('File saved:', content);
     setIsModified(false);
   };
 
@@ -67,10 +65,7 @@ example();`);
     try {
       if (language === 'javascript') {
         // Simple evaluation for demo purposes
-        const result = eval(content);
-        console.log('Code execution result:', result);
-      } else {
-        console.log('Code execution not supported for', language);
+        eval(content);
       }
     } catch (error) {
       console.error('Code execution error:', error);

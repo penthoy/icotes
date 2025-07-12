@@ -80,7 +80,6 @@ const ICUIExplorerPanel: React.FC<ICUIExplorerPanelProps> = ({ className = '' })
       toggleFolder(item.id);
     } else {
       setSelectedFile(item.id);
-      console.log('File selected:', item.path);
     }
   };
 
@@ -115,7 +114,6 @@ const ICUIExplorerPanel: React.FC<ICUIExplorerPanelProps> = ({ className = '' })
 
   // Handle refresh action
   const handleRefresh = () => {
-    console.log('Refreshing file explorer...');
     // In a real implementation, this would reload the file tree from the backend
   };
 
