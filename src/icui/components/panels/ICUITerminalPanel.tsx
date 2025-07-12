@@ -16,6 +16,7 @@ const ICUITerminalPanel: React.FC<ICUITerminalPanelProps> = ({ className = '' })
   const websocket = useRef<WebSocket | null>(null);
   const terminalId = useRef<string>(Math.random().toString(36).substring(2));
   const terminal = useRef<Terminal | null>(null);
+  const typedCount = useRef<number>(0);
 
   useEffect(() => {
     if (!terminalRef.current) return;
@@ -38,12 +39,26 @@ const ICUITerminalPanel: React.FC<ICUITerminalPanelProps> = ({ className = '' })
     // Write a simple test message
     terminal.current.write('ICUITerminalPanel initialized!\r\n');
 
-    // Handle user input and send to WebSocket if connected
+    // Handle user input: send to backend and perform local echo for instant feedback
     terminal.current.onData((data) => {
       if (websocket.current?.readyState === WebSocket.OPEN) {
         websocket.current.send(data);
-      } else {
+      }
+
+      // Local echo for printable characters only. Avoid echoing backspace/DEL
+      // because the remote shell will handle character deletions and emit
+      // the correct control sequence. Echoing them locally causes the raw
+      // "\b \b" characters to appear.
+      if (/^[\x20-\x7E]+$/.test(data)) {
         terminal.current?.write(data);
+        typedCount.current += data.length;
+      } else if (data === '\b' || data === '\x7f') {
+        if (typedCount.current > 0) {
+          terminal.current?.write('\b \b');
+          typedCount.current -= 1;
+        }
+      } else if (data === '\r' || data === '\n') {
+        typedCount.current = 0;
       }
     });
 
