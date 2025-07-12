@@ -15,6 +15,10 @@ export { ICUIPanelArea } from './components/ICUIPanelArea';
 export { default as ICUITabContainer } from './components/ICUITabContainer';
 export { ICUIEnhancedLayout } from './components/ICUIEnhancedLayout';
 
+// Base Layout Components
+export { ICUIBaseHeader } from './components/ICUIBaseHeader';
+export { ICUIBaseFooter } from './components/ICUIBaseFooter';
+
 // Enhanced Components (New)
 // export { ICUITest1, ICUITest2, ICUITest3, ICUITest4, ICUITest5, ICUITest6, ICUITest7, ICUITest8, ICUITest9, ICUITest10 } from './tests';
 
@@ -105,6 +109,17 @@ export type {
   ICUIEditorFile,
   ICUIEnhancedEditorPanelProps,
 } from './components/panels/ICUIEnhancedEditorPanel';
+
+// Base Layout Component Types
+export type {
+  ICUIBaseHeaderProps,
+  ICUIMenuProps,
+  ICUIBaseHeaderState,
+} from './components/ICUIBaseHeader';
+
+export type {
+  ICUIBaseFooterProps,
+} from './components/ICUIBaseFooter';
 
 // Version
 export const ICUI_VERSION = '4.0.0';

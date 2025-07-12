@@ -6,20 +6,19 @@ A web-based JavaScript code editor built with React, CodeMirror 6, and modern we
 ## In Progress
 
 
-
 ## Future task
-
 -- Fix UI issues
-- [] Narrower header
 - [] Fix Terminal speed issue
 - [] Fix panel flickering issue.
 - [] Terminal should auto go to botthom after typed something and pressed enter
 - [] Active Panel tabs should high lighter in color while inactive tabs are darker just like Editor Panel tabs
-- [] create an api layer between the front end and backend.
-- [] This api layer can also be used in the comand line which also have hooks to the UI to do things like open a file in editor or have AI assistant use tools to edit file etc.
 - [] dragable panel tabs, should allow reordering
 - [] dragable editor tabs
+- [] terminal history is black.
 
+-- api backend
+- [] create an api layer between the front end and backend.
+- [] This api layer can also be used in the comand line which also have hooks to the UI to do things like open a file in editor or have AI assistant use tools to edit file etc.
 - api feature: detect what view is active so that the AI can have the correct context when you talk to it, it saves the state of the
 - we'll add these endpoints later, but first we need to create a design document named api_design.md in docs folder and wait for me to review/edit it before proceed with building this layer.
 
@@ -28,6 +27,37 @@ A Panel installer,
 maya style code executor.
 
 ## Recently Finished
+
+### December 2024 - ICUI Base Layout Components & Header/Footer Framework
+- **ICUI Base Header Component** ✅
+  - Created `ICUIBaseHeader.tsx` with comprehensive header functionality
+  - Includes File and Layout menu system with dropdown menus
+  - File menu: New, Open, Save, Save As, Exit with proper separators
+  - Layout menu: H Layout, IDE Layout, Reset Layout options
+  - Theme switcher with full theme support
+  - Layout action buttons integrated into menu system (removed from header)
+  - Compact header design (3px vertical padding, 28px minimum height)
+  - Micro-sized logo (h-4) and properly-sized menu buttons (px-3 py-1, text-sm) for optimal balance
+  - Fully extensible with custom menu items and actions
+- **ICUI Base Footer Component** ✅
+  - Created `ICUIBaseFooter.tsx` with status bar functionality
+  - Connection status indicator with color-coded status
+  - File statistics display (file count, modified count)
+  - Theme information display
+  - Compact design (4px vertical padding, 28px minimum height)
+  - Extensible with custom status items
+- **Enhanced Layout Component** ✅
+  - Created `Layout.tsx` in src/components that inherits from base classes
+  - Provides complete framework for header and footer with advanced features
+  - Integrates with application state (files, themes, connection status)
+  - Handles menu actions and file operations
+  - Supports layout switching and theme management
+  - Updated home.tsx to use new Layout component
+- **Framework Integration** ✅
+  - Added components to ICUI index.ts exports
+  - Proper TypeScript interfaces and type exports
+  - Clean inheritance pattern demonstration
+  - Maintains backward compatibility with existing code
 
 ### December 2024 - Brand Update & Visual Identity
 - **Complete Brand Rename** ✅

@@ -12,6 +12,7 @@ import {
   ICUIExplorerPanel,
   ICUIChatPanel
 } from '../icui';
+import Layout from './Layout';
 import type { ICUILayoutConfig } from '../icui/components/ICUIEnhancedLayout';
 import type { ICUIEnhancedPanel } from '../icui/components/ICUIEnhancedPanelArea';
 import type { ICUIEditorFile } from '../icui/components/panels/ICUIEnhancedEditorPanel';
@@ -356,74 +357,77 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
     });
   }, []);
 
+  // Handle layout changes
+  const handleLayoutChange = useCallback((layoutId: string) => {
+    switch (layoutId) {
+      case 'h-layout':
+        createHLayout();
+        break;
+      case 'ide-layout':
+        createIDELayout();
+        break;
+      case 'reset':
+        setLayout(defaultLayout);
+        break;
+    }
+  }, [createHLayout, createIDELayout]);
+
+  // Handle file actions
+  const handleFileAction = useCallback((action: string, fileId?: string) => {
+    switch (action) {
+      case 'new':
+        handleFileCreate();
+        break;
+      case 'open':
+        // TODO: Implement file open dialog
+        console.log('Open file dialog not implemented yet');
+        break;
+      case 'save':
+        if (activeFileId) {
+          handleFileSave(activeFileId);
+        }
+        break;
+      case 'save-as':
+        // TODO: Implement save as dialog
+        console.log('Save as dialog not implemented yet');
+        break;
+      case 'exit':
+        // TODO: Implement exit confirmation
+        console.log('Exit confirmation not implemented yet');
+        break;
+    }
+  }, [handleFileCreate, handleFileSave, activeFileId]);
+
   // Get current theme info
   const currentThemeInfo = THEME_OPTIONS.find(t => t.id === currentTheme) || THEME_OPTIONS[0];
 
   return (
-    <div className={`home-container flex flex-col ${currentThemeInfo.class} ${className}`} style={{ height: '100vh', minHeight: '100vh', maxHeight: '100vh' }}>
-      {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b shrink-0" style={{ backgroundColor: 'var(--icui-bg-secondary)', borderColor: 'var(--icui-border-subtle)', color: 'var(--icui-text-primary)' }}>
-        <img src="/logo.png" alt="icotes" className="h-8" />
-        <div className="flex items-center space-x-2">
-          <button
-            onClick={createHLayout}
-            className="px-3 py-1 text-sm text-white rounded hover:opacity-80 transition-opacity"
-            style={{ backgroundColor: 'var(--icui-warning)' }}
-          >
-            H Layout
-          </button>
-
-          <button
-            onClick={createIDELayout}
-            className="px-3 py-1 text-sm text-white rounded hover:opacity-80 transition-opacity"
-            style={{ backgroundColor: 'var(--icui-accent)' }}
-          >
-            IDE Layout
-          </button>
-
-          <select
-            value={currentTheme}
-            onChange={(e) => setCurrentTheme(e.target.value)}
-            className="px-3 py-1 text-sm rounded border"
-            style={{ 
-              backgroundColor: 'var(--icui-bg-primary)', 
-              borderColor: 'var(--icui-border)', 
-              color: 'var(--icui-text-primary)' 
-            }}
-          >
-            {THEME_OPTIONS.map(theme => (
-              <option key={theme.id} value={theme.id}>
-                {theme.name}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-
+    <Layout
+      className={`home-container ${currentThemeInfo.class} ${className}`}
+      appState={{
+        currentTheme,
+        availableThemes: THEME_OPTIONS,
+        files: editorFiles.map(f => ({ id: f.id, name: f.name, modified: f.modified })),
+        connectionStatus: 'connected', // TODO: Add real connection status
+      }}
+      onThemeChange={setCurrentTheme}
+      onLayoutChange={handleLayoutChange}
+      onFileAction={handleFileAction}
+    >
       {/* Main Layout */}
-      <div className="flex-1 min-h-0 max-h-full overflow-hidden">
-        <ICUIEnhancedLayout
-          panels={panels}
-          layout={layout}
-          onLayoutChange={setLayout}
-          enableDragDrop={true}
-          persistLayout={true}
-          layoutKey="icotes"
-          className="h-full w-full"
-          availablePanelTypes={availablePanelTypes}
-          onPanelAdd={handlePanelAdd}
-          showPanelSelector={true}
-        />
-      </div>
-
-      {/* Status Bar */}
-      <div className="p-2 border-t text-sm shrink-0" style={{ backgroundColor: 'var(--icui-bg-secondary)', borderColor: 'var(--icui-border-subtle)', color: 'var(--icui-text-secondary)' }}>
-        Files: {editorFiles.length} | 
-        Modified: {editorFiles.filter(f => f.modified).length} | 
-        Theme: {currentThemeInfo.name} | 
-        Ready
-      </div>
-    </div>
+      <ICUIEnhancedLayout
+        panels={panels}
+        layout={layout}
+        onLayoutChange={setLayout}
+        enableDragDrop={true}
+        persistLayout={true}
+        layoutKey="icotes"
+        className="h-full w-full"
+        availablePanelTypes={availablePanelTypes}
+        onPanelAdd={handlePanelAdd}
+        showPanelSelector={true}
+      />
+    </Layout>
   );
 };
 
