@@ -190,13 +190,13 @@ This document outlines the step-by-step plan for rewriting the UI with a modular
 ### Phase 5: Modular Menu System
 **Goal**: Create flexible file and layout menus using the same modular principles
 
-#### Step 4.1: Top Menu Bar
+#### Step 5.1: Top Menu Bar
 - Create `src/components/ui/MenuBar.tsx`
 - Implement dropdown menus for File, Edit, View, Layout
 - Add keyboard shortcut support
 - Support menu customization
 
-#### Step 4.2: File Menu Implementation
+#### Step 5.2: File Menu Implementation
 - Create `src/components/menus/FileMenu.tsx`
 - Add file operations (New, Open, Save, Close)
 - Include recent files list
@@ -277,7 +277,8 @@ src/
 1. **Phase 1-2**: Build foundation without touching existing UI
 2. **Phase 3**: Implement docking and tabbing system - **CRITICAL FOR IDE FUNCTIONALITY**
 3. **Phase 4**: Create panel wrappers for existing components that work in dock areas
-4. **Phase 5-6**: Add menu system and panel registry
+4. **Phase 5**:
+6. **Phase 5**: Add menu system and panel registry
 5. **Phase 7**: Implement context menus and advanced features
 6. **Phase 8**: Create toggle to switch between old and new UI
 7. **Phase 9**: Test thoroughly and migrate completely

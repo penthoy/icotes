@@ -11,7 +11,7 @@ import {
   useICUIPanels, 
   createPanel,
   ICUIPanelType 
-} from '../icui';
+} from '../../icui';
 
 interface ICUITest2Props {
   className?: string;

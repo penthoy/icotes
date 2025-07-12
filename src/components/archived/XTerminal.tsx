@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useCallback, forwardRef, useImperat
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
-import { Button } from "./ui/button";
+import { Button } from "../ui/button";
 import { Trash2, Square, RotateCcw } from "lucide-react";
 
 interface XTerminalProps {

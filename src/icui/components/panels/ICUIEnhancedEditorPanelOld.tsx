@@ -5,7 +5,7 @@
  */
 
 import React, { useRef, useEffect, useState } from 'react';
-import CodeEditor, { SupportedLanguage } from '../../../components/CodeEditor';
+import CodeEditor, { SupportedLanguage } from '../../../components/archived/CodeEditor';
 
 // Export interfaces for compatibility
 export interface ICUIEditorFile {

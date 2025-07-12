@@ -1,5 +1,5 @@
 import React, { useState, useEffect, forwardRef, useRef } from "react";
-import { Button } from "./ui/button";
+import { Button } from "../ui/button";
 import { ChevronDown, ChevronUp, Plus, X } from "lucide-react";
 import XTerminal, { XTerminalRef } from "./XTerminal";
 

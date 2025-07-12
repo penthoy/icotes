@@ -1,354 +1,430 @@
-import React, { useState, useEffect, useRef } from "react";
-import { Play, PanelLeft } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import CodeEditor, { SupportedLanguage } from "./CodeEditor";
-import OutputTerminalPanel from "./OutputTerminalPanel";
-import { XTerminalRef } from "./XTerminal";
-import ThemeToggle from "./ThemeToggle";
-import FileTabs, { FileData } from "./FileTabs";
-import FileExplorer from "./FileExplorer";
-import ResizablePanel from "./ResizablePanel";
-import VerticalResizablePanel from "./VerticalResizablePanel";
-import { CodeExecutor } from "@/lib/codeExecutor";
+/**
+ * Home Component - Main Application Interface
+ * A web-based JavaScript code editor built with React, CodeMirror 6, and the ICUI framework
+ * Features real-time execution capabilities and a flexible panel system
+ */
 
-// File explorer data structure
-interface FileNode {
-  id: string;
-  name: string;
-  type: 'file' | 'folder';
-  path: string;
-  children?: FileNode[];
-  isExpanded?: boolean;
+import React, { useState, useCallback, useEffect } from 'react';
+import { 
+  ICUIEnhancedLayout,
+  ICUIEnhancedEditorPanel,
+  ICUIEnhancedTerminalPanel,
+  ICUIExplorerPanel,
+  ICUIChatPanel
+} from '../icui';
+import type { ICUILayoutConfig } from '../icui/components/ICUIEnhancedLayout';
+import type { ICUIEnhancedPanel } from '../icui/components/ICUIEnhancedPanelArea';
+import type { ICUIEditorFile } from '../icui/components/panels/ICUIEnhancedEditorPanel';
+import type { ICUIPanelType } from '../icui/components/ICUIPanelSelector';
+
+interface HomeProps {
+  className?: string;
 }
 
-const Home = () => {
-  const [files, setFiles] = useState<FileData[]>([
-    {
-      id: "default",
-      name: "main.py",
-      content:
-        '# Write your Python code here\nprint("Hello, world!")',
-      isModified: false,
-    },
-  ]);
-  
-  // File explorer structure
-  const [explorerFiles, setExplorerFiles] = useState<FileNode[]>([
-    {
-      id: "main",
-      name: "main.py",
-      type: "file",
-      path: "/main.py",
-    },
-  ]);
-  
-  const [activeFileId, setActiveFileId] = useState<string>("default");
-  const [isExplorerVisible, setIsExplorerVisible] = useState<boolean>(true);
-  const [currentLanguage, setCurrentLanguage] = useState<SupportedLanguage>('python');
-  const [output, setOutput] = useState<string[]>([]);
-  const [errors, setErrors] = useState<string[]>([]);
-  const [isOutputVisible, setIsOutputVisible] = useState<boolean>(true);
-  const [codeExecutor] = useState(() => new CodeExecutor());
-  const [isExecuting, setIsExecuting] = useState<boolean>(false);
-  const [theme, setTheme] = useState<"light" | "dark">(() => {
-    // Check system preference first
-    if (typeof window !== "undefined") {
-      const storedTheme = localStorage.getItem("theme") as
-        | "light"
-        | "dark"
-        | null;
-      if (storedTheme) {
-        return storedTheme;
-      }
-      // Default to dark mode if no system preference is detected
-      if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
-        return "dark";
-      }
-    }
-    return "dark"; // Default to dark mode
-  });
+// Available theme options
+const THEME_OPTIONS = [
+  { id: 'github-dark', name: 'GitHub Dark', class: 'icui-theme-github-dark' },
+  { id: 'monokai', name: 'Monokai', class: 'icui-theme-monokai' },
+  { id: 'one-dark', name: 'One Dark', class: 'icui-theme-one-dark' },
+  { id: 'github-light', name: 'GitHub Light', class: 'icui-theme-github-light' },
+  { id: 'vscode-light', name: 'VS Code Light', class: 'icui-theme-vscode-light' },
+];
 
-  const terminalRef = useRef<XTerminalRef>({} as XTerminalRef);
+// Default files for the editor
+const defaultFiles: ICUIEditorFile[] = [
+  {
+    id: 'welcome-js',
+    name: 'welcome.js',
+    language: 'javascript',
+    content: '// Welcome to the JavaScript Code Editor!\n// Built with React, CodeMirror 6, and the ICUI Framework\n\nfunction welcome() {\n  console.log("Welcome to your code editor!");\n  console.log("Start coding and see the magic happen!");\n  return "Happy coding!";\n}\n\nwelcome();',
+    modified: false,
+  },
+  {
+    id: 'example-py',
+    name: 'example.py',
+    language: 'python',
+    content: '# Python Example\n# This editor supports multiple programming languages\n\ndef hello_world():\n    """A simple hello world function"""\n    print("Hello from Python!")\n    return "Success"\n\nif __name__ == "__main__":\n    result = hello_world()\n    print(f"Result: {result}")',
+    modified: false,
+  },
+];
 
-  const activeFile = files.find((file) => file.id === activeFileId);
+// Default layout configuration
+const defaultLayout: ICUILayoutConfig = {
+  layoutMode: 'h-layout',
+  areas: {
+    left: { id: 'left', name: 'Explorer', panelIds: ['explorer'], activePanelId: 'explorer', size: 25, visible: true },
+    center: { id: 'center', name: 'Editor', panelIds: ['editor'], activePanelId: 'editor', size: 50 },
+    right: { id: 'right', name: 'Assistant', panelIds: ['chat'], activePanelId: 'chat', size: 25, visible: true },
+    bottom: { id: 'bottom', name: 'Terminal', panelIds: ['terminal'], activePanelId: 'terminal', size: 40 },
+  },
+  splitConfig: { 
+    mainHorizontalSplit: 25, 
+    rightVerticalSplit: 75, 
+    centerVerticalSplit: 65 
+  }
+};
 
-  // Determine language based on file extension
-  const getLanguageFromFileName = (fileName: string): SupportedLanguage => {
-    const extension = fileName.split('.').pop()?.toLowerCase();
-    switch (extension) {
-      case 'js':
-      case 'jsx':
-        return 'javascript';
-      case 'py':
-        return 'python';
-      default:
-        return 'python'; // Default to Python
-    }
-  };
+const Home: React.FC<HomeProps> = ({ className = '' }) => {
+  const [layout, setLayout] = useState<ICUILayoutConfig>(defaultLayout);
+  const [editorFiles, setEditorFiles] = useState<ICUIEditorFile[]>(defaultFiles);
+  const [activeFileId, setActiveFileId] = useState<string>('welcome-js');
+  const [currentTheme, setCurrentTheme] = useState<string>('github-dark');
+  const [panels, setPanels] = useState<ICUIEnhancedPanel[]>([]);
 
-  // Initialize code executor
+  // Apply theme classes to document element for proper theme detection
   useEffect(() => {
-    const initializeExecutor = async () => {
-      try {
-        await codeExecutor.connect();
-        // Code executor connected successfully
-      } catch (error) {
-        console.warn('Failed to connect to backend:', error);
-      }
-    };
+    const htmlElement = document.documentElement;
 
-    initializeExecutor();
+    // Remove any previously applied theme classes
+    THEME_OPTIONS.forEach((theme) => {
+      htmlElement.classList.remove(theme.class);
+    });
 
-    // Cleanup on unmount
+    // Add the new theme class
+    const themeClass = THEME_OPTIONS.find((t) => t.id === currentTheme)?.class;
+    if (themeClass) {
+      htmlElement.classList.add(themeClass);
+    }
+
+    // Toggle the dark class for Tailwind utilities
+    if (currentTheme.includes('dark')) {
+      htmlElement.classList.add('dark');
+    } else {
+      htmlElement.classList.remove('dark');
+    }
+
+    // Cleanup on component unmount
     return () => {
-      codeExecutor.disconnect();
+      THEME_OPTIONS.forEach((theme) => {
+        htmlElement.classList.remove(theme.class);
+      });
+      htmlElement.classList.remove('dark');
     };
-  }, [codeExecutor]);
+  }, [currentTheme]);
 
-  // Update current language when active file changes
-  useEffect(() => {
-    if (activeFile) {
-      setCurrentLanguage(getLanguageFromFileName(activeFile.name));
+  // Handle file changes
+  const handleFileChange = useCallback((fileId: string, newContent: string) => {
+    setEditorFiles(prev => prev.map(file => 
+      file.id === fileId 
+        ? { ...file, content: newContent, modified: true }
+        : file
+    ));
+  }, []);
+
+  // Handle file close
+  const handleFileClose = useCallback((fileId: string) => {
+    setEditorFiles(prev => {
+      const newFiles = prev.filter(file => file.id !== fileId);
+      if (fileId === activeFileId && newFiles.length > 0) {
+        setActiveFileId(newFiles[0].id);
+      }
+      return newFiles;
+    });
+  }, [activeFileId]);
+
+  // Handle file save
+  const handleFileSave = useCallback((fileId: string) => {
+    setEditorFiles(prev => prev.map(file => 
+      file.id === fileId 
+        ? { ...file, modified: false }
+        : file
+    ));
+  }, []);
+
+  // Handle file creation
+  const handleFileCreate = useCallback(() => {
+    const newFile: ICUIEditorFile = {
+      id: `new-file-${Date.now()}`,
+      name: `untitled-${editorFiles.length + 1}.js`,
+      language: 'javascript',
+      content: '// New file\nconsole.log("New file created!");',
+      modified: true,
+    };
+    setEditorFiles(prev => [...prev, newFile]);
+    setActiveFileId(newFile.id);
+  }, [editorFiles.length]);
+
+  // Handle code execution
+  const handleFileRun = useCallback((fileId: string, content: string, language: string) => {
+    if (language === 'javascript') {
+      try {
+        // Execute JavaScript code
+        eval(content);
+      } catch (error) {
+        console.error('Execution error:', error);
+      }
+    } else {
+      // For other languages, we could implement backend execution
+      console.log(`Code execution for ${language} not implemented yet`);
     }
-  }, [activeFile]);
+  }, []);
 
-  const handleRunCode = async () => {
-    if (!activeFile || isExecuting) return;
-
-    // Clear previous output and errors
-    setOutput([]);
-    setErrors([]);
-    setIsExecuting(true);
-
-    try {
-      if (currentLanguage === 'javascript') {
-        // JavaScript execution (existing logic for client-side execution)
-        const logs: string[] = [];
-
-        // Override console.log to capture outputs
-        const originalConsoleLog = console.log;
-        console.log = (...args) => {
-          logs.push(
-            args
-              .map((arg) =>
-                typeof arg === "object" ? JSON.stringify(arg) : String(arg),
-              )
-              .join(" "),
-          );
-          originalConsoleLog(...args);
-        };
-
-        // Execute the code
-        const result = new Function(activeFile.content)();
-
-        // Restore original console.log
-        console.log = originalConsoleLog;
-
-        // Add the result to the output if it's not undefined
-        if (result !== undefined) {
-          logs.push(`Result: ${result}`);
-        }
-
-        setOutput(logs);
-      } else {
-        // Use backend execution for Python and other languages
-        const result = await codeExecutor.executeCode(activeFile.content, currentLanguage);
-        
-        setOutput(result.output);
-        setErrors(result.errors);
-        
-        // Add execution time info
-        if (result.execution_time > 0) {
-          setOutput(prev => [...prev, `Execution time: ${(result.execution_time * 1000).toFixed(2)}ms`]);
-        }
-      }
-
-      // Make sure output panel is visible
-      if (!isOutputVisible) {
-        setIsOutputVisible(true);
-      }
-    } catch (error) {
-      setErrors([`Error: ${error instanceof Error ? error.message : String(error)}`]);
-
-      // Make sure output panel is visible on error
-      if (!isOutputVisible) {
-        setIsOutputVisible(true);
-      }
-    } finally {
-      setIsExecuting(false);
-    }
-  };
-
-  const handleCodeChange = (newCode: string) => {
-    if (!activeFile) return;
-
-    setFiles((prevFiles) =>
-      prevFiles.map((file) =>
-        file.id === activeFileId
-          ? { ...file, content: newCode, isModified: file.content !== newCode }
-          : file,
-      ),
-    );
-  };
-
-  const handleFileTabSelect = (fileId: string) => {
+  // Handle file activation (tab switching)
+  const handleFileActivate = useCallback((fileId: string) => {
     setActiveFileId(fileId);
-  };
+  }, []);
 
-  const handleFileClose = (fileId: string) => {
-    if (files.length === 1) return; // Don't close the last file
+  // Available panel types for the selector
+  const availablePanelTypes: ICUIPanelType[] = [
+    { id: 'explorer', name: 'Explorer', icon: '📁', description: 'File and folder browser' },
+    { id: 'editor', name: 'Code Editor', icon: '📝', description: 'Code editor with syntax highlighting' },
+    { id: 'terminal', name: 'Terminal', icon: '💻', description: 'Integrated terminal' },
+    { id: 'chat', name: 'AI Assistant', icon: '🤖', description: 'AI-powered code assistant' },
+    { id: 'output', name: 'Output', icon: '📤', description: 'Build and execution output' },
+    { id: 'debug', name: 'Debug Console', icon: '🐛', description: 'Debug console and variables' },
+  ];
 
-    const fileIndex = files.findIndex((file) => file.id === fileId);
-    if (fileIndex === -1) return;
-
-    const newFiles = files.filter((file) => file.id !== fileId);
-    setFiles(newFiles);
-
-    // If we closed the active file, switch to the adjacent file
-    if (activeFileId === fileId) {
-      const newActiveIndex = fileIndex > 0 ? fileIndex - 1 : 0;
-      setActiveFileId(newFiles[newActiveIndex]?.id || newFiles[0]?.id);
+  // Handle panel addition
+  const handlePanelAdd = useCallback((panelType: ICUIPanelType, areaId: string) => {
+    // Generate unique ID for the new panel
+    const newPanelId = `${panelType.id}-${Date.now()}`;
+    
+    // Create panel content based on type
+    let content: React.ReactNode;
+    switch (panelType.id) {
+      case 'explorer':
+        content = <ICUIExplorerPanel className="h-full" />;
+        break;
+      case 'editor':
+        content = (
+          <ICUIEnhancedEditorPanel
+            files={editorFiles}
+            activeFileId={activeFileId}
+            onFileChange={handleFileChange}
+            onFileClose={handleFileClose}
+            onFileCreate={handleFileCreate}
+            onFileSave={handleFileSave}
+            onFileRun={handleFileRun}
+            onFileActivate={handleFileActivate}
+            autoSave={true}
+            autoSaveDelay={1500}
+            className="h-full"
+          />
+        );
+        break;
+      case 'terminal':
+        content = <ICUIEnhancedTerminalPanel className="h-full" />;
+        break;
+      case 'chat':
+        content = <ICUIChatPanel className="h-full" />;
+        break;
+      case 'output':
+        content = <div className="h-full p-4" style={{ backgroundColor: 'var(--icui-bg-primary)', color: 'var(--icui-text-primary)' }}>Output Panel - Build and execution output will appear here</div>;
+        break;
+      case 'debug':
+        content = <div className="h-full p-4" style={{ backgroundColor: 'var(--icui-bg-primary)', color: 'var(--icui-text-primary)' }}>Debug Console - Debug information and variables will appear here</div>;
+        break;
+      default:
+        content = <div className="h-full p-4" style={{ backgroundColor: 'var(--icui-bg-primary)', color: 'var(--icui-text-primary)' }}>Custom Panel: {panelType.name}</div>;
     }
-  };
-
-  // File explorer handlers (placeholder implementations)
-  const handleFileSelect = (filePath: string) => {
-    // TODO: Load file content and add to tabs
-  };
-
-  const handleFileCreate = (folderPath: string) => {
-    // TODO: Create new file
-  };
-
-  const handleFolderCreate = (folderPath: string) => {
-    // TODO: Create new folder
-  };
-
-  const handleFileDelete = (filePath: string) => {
-    // TODO: Delete file
-  };
-
-  const handleFileRename = (oldPath: string, newName: string) => {
-    // TODO: Rename file
-  };
-
-  const toggleTheme = () => {
-    setTheme(theme === "light" ? "dark" : "light");
-  };
-
-  const toggleOutputPanel = () => {
-    setIsOutputVisible(!isOutputVisible);
-  };
-
-  const handleTerminalResize = () => {
-    // Add a small delay to allow the panel to resize before fitting the terminal
-    setTimeout(() => {
-      if (terminalRef.current) {
-        terminalRef.current.fit();
+    
+    // Create new panel
+    const newPanel: ICUIEnhancedPanel = {
+      id: newPanelId,
+      type: panelType.id,
+      title: panelType.name,
+      icon: panelType.icon,
+      closable: true,
+      content
+    };
+    
+    // Add panel to state
+    setPanels(prev => [...prev, newPanel]);
+    
+    // Update layout to include the new panel in the specified area
+    setLayout(prev => ({
+      ...prev,
+      areas: {
+        ...prev.areas,
+        [areaId]: {
+          ...prev.areas[areaId],
+          panelIds: [...prev.areas[areaId].panelIds, newPanelId],
+          activePanelId: newPanelId
+        }
       }
-    }, 50);
-  };
+    }));
+  }, [editorFiles, activeFileId, handleFileChange, handleFileClose, handleFileCreate, handleFileSave, handleFileRun, handleFileActivate]);
 
-  // Apply theme to document on mount and theme change
+  // Initialize panels on mount
   useEffect(() => {
-    const root = window.document.documentElement;
-    root.classList.remove("light", "dark");
-    root.classList.add(theme);
-    localStorage.setItem("theme", theme);
-  }, [theme]);
+    const initialPanels: ICUIEnhancedPanel[] = [
+      {
+        id: 'explorer',
+        type: 'explorer',
+        title: 'Explorer',
+        icon: '📁',
+        closable: true,
+        content: <ICUIExplorerPanel className="h-full" />
+      },
+      {
+        id: 'editor',
+        type: 'editor',
+        title: 'Code Editor',
+        icon: '📝',
+        closable: true,
+        content: (
+          <ICUIEnhancedEditorPanel
+            files={editorFiles}
+            activeFileId={activeFileId}
+            onFileChange={handleFileChange}
+            onFileClose={handleFileClose}
+            onFileCreate={handleFileCreate}
+            onFileSave={handleFileSave}
+            onFileRun={handleFileRun}
+            onFileActivate={handleFileActivate}
+            autoSave={true}
+            autoSaveDelay={1500}
+            className="h-full"
+          />
+        )
+      },
+      {
+        id: 'terminal',
+        type: 'terminal',
+        title: 'Terminal',
+        icon: '💻',
+        closable: true,
+        content: <ICUIEnhancedTerminalPanel className="h-full" />
+      },
+      {
+        id: 'chat',
+        type: 'chat',
+        title: 'AI Assistant',
+        icon: '🤖',
+        closable: true,
+        content: <ICUIChatPanel className="h-full" />
+      },
+    ];
+    setPanels(initialPanels);
+  }, []);
+
+  // Update editor panel content when files change
+  useEffect(() => {
+    setPanels(prev => prev.map(panel => {
+      if (panel.type === 'editor') {
+        return {
+          ...panel,
+          content: (
+            <ICUIEnhancedEditorPanel
+              files={editorFiles}
+              activeFileId={activeFileId}
+              onFileChange={handleFileChange}
+              onFileClose={handleFileClose}
+              onFileCreate={handleFileCreate}
+              onFileSave={handleFileSave}
+              onFileRun={handleFileRun}
+              onFileActivate={handleFileActivate}
+              autoSave={true}
+              autoSaveDelay={1500}
+              className="h-full"
+            />
+          )
+        };
+      }
+      return panel;
+    }));
+  }, [editorFiles, activeFileId, handleFileChange, handleFileClose, handleFileCreate, handleFileSave, handleFileRun, handleFileActivate]);
+
+  // Layout presets
+  const createIDELayout = useCallback(() => {
+    setLayout({
+      layoutMode: 'standard',
+      areas: {
+        left: { id: 'left', name: 'Explorer', panelIds: ['explorer'], activePanelId: 'explorer', size: 25 },
+        center: { id: 'center', name: 'Editor', panelIds: ['editor'], activePanelId: 'editor', size: 50 },
+        right: { id: 'right', name: 'Assistant', panelIds: ['chat'], activePanelId: 'chat', size: 25, visible: true },
+        bottom: { id: 'bottom', name: 'Terminal', panelIds: ['terminal'], activePanelId: 'terminal', size: 30 },
+      },
+      splitConfig: { mainVerticalSplit: 70, mainHorizontalSplit: 25, rightVerticalSplit: 75 }
+    });
+  }, []);
+
+  const createHLayout = useCallback(() => {
+    setLayout({
+      layoutMode: 'h-layout',
+      areas: {
+        left: { id: 'left', name: 'Explorer', panelIds: ['explorer'], activePanelId: 'explorer', size: 25, visible: true },
+        center: { id: 'center', name: 'Editor', panelIds: ['editor'], activePanelId: 'editor', size: 50 },
+        right: { id: 'right', name: 'Assistant', panelIds: ['chat'], activePanelId: 'chat', size: 25, visible: true },
+        bottom: { id: 'bottom', name: 'Terminal', panelIds: ['terminal'], activePanelId: 'terminal', size: 40 },
+      },
+      splitConfig: { 
+        mainHorizontalSplit: 25, 
+        rightVerticalSplit: 75, 
+        centerVerticalSplit: 65 
+      }
+    });
+  }, []);
+
+  // Get current theme info
+  const currentThemeInfo = THEME_OPTIONS.find(t => t.id === currentTheme) || THEME_OPTIONS[0];
 
   return (
-    <div className={`h-screen w-screen flex flex-col font-sans ${theme}`}>
-      {/* Top bar */}
-      <header className="p-4 flex justify-between items-center border-b flex-shrink-0">
-        <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setIsExplorerVisible(!isExplorerVisible)}
-            className="h-8 w-8 p-0"
+    <div className={`home-container flex flex-col ${currentThemeInfo.class} ${className}`} style={{ height: '100vh', minHeight: '100vh', maxHeight: '100vh' }}>
+      {/* Header */}
+      <div className="flex items-center justify-between p-4 border-b shrink-0" style={{ backgroundColor: 'var(--icui-bg-secondary)', borderColor: 'var(--icui-border-subtle)', color: 'var(--icui-text-primary)' }}>
+        <h1 className="text-xl font-bold">JavaScript Code Editor</h1>
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={createHLayout}
+            className="px-3 py-1 text-sm text-white rounded hover:opacity-80 transition-opacity"
+            style={{ backgroundColor: 'var(--icui-warning)' }}
           >
-            <PanelLeft className="h-4 w-4" />
-          </Button>
-          <h1 className="text-xl font-bold">iLabors Code</h1>
-        </div>
-        <div className="flex items-center gap-2">
-          <ThemeToggle theme={theme} toggleTheme={toggleTheme} />
-          <Button
-            onClick={handleRunCode}
-            disabled={isExecuting}
-            className="bg-green-600 hover:bg-green-700 text-white disabled:opacity-50"
-          >
-            <Play className="mr-2 h-4 w-4" />
-            {isExecuting ? 'Running...' : 'Run'}
-          </Button>
-        </div>
-      </header>
+            H Layout
+          </button>
 
-      {/* Main content */}
-      <main className="flex-1 flex flex-col overflow-hidden">
-        {/* Top section (Editor and optional File Explorer) */}
-        <div className="flex-1 flex overflow-hidden">
-          {isExplorerVisible && (
-            <ResizablePanel
-              initialWidth={250}
-              minWidth={200}
-              maxWidth={500}
-            >
-              <FileExplorer
-                files={explorerFiles}
-                onFileSelect={handleFileSelect}
-                onFileCreate={handleFileCreate}
-                onFolderCreate={handleFolderCreate}
-                onFileDelete={handleFileDelete}
-                onFileRename={handleFileRename}
-              />
-            </ResizablePanel>
-          )}
-          <div className="flex-1 flex flex-col min-w-0">
-            <FileTabs
-              files={files}
-              activeFileId={activeFileId}
-              onFileSelect={handleFileTabSelect}
-              onFileClose={handleFileClose}
-              onNewFile={() => { /* TODO */ }}
-            />
-            <div className="flex-1 relative">
-              {activeFile && (
-                <CodeEditor
-                  code={activeFile.content}
-                  language={currentLanguage}
-                  onCodeChange={handleCodeChange}
-                  theme={theme}
-                />
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Bottom section (Output/Terminal) */}
-        {isOutputVisible && (
-          <VerticalResizablePanel
-            initialHeight={300}
-            minHeight={100}
-            maxHeight={600}
-            onResize={(height) => terminalRef.current?.fit()}
+          <button
+            onClick={createIDELayout}
+            className="px-3 py-1 text-sm text-white rounded hover:opacity-80 transition-opacity"
+            style={{ backgroundColor: 'var(--icui-accent)' }}
           >
-            <OutputTerminalPanel
-              ref={terminalRef}
-              output={output}
-              errors={errors}
-              theme={theme}
-              onClear={() => {
-                setOutput([]);
-                setErrors([]);
-              }}
-            />
-          </VerticalResizablePanel>
-        )}
-      </main>
+            IDE Layout
+          </button>
+
+          <select
+            value={currentTheme}
+            onChange={(e) => setCurrentTheme(e.target.value)}
+            className="px-3 py-1 text-sm rounded border"
+            style={{ 
+              backgroundColor: 'var(--icui-bg-primary)', 
+              borderColor: 'var(--icui-border)', 
+              color: 'var(--icui-text-primary)' 
+            }}
+          >
+            {THEME_OPTIONS.map(theme => (
+              <option key={theme.id} value={theme.id}>
+                {theme.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* Main Layout */}
+      <div className="flex-1 min-h-0 max-h-full overflow-hidden">
+        <ICUIEnhancedLayout
+          panels={panels}
+          layout={layout}
+          onLayoutChange={setLayout}
+          enableDragDrop={true}
+          persistLayout={true}
+          layoutKey="javascript-code-editor"
+          className="h-full w-full"
+          availablePanelTypes={availablePanelTypes}
+          onPanelAdd={handlePanelAdd}
+          showPanelSelector={true}
+        />
+      </div>
+
+      {/* Status Bar */}
+      <div className="p-2 border-t text-sm shrink-0" style={{ backgroundColor: 'var(--icui-bg-secondary)', borderColor: 'var(--icui-border-subtle)', color: 'var(--icui-text-secondary)' }}>
+        Files: {editorFiles.length} | 
+        Modified: {editorFiles.filter(f => f.modified).length} | 
+        Theme: {currentThemeInfo.name} | 
+        Ready
+      </div>
     </div>
   );
 };
 
-export default Home;
+export default Home; 

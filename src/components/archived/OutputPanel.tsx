@@ -1,6 +1,6 @@
 import React, { useState } from "react";
-import { Button } from "./ui/button";
-import { Card, CardContent } from "./ui/card";
+import { Button } from "../ui/button";
+import { Card, CardContent } from "../ui/card";
 import { ChevronDown, ChevronUp, XCircle } from "lucide-react";
 
 interface OutputPanelProps {

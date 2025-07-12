@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Button } from "./ui/button";
+import { Button } from "../ui/button";
 import { Trash2, X } from "lucide-react";
 
 interface TerminalProps {

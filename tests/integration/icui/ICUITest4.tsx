@@ -13,10 +13,10 @@ import {
   ICUIPanelType,
   ICUIPanelInstance
 } from '../../../src/icui';
-import { FileData } from '../../../src/components/FileTabs';
+import { FileData } from '../../../src/components/archived/FileTabs';
 import ICUITerminalPanel from '../../../src/icui/components/panels/ICUITerminalPanel';
-import CodeEditor, { SupportedLanguage } from '../../../src/components/CodeEditor';
-import FileExplorer from '../../../src/components/FileExplorer';
+import CodeEditor, { SupportedLanguage } from '../../../src/components/archived/CodeEditor';
+import FileExplorer from '../../../src/components/archived/FileExplorer';
 
 interface ICUITest4Props {
   className?: string;

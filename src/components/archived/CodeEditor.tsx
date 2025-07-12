@@ -34,7 +34,7 @@ import { tags as t } from "@lezer/highlight";
 import { javascript } from "@codemirror/lang-javascript";
 import { python } from "@codemirror/lang-python";
 import { oneDark } from "@codemirror/theme-one-dark";
-import { Button } from "./ui/button";
+import { Button } from "../ui/button";
 
 export type SupportedLanguage = 'javascript' | 'python';
 

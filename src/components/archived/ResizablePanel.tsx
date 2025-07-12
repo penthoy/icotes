@@ -1,51 +1,46 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { ChevronDown, ChevronUp, Maximize2, Minimize2 } from "lucide-react";
-import { Button } from "./ui/button";
+import { ChevronLeft, ChevronRight, Maximize2, Minimize2 } from "lucide-react";
+import { Button } from "../ui/button";
 
-interface VerticalResizablePanelProps {
+interface ResizablePanelProps {
   children: React.ReactNode;
-  initialHeight?: number;
-  minHeight?: number;
-  maxHeight?: number;
+  initialWidth?: number;
+  minWidth?: number;
+  maxWidth?: number;
   className?: string;
   collapsible?: boolean;
   maximizable?: boolean;
   onCollapse?: (isCollapsed: boolean) => void;
   onMaximize?: (isMaximized: boolean) => void;
-  onResize?: (height: number) => void;
 }
 
-const VerticalResizablePanel: React.FC<VerticalResizablePanelProps> = ({
+const ResizablePanel: React.FC<ResizablePanelProps> = ({
   children,
-  initialHeight = 300,
-  minHeight = 100,
-  maxHeight = 600,
+  initialWidth = 240,
+  minWidth = 180,
+  maxWidth = 400,
   className = "",
   collapsible = true,
   maximizable = true,
   onCollapse,
   onMaximize,
-  onResize,
 }) => {
-  const [height, setHeight] = useState(initialHeight);
+  const [width, setWidth] = useState(initialWidth);
   const [isResizing, setIsResizing] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMaximized, setIsMaximized] = useState(false);
-  const [preCollapseHeight, setPreCollapseHeight] = useState(initialHeight);
-  const [preMaximizeHeight, setPreMaximizeHeight] = useState(initialHeight);
+  const [preCollapseWidth, setPreCollapseWidth] = useState(initialWidth);
+  const [preMaximizeWidth, setPreMaximizeWidth] = useState(initialWidth);
   const panelRef = useRef<HTMLDivElement>(null);
 
   const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (!isResizing || !panelRef.current || isCollapsed || isMaximized) return;
+    if (!isResizing || isCollapsed || isMaximized) return;
     
-    const panelRect = panelRef.current.getBoundingClientRect();
-    const newHeight = panelRect.bottom - e.clientY;
-    
-    if (newHeight >= minHeight && newHeight <= maxHeight) {
-      setHeight(newHeight);
-      onResize?.(newHeight);
+    const newWidth = e.clientX;
+    if (newWidth >= minWidth && newWidth <= maxWidth) {
+      setWidth(newWidth);
     }
-  }, [isResizing, isCollapsed, isMaximized, minHeight, maxHeight, onResize]);
+  }, [isResizing, isCollapsed, isMaximized, minWidth, maxWidth]);
 
   const handleMouseUp = useCallback(() => {
     setIsResizing(false);
@@ -55,7 +50,7 @@ const VerticalResizablePanel: React.FC<VerticalResizablePanelProps> = ({
     if (isResizing) {
       document.addEventListener("mousemove", handleMouseMove);
       document.addEventListener("mouseup", handleMouseUp);
-      document.body.style.cursor = "ns-resize";
+      document.body.style.cursor = "col-resize";
     }
 
     return () => {
@@ -76,10 +71,10 @@ const VerticalResizablePanel: React.FC<VerticalResizablePanelProps> = ({
     
     const newCollapsed = !isCollapsed;
     if (newCollapsed) {
-      setPreCollapseHeight(height);
-      setHeight(0);
+      setPreCollapseWidth(width);
+      setWidth(0);
     } else {
-      setHeight(preCollapseHeight);
+      setWidth(preCollapseWidth);
     }
     setIsCollapsed(newCollapsed);
     onCollapse?.(newCollapsed);
@@ -90,35 +85,42 @@ const VerticalResizablePanel: React.FC<VerticalResizablePanelProps> = ({
     
     const newMaximized = !isMaximized;
     if (newMaximized) {
-      setPreMaximizeHeight(height);
-      // Get parent container height to maximize to
-      const parentHeight = panelRef.current?.parentElement?.clientHeight || window.innerHeight;
-      setHeight(parentHeight * 0.8); // Use 80% of parent height for maximized state
+      setPreMaximizeWidth(width);
+      // Get parent container width to maximize to
+      const parentWidth = panelRef.current?.parentElement?.clientWidth || window.innerWidth;
+      setWidth(parentWidth * 0.8); // Use 80% of parent width for maximized state
     } else {
-      setHeight(preMaximizeHeight);
+      setWidth(preMaximizeWidth);
     }
     setIsMaximized(newMaximized);
     onMaximize?.(newMaximized);
   };
 
-  const currentHeight = isCollapsed ? 0 : height;
+  const currentWidth = isCollapsed ? 0 : width;
 
   return (
     <div
       ref={panelRef}
-      className={`relative flex flex-col ${className} ${isCollapsed ? 'h-0 overflow-hidden' : ''}`}
-      style={{ height: isCollapsed ? '0px' : `${height}px` }}
+      className={`relative flex ${className} ${isCollapsed ? 'w-0 overflow-hidden' : ''}`}
+      style={{ width: isCollapsed ? '0px' : `${width}px` }}
     >
-      {/* Control Bar */}
-      <div className="flex items-center justify-between p-1 bg-muted/30 border-b border-border flex-shrink-0">
+      {!isCollapsed && (
+        <div className="flex-1 min-w-0">
+          {children}
+        </div>
+      )}
+      
+      {/* Resize Handle */}
+      <div className="relative flex flex-col">
         {!isCollapsed && !isMaximized && (
           <div
-            className="absolute top-0 left-0 right-0 h-1 bg-border hover:bg-accent-foreground/20 cursor-ns-resize transition-colors z-10"
+            className="absolute top-0 -right-1 w-2 h-full bg-transparent hover:bg-accent-foreground/20 cursor-col-resize transition-colors z-10"
             onMouseDown={handleMouseDown}
           />
         )}
         
-        <div className="flex items-center gap-1">
+        {/* Control Buttons */}
+        <div className="flex flex-col items-center gap-1 p-1 bg-muted/30 border-l border-border">
           {collapsible && (
             <Button
               variant="ghost"
@@ -128,9 +130,9 @@ const VerticalResizablePanel: React.FC<VerticalResizablePanelProps> = ({
               title={isCollapsed ? "Expand panel" : "Collapse panel"}
             >
               {isCollapsed ? (
-                <ChevronUp className="h-3 w-3" />
+                <ChevronRight className="h-3 w-3" />
               ) : (
-                <ChevronDown className="h-3 w-3" />
+                <ChevronLeft className="h-3 w-3" />
               )}
             </Button>
           )}
@@ -152,14 +154,8 @@ const VerticalResizablePanel: React.FC<VerticalResizablePanelProps> = ({
           )}
         </div>
       </div>
-      
-      {!isCollapsed && (
-        <div className="flex-1 min-h-0 overflow-hidden">
-          {children}
-        </div>
-      )}
     </div>
   );
 };
 
-export default VerticalResizablePanel;
+export default ResizablePanel;

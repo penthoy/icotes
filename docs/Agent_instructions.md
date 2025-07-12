@@ -18,6 +18,9 @@ Use that as a guide rather than human instruction, as this is generated from mul
 - When I said "distill":
 Create a file under docs folder with the prefix: experience_distilation_xxx.md where xxx is a name for you to decide based on a one word that can best sumarized our current conversational session it could be a topic or a theme, inside this file please sumarize all your experiences in this current session based on the following topics: what you have learned about this code base and how we are approaching and coding this repo so far based on our conversations in this session, what was tried, what mistakes are made, and what was done well, the purpose for this doc is for future AIs to learn from your experience, so that you can continue to improve, this is a postmortem, try to be concise and to the point, don't repeat yourself so that you can save context lengths to fullfill the purpose of distillation. but don't be overly vague either, it should contain enough information for your future self to best receive your knowledge.
 
+- When I said "fix build errors":
+run "npm run build" and fix all build errors
+
 ## Rules:
 When asked to "continue progress" please don't work on anything else other than the In progress section of the roadmap.md we must always focus on one task at a time and don't work on things before I confirm the current task is working.
 
