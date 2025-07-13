@@ -5,17 +5,16 @@ A web-based JavaScript code editor built with React, CodeMirror 6, and modern we
 
 ## In Progress
 
-
 ## Future task
--- Fix UI issues
+-- UI issues
 - [] Terminal should auto go to botthom after typed something and pressed enter
-- [] terminal history is black.
 
-- [] Fix panel flickering issue(might be fixed)
 - [] Active Panel tabs should be lighter in color while inactive tabs are darker just like Editor Panel tabs
 - [] dragable panel tabs, should allow reordering
 - [] dragable editor tabs
 
+-- Bug Fix:
+- [] Fix panel flickering issue(might be fixed)
 
 -- api backend
 - [] separate terminal code from main into terminal.py
@@ -29,6 +28,32 @@ A Panel installer,
 maya style code executor.
 
 ## Recently Finished
+
+### December 2024 - Terminal Scrolling Fix Implementation
+- **Terminal Scrolling Issue Resolution** ✅
+  - **Issue**: Terminal panels showed black areas instead of scrollable content when commands produced large outputs (e.g., `history` command)
+  - **Root Cause**: Fundamental mismatch between xterm.js viewport sizing and container layout, preventing proper scrollbar display
+  - **Solution**: Complete rewrite of terminal implementation based on code-server analysis
+  - **Implementation**: 
+    - Created `ICUITerminalPanelFromScratch.tsx` with proper code-server patterns
+    - Added `icuiTerminaltest.tsx` integration test component (accessible at `/icui-terminal-test`)
+    - Used proper xterm.css viewport classes with `overflow-y: scroll` on `.xterm-viewport`
+    - Implemented FitAddon with correct initialization order (open terminal BEFORE fitting)
+    - Added ResizeObserver for dynamic container size changes
+    - Applied critical CSS for viewport scrolling control
+  - **Key Changes**:
+    - Imported `@xterm/xterm/css/xterm.css` first before custom CSS
+    - Container has explicit height constraints with `overflow: hidden`
+    - Let xterm.js handle scrolling internally through `.xterm-viewport` element
+    - Removed conflicting overflow properties from terminal wrapper
+    - Added proper resize handling with debounced updates
+    - Synchronized frontend/backend PTY dimensions via WebSocket
+    - **Local Echo Fix**: Added proper local echo for instant character feedback
+      - Printable characters (ASCII 0x20-0x7E) are echoed locally for instant feedback
+      - Backspace/Delete handled locally with proper cursor movement
+      - Enter/Return resets typed character count for new lines
+  - **Testing**: Available at `/icui-terminal-test` route for isolated testing
+  - **Status**: Both scrolling and local echo now working correctly
 
 ### December 2024 - Terminal Character Lag Fix
 - **Backend Terminal Latency Optimization** ✅

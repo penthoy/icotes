@@ -11,6 +11,7 @@ import ICUIEditorComparison from "../tests/integration/icui/ICUIEditorComparison
 import { ICUIReferenceLayouts } from "../tests/integration/icui/ICUIReferenceLayouts";
 import { ICUIMainPage } from "../tests/integration/icui/ICUIMainPage";
 import { ICUITestEnhanced } from "../tests/integration/icui/ICUITestEnhanced";
+import { ICUITerminalTest } from "../tests/integration/icui/icuiTerminaltest";
 
 function App() {
   return (
@@ -27,6 +28,7 @@ function App() {
         <Route path="/icui-layouts" element={<ICUIReferenceLayouts />} />
         <Route path="/icui-main" element={<ICUIMainPage />} />
         <Route path="/icui-enhanced" element={<ICUITestEnhanced />} />
+        <Route path="/icui-terminal-test" element={<ICUITerminalTest />} />
       </Routes>
     </Suspense>
   );
