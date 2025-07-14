@@ -2,11 +2,19 @@
  * ICUI Enhanced Terminal Panel
  * Advanced terminal with theme support and enhanced features
  * Based on ICUITerminalPanel but with enhanced theming and ICUI integration
+ * 
+ * SCROLLING FIX APPLIED:
+ * - Uses proper xterm.css viewport classes with overflow-y: scroll
+ * - Follows code-server DOM structure pattern
+ * - Lets xterm.js handle scrolling internally through .xterm-viewport
+ * - Uses FitAddon with proper initialization order
+ * - Container has explicit height constraints
  */
 
 import React, { useRef, useEffect, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
-import '@xterm/xterm/css/xterm.css';
+import { FitAddon } from '@xterm/addon-fit';
+import '@xterm/xterm/css/xterm.css'; // MUST be imported first
 
 interface ICUIEnhancedTerminalPanelProps {
   className?: string;
@@ -17,6 +25,9 @@ export const ICUIEnhancedTerminalPanel: React.FC<ICUIEnhancedTerminalPanelProps>
   const websocket = useRef<WebSocket | null>(null);
   const terminalId = useRef<string>(Math.random().toString(36).substring(2));
   const terminal = useRef<Terminal | null>(null);
+  const fitAddon = useRef<FitAddon | null>(null);
+  const resizeObserver = useRef<ResizeObserver | null>(null);
+  const resizeTimeout = useRef<NodeJS.Timeout | null>(null);
   // Track how many printable characters have been locally echoed on the current line
   const typedCount = useRef<number>(0);
   const [isDarkTheme, setIsDarkTheme] = useState(false);
@@ -53,46 +64,84 @@ export const ICUIEnhancedTerminalPanel: React.FC<ICUIEnhancedTerminalPanelProps>
     };
   }, []);
 
-  // Initialize terminal once (performance optimization)
+  // Initialize terminal once (performance optimization) - SCROLLING FIX APPLIED
   useEffect(() => {
     if (!terminalRef.current) return;
     
     // Create terminal with enhanced theme-aware colors using ICUI CSS variables
     terminal.current = new Terminal({
-      cols: 80,
-      rows: 24,
+      scrollback: 1000,
       fontSize: 14,
-      fontFamily: 'monospace',
+      fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+      cursorStyle: 'block',
+      cursorBlink: true,
       theme: {
-        background: 'var(--icui-bg-primary)',
-        foreground: 'var(--icui-text-primary)',
-        cursor: 'var(--icui-text-primary)',
-        cursorAccent: 'var(--icui-bg-primary)',
-        selectionBackground: 'var(--icui-accent)',
+        background: isDarkTheme ? '#1e1e1e' : '#ffffff',
+        foreground: isDarkTheme ? '#d4d4d4' : '#000000',
+        cursor: isDarkTheme ? '#d4d4d4' : '#000000',
+        cursorAccent: isDarkTheme ? '#1e1e1e' : '#ffffff',
+        selectionBackground: isDarkTheme ? '#264f78' : '#add6ff',
         black: '#000000',
-        brightBlack: 'var(--icui-terminal-bright-black)',
-        red: 'var(--icui-terminal-red)',
-        brightRed: 'var(--icui-terminal-bright-red)',
-        green: 'var(--icui-terminal-green)',
-        brightGreen: 'var(--icui-terminal-bright-green)',
-        yellow: 'var(--icui-terminal-yellow)',
-        brightYellow: 'var(--icui-terminal-bright-yellow)',
-        blue: 'var(--icui-terminal-blue)',
-        brightBlue: 'var(--icui-terminal-bright-blue)',
-        magenta: 'var(--icui-terminal-magenta)',
-        brightMagenta: 'var(--icui-terminal-bright-magenta)',
-        cyan: 'var(--icui-terminal-cyan)',
-        brightCyan: 'var(--icui-terminal-bright-cyan)',
-        white: 'var(--icui-terminal-white)',
-        brightWhite: 'var(--icui-terminal-bright-white)',
+        brightBlack: '#666666',
+        red: '#cd3131',
+        brightRed: '#f14c4c',
+        green: '#0dbc79',
+        brightGreen: '#23d18b',
+        yellow: '#e5e510',
+        brightYellow: '#f5f543',
+        blue: '#2472c8',
+        brightBlue: '#3b8eea',
+        magenta: '#bc3fbc',
+        brightMagenta: '#d670d6',
+        cyan: '#11a8cd',
+        brightCyan: '#29b8db',
+        white: '#e5e5e5',
+        brightWhite: '#ffffff',
       },
     });
 
-    // Open the terminal
+    // Create and load FitAddon
+    fitAddon.current = new FitAddon();
+    terminal.current.loadAddon(fitAddon.current);
+
+    // CRITICAL: Open terminal BEFORE fitting (code-server pattern)
     terminal.current.open(terminalRef.current);
     
+    // Fit after opening
+    fitAddon.current.fit();
+
+    // Setup resize handling with debounce
+    const handleResize = () => {
+      if (resizeTimeout.current) {
+        clearTimeout(resizeTimeout.current);
+      }
+      resizeTimeout.current = setTimeout(() => {
+        if (fitAddon.current && terminal.current) {
+          fitAddon.current.fit();
+          
+          // Sync with backend PTY size
+          if (websocket.current?.readyState === WebSocket.OPEN) {
+            websocket.current.send(JSON.stringify({
+              type: 'resize',
+              cols: terminal.current.cols,
+              rows: terminal.current.rows
+            }));
+          }
+        }
+      }, 100);
+    };
+
+    // Setup ResizeObserver for container changes
+    if (terminalRef.current) {
+      resizeObserver.current = new ResizeObserver(handleResize);
+      resizeObserver.current.observe(terminalRef.current);
+    }
+
+    // Setup window resize listener
+    window.addEventListener('resize', handleResize);
+    
     // Write a welcome message with theme awareness
-    terminal.current.write('ICUIEnhancedTerminalPanel initialized!\r\n');
+    terminal.current.write('ICUIEnhancedTerminalPanel initialized! Try running: history\r\n');
 
     // Handle user input: send to backend AND perform local echo for instant feedback
     terminal.current.onData((data) => {
@@ -150,6 +199,13 @@ export const ICUIEnhancedTerminalPanel: React.FC<ICUIEnhancedTerminalPanelProps>
     };
 
     return () => {
+      if (resizeTimeout.current) {
+        clearTimeout(resizeTimeout.current);
+      }
+      if (resizeObserver.current) {
+        resizeObserver.current.disconnect();
+      }
+      window.removeEventListener('resize', handleResize);
       websocket.current?.close();
       if (terminal.current) {
         terminal.current.dispose();
@@ -164,54 +220,78 @@ export const ICUIEnhancedTerminalPanel: React.FC<ICUIEnhancedTerminalPanelProps>
     
     // Update terminal theme without recreating the entire terminal
     terminal.current.options.theme = {
-      background: 'var(--icui-bg-primary)',
-      foreground: 'var(--icui-text-primary)',
-      cursor: 'var(--icui-text-primary)',
-      cursorAccent: 'var(--icui-bg-primary)',
-      selectionBackground: 'var(--icui-accent)',
+      background: isDarkTheme ? '#1e1e1e' : '#ffffff',
+      foreground: isDarkTheme ? '#d4d4d4' : '#000000',
+      cursor: isDarkTheme ? '#d4d4d4' : '#000000',
+      cursorAccent: isDarkTheme ? '#1e1e1e' : '#ffffff',
+      selectionBackground: isDarkTheme ? '#264f78' : '#add6ff',
       black: '#000000',
-      brightBlack: 'var(--icui-terminal-bright-black)',
-      red: 'var(--icui-terminal-red)',
-      brightRed: 'var(--icui-terminal-bright-red)',
-      green: 'var(--icui-terminal-green)',
-      brightGreen: 'var(--icui-terminal-bright-green)',
-      yellow: 'var(--icui-terminal-yellow)',
-      brightYellow: 'var(--icui-terminal-bright-yellow)',
-      blue: 'var(--icui-terminal-blue)',
-      brightBlue: 'var(--icui-terminal-bright-blue)',
-      magenta: 'var(--icui-terminal-magenta)',
-      brightMagenta: 'var(--icui-terminal-bright-magenta)',
-      cyan: 'var(--icui-terminal-cyan)',
-      brightCyan: 'var(--icui-terminal-bright-cyan)',
-      white: 'var(--icui-terminal-white)',
-      brightWhite: 'var(--icui-terminal-bright-white)',
+      brightBlack: '#666666',
+      red: '#cd3131',
+      brightRed: '#f14c4c',
+      green: '#0dbc79',
+      brightGreen: '#23d18b',
+      yellow: '#e5e510',
+      brightYellow: '#f5f543',
+      blue: '#2472c8',
+      brightBlue: '#3b8eea',
+      magenta: '#bc3fbc',
+      brightMagenta: '#d670d6',
+      cyan: '#11a8cd',
+      brightCyan: '#29b8db',
+      white: '#e5e5e5',
+      brightWhite: '#ffffff',
     };
   }, [isDarkTheme]); // Only update theme when it changes
 
+  // Apply critical CSS for viewport scrolling
+  useEffect(() => {
+    const styleElement = document.createElement('style');
+    styleElement.textContent = `
+      .terminal-container .xterm .xterm-viewport {
+        background-color: ${isDarkTheme ? '#1e1e1e' : '#ffffff'} !important;
+        overflow-y: scroll !important;
+        position: absolute !important;
+        top: 0 !important;
+        bottom: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+      }
+      
+      .terminal-container .xterm .xterm-screen {
+        position: relative !important;
+      }
+      
+      .terminal-container .xterm .xterm-screen canvas {
+        position: absolute !important;
+        left: 0 !important;
+        top: 0 !important;
+      }
+    `;
+    document.head.appendChild(styleElement);
+    
+    return () => {
+      document.head.removeChild(styleElement);
+    };
+  }, [isDarkTheme]);
+
   return (
-    <div className={`icui-enhanced-terminal-panel h-full flex flex-col ${className}`} style={{ backgroundColor: 'var(--icui-bg-primary)' }}>
-      {/* Terminal Content Area */}
-      <div className="flex-1 overflow-hidden" style={{ backgroundColor: 'var(--icui-bg-primary)' }}>
-        <div
-          className={`icui-terminal ${className}`}
-          style={{
-            height: '100%',
-            width: '100%',
-            backgroundColor: 'var(--icui-bg-primary)',
-            overflow: 'auto',
-          }}
-        >
-          <div
-            ref={terminalRef}
-            style={{
-              height: '100%',
-              width: '100%',
-              minHeight: '100%',
-              minWidth: '100%',
-            }}
-          />
-        </div>
-      </div>
+    <div className={`terminal-container ${className}`} style={{
+      width: '100%',
+      height: '100%',
+      position: 'relative',
+      overflow: 'hidden', // Container manages overall overflow
+    }}>
+      {/* Terminal wrapper - NO overflow styling, following code-server pattern */}
+      <div
+        ref={terminalRef}
+        style={{
+          width: '100%',
+          height: '100%',
+          position: 'relative',
+          // Do NOT set overflow properties here - let xterm.js handle it
+        }}
+      />
     </div>
   );
 };
