@@ -165,6 +165,16 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
     setActiveFileId(fileId);
   }, []);
 
+  // Handle file reordering
+  const handleFileReorder = useCallback((fromIndex: number, toIndex: number) => {
+    setEditorFiles(prev => {
+      const newFiles = [...prev];
+      const [movedFile] = newFiles.splice(fromIndex, 1);
+      newFiles.splice(toIndex, 0, movedFile);
+      return newFiles;
+    });
+  }, []);
+
   // Available panel types for the selector
   const availablePanelTypes: ICUIPanelType[] = [
     { id: 'explorer', name: 'Explorer', icon: '📁', description: 'File and folder browser' },
@@ -197,8 +207,10 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
             onFileSave={handleFileSave}
             onFileRun={handleFileRun}
             onFileActivate={handleFileActivate}
+            onFileReorder={handleFileReorder}
             autoSave={true}
             autoSaveDelay={1500}
+            enableDragDrop={true}
             className="h-full"
           />
         );
@@ -273,8 +285,10 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
             onFileSave={handleFileSave}
             onFileRun={handleFileRun}
             onFileActivate={handleFileActivate}
+            onFileReorder={handleFileReorder}
             autoSave={true}
             autoSaveDelay={1500}
+            enableDragDrop={true}
             className="h-full"
           />
         )
@@ -315,8 +329,10 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
               onFileSave={handleFileSave}
               onFileRun={handleFileRun}
               onFileActivate={handleFileActivate}
+              onFileReorder={handleFileReorder}
               autoSave={true}
               autoSaveDelay={1500}
+              enableDragDrop={true}
               className="h-full"
             />
           )

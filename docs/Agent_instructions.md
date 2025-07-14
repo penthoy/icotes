@@ -21,6 +21,9 @@ Create a file under docs folder with the prefix: experience_distilation_xxx.md w
 - When I said "fix build errors":
 run "npm run build" and fix all build errors
 
+- When Start my prompt with "cc:":
+It means try to use claude code, claude code is a flagship coding agent that can execute on your behave, think of it as your assistant, you use it by running claude on the commandline, and then you'll be able to talk to it to make requests. when I type prompt starting with cc: what I want you to do is take full advantage of this tool. but you should always be the manager and be in control, try to check for outputs and ensure the agent did what it said it did.
+
 ## Rules:
 When asked to "continue progress" please don't work on anything else other than the In progress section of the roadmap.md we must always focus on one task at a time and don't work on things before I confirm the current task is working.
 

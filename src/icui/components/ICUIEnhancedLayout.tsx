@@ -175,6 +175,29 @@ export const ICUIEnhancedLayout: React.FC<ICUIEnhancedLayoutProps> = ({
     onPanelClose?.(panelId);
   }, [onPanelClose]);
 
+  // Handle panel reordering within the same area
+  const handlePanelReorder = useCallback((areaId: string, fromIndex: number, toIndex: number) => {
+    setCurrentLayout(prev => {
+      const area = prev.areas[areaId];
+      if (!area) return prev;
+
+      const newPanelIds = [...area.panelIds];
+      const [movedPanel] = newPanelIds.splice(fromIndex, 1);
+      newPanelIds.splice(toIndex, 0, movedPanel);
+
+      return {
+        ...prev,
+        areas: {
+          ...prev.areas,
+          [areaId]: {
+            ...area,
+            panelIds: newPanelIds,
+          }
+        }
+      };
+    });
+  }, []);
+
   // Handle panel drop between areas
   const handlePanelDrop = useCallback((targetAreaId: string, panelId: string, sourceAreaId: string) => {
     setCurrentLayout(prev => {
@@ -251,6 +274,7 @@ export const ICUIEnhancedLayout: React.FC<ICUIEnhancedLayoutProps> = ({
             onPanelActivate={(panelId) => handlePanelActivate('left', panelId)}
             onPanelClose={(panelId) => handlePanelClose('left', panelId)}
             onPanelDrop={(panelId, sourceAreaId) => handlePanelDrop('left', panelId, sourceAreaId)}
+            onPanelReorder={(fromIndex, toIndex) => handlePanelReorder('left', fromIndex, toIndex)}
             allowDrop={enableDragDrop}
             enableDragDrop={enableDragDrop}
             emptyMessage="Drop explorer panels here"
@@ -295,6 +319,7 @@ export const ICUIEnhancedLayout: React.FC<ICUIEnhancedLayoutProps> = ({
                   onPanelActivate={(panelId) => handlePanelActivate('center', panelId)}
                   onPanelClose={(panelId) => handlePanelClose('center', panelId)}
                   onPanelDrop={(panelId, sourceAreaId) => handlePanelDrop('center', panelId, sourceAreaId)}
+                  onPanelReorder={(fromIndex, toIndex) => handlePanelReorder('center', fromIndex, toIndex)}
                   allowDrop={enableDragDrop}
                   enableDragDrop={enableDragDrop}
                   emptyMessage="Drop editor panels here"
@@ -314,6 +339,7 @@ export const ICUIEnhancedLayout: React.FC<ICUIEnhancedLayoutProps> = ({
                     onPanelActivate={(panelId) => handlePanelActivate('bottom', panelId)}
                     onPanelClose={(panelId) => handlePanelClose('bottom', panelId)}
                     onPanelDrop={(panelId, sourceAreaId) => handlePanelDrop('bottom', panelId, sourceAreaId)}
+                    onPanelReorder={(fromIndex, toIndex) => handlePanelReorder('bottom', fromIndex, toIndex)}
                     allowDrop={enableDragDrop}
                     enableDragDrop={enableDragDrop}
                     emptyMessage="Drop terminal/output panels here"
@@ -337,6 +363,7 @@ export const ICUIEnhancedLayout: React.FC<ICUIEnhancedLayoutProps> = ({
                 onPanelActivate={(panelId) => handlePanelActivate('right', panelId)}
                 onPanelClose={(panelId) => handlePanelClose('right', panelId)}
                 onPanelDrop={(panelId, sourceAreaId) => handlePanelDrop('right', panelId, sourceAreaId)}
+                onPanelReorder={(fromIndex, toIndex) => handlePanelReorder('right', fromIndex, toIndex)}
                 allowDrop={enableDragDrop}
                 enableDragDrop={enableDragDrop}
                 emptyMessage="Drop utility panels here"
@@ -389,6 +416,7 @@ export const ICUIEnhancedLayout: React.FC<ICUIEnhancedLayoutProps> = ({
                 onPanelActivate={(panelId) => handlePanelActivate('left', panelId)}
                 onPanelClose={(panelId) => handlePanelClose('left', panelId)}
                 onPanelDrop={(panelId, sourceAreaId) => handlePanelDrop('left', panelId, sourceAreaId)}
+                onPanelReorder={(fromIndex, toIndex) => handlePanelReorder('left', fromIndex, toIndex)}
                 allowDrop={enableDragDrop}
                 enableDragDrop={enableDragDrop}
                 emptyMessage="Drop explorer panels here"
@@ -420,6 +448,7 @@ export const ICUIEnhancedLayout: React.FC<ICUIEnhancedLayoutProps> = ({
                   onPanelActivate={(panelId) => handlePanelActivate('center', panelId)}
                   onPanelClose={(panelId) => handlePanelClose('center', panelId)}
                   onPanelDrop={(panelId, sourceAreaId) => handlePanelDrop('center', panelId, sourceAreaId)}
+                  onPanelReorder={(fromIndex, toIndex) => handlePanelReorder('center', fromIndex, toIndex)}
                   allowDrop={enableDragDrop}
                   enableDragDrop={enableDragDrop}
                   emptyMessage="Drop editor panels here"
@@ -436,6 +465,7 @@ export const ICUIEnhancedLayout: React.FC<ICUIEnhancedLayoutProps> = ({
                     onPanelActivate={(panelId) => handlePanelActivate('right', panelId)}
                     onPanelClose={(panelId) => handlePanelClose('right', panelId)}
                     onPanelDrop={(panelId, sourceAreaId) => handlePanelDrop('right', panelId, sourceAreaId)}
+                    onPanelReorder={(fromIndex, toIndex) => handlePanelReorder('right', fromIndex, toIndex)}
                     allowDrop={enableDragDrop}
                     enableDragDrop={enableDragDrop}
                     emptyMessage="Drop utility panels here"
@@ -461,6 +491,7 @@ export const ICUIEnhancedLayout: React.FC<ICUIEnhancedLayoutProps> = ({
             onPanelActivate={(panelId) => handlePanelActivate('bottom', panelId)}
             onPanelClose={(panelId) => handlePanelClose('bottom', panelId)}
             onPanelDrop={(panelId, sourceAreaId) => handlePanelDrop('bottom', panelId, sourceAreaId)}
+            onPanelReorder={(fromIndex, toIndex) => handlePanelReorder('bottom', fromIndex, toIndex)}
             allowDrop={enableDragDrop}
             enableDragDrop={enableDragDrop}
             emptyMessage="Drop terminal/output panels here"

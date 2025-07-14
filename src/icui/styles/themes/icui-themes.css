@@ -460,15 +460,15 @@
 .icui-panel-tab {
   border-color: var(--icui-border-subtle);
   color: var(--icui-text-secondary);
-  background-color: var(--icui-bg-tertiary);
+  background-color: transparent;
 }
 
 .icui-panel-tab:hover {
-  background-color: var(--icui-bg-secondary);
+  background-color: var(--icui-bg-tertiary);
 }
 
 .icui-panel-tab.active {
-  background-color: var(--icui-bg-secondary);
+  background-color: var(--icui-bg-tertiary);
   color: var(--icui-text-primary);
 }
 
@@ -494,17 +494,17 @@
 }
 
 .icui-tab-container .icui-tab {
-  background-color: var(--icui-bg-tertiary);
+  background-color: transparent;
   border-color: var(--icui-border-subtle);
   color: var(--icui-text-secondary);
 }
 
 .icui-tab-container .icui-tab:hover {
-  background-color: var(--icui-bg-secondary);
+  background-color: var(--icui-bg-tertiary);
 }
 
 .icui-tab-container .icui-tab.active {
-  background-color: var(--icui-bg-secondary);
+  background-color: var(--icui-bg-tertiary);
   color: var(--icui-text-primary);
 }
 
@@ -688,21 +688,21 @@
 
 /* Default dark theme tab overrides */
 .dark .icui-panel-tab {
-  background-color: var(--icui-bg-tertiary);
+  background-color: transparent;
   color: var(--icui-text-secondary);
 }
 
 .dark .icui-panel-tab:hover {
-  background-color: var(--icui-bg-secondary);
+  background-color: var(--icui-bg-tertiary);
 }
 
 .dark .icui-panel-tab.active {
-  background-color: var(--icui-bg-secondary);
+  background-color: var(--icui-bg-tertiary);
   color: var(--icui-text-primary);
 }
 
 .dark .icui-tab-container .icui-tab {
-  background-color: var(--icui-bg-secondary);
+  background-color: transparent;
 }
 
 .dark .icui-tab-container .icui-tab:hover {

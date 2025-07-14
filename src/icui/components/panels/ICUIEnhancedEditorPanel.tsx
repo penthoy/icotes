@@ -60,8 +60,10 @@ export interface ICUIEnhancedEditorPanelProps {
   onFileSave?: (fileId: string) => void;
   onFileRun?: (fileId: string, content: string, language: string) => void;
   onFileActivate?: (fileId: string) => void;
+  onFileReorder?: (fromIndex: number, toIndex: number) => void;
   autoSave?: boolean;
   autoSaveDelay?: number;
+  enableDragDrop?: boolean;
 }
 
 const ICUIEnhancedEditorPanel: React.FC<ICUIEnhancedEditorPanelProps> = ({
@@ -74,12 +76,16 @@ const ICUIEnhancedEditorPanel: React.FC<ICUIEnhancedEditorPanelProps> = ({
   onFileSave,
   onFileRun,
   onFileActivate,
+  onFileReorder,
   autoSave = false,
   autoSaveDelay = 1000,
+  enableDragDrop = false,
 }) => {
   const editorRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const [isDarkTheme, setIsDarkTheme] = useState(false);
+  const [draggedFile, setDraggedFile] = useState<string | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   // Auto-save timer
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -270,6 +276,40 @@ if __name__ == "__main__":
     onFileClose?.(fileId);
   }, [onFileClose]);
 
+  // Drag and Drop Handlers for file tabs
+  const handleDragStart = useCallback((e: React.DragEvent, fileId: string) => {
+    if (!enableDragDrop) return;
+    setDraggedFile(fileId);
+    e.dataTransfer.setData('application/icui-file', fileId);
+    e.dataTransfer.effectAllowed = 'move';
+  }, [enableDragDrop]);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    if (!enableDragDrop) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  }, [enableDragDrop]);
+
+  const handleDrop = useCallback((e: React.DragEvent, targetIndex: number) => {
+    if (!enableDragDrop || !onFileReorder) return;
+    e.preventDefault();
+    const fileId = e.dataTransfer.getData('application/icui-file');
+    if (fileId) {
+      const draggedIndex = files.findIndex(file => file.id === fileId);
+      if (draggedIndex !== -1 && draggedIndex !== targetIndex) {
+        onFileReorder(draggedIndex, targetIndex);
+      }
+    }
+    setDraggedFile(null);
+    setDragOverIndex(null);
+  }, [enableDragDrop, onFileReorder, files]);
+
+  // Handle drag end to reset state
+  const handleDragEnd = useCallback(() => {
+    setDraggedFile(null);
+    setDragOverIndex(null);
+  }, []);
+
   // Handle save
   const handleSave = useCallback(() => {
     if (currentFile.modified) {
@@ -305,20 +345,28 @@ if __name__ == "__main__":
     <div className={`flex flex-col h-full w-full ${className}`} style={{ backgroundColor: 'var(--icui-bg-primary)' }}>
       {/* Tab Bar */}
       {files.length > 0 && (
-        <div className="flex items-center border-b overflow-x-auto overflow-y-hidden h-8 whitespace-nowrap" style={{ backgroundColor: 'var(--icui-bg-secondary)', borderBottomColor: 'var(--icui-border-subtle)' }}>
+        <div className="flex items-center border-b overflow-x-auto overflow-y-hidden h-8 whitespace-nowrap" style={{ backgroundColor: 'var(--icui-bg-secondary)', borderBottomColor: 'var(--icui-border-subtle)', userSelect: 'none' }}>
           <div className="flex min-w-0 flex-1">
-            {files.map((file) => (
+            {files.map((file, index) => (
               <div
                 key={file.id}
                 className={`flex items-center px-3 py-1 border-r cursor-pointer hover:opacity-80 transition-opacity ${
                   file.id === activeFileId ? 'bg-opacity-20' : ''
-                }`}
+                }${draggedFile === file.id ? ' dragging' : ''}`}
                 style={{ 
                   backgroundColor: file.id === activeFileId ? 'var(--icui-bg-tertiary)' : 'transparent',
                   borderRightColor: 'var(--icui-border-subtle)',
-                  color: 'var(--icui-text-primary)'
+                  color: 'var(--icui-text-primary)',
+                  opacity: draggedFile === file.id ? 0.5 : 1,
+                  cursor: enableDragDrop ? (draggedFile === file.id ? 'grabbing' : 'grab') : 'pointer',
+                  userSelect: 'none',
                 }}
                 onClick={() => handleTabClick(file.id)}
+                onDragStart={(e) => handleDragStart(e, file.id)}
+                onDragEnd={handleDragEnd}
+                onDragOver={handleDragOver}
+                onDrop={(e) => handleDrop(e, index)}
+                draggable={enableDragDrop}
               >
                 <span className="text-sm font-medium truncate max-w-32">
                   {file.name}

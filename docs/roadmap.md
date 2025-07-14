@@ -4,17 +4,15 @@
 A web-based JavaScript code editor built with React, CodeMirror 6, and modern web technologies. The goal is to create a powerful, user-friendly code editor with real-time execution capabilities.
 
 ## In Progress
+lets now fix some issue with UI:
+- [] Terminal highlight white
 
 ## Future task
 -- UI issues
-- [] Terminal should auto go to botthom after typed something and pressed enter
-
-- [] Active Panel tabs should be lighter in color while inactive tabs are darker just like Editor Panel tabs
-- [] dragable panel tabs, should allow reordering
-- [] dragable editor tabs
+- [] Terminal highlight white
 
 -- Bug Fix:
-- [] Fix panel flickering issue(might be fixed)
+- [] Fix panel flickering issue
 
 -- api backend
 - [] separate terminal code from main into terminal.py
@@ -28,6 +26,37 @@ A Panel installer,
 maya style code executor.
 
 ## Recently Finished
+
+### December 2024 - Panel Tab Color Fix & Drag & Drop Implementation
+- **Panel Tab Color Scheme Fix** ✅
+  - **Issue**: Panel tabs had reversed colors compared to editor tabs (active tabs were darker, inactive tabs were lighter)
+  - **Solution**: Updated panel tab color scheme to match editor tabs
+  - **Implementation**:
+    - Modified `ICUITabContainer.tsx` to use `var(--icui-bg-tertiary)` for active tabs and `transparent` for inactive tabs
+    - Updated CSS in `icui-panel-area.css` and `icui-themes.css` to match the new color scheme
+    - Applied consistent color scheme across all theme variants (light, dark, and custom themes)
+  - **Result**: Panel tabs now have the same visual hierarchy as editor tabs - active tabs are lighter and more prominent
+
+- **Draggable Panel Tabs Implementation** ✅
+  - **Issue**: Panel tabs could not be reordered within their areas
+  - **Solution**: Added complete drag and drop functionality for panel tab reordering
+  - **Implementation**:
+    - Added `handlePanelReorder` function to `ICUIEnhancedLayout.tsx` to handle panel reordering within areas
+    - Updated all `ICUIEnhancedPanelArea` instances to include `onPanelReorder` prop
+    - Leveraged existing drag and drop infrastructure in `ICUITabContainer` component
+    - Maintained existing cross-area panel movement functionality
+  - **Result**: Users can now drag and drop panel tabs to reorder them within the same area
+
+- **Draggable Editor Tabs Implementation** ✅
+  - **Issue**: Editor file tabs could not be reordered
+  - **Solution**: Added drag and drop functionality for editor file tabs
+  - **Implementation**:
+    - Added `onFileReorder` and `enableDragDrop` props to `ICUIEnhancedEditorPanel` interface
+    - Implemented drag and drop handlers (`handleDragStart`, `handleDragOver`, `handleDrop`) in editor panel
+    - Added `handleFileReorder` function in home component to manage file array reordering
+    - Updated all editor panel instances to enable drag and drop functionality
+    - Added proper drag attributes (`draggable`, `onDragStart`, `onDragOver`, `onDrop`) to tab elements
+  - **Result**: Users can now drag and drop editor file tabs to reorder them
 
 ### December 2024 - Terminal Scrolling Fix Implementation
 - **Terminal Scrolling Issue Resolution** ✅
@@ -52,8 +81,13 @@ maya style code executor.
       - Printable characters (ASCII 0x20-0x7E) are echoed locally for instant feedback
       - Backspace/Delete handled locally with proper cursor movement
       - Enter/Return resets typed character count for new lines
+    - **Enhanced Terminal Update**: Applied all fixes to ICUIEnhancedTerminalPanel
+      - Merged all scrolling fixes into the original enhanced terminal component
+      - Preserved enhanced theming with ICUI CSS variables and advanced color support
+      - Maintained theme detection and switching capabilities
+      - Both terminals now have identical scrolling behavior while enhanced keeps extra features
   - **Testing**: Available at `/icui-terminal-test` route for isolated testing
-  - **Status**: Both scrolling and local echo now working correctly
+  - **Status**: Both scrolling and local echo working correctly in both terminal components
 
 ### December 2024 - Terminal Character Lag Fix
 - **Backend Terminal Latency Optimization** ✅

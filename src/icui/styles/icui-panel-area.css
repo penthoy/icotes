@@ -85,17 +85,17 @@
   transition: all 0.2s ease-in-out;
   max-width: 200px;
   color: var(--icui-text-secondary);
-  /* Default (inactive) tabs use darker background */
-  background-color: var(--icui-bg-tertiary);
+  /* Default (inactive) tabs use transparent background like editor tabs */
+  background-color: transparent;
 }
 
 .icui-panel-tab:hover {
-  background-color: var(--icui-bg-secondary);
+  background-color: var(--icui-bg-tertiary);
 }
 
 .icui-panel-tab.active {
-  /* Active tabs use lighter background */
-  background-color: var(--icui-bg-secondary);
+  /* Active tabs use lighter background like editor tabs */
+  background-color: var(--icui-bg-tertiary);
   border-bottom: none;
   position: relative;
   color: var(--icui-text-primary);

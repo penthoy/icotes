@@ -80,14 +80,14 @@ export const ICUITabContainer: React.FC<ICUITabContainerProps> = ({
 
   const activeTab = tabs.find(tab => tab.id === activeTabId);
 
-  // Get background colors based on theme - FIXED: Active tabs should be lighter
+  // Get background colors based on theme - FIXED: Active tabs should be lighter like editor tabs
   const getTabBackgroundColor = (isActive: boolean) => {
     if (isDarkTheme) {
-      // Dark themes: active tabs are LIGHTER, inactive tabs are DARKER
-      return isActive ? 'var(--icui-bg-secondary)' : 'var(--icui-bg-tertiary)';
+      // Dark themes: active tabs are LIGHTER (bg-tertiary), inactive tabs are DARKER (transparent)
+      return isActive ? 'var(--icui-bg-tertiary)' : 'transparent';
     } else {
-      // Light themes: active tabs are lighter, inactive tabs are darker  
-      return isActive ? 'var(--icui-bg-secondary)' : 'var(--icui-bg-tertiary)';
+      // Light themes: active tabs are lighter (bg-tertiary), inactive tabs are darker (transparent)
+      return isActive ? 'var(--icui-bg-tertiary)' : 'transparent';
     }
   };
 
