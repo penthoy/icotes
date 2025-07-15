@@ -319,16 +319,7 @@ export const ICUIFrameContainer: React.FC<ICUIFrameContainerProps> = ({
         />
       ))}
       
-      {/* Debug info in development - simplified to reduce spam */}
-      {process.env.NODE_ENV === 'development' && (
-        <div className="icui-debug-info absolute top-2 right-2 bg-black bg-opacity-50 text-white text-xs p-2 rounded max-w-xs">
-          <div>Frame: {frameConfig.id}</div>
-          <div>Size: {Math.round(frameSize.width)}x{Math.round(frameSize.height)}</div>
-          <div>Viewport: {viewport.width}x{viewport.height}</div>
-          <div>Borders: {Object.entries(borders).filter(([_, v]) => v).map(([k]) => k).join(', ') || 'none'}</div>
-          <div>Handles: {resizeHandles.length}</div>
-        </div>
-      )}
+      {/* Debug info removed for cleaner development experience */}
     </div>
   );
 };

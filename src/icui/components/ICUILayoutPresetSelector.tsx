@@ -222,14 +222,7 @@ export const ICUILayoutPresetSelector: React.FC<ICUILayoutPresetSelectorProps> =
           </div>
         )}
 
-        {/* Debug Info */}
-        {process.env.NODE_ENV === 'development' && (
-          <div className="mt-4 p-2 bg-black bg-opacity-50 text-white text-xs rounded">
-            <div>History Length: {layoutState?.history?.length || 0}</div>
-            <div>Presets: {presets.length}</div>
-            <div>Current ID: {layoutState?.currentLayout?.id || 'None'}</div>
-          </div>
-        )}
+        {/* Debug info removed for cleaner development experience */}
       </div>
     </div>
   );

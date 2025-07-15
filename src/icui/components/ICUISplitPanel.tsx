@@ -309,16 +309,7 @@ export const ICUISplitPanel: React.FC<ICUISplitPanelProps> = ({
         </div>
       )} */}
 
-      {/* Debug info in development */}
-      {process.env.NODE_ENV === 'development' && (
-        <div className="icui-debug-info absolute top-2 left-2 bg-black bg-opacity-50 text-white text-xs p-2 rounded">
-          <div>Split: {splitConfig.id}</div>
-          <div>Direction: {splitConfig.direction}</div>
-          <div>Split: {Math.round(splitState.splitPercentage)}%</div>
-          <div>Dragging: {splitState.isDragging ? 'Yes' : 'No'}</div>
-          <div>Collapsed: {splitState.isFirstPanelCollapsed || splitState.isSecondPanelCollapsed ? 'Yes' : 'No'}</div>
-        </div>
-      )}
+      {/* Debug info removed for cleaner development experience */}
     </div>
   );
 };

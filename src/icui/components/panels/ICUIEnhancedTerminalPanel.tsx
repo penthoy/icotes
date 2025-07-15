@@ -110,7 +110,62 @@ export const ICUIEnhancedTerminalPanel: React.FC<ICUIEnhancedTerminalPanelProps>
     // Fit after opening
     fitAddon.current.fit();
 
-    // Setup resize handling with debounce
+    // Handle user input: send to backend and perform local echo for instant feedback
+    terminal.current.onData((data) => {
+      if (websocket.current?.readyState === WebSocket.OPEN) {
+        websocket.current.send(data);
+      }
+
+      // Local echo for printable characters only. Avoid echoing backspace/DEL
+      // because the remote shell will handle character deletions and emit
+      // the correct control sequence. Echoing them locally causes the raw
+      // "\b \b" characters to appear.
+      if (/^[\x20-\x7E]+$/.test(data)) {
+        terminal.current?.write(data);
+        typedCount.current += data.length;
+      } else if (data === '\b' || data === '\x7f') {
+        if (typedCount.current > 0) {
+          terminal.current?.write('\b \b');
+          typedCount.current -= 1;
+        }
+      } else if (data === '\r' || data === '\n') {
+        typedCount.current = 0;
+      }
+    });
+
+    // Connect to backend via WebSocket
+    const envWsUrl = import.meta.env.VITE_WS_URL as string | undefined;
+    let wsUrl: string;
+    
+    if (envWsUrl) {
+      wsUrl = `${envWsUrl}/ws/terminal/${terminalId.current}`;
+    } else {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const host = window.location.host;
+      wsUrl = `${protocol}//${host}/ws/terminal/${terminalId.current}`;
+    }
+
+    websocket.current = new WebSocket(wsUrl);
+
+    websocket.current.onopen = () => {
+      console.log('Terminal WebSocket connected');
+    };
+
+    websocket.current.onmessage = (event) => {
+      if (terminal.current) {
+        terminal.current.write(event.data);
+      }
+    };
+
+    websocket.current.onclose = () => {
+      console.log('Terminal WebSocket disconnected');
+    };
+
+    websocket.current.onerror = (error) => {
+      console.error('Terminal WebSocket error:', error);
+    };
+
+    // Resize handling with debounce
     const handleResize = () => {
       if (resizeTimeout.current) {
         clearTimeout(resizeTimeout.current);
@@ -119,85 +174,29 @@ export const ICUIEnhancedTerminalPanel: React.FC<ICUIEnhancedTerminalPanelProps>
         if (fitAddon.current && terminal.current) {
           fitAddon.current.fit();
           
-          // Sync with backend PTY size
-          if (websocket.current?.readyState === WebSocket.OPEN) {
+          // Send resize info to backend
+          const dims = fitAddon.current.proposeDimensions();
+          if (dims && websocket.current?.readyState === WebSocket.OPEN) {
             websocket.current.send(JSON.stringify({
               type: 'resize',
-              cols: terminal.current.cols,
-              rows: terminal.current.rows
+              cols: dims.cols,
+              rows: dims.rows
             }));
           }
         }
       }, 100);
     };
 
-    // Setup ResizeObserver for container changes
+    // Window resize listener
+    window.addEventListener('resize', handleResize);
+
+    // ResizeObserver for container changes
     if (terminalRef.current) {
       resizeObserver.current = new ResizeObserver(handleResize);
       resizeObserver.current.observe(terminalRef.current);
     }
 
-    // Setup window resize listener
-    window.addEventListener('resize', handleResize);
-    
-    // Write a welcome message with theme awareness
-    terminal.current.write('ICUIEnhancedTerminalPanel initialized! Try running: history\r\n');
-
-    // Handle user input: send to backend AND perform local echo for instant feedback
-    terminal.current.onData((data) => {
-      // Send data to backend if connected
-      if (websocket.current?.readyState === WebSocket.OPEN) {
-        websocket.current.send(data);
-      }
-
-      // Local echo for printable characters & backspace (latency reduction)
-      // Printable ASCII range 0x20 - 0x7E
-      // Only echo printable characters locally. Avoid echoing backspace/DEL
-      // because the remote shell will send the appropriate cursor control
-      // sequences ("\b \b") which could otherwise be duplicated and become
-      // visible (e.g., "\b \b").
-      if (/^[\x20-\x7E]+$/.test(data)) {
-        terminal.current?.write(data);
-        typedCount.current += data.length; // should be 1
-      } else if (data === '\b' || data === '\x7f') {
-         if (typedCount.current > 0) {
-           // Echo backspace locally by moving cursor left, erasing char, moving left again
-           terminal.current?.write('\b \b');
-           typedCount.current -= 1;
-         }
-      } else if (data === '\r' || data === '\n') {
-        // Reset counter at end of line
-        typedCount.current = 0;
-      }
-    });
-
-    // Connect to backend via WebSocket using same logic as ICUITerminalPanel
-    const envWsUrl = import.meta.env.VITE_WS_URL as string | undefined;
-    let wsUrl: string;
-    if (envWsUrl && envWsUrl.trim() !== '') {
-      wsUrl = `${envWsUrl}/ws/terminal/${terminalId.current}`;
-    } else {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const host = window.location.host;
-      wsUrl = `${protocol}//${host}/ws/terminal/${terminalId.current}`;
-    }
-    websocket.current = new WebSocket(wsUrl);
-    websocket.current.onopen = () => {
-      // Clear screen on connect
-      terminal.current?.clear();
-    };
-    websocket.current.onmessage = (event) => {
-      terminal.current?.write(event.data);
-    };
-    websocket.current.onclose = (event) => {
-      if (event.code !== 1000) {
-        terminal.current?.write("\r\n\x1b[31mTerminal disconnected\x1b[0m\r\n");
-      }
-    };
-    websocket.current.onerror = (error) => {
-      terminal.current?.write("\r\n\x1b[31mTerminal connection error\x1b[0m\r\n");
-    };
-
+    // Cleanup
     return () => {
       if (resizeTimeout.current) {
         clearTimeout(resizeTimeout.current);
@@ -206,43 +205,44 @@ export const ICUIEnhancedTerminalPanel: React.FC<ICUIEnhancedTerminalPanelProps>
         resizeObserver.current.disconnect();
       }
       window.removeEventListener('resize', handleResize);
+      
       websocket.current?.close();
       if (terminal.current) {
         terminal.current.dispose();
         terminal.current = null;
       }
     };
-  }, []); // Only create terminal once on mount
+  }, []); // Only run once on mount
 
-  // Update terminal theme when theme changes (performance optimization)
+  // Only update theme when it changes
   useEffect(() => {
-    if (!terminal.current) return;
-    
-    // Update terminal theme without recreating the entire terminal
-    terminal.current.options.theme = {
-      background: isDarkTheme ? '#1e1e1e' : '#ffffff',
-      foreground: isDarkTheme ? '#d4d4d4' : '#000000',
-      cursor: isDarkTheme ? '#d4d4d4' : '#000000',
-      cursorAccent: isDarkTheme ? '#1e1e1e' : '#ffffff',
-      selectionBackground: isDarkTheme ? '#264f78' : '#add6ff',
-      black: '#000000',
-      brightBlack: '#666666',
-      red: '#cd3131',
-      brightRed: '#f14c4c',
-      green: '#0dbc79',
-      brightGreen: '#23d18b',
-      yellow: '#e5e510',
-      brightYellow: '#f5f543',
-      blue: '#2472c8',
-      brightBlue: '#3b8eea',
-      magenta: '#bc3fbc',
-      brightMagenta: '#d670d6',
-      cyan: '#11a8cd',
-      brightCyan: '#29b8db',
-      white: '#e5e5e5',
-      brightWhite: '#ffffff',
-    };
-  }, [isDarkTheme]); // Only update theme when it changes
+    if (terminal.current) {
+      // Update terminal theme
+      terminal.current.options.theme = {
+        background: isDarkTheme ? '#1e1e1e' : '#ffffff',
+        foreground: isDarkTheme ? '#d4d4d4' : '#000000',
+        cursor: isDarkTheme ? '#d4d4d4' : '#000000',
+        cursorAccent: isDarkTheme ? '#1e1e1e' : '#ffffff',
+        selectionBackground: isDarkTheme ? '#264f78' : '#add6ff',
+        black: '#000000',
+        brightBlack: '#666666',
+        red: '#cd3131',
+        brightRed: '#f14c4c',
+        green: '#0dbc79',
+        brightGreen: '#23d18b',
+        yellow: '#e5e510',
+        brightYellow: '#f5f543',
+        blue: '#2472c8',
+        brightBlue: '#3b8eea',
+        magenta: '#bc3fbc',
+        brightMagenta: '#d670d6',
+        cyan: '#11a8cd',
+        brightCyan: '#29b8db',
+        white: '#e5e5e5',
+        brightWhite: '#ffffff',
+      };
+    }
+  }, [isDarkTheme]);
 
   // Apply critical CSS for viewport scrolling
   useEffect(() => {
