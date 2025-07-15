@@ -11,7 +11,7 @@
  * - Container has explicit height constraints
  */
 
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css'; // MUST be imported first
@@ -19,6 +19,55 @@ import '@xterm/xterm/css/xterm.css'; // MUST be imported first
 interface ICUIEnhancedTerminalPanelProps {
   className?: string;
 }
+
+interface ContextMenuState {
+  visible: boolean;
+  x: number;
+  y: number;
+  hasSelection: boolean;
+}
+
+// Simplified clipboard class using API calls
+class TerminalClipboard {
+  async copy(text: string): Promise<boolean> {
+    if (!text) return false;
+    
+    try {
+      const response = await fetch('/api/clipboard/write', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ text }),
+      });
+
+      const result = await response.json();
+      if (!result.success) {
+        console.error('✗ Clipboard copy failed on backend:', result.message);
+      }
+      return result.success;
+    } catch (error) {
+      console.error('✗ Clipboard copy error:', error);
+      return false;
+    }
+  }
+
+  async paste(): Promise<string> {
+    try {
+      const response = await fetch('/api/clipboard/read');
+      const result = await response.json();
+      
+      if (result.success) {
+        return result.text || '';
+      }
+      return '';
+    } catch (error) {
+      console.error('✗ Clipboard paste error:', error);
+      return '';
+    }
+  }
+}
+
 
 export const ICUIEnhancedTerminalPanel: React.FC<ICUIEnhancedTerminalPanelProps> = ({ className = '' }) => {
   const terminalRef = useRef<HTMLDivElement>(null);
@@ -29,8 +78,13 @@ export const ICUIEnhancedTerminalPanel: React.FC<ICUIEnhancedTerminalPanelProps>
   const resizeObserver = useRef<ResizeObserver | null>(null);
   const resizeTimeout = useRef<NodeJS.Timeout | null>(null);
   // Track how many printable characters have been locally echoed on the current line
-  const typedCount = useRef<number>(0);
   const [isDarkTheme, setIsDarkTheme] = useState(false);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState>({
+    visible: false,
+    x: 0,
+    y: 0,
+    hasSelection: false,
+  });
   
   // Enhanced theme detection with debounce for performance
   useEffect(() => {
@@ -110,26 +164,11 @@ export const ICUIEnhancedTerminalPanel: React.FC<ICUIEnhancedTerminalPanelProps>
     // Fit after opening
     fitAddon.current.fit();
 
-    // Handle user input: send to backend and perform local echo for instant feedback
+    // Handle user input: send to backend. Local echo is now disabled.
+    // The backend PTY will handle echoing characters back to us.
     terminal.current.onData((data) => {
       if (websocket.current?.readyState === WebSocket.OPEN) {
         websocket.current.send(data);
-      }
-
-      // Local echo for printable characters only. Avoid echoing backspace/DEL
-      // because the remote shell will handle character deletions and emit
-      // the correct control sequence. Echoing them locally causes the raw
-      // "\b \b" characters to appear.
-      if (/^[\x20-\x7E]+$/.test(data)) {
-        terminal.current?.write(data);
-        typedCount.current += data.length;
-      } else if (data === '\b' || data === '\x7f') {
-        if (typedCount.current > 0) {
-          terminal.current?.write('\b \b');
-          typedCount.current -= 1;
-        }
-      } else if (data === '\r' || data === '\n') {
-        typedCount.current = 0;
       }
     });
 
@@ -214,6 +253,80 @@ export const ICUIEnhancedTerminalPanel: React.FC<ICUIEnhancedTerminalPanelProps>
     };
   }, []); // Only run once on mount
 
+  // Clipboard and context menu handlers
+  const handleCopy = useCallback(async () => {
+    const selection = terminal.current?.getSelection();
+    if (selection) {
+      const clipboard = new TerminalClipboard();
+      await clipboard.copy(selection);
+    }
+    setContextMenu(prev => ({ ...prev, visible: false }));
+  }, []);
+
+  const handlePaste = useCallback(async () => {
+    const clipboard = new TerminalClipboard();
+    const text = await clipboard.paste();
+    if (text && websocket.current?.readyState === WebSocket.OPEN) {
+      websocket.current.send(text);
+    }
+    setContextMenu(prev => ({ ...prev, visible: false }));
+  }, []);
+
+  const handleContextMenu = useCallback((event: MouseEvent) => {
+    event.preventDefault();
+    const selection = terminal.current?.getSelection() || '';
+    setContextMenu({
+      visible: true,
+      x: event.clientX,
+      y: event.clientY,
+      hasSelection: !!selection,
+    });
+  }, []);
+
+  const handleClickOutside = useCallback((event: MouseEvent) => {
+    if (contextMenu.visible) {
+      setContextMenu(prev => ({ ...prev, visible: false }));
+    }
+  }, [contextMenu.visible]);
+
+  // Effect for context menu and keyboard shortcuts
+  useEffect(() => {
+    const termEl = terminalRef.current;
+    if (termEl) {
+      termEl.addEventListener('contextmenu', handleContextMenu);
+      document.addEventListener('click', handleClickOutside);
+    }
+
+    const handleKeyDown = async (event: KeyboardEvent) => {
+      const isTerminalFocused = terminalRef.current?.contains(document.activeElement);
+      if (!isTerminalFocused) return;
+      
+      const clipboard = new TerminalClipboard();
+
+      // Ctrl+Shift+C for copy
+      if (event.ctrlKey && event.shiftKey && (event.key === 'C' || event.key === 'c')) {
+        event.preventDefault();
+        handleCopy();
+      }
+
+      // Ctrl+Shift+V for paste
+      if (event.ctrlKey && event.shiftKey && (event.key === 'V' || event.key === 'v')) {
+        event.preventDefault();
+        handlePaste();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      if (termEl) {
+        termEl.removeEventListener('contextmenu', handleContextMenu);
+        document.removeEventListener('click', handleClickOutside);
+      }
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [handleContextMenu, handleClickOutside, handleCopy, handlePaste]);
+
   // Only update theme when it changes
   useEffect(() => {
     if (terminal.current) {
@@ -292,6 +405,33 @@ export const ICUIEnhancedTerminalPanel: React.FC<ICUIEnhancedTerminalPanelProps>
           // Do NOT set overflow properties here - let xterm.js handle it
         }}
       />
+      {contextMenu.visible && (
+        <div
+          className="absolute rounded-md shadow-lg py-1 z-50"
+          style={{
+            top: contextMenu.y,
+            left: contextMenu.x,
+            backgroundColor: 'var(--icui-bg-secondary)',
+            border: '1px solid var(--icui-br-primary)',
+            color: 'var(--icui-text-primary)',
+          }}
+        >
+          {contextMenu.hasSelection && (
+            <button
+              onClick={handleCopy}
+              className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-700"
+            >
+              Copy
+            </button>
+          )}
+          <button
+            onClick={handlePaste}
+            className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-700"
+          >
+            Paste
+          </button>
+        </div>
+      )}
     </div>
   );
 };
