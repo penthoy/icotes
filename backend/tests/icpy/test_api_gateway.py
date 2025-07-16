@@ -4,6 +4,7 @@ Tests WebSocket, HTTP, and CLI endpoints, protocol handling, and service integra
 """
 
 import pytest
+import pytest_asyncio
 import asyncio
 import json
 import time
@@ -38,15 +39,17 @@ except ImportError:
 class TestApiGateway:
     """Test suite for API Gateway"""
     
-    @pytest.fixture
+    @pytest_asyncio.fixture
     async def api_gateway(self):
         """Create fresh API Gateway for each test"""
         # Reset global instances
-        global _api_gateway, _connection_manager, _message_broker, _protocol_handler
-        _api_gateway = None
-        _connection_manager = None
-        _message_broker = None
-        _protocol_handler = None
+        from icpy.gateway.api_gateway import shutdown_api_gateway
+        from icpy.core.connection_manager import shutdown_connection_manager
+        from icpy.core.message_broker import shutdown_message_broker
+        
+        await shutdown_api_gateway()
+        await shutdown_connection_manager()
+        await shutdown_message_broker()
         
         gateway = await get_api_gateway()
         yield gateway
@@ -83,7 +86,7 @@ class TestApiGateway:
         assert api_gateway.protocol_handler is not None
         
         # Verify default handlers are registered
-        handlers = api_gateway.protocol_handler.methods
+        handlers = api_gateway.protocol_handler.method_handlers
         assert "connection.ping" in handlers
         assert "connection.info" in handlers
         assert "connection.stats" in handlers

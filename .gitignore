@@ -37,7 +37,8 @@ build/
 
 !node_modules/.vite
 
-core
+# Ignore only top-level core directory
+/core/
 
 .github/
 

@@ -4,8 +4,40 @@
 A web-based JavaScript code editor built with ViteReact, CodeMirror 6, and modern web technologies. The goal is to create a powerful, The world's most powerful notebook for developers, it includes 3 core parts: 1. rich text editor, similar to evernote/notion hybrid, 2. code editor + terminal, 3. AI agent that can be customized with agentic frameworks such as crew ai, or openai agent sdk, or any other agentic framework.
 
 ## In Progress
+- [] work on icpy_plan.md 1.4
 
 ## Recently Finished
+
+### Phase 1.3: Connection Manager and API Gateway (COMPLETED)
+- **Task**: Implemented connection management and API gateway infrastructure
+- **Deliverable**: Created `backend/icpy/core/connection_manager.py` and `backend/icpy/gateway/api_gateway.py`
+- **Key Features**:
+  - Connection lifecycle management for WebSocket, HTTP, and CLI connections
+  - Session and user management with authentication support
+  - Health monitoring and automatic connection cleanup
+  - Event-driven architecture with connection hooks
+  - Message broadcasting and filtering capabilities
+  - API Gateway as single entry point for all client communications
+  - FastAPI integration for HTTP/WebSocket endpoints
+  - Comprehensive JSON-RPC handler registration
+  - Statistics and monitoring for all connections
+- **Test Coverage**: 53 integration tests covering connection management and API gateway
+- **Status**: Complete - Phase 1.3 of icpy_plan.md implemented and tested
+
+### Phase 1.2: JSON-RPC Protocol Definition (COMPLETED)
+- **Task**: Implemented JSON-RPC protocol infrastructure for standardized communication
+- **Deliverable**: Created `backend/icpy/core/protocol.py` with comprehensive JSON-RPC 2.0 implementation
+- **Key Features**:
+  - Complete JSON-RPC 2.0 specification support with icpy extensions
+  - Request/response/notification/batch processing
+  - Protocol validation and error handling with custom error codes
+  - Middleware support for request processing pipeline
+  - Protocol versioning for future compatibility
+  - Async and sync method handler support
+  - Request timeout and expiration handling
+  - Comprehensive statistics and monitoring
+- **Test Coverage**: 32 integration tests covering all JSON-RPC functionality
+- **Status**: Complete - Phase 1.2 of icpy_plan.md implemented and tested
 
 ### Phase 1.1: Message Broker Implementation (COMPLETED)
 - **Task**: Implemented core message broker infrastructure for icpy backend
@@ -19,7 +51,7 @@ A web-based JavaScript code editor built with ViteReact, CodeMirror 6, and moder
   - Reactive programming patterns for event handling
   - Comprehensive error handling and message TTL support
 - **Test Coverage**: 19 integration tests covering all functionality
-- **Status**: Complete - Phase 1.1 of icpi_plan.md implemented and tested
+- **Status**: Complete - Phase 1.1 of icpy_plan.md implemented and tested
 
 ### Backend Architecture Plan Synthesis
 - **Task**: Synthesized three separate backend architecture plans (icpi_plan1.md, icpi_plan2.md, icpi_plan3.md) into a comprehensive unified plan

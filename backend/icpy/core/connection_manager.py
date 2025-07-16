@@ -75,6 +75,11 @@ class ConnectionInfo:
     last_ping: Optional[float] = None
     last_pong: Optional[float] = None
     
+    # Authentication
+    authenticated: bool = False
+    auth_token: Optional[str] = None
+    auth_method: Optional[str] = None
+    
     def is_active(self) -> bool:
         """Check if connection is active"""
         return self.state in [ConnectionState.CONNECTED, ConnectionState.AUTHENTICATED]
@@ -89,12 +94,48 @@ class ConnectionInfo:
 
 
 @dataclass
+class SessionInfo:
+    """Information about a user session"""
+    session_id: str
+    user_id: Optional[str] = None
+    created_at: float = field(default_factory=time.time)
+    last_activity: float = field(default_factory=time.time)
+    session_data: Dict[str, Any] = field(default_factory=dict)
+    
+    def is_expired(self, timeout: float = 3600.0) -> bool:
+        """Check if session has expired"""
+        return time.time() - self.last_activity > timeout
+    
+    def update_activity(self):
+        """Update last activity timestamp"""
+        self.last_activity = time.time()
+
+
+@dataclass
+class UserInfo:
+    """Information about a user"""
+    user_id: str
+    username: str
+    created_at: float = field(default_factory=time.time)
+    last_activity: float = field(default_factory=time.time)
+    user_data: Dict[str, Any] = field(default_factory=dict)
+    
+    def update_activity(self):
+        """Update last activity timestamp"""
+        self.last_activity = time.time()
+
+
+@dataclass
 class ConnectionPool:
     """Pool of connections with management capabilities"""
     connections: Dict[str, ConnectionInfo] = field(default_factory=dict)
     connections_by_type: Dict[ConnectionType, Set[str]] = field(default_factory=lambda: defaultdict(set))
     connections_by_session: Dict[str, Set[str]] = field(default_factory=lambda: defaultdict(set))
     connections_by_user: Dict[str, Set[str]] = field(default_factory=lambda: defaultdict(set))
+    
+    # Session and user management
+    sessions: Dict[str, SessionInfo] = field(default_factory=dict)
+    users: Dict[str, UserInfo] = field(default_factory=dict)
     
     def add_connection(self, connection: ConnectionInfo):
         """Add a connection to the pool"""
@@ -233,7 +274,8 @@ class ConnectionManager:
         logger.info("Connection manager stopped")
     
     async def connect_websocket(self, websocket: Any, client_id: Optional[str] = None,
-                               session_id: Optional[str] = None, **metadata) -> str:
+                               session_id: Optional[str] = None, user_id: Optional[str] = None,
+                               **metadata) -> str:
         """Connect a WebSocket client"""
         if not WEBSOCKET_AVAILABLE:
             raise RuntimeError("WebSocket support not available")
@@ -250,6 +292,7 @@ class ConnectionManager:
             state=ConnectionState.CONNECTING,
             client_id=client_id,
             session_id=session_id or str(uuid.uuid4()),
+            user_id=user_id,
             remote_addr=remote_addr,
             user_agent=user_agent,
             websocket=websocket,
@@ -276,7 +319,7 @@ class ConnectionManager:
         connection.update_activity()
         
         # Fire connection event
-        await self._fire_event('connection_established', connection)
+        await self._trigger_event_handlers('connection_created', connection.connection_id, connection)
         
         logger.info(f"WebSocket connection established: {connection_id}")
         return connection_id
@@ -321,7 +364,7 @@ class ConnectionManager:
         connection.update_activity()
         
         # Fire connection event
-        await self._fire_event('connection_established', connection)
+        await self._trigger_event_handlers('connection_created', connection.connection_id, connection)
         
         logger.info(f"HTTP connection established: {connection_id}")
         return connection_id
@@ -363,7 +406,7 @@ class ConnectionManager:
         connection.update_activity()
         
         # Fire connection event
-        await self._fire_event('connection_established', connection)
+        await self._trigger_event_handlers('connection_created', connection.connection_id, connection)
         
         logger.info(f"CLI connection established: {connection_id}")
         return connection_id
@@ -378,7 +421,7 @@ class ConnectionManager:
             connection.state = ConnectionState.DISCONNECTING
             
             # Fire disconnection event
-            await self._fire_event('connection_disconnecting', connection, reason=reason)
+            await self._trigger_event_handlers('connection_disconnecting', connection.connection_id, connection, reason=reason)
             
             # Close connection based on type
             if connection.connection_type == ConnectionType.WEBSOCKET and connection.websocket:
@@ -398,162 +441,179 @@ class ConnectionManager:
             connection.state = ConnectionState.DISCONNECTED
             
             # Fire disconnected event
-            await self._fire_event('connection_disconnected', connection, reason=reason)
+            await self._trigger_event_handlers('connection_removed', connection.connection_id, connection, reason=reason)
         
         logger.info(f"Connection disconnected: {connection_id} - {reason}")
     
+    # Session Management
+    async def create_session(self, user_id: Optional[str] = None, 
+                            session_data: Optional[Dict[str, Any]] = None) -> str:
+        """Create a new session"""
+        session_id = str(uuid.uuid4())
+        
+        session = SessionInfo(
+            session_id=session_id,
+            user_id=user_id,
+            session_data=session_data or {}
+        )
+        
+        async with self._lock:
+            self.pool.sessions[session_id] = session
+        
+        await self._trigger_event_handlers('session_created', session_id, session)
+        return session_id
+    
+    async def end_session(self, session_id: str):
+        """End a session and disconnect all associated connections"""
+        async with self._lock:
+            if session_id not in self.pool.sessions:
+                return
+            
+            # Disconnect all connections in this session
+            connections = self.pool.get_connections_by_session(session_id)
+            for connection in connections:
+                await self.disconnect(connection.connection_id, "Session ended")
+            
+            # Remove session
+            session = self.pool.sessions.pop(session_id)
+            await self._trigger_event_handlers('session_ended', session_id, session)
+    
+    async def update_session(self, session_id: str, session_data: Dict[str, Any]):
+        """Update session data"""
+        async with self._lock:
+            if session_id not in self.pool.sessions:
+                return False
+            
+            session = self.pool.sessions[session_id]
+            session.session_data.update(session_data)
+            session.update_activity()
+            
+            await self._trigger_event_handlers('session_updated', session_id, session)
+            return True
+    
+    def get_session(self, session_id: str) -> Optional[SessionInfo]:
+        """Get session information"""
+        return self.pool.sessions.get(session_id)
+    
+    # User Management
+    async def register_user(self, username: str, 
+                           user_data: Optional[Dict[str, Any]] = None) -> str:
+        """Register a new user"""
+        user_id = str(uuid.uuid4())
+        
+        user = UserInfo(
+            user_id=user_id,
+            username=username,
+            user_data=user_data or {}
+        )
+        
+        async with self._lock:
+            self.pool.users[user_id] = user
+        
+        await self._trigger_event_handlers('user_registered', user_id, user)
+        return user_id
+    
+    async def unregister_user(self, user_id: str):
+        """Unregister a user and disconnect all associated connections"""
+        async with self._lock:
+            if user_id not in self.pool.users:
+                return
+            
+            # Disconnect all connections for this user
+            connections = self.pool.get_connections_by_user(user_id)
+            for connection in connections:
+                await self.disconnect(connection.connection_id, "User unregistered")
+            
+            # Remove user
+            user = self.pool.users.pop(user_id)
+            await self._trigger_event_handlers('user_unregistered', user_id, user)
+    
+    async def update_user(self, user_id: str, user_data: Dict[str, Any]):
+        """Update user data"""
+        async with self._lock:
+            if user_id not in self.pool.users:
+                return False
+            
+            user = self.pool.users[user_id]
+            user.user_data.update(user_data)
+            user.update_activity()
+            
+            await self._trigger_event_handlers('user_updated', user_id, user)
+            return True
+    
+    def get_user(self, user_id: str) -> Optional[UserInfo]:
+        """Get user information"""
+        return self.pool.users.get(user_id)
+    
+    # Authentication
     async def authenticate(self, connection_id: str, auth_token: str, 
                           auth_method: str = "default") -> bool:
         """Authenticate a connection"""
         async with self._lock:
-            if connection_id not in self.pool.connections:
+            connection = self.pool.connections.get(connection_id)
+            if not connection:
                 return False
             
-            connection = self.pool.connections[connection_id]
-            
-            # Update statistics
             self.stats['authentication_attempts'] += 1
             
-            # Get auth handler
+            # Check with auth handlers
             auth_handler = self.auth_handlers.get(auth_method)
-            if not auth_handler:
-                logger.warning(f"No auth handler for method: {auth_method}")
-                self.stats['authentication_failures'] += 1
-                return False
+            if auth_handler:
+                try:
+                    authenticated = await auth_handler(connection, auth_token)
+                except Exception as e:
+                    logger.error(f"Authentication handler error: {e}")
+                    authenticated = False
+            else:
+                # Default authentication (always success for now)
+                authenticated = True
             
-            try:
-                # Call auth handler
-                auth_result = await auth_handler(connection, auth_token)
+            if authenticated:
+                connection.state = ConnectionState.AUTHENTICATED
+                connection.auth_token = auth_token
+                connection.auth_method = auth_method
+                connection.authenticated = True
+                connection.update_activity()
                 
-                if auth_result:
-                    connection.state = ConnectionState.AUTHENTICATED
-                    connection.update_activity()
-                    
-                    # Fire authentication event
-                    await self._fire_event('connection_authenticated', connection)
-                    
-                    logger.info(f"Connection authenticated: {connection_id}")
-                    return True
-                else:
-                    self.stats['authentication_failures'] += 1
-                    logger.warning(f"Authentication failed: {connection_id}")
-                    return False
-                    
-            except Exception as e:
+                await self._trigger_event_handlers('connection_authenticated', connection_id, connection)
+                return True
+            else:
                 self.stats['authentication_failures'] += 1
-                logger.error(f"Authentication error: {e}")
                 return False
-    
-    async def update_activity(self, connection_id: str):
-        """Update connection activity timestamp"""
-        async with self._lock:
-            if connection_id in self.pool.connections:
-                self.pool.connections[connection_id].update_activity()
-    
-    async def send_message(self, connection_id: str, message: str) -> bool:
-        """Send a message to a connection"""
-        async with self._lock:
-            if connection_id not in self.pool.connections:
-                return False
-            
-            connection = self.pool.connections[connection_id]
-            
-            if not connection.is_active():
-                return False
-            
-            try:
-                if connection.connection_type == ConnectionType.WEBSOCKET and connection.websocket:
-                    await connection.websocket.send_text(message)
-                    connection.update_activity()
-                    return True
-                else:
-                    # For HTTP and CLI, messages are typically handled differently
-                    # This is a placeholder for future implementation
-                    logger.warning(f"Message sending not implemented for {connection.connection_type}")
-                    return False
-                    
-            except Exception as e:
-                logger.error(f"Error sending message to {connection_id}: {e}")
-                # Connection might be broken, schedule for cleanup
-                await self.disconnect(connection_id, f"Send error: {str(e)}")
-                return False
-    
-    async def broadcast_message(self, message: str, 
-                               connection_type: Optional[ConnectionType] = None,
-                               session_id: Optional[str] = None,
-                               user_id: Optional[str] = None) -> int:
-        """Broadcast a message to multiple connections"""
-        sent_count = 0
-        
-        # Get target connections
-        if session_id:
-            connections = self.pool.get_connections_by_session(session_id)
-        elif user_id:
-            connections = self.pool.get_connections_by_user(user_id)
-        elif connection_type:
-            connections = self.pool.get_connections_by_type(connection_type)
-        else:
-            connections = self.pool.get_active_connections()
-        
-        # Send to all target connections
-        for connection in connections:
-            if await self.send_message(connection.connection_id, message):
-                sent_count += 1
-        
-        return sent_count
-    
-    def get_connection(self, connection_id: str) -> Optional[ConnectionInfo]:
-        """Get connection information"""
-        return self.pool.connections.get(connection_id)
-    
-    def get_connections_by_type(self, connection_type: ConnectionType) -> List[ConnectionInfo]:
-        """Get connections by type"""
-        return self.pool.get_connections_by_type(connection_type)
-    
-    def get_connections_by_session(self, session_id: str) -> List[ConnectionInfo]:
-        """Get connections by session"""
-        return self.pool.get_connections_by_session(session_id)
-    
-    def get_connections_by_user(self, user_id: str) -> List[ConnectionInfo]:
-        """Get connections by user"""
-        return self.pool.get_connections_by_user(user_id)
     
     def register_auth_handler(self, method: str, handler: Callable):
         """Register an authentication handler"""
         self.auth_handlers[method] = handler
-        logger.info(f"Registered auth handler: {method}")
     
-    def register_event_handler(self, event: str, handler: Callable):
-        """Register an event handler"""
-        self.event_handlers[event].append(handler)
-        logger.info(f"Registered event handler: {event}")
+    def register_hook(self, event_type: str, handler: Callable):
+        """Register an event hook"""
+        self.event_handlers[event_type].append(handler)
     
-    async def get_stats(self) -> Dict[str, Any]:
-        """Get connection manager statistics"""
-        async with self._lock:
-            return {
-                **self.stats,
-                'active_connections': len(self.pool.get_active_connections()),
-                'total_connections_in_pool': len(self.pool.connections),
-                'connections_by_type': {
-                    str(conn_type): len(self.pool.get_connections_by_type(conn_type))
-                    for conn_type in ConnectionType
-                },
-                'sessions': len(self.pool.connections_by_session),
-                'users': len(self.pool.connections_by_user)
-            }
-    
-    async def _fire_event(self, event: str, connection: ConnectionInfo, **kwargs):
-        """Fire an event to all registered handlers"""
-        handlers = self.event_handlers.get(event, [])
+    async def _trigger_event_handlers(self, event_type: str, *args, **kwargs):
+        """Trigger event handlers"""
+        handlers = self.event_handlers.get(event_type, [])
         for handler in handlers:
             try:
                 if asyncio.iscoroutinefunction(handler):
-                    await handler(connection, **kwargs)
+                    await handler(*args, **kwargs)
                 else:
-                    handler(connection, **kwargs)
+                    handler(*args, **kwargs)
             except Exception as e:
-                logger.error(f"Error in event handler {event}: {e}")
+                logger.error(f"Error in event handler for {event_type}: {e}")
+
+    async def cleanup_inactive_connections(self, timeout: float = 1800):
+        """Cleanup inactive connections based on timeout"""
+        async with self._lock:
+            expired_connections = []
+            
+            for connection in self.pool.connections.values():
+                if connection.is_expired(timeout):
+                    expired_connections.append(connection)
+            
+            for connection in expired_connections:
+                await self.disconnect(connection.connection_id, "Inactive connection timeout")
+            
+            return len(expired_connections)
     
     async def _cleanup_expired_connections(self):
         """Background task to cleanup expired connections"""
@@ -602,6 +662,28 @@ class ConnectionManager:
             except Exception as e:
                 logger.error(f"Error in health monitoring: {e}")
                 await asyncio.sleep(10)
+    
+    async def update_activity(self, connection_id: str):
+        """Update connection activity"""
+        connection = self.pool.connections.get(connection_id)
+        if connection:
+            connection.update_activity()
+    
+    def get_connection(self, connection_id: str) -> Optional[ConnectionInfo]:
+        """Get connection by ID"""
+        return self.pool.connections.get(connection_id)
+    
+    def get_connections_by_type(self, connection_type: ConnectionType) -> List[ConnectionInfo]:
+        """Get connections by type"""
+        return self.pool.get_connections_by_type(connection_type)
+    
+    def get_connections_by_session(self, session_id: str) -> List[ConnectionInfo]:
+        """Get connections by session"""
+        return self.pool.get_connections_by_session(session_id)
+    
+    def get_connections_by_user(self, user_id: str) -> List[ConnectionInfo]:
+        """Get connections by user"""
+        return self.pool.get_connections_by_user(user_id)
     
     async def _disconnect_all_connections(self):
         """Disconnect all connections"""

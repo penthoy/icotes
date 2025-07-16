@@ -4,6 +4,7 @@ Tests connection lifecycle, authentication, health monitoring, and event hooks
 """
 
 import pytest
+import pytest_asyncio
 import asyncio
 import time
 from unittest.mock import Mock, AsyncMock, MagicMock
@@ -15,8 +16,8 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from icpy.core.connection_manager import (
-    ConnectionManager, Connection, ConnectionType, ConnectionState,
-    get_connection_manager, shutdown_connection_manager
+    ConnectionManager, ConnectionInfo, ConnectionType, ConnectionState,
+    SessionInfo, UserInfo, get_connection_manager, shutdown_connection_manager
 )
 from icpy.core.message_broker import MessageBroker, get_message_broker
 
@@ -24,12 +25,12 @@ from icpy.core.message_broker import MessageBroker, get_message_broker
 class TestConnectionManager:
     """Test suite for ConnectionManager"""
     
-    @pytest.fixture
+    @pytest_asyncio.fixture
     async def connection_manager(self):
         """Create a fresh connection manager for each test"""
         # Reset global instance
-        global _connection_manager
-        _connection_manager = None
+        from icpy.core.connection_manager import shutdown_connection_manager
+        await shutdown_connection_manager()
         
         manager = await get_connection_manager()
         yield manager
@@ -38,7 +39,7 @@ class TestConnectionManager:
         await shutdown_connection_manager()
     
     @pytest.fixture
-    async def mock_websocket(self):
+    def mock_websocket(self):
         """Create mock WebSocket"""
         websocket = Mock()
         websocket.send_text = AsyncMock()
