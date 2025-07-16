@@ -4,9 +4,30 @@
 A web-based JavaScript code editor built with ViteReact, CodeMirror 6, and modern web technologies. The goal is to create a powerful, The world's most powerful notebook for developers, it includes 3 core parts: 1. rich text editor, similar to evernote/notion hybrid, 2. code editor + terminal, 3. AI agent that can be customized with agentic frameworks such as crew ai, or openai agent sdk, or any other agentic framework.
 
 ## In Progress
-- [] work on icpy_plan.md 2.2
-- [] Make sure google style docstrings are always added
+- [] work on icpy_plan.md 3.1 and make sure google style docstrings are always added
+
 ## Recently Finished
+- [x] work on icpy_plan.md 2.3
+- [x] work on icpy_plan.md 2.2
+- [x] Make sure google style docstrings are always added
+### Phase 2.3: Terminal Service Refactor (COMPLETED)
+- **Task**: Refactored terminal implementation into event-driven service architecture
+- **Deliverable**: Created `backend/icpy/services/terminal_service.py` with comprehensive terminal session management
+- **Key Features**:
+  - Refactored legacy terminal.py into modular service architecture
+  - Event-driven communication through message broker integration
+  - Multiple terminal instances with independent sessions
+  - Terminal session lifecycle management (create, start, stop, destroy)
+  - PTY-based terminal sessions with full shell support
+  - WebSocket connection handling for real-time I/O
+  - Terminal resizing, input/output handling, and session statistics
+  - Session configuration and environment variable management
+  - Session cleanup and resource management with timeout handling
+  - Google-style docstrings for all methods
+  - Background cleanup tasks for orphaned sessions
+  - Comprehensive error handling and recovery mechanisms
+- **Test Coverage**: 33 integration tests covering all terminal service functionality
+- **Status**: Complete - Phase 2.3 of icpy_plan.md implemented and tested
 
 ### Phase 2.2: File System Service (COMPLETED)
 - **Task**: Implemented comprehensive file system service with event-driven architecture
