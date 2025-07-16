@@ -1,10 +1,37 @@
 # JavaScript Code Editor - Project Roadmap
 
 ## Project Overview
-A web-based JavaScript code editor built with React, CodeMirror 6, and modern web technologies. The goal is to create a powerful, user-friendly code editor with real-time execution capabilities.
+A web-based JavaScript code editor built with ViteReact, CodeMirror 6, and modern web technologies. The goal is to create a powerful, The world's most powerful notebook for developers, it includes 3 core parts: 1. rich text editor, similar to evernote/notion hybrid, 2. code editor + terminal, 3. AI agent that can be customized with agentic frameworks such as crew ai, or openai agent sdk, or any other agentic framework.
 
 ## In Progress
-- [] (No current tasks in progress)
+
+## Recently Finished
+
+### Phase 1.1: Message Broker Implementation (COMPLETED)
+- **Task**: Implemented core message broker infrastructure for icpy backend
+- **Deliverable**: Created `backend/icpy/core/message_broker.py` with comprehensive messaging system
+- **Key Features**:
+  - In-memory event bus using asyncio.Queue and asyncio.Event
+  - Topic-based subscription system with wildcard patterns
+  - Request/response and notification patterns
+  - Message validation, routing, and filtering capabilities
+  - Message persistence and replay for client recovery
+  - Reactive programming patterns for event handling
+  - Comprehensive error handling and message TTL support
+- **Test Coverage**: 19 integration tests covering all functionality
+- **Status**: Complete - Phase 1.1 of icpi_plan.md implemented and tested
+
+### Backend Architecture Plan Synthesis
+- **Task**: Synthesized three separate backend architecture plans (icpi_plan1.md, icpi_plan2.md, icpi_plan3.md) into a comprehensive unified plan
+- **Deliverable**: Created `docs/icpi_plan.md` with modular event-driven architecture design
+- **Key Features**:
+  - Unified API layer supporting WebSocket, HTTP, and CLI interfaces
+  - Event-driven architecture with message broker for real-time updates
+  - Modular services (Workspace, FileSystem, Terminal, AI Agent integration)
+  - Support for commands like `icotes file.py` to open files in editor
+  - Real-time synchronization across all connected clients
+  - Extensible design for future rich text editor and AI agent features
+- **Status**: Complete - ready for review and implementation planning
 
 ## Failed/Blocked Tasks
 
