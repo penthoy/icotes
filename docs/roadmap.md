@@ -4,9 +4,53 @@
 A web-based JavaScript code editor built with ViteReact, CodeMirror 6, and modern web technologies. The goal is to create a powerful, The world's most powerful notebook for developers, it includes 3 core parts: 1. rich text editor, similar to evernote/notion hybrid, 2. code editor + terminal, 3. AI agent that can be customized with agentic frameworks such as crew ai, or openai agent sdk, or any other agentic framework.
 
 ## In Progress
-- [ ] work on icpy_plan.md 3.2 and make sure google style docstrings are always added
+- [ ] work on icpy_plan.md 3.4 and make sure google style docstrings are always added
 
 ## Recently Finished
+- [x] work on icpy_plan.md 3.3 and make sure google style docstrings are always added
+### Phase 3.3: CLI Interface Implementation (COMPLETED)
+- **Task**: Implemented comprehensive CLI interface for icpy backend
+- **Deliverable**: Created `backend/icpy/cli/icpy_cli.py` with full CLI support
+- **Key Features**:
+  - Command-line interface for file operations (open, save, list)
+  - Terminal management commands (create, list, input)
+  - Workspace operations (create, list, info, switch)
+  - Interactive mode for continuous CLI operation
+  - HTTP client integration with icpy backend REST API
+  - Support for AI tools to interact via CLI for real-time editing
+  - Comprehensive error handling and user feedback
+  - Commands like `icpy file.py` to open files in editor
+  - `icpy --terminal` for terminal access
+  - `icpy --workspace list` for workspace management
+  - `icpy --interactive` for interactive mode
+  - Google-style docstrings for all methods
+  - Proper request timeout and retry logic
+  - Authentication and session management support
+- **Test Coverage**: CLI functionality tests covering all commands and operations
+- **Status**: Complete - Phase 3.3 of icpy_plan.md implemented and tested
+
+- [x] work on icpy_plan.md 3.2 and make sure google style docstrings are always added
+### Phase 3.2: HTTP REST API (COMPLETED)
+- **Task**: Implemented comprehensive HTTP REST API endpoints for all services
+- **Deliverable**: Created `backend/icpy/api/rest_api.py` with full RESTful API support
+- **Key Features**:
+  - RESTful endpoints for all core services (workspace, filesystem, terminal)
+  - JSON-RPC protocol support over HTTP
+  - OpenAPI/Swagger documentation integration
+  - Request validation and error handling with proper HTTP status codes
+  - Integration with message broker for state synchronization
+  - Middleware for request logging, statistics, and error handling
+  - Authentication and authorization support framework
+  - CORS configuration for cross-origin requests
+  - Comprehensive request/response models with Pydantic validation
+  - Health check and statistics endpoints
+  - Support for file operations, terminal management, and workspace operations
+  - Google-style docstrings for all methods
+  - Proper HTTP response formatting with success/error models
+  - Background request tracking and performance monitoring
+- **Test Coverage**: 29 integration tests covering all REST API functionality
+- **Status**: Complete - Phase 3.2 of icpy_plan.md implemented and tested
+
 - [x] work on icpy_plan.md 3.1 and make sure google style docstrings are always added
 ### Phase 3.1: WebSocket API Enhancement (COMPLETED)
 - **Task**: Enhanced WebSocket API with message broker integration and real-time capabilities

@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 # Import icpy modules
 try:
-    from icpy.api import get_websocket_api, shutdown_websocket_api
+    from icpy.api import get_websocket_api, shutdown_websocket_api, get_rest_api, shutdown_rest_api
     from icpy.core.connection_manager import get_connection_manager
     from icpy.services import get_workspace_service, get_filesystem_service, get_terminal_service
     ICPY_AVAILABLE = True
@@ -391,6 +391,9 @@ async def lifespan(app: FastAPI):
         try:
             logger.info("Initializing icpy services...")
             await get_websocket_api()
+            # Initialize REST API services (if REST API was created)
+            if rest_api_instance:
+                await rest_api_instance.initialize()
             logger.info("icpy services initialized successfully")
         except Exception as e:
             logger.error(f"Failed to initialize icpy services: {e}")
@@ -405,6 +408,7 @@ async def lifespan(app: FastAPI):
         try:
             logger.info("Shutting down icpy services...")
             await shutdown_websocket_api()
+            await shutdown_rest_api()
             logger.info("icpy services shutdown complete")
         except Exception as e:
             logger.error(f"Error during icpy shutdown: {e}")
@@ -416,6 +420,17 @@ app = FastAPI(
     description="Enhanced backend server for icotes code editor",
     lifespan=lifespan
 )
+
+# Initialize icpy REST API before app starts (to avoid middleware issues)
+rest_api_instance = None
+if ICPY_AVAILABLE:
+    try:
+        from icpy.api.rest_api import create_rest_api
+        logger.info("Initializing icpy REST API...")
+        rest_api_instance = create_rest_api(app)
+        logger.info("icpy REST API initialized successfully")
+    except Exception as e:
+        logger.error(f"Failed to initialize icpy REST API: {e}")
 
 # Get allowed origins from environment
 allowed_origins = []

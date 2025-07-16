@@ -13,9 +13,13 @@ Date: July 16, 2025
 """
 
 from .websocket_api import WebSocketAPI, get_websocket_api, shutdown_websocket_api
+from .rest_api import RestAPI, get_rest_api, shutdown_rest_api
 
 __all__ = [
     'WebSocketAPI',
     'get_websocket_api',
-    'shutdown_websocket_api'
+    'shutdown_websocket_api',
+    'RestAPI',
+    'get_rest_api',
+    'shutdown_rest_api'
 ]

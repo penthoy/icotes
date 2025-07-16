@@ -18,6 +18,9 @@ Use that as a guide rather than human instruction, as this is generated from mul
 - When I said "distill":
 Create a file under docs folder with the prefix: experience_distilation_xxx.md where xxx is a name for you to decide based on a one word that can best sumarized our current conversational session it could be a topic or a theme, inside this file please sumarize all your experiences in this current session based on the following topics: what you have learned about this code base and how we are approaching and coding this repo so far based on our conversations in this session, what was tried, what mistakes are made, and what was done well, the purpose for this doc is for future AIs to learn from your experience, so that you can continue to improve, this is a postmortem, try to be concise and to the point, don't repeat yourself so that you can save context lengths to fullfill the purpose of distillation. but don't be overly vague either, it should contain enough information for your future self to best receive your knowledge.
 
+- when I said "audit":
+
+
 - When I said "fix build errors":
 run "npm run build" and fix all build errors
 
@@ -25,9 +28,10 @@ run "npm run build" and fix all build errors
 It means try to use claude code, claude code is a flagship coding agent that can execute on your behave, think of it as your assistant, you use it by running claude on the commandline, and then you'll be able to talk to it to make requests. when I type prompt starting with cc: what I want you to do is take full advantage of this tool. but you should always be the manager and be in control, try to check for outputs and ensure the agent did what it said it did.
 
 ## Rules:
-When asked to "continue progress" please don't work on anything else other than the In progress section of the roadmap.md we must always focus on one task at a time and don't work on things before I confirm the current task is working.
+Always be truthful in your response and be blunt and professional, when you see an obvious mistake in my instructions, you Must tell me, as there are always knowledge gaps and blind spots for human.
+if you see potential issue in the code or design tell me bluntly and truthfully.
 
-use the start-dev.sh to run the dev server, and start.sh to run production server.
+When asked to "continue progress" please don't work on anything else other than the In progress section of the roadmap.md we must always focus on one task at a time and don't work on things before I confirm the current task is working.
 
 ## Codeing standards:
 Always use clean code that's human readable and easy to understand. so that its possible for human and AI to work on the same code base

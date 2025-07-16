@@ -354,14 +354,14 @@ class FileSystemService:
     - Event-driven architecture with message broker integration
     """
 
-    def __init__(self, root_path: str = "/", max_file_size: int = 100 * 1024 * 1024):
+    def __init__(self, root_path: str = None, max_file_size: int = 100 * 1024 * 1024):
         """Initialize the File System Service.
         
         Args:
-            root_path: Root directory path for file operations
+            root_path: Root directory path for file operations (default: current working directory)
             max_file_size: Maximum file size to handle (default: 100MB)
         """
-        self.root_path = os.path.abspath(root_path)
+        self.root_path = os.path.abspath(root_path if root_path is not None else '.')
         self.max_file_size = max_file_size
         self.message_broker = None
         self.connection_manager = None
