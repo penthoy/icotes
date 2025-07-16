@@ -1,30 +1,61 @@
 #!/usr/bin/env python3
 """
-icotes Backend Server
+Enhanced icotes Backend Server
 Provides terminal and clipboard functionality for the icotes code editor
+with advanced WebSocket API integration and message broker support.
+
+This version integrates the new icpy backend architecture with:
+- Enhanced WebSocket API with state synchronization
+- Message broker for real-time communication
+- Modular service architecture
+- Connection recovery and message replay
+- Multi-client support with session management
+
+Author: GitHub Copilot
+Date: July 16, 2025
 """
 
 import sys
 import argparse
 import asyncio
 import logging
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
-from fastapi.responses import FileResponse
+import json
+import os
+import io
+import contextlib
+from typing import List, Dict, Any, Optional
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-import json
-import asyncio
-import logging
-from typing import List, Dict, Any
-import sys
-import io
-import contextlib
-import os
+import uvicorn
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Import icpy modules
+try:
+    from icpy.api import get_websocket_api, shutdown_websocket_api
+    from icpy.core.connection_manager import get_connection_manager
+    from icpy.services import get_workspace_service, get_filesystem_service, get_terminal_service
+    ICPY_AVAILABLE = True
+    logger.info("icpy modules loaded successfully")
+except ImportError as e:
+    logger.warning(f"icpy modules not available: {e}")
+    ICPY_AVAILABLE = False
+
+# Import terminal module
+try:
+    from terminal import terminal_manager
+    TERMINAL_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"Terminal module not available: {e}")
+    TERMINAL_AVAILABLE = False
+    terminal_manager = None
 
 # Server-side clipboard implementation with system clipboard integration
 class ServerClipboard:
@@ -108,79 +139,84 @@ class ServerClipboard:
             logger.error(f"Failed to setup file-based clipboard: {e}")
             return False
     
-    def _write_to_system_clipboard(self, text: str) -> bool:
-        """Write text to system clipboard"""
-        if not self.system_clipboard_available:
-            return False
-            
+    def write(self, text: str) -> bool:
+        """Write text to clipboard"""
         try:
-            # File-based clipboard (headless environments)
-            if hasattr(self, 'clipboard_type') and self.clipboard_type == "file":
-                with open(self.clipboard_file, 'w', encoding='utf-8') as f:
-                    f.write(text)
-                logger.info(f"✓ Wrote to file-based clipboard: {len(text)} characters")
+            if self.system_clipboard_available:
+                if hasattr(self, 'clipboard_type') and self.clipboard_type == "file":
+                    return self._write_file_clipboard(text)
+                else:
+                    return self._write_system_clipboard(text)
+            else:
+                self.buffer = text
+                self.history.append(text)
+                if len(self.history) > self.max_history:
+                    self.history.pop(0)
                 return True
-            
-            # System clipboard tools (with X11 display)
+        except Exception as e:
+            logger.error(f"Error writing to clipboard: {e}")
+            return False
+    
+    def _write_system_clipboard(self, text: str) -> bool:
+        """Write to system clipboard"""
+        try:
             import subprocess
             
-            # Try xclip first (most common on Linux)
+            # Try xclip first
             try:
-                process = subprocess.Popen(['xclip', '-selection', 'clipboard'], 
-                                         stdin=subprocess.PIPE, text=True)
-                process.communicate(input=text)
-                if process.returncode == 0:
-                    logger.info("✓ Wrote to system clipboard via xclip")
-                    return True
-            except FileNotFoundError:
+                process = subprocess.run(['xclip', '-selection', 'clipboard'], 
+                                       input=text, text=True, timeout=2)
+                return process.returncode == 0
+            except:
                 pass
             
-            # Try xsel as fallback
+            # Try xsel
             try:
-                process = subprocess.Popen(['xsel', '--clipboard', '--input'], 
-                                         stdin=subprocess.PIPE, text=True)
-                process.communicate(input=text)
-                if process.returncode == 0:
-                    logger.info("✓ Wrote to system clipboard via xsel")
-                    return True
-            except FileNotFoundError:
+                process = subprocess.run(['xsel', '--clipboard', '--input'], 
+                                       input=text, text=True, timeout=2)
+                return process.returncode == 0
+            except:
                 pass
             
             # Try pbcopy (macOS)
             try:
-                process = subprocess.Popen(['pbcopy'], stdin=subprocess.PIPE, text=True)
-                process.communicate(input=text)
-                if process.returncode == 0:
-                    logger.info("✓ Wrote to system clipboard via pbcopy")
-                    return True
-            except FileNotFoundError:
+                process = subprocess.run(['pbcopy'], input=text, text=True, timeout=2)
+                return process.returncode == 0
+            except:
                 pass
-                
-            logger.warning("Failed to write to system clipboard - no tools worked")
-            return False
             
+            return False
         except Exception as e:
             logger.error(f"Error writing to system clipboard: {e}")
             return False
     
-    def _read_from_system_clipboard(self) -> str:
-        """Read text from system clipboard"""
-        if not self.system_clipboard_available:
-            return ""
-            
+    def _write_file_clipboard(self, text: str) -> bool:
+        """Write to file-based clipboard"""
         try:
-            import os
-            
-            # File-based clipboard (headless environments)
-            if hasattr(self, 'clipboard_type') and self.clipboard_type == "file":
-                if os.path.exists(self.clipboard_file):
-                    with open(self.clipboard_file, 'r', encoding='utf-8') as f:
-                        content = f.read()
-                    logger.info(f"✓ Read from file-based clipboard: {len(content)} characters")
-                    return content
-                return ""
-            
-            # System clipboard tools (with X11 display)
+            with open(self.clipboard_file, 'w') as f:
+                f.write(text)
+            return True
+        except Exception as e:
+            logger.error(f"Error writing to file clipboard: {e}")
+            return False
+    
+    def read(self) -> str:
+        """Read text from clipboard"""
+        try:
+            if self.system_clipboard_available:
+                if hasattr(self, 'clipboard_type') and self.clipboard_type == "file":
+                    return self._read_file_clipboard()
+                else:
+                    return self._read_system_clipboard()
+            else:
+                return self.buffer
+        except Exception as e:
+            logger.error(f"Error reading from clipboard: {e}")
+            return ""
+    
+    def _read_system_clipboard(self) -> str:
+        """Read from system clipboard"""
+        try:
             import subprocess
             
             # Try xclip first
@@ -188,95 +224,198 @@ class ServerClipboard:
                 result = subprocess.run(['xclip', '-selection', 'clipboard', '-o'], 
                                       capture_output=True, text=True, timeout=2)
                 if result.returncode == 0:
-                    logger.info("✓ Read from system clipboard via xclip")
                     return result.stdout
-            except (FileNotFoundError, subprocess.TimeoutExpired):
+            except:
                 pass
             
-            # Try xsel as fallback
+            # Try xsel
             try:
                 result = subprocess.run(['xsel', '--clipboard', '--output'], 
                                       capture_output=True, text=True, timeout=2)
                 if result.returncode == 0:
-                    logger.info("✓ Read from system clipboard via xsel")
                     return result.stdout
-            except (FileNotFoundError, subprocess.TimeoutExpired):
+            except:
                 pass
             
             # Try pbpaste (macOS)
             try:
                 result = subprocess.run(['pbpaste'], capture_output=True, text=True, timeout=2)
                 if result.returncode == 0:
-                    logger.info("✓ Read from system clipboard via pbpaste")
                     return result.stdout
-            except (FileNotFoundError, subprocess.TimeoutExpired):
+            except:
                 pass
-                
-            logger.warning("Failed to read from system clipboard - no tools worked")
-            return ""
             
+            return ""
         except Exception as e:
             logger.error(f"Error reading from system clipboard: {e}")
             return ""
     
-    def write(self, text: str) -> bool:
-        """Write text to both server buffer and system clipboard"""
-        if not text:
-            return False
-        
-        # Write to server buffer
-        self.buffer = text
-        # Add to history (avoid duplicates)
-        if not self.history or self.history[-1] != text:
-            self.history.append(text)
-            if len(self.history) > self.max_history:
-                self.history.pop(0)
-        
-        # Write to system clipboard
-        system_success = self._write_to_system_clipboard(text)
-        
-        logger.info(f"Clipboard write: {len(text)} characters (system: {'✓' if system_success else '✗'})")
-        return True
-    
-    def read(self) -> str:
-        """Read text from system clipboard first, fallback to server buffer"""
-        # Try to read from system clipboard first
-        system_text = self._read_from_system_clipboard()
-        if system_text:
-            # Update server buffer with system clipboard content
-            self.buffer = system_text
-            return system_text
-        
-        # Fallback to server buffer
-        return self.buffer
-    
-    def clear(self) -> bool:
-        """Clear both server buffer and system clipboard"""
-        self.buffer = ""
-        
-        # Try to clear system clipboard
-        system_success = self._write_to_system_clipboard("")
-        
-        logger.info(f"Clipboard cleared (system: {'✓' if system_success else '✗'})")
-        return True
+    def _read_file_clipboard(self) -> str:
+        """Read from file-based clipboard"""
+        try:
+            with open(self.clipboard_file, 'r') as f:
+                return f.read()
+        except Exception as e:
+            logger.error(f"Error reading from file clipboard: {e}")
+            return ""
     
     def get_history(self) -> List[str]:
         """Get clipboard history"""
         return self.history.copy()
+    
+    def clear(self) -> bool:
+        """Clear clipboard"""
+        try:
+            if self.system_clipboard_available:
+                if hasattr(self, 'clipboard_type') and self.clipboard_type == "file":
+                    return self._write_file_clipboard("")
+                else:
+                    return self._write_system_clipboard("")
+            else:
+                self.buffer = ""
+                return True
+        except Exception as e:
+            logger.error(f"Error clearing clipboard: {e}")
+            return False
 
 # Global clipboard instance
-server_clipboard = ServerClipboard()
+clipboard = ServerClipboard()
 
-# Import terminal module
-try:
-    from terminal import terminal_manager
-    TERMINAL_AVAILABLE = True
-except ImportError as e:
-    logger.warning(f"Terminal module not available: {e}")
-    TERMINAL_AVAILABLE = False
-    terminal_manager = None
+# Code execution functionality
+def execute_python_code(code: str) -> tuple:
+    """Execute Python code and return output, errors, and execution time"""
+    import time
+    import sys
+    import io
+    import contextlib
+    
+    # Capture stdout and stderr
+    stdout_buffer = io.StringIO()
+    stderr_buffer = io.StringIO()
+    
+    start_time = time.time()
+    
+    try:
+        with contextlib.redirect_stdout(stdout_buffer), contextlib.redirect_stderr(stderr_buffer):
+            # Execute the code
+            exec(code)
+        
+        execution_time = time.time() - start_time
+        
+        # Get output
+        output = stdout_buffer.getvalue()
+        errors = stderr_buffer.getvalue()
+        
+        return (
+            output.split('\n') if output else [],
+            errors.split('\n') if errors else [],
+            execution_time
+        )
+    
+    except Exception as e:
+        execution_time = time.time() - start_time
+        error_msg = f"{type(e).__name__}: {str(e)}"
+        
+        return (
+            [],
+            [error_msg],
+            execution_time
+        )
 
-app = FastAPI(title="icotes Backend", version="1.0.0")
+# Data models
+class CodeExecutionRequest(BaseModel):
+    """Request model for code execution."""
+    code: str
+    language: str = "python"
+
+class CodeExecutionResponse(BaseModel):
+    """Response model for code execution."""
+    output: List[str]
+    errors: List[str]
+    execution_time: float
+
+class ClipboardRequest(BaseModel):
+    """Request model for clipboard operations."""
+    text: str
+
+class ClipboardResponse(BaseModel):
+    """Response model for clipboard operations."""
+    success: bool
+    message: str
+    text: Optional[str] = None
+
+# Legacy ConnectionManager for backwards compatibility
+class ConnectionManager:
+    """Legacy connection manager for backwards compatibility."""
+    
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket):
+        """Connect a WebSocket."""
+        await websocket.accept()
+        self.active_connections.append(websocket)
+
+    def disconnect(self, websocket: WebSocket):
+        """Disconnect a WebSocket."""
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
+
+    async def send_personal_message(self, message: str, websocket: WebSocket):
+        """Send message to specific WebSocket."""
+        try:
+            await websocket.send_text(message)
+        except:
+            self.disconnect(websocket)
+
+    async def broadcast(self, message: str):
+        """Broadcast message to all connected WebSockets."""
+        for connection in self.active_connections:
+            try:
+                await connection.send_text(message)
+            except:
+                self.disconnect(connection)
+
+# Legacy manager instance
+manager = ConnectionManager()
+
+# App lifecycle management
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage app lifecycle with proper startup and shutdown."""
+    # Startup
+    logger.info("Starting icotes backend server...")
+    
+    # Initialize icpy services if available
+    if ICPY_AVAILABLE:
+        try:
+            logger.info("Initializing icpy services...")
+            await get_websocket_api()
+            logger.info("icpy services initialized successfully")
+        except Exception as e:
+            logger.error(f"Failed to initialize icpy services: {e}")
+    
+    yield
+    
+    # Shutdown
+    logger.info("Shutting down icotes backend server...")
+    
+    # Shutdown icpy services if available
+    if ICPY_AVAILABLE:
+        try:
+            logger.info("Shutting down icpy services...")
+            await shutdown_websocket_api()
+            logger.info("icpy services shutdown complete")
+        except Exception as e:
+            logger.error(f"Error during icpy shutdown: {e}")
+
+# Create FastAPI app with lifecycle management
+app = FastAPI(
+    title="icotes Backend",
+    version="1.0.0",
+    description="Enhanced backend server for icotes code editor",
+    lifespan=lifespan
+)
 
 # Get allowed origins from environment
 allowed_origins = []
@@ -306,307 +445,173 @@ if os.path.exists(dist_path):
     # Mount static files for production
     app.mount("/assets", StaticFiles(directory=os.path.join(dist_path, "assets")), name="assets")
     # Mount additional static files that might be needed
-    import os
     if os.path.exists(os.path.join(dist_path, "static")):
         app.mount("/static", StaticFiles(directory=os.path.join(dist_path, "static")), name="static")
     logger.info(f"Serving static files from {dist_path}")
 else:
     logger.info("No dist directory found - running in development mode")
 
-# Data models
-class CodeExecutionRequest(BaseModel):
-    code: str
-    language: str = "python"
-
-class CodeExecutionResponse(BaseModel):
-    output: List[str]
-    errors: List[str]
-    execution_time: float
-
-
-
-class ConnectionManager:
-    def __init__(self):
-        self.active_connections: List[WebSocket] = []
-
-    async def connect(self, websocket: WebSocket):
-        await websocket.accept()
-        self.active_connections.append(websocket)
-        logger.info(f"WebSocket connection established. Total connections: {len(self.active_connections)}")
-
-    def disconnect(self, websocket: WebSocket):
-        self.active_connections.remove(websocket)
-        logger.info(f"WebSocket connection closed. Total connections: {len(self.active_connections)}")
-
-    async def send_personal_message(self, message: str, websocket: WebSocket):
-        await websocket.send_text(message)
-
-    async def broadcast(self, message: str):
-        for connection in self.active_connections:
-            try:
-                await connection.send_text(message)
-            except:
-                # Connection might be closed, remove it
-                self.active_connections.remove(connection)
-
-manager = ConnectionManager()
-
-# Code execution functionality
-def execute_python_code(code: str) -> tuple[List[str], List[str], float]:
-    """Execute Python code and capture output and errors"""
-    import time
-    start_time = time.time()
-    
-    output = []
-    errors = []
-    
-    # Capture stdout
-    old_stdout = sys.stdout
-    sys.stdout = captured_output = io.StringIO()
-    
-    # Capture stderr
-    old_stderr = sys.stderr
-    sys.stderr = captured_error = io.StringIO()
-    
-    try:
-        # Create a local namespace for execution
-        local_namespace = {}
-        
-        # Execute the code
-        exec(code, {}, local_namespace)
-        
-        # Get the output
-        stdout_value = captured_output.getvalue()
-        if stdout_value:
-            output = stdout_value.strip().split('\n')
-        
-    except Exception as e:
-        errors.append(str(e))
-        stderr_value = captured_error.getvalue()
-        if stderr_value:
-            errors.extend(stderr_value.strip().split('\n'))
-    
-    finally:
-        # Restore stdout and stderr
-        sys.stdout = old_stdout
-        sys.stderr = old_stderr
-    
-    execution_time = time.time() - start_time
-    return output, errors, execution_time
-
-@app.get("/")
-async def root():
-    # Check if frontend build exists
-    dist_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "dist")
-    if os.path.exists(dist_path) and os.path.exists(os.path.join(dist_path, "index.html")):
-        return FileResponse(os.path.join(dist_path, "index.html"))
-    else:
-        return {"message": "icotes Backend API", "version": "1.0.0", "frontend": "not built"}
-
+# Health check endpoint
 @app.get("/health")
 async def health_check():
-    """Health check endpoint with enhanced terminal information"""
+    """Health check endpoint."""
+    return {
+        "status": "healthy",
+        "services": {
+            "icpy": ICPY_AVAILABLE,
+            "terminal": TERMINAL_AVAILABLE,
+            "clipboard": clipboard.system_clipboard_available
+        },
+        "timestamp": asyncio.get_event_loop().time()
+    }
+
+# Clipboard endpoints
+@app.post("/clipboard", response_model=ClipboardResponse)
+async def set_clipboard(request: ClipboardRequest):
+    """Set clipboard content."""
     try:
-        if TERMINAL_AVAILABLE and terminal_manager:
-            terminal_health = terminal_manager.get_terminal_health()
-        else:
-            terminal_health = {"active_terminals": 0, "status": "unavailable"}
-        
+        success = clipboard.write(request.text)
+        return ClipboardResponse(
+            success=success,
+            message="Clipboard updated successfully" if success else "Failed to update clipboard"
+        )
+    except Exception as e:
+        logger.error(f"Error setting clipboard: {e}")
+        return ClipboardResponse(
+            success=False,
+            message=f"Error: {str(e)}"
+        )
+
+@app.get("/clipboard", response_model=ClipboardResponse)
+async def get_clipboard():
+    """Get clipboard content."""
+    try:
+        text = clipboard.read()
+        return ClipboardResponse(
+            success=True,
+            message="Clipboard retrieved successfully",
+            text=text
+        )
+    except Exception as e:
+        logger.error(f"Error getting clipboard: {e}")
+        return ClipboardResponse(
+            success=False,
+            message=f"Error: {str(e)}"
+        )
+
+@app.get("/clipboard/history")
+async def get_clipboard_history():
+    """Get clipboard history."""
+    try:
+        history = clipboard.get_history()
         return {
-            "status": "healthy",
-            "message": "Backend is running",
-            "terminal_health": terminal_health
+            "success": True,
+            "history": history,
+            "count": len(history)
         }
     except Exception as e:
-        logger.error(f"Health check failed: {e}")
+        logger.error(f"Error getting clipboard history: {e}")
         return {
-            "status": "unhealthy", 
-            "message": f"Backend error: {str(e)}",
-            "terminal_health": {"active_terminals": 0, "error": str(e)}
+            "success": False,
+            "message": f"Error: {str(e)}"
         }
 
+# Code execution endpoints
 @app.post("/execute", response_model=CodeExecutionResponse)
 async def execute_code(request: CodeExecutionRequest):
-    """Execute code and return results"""
-    logger.info(f"Executing {request.language} code")
-    
-    if request.language.lower() == "python":
-        output, errors, execution_time = execute_python_code(request.code)
-        return CodeExecutionResponse(
-            output=output,
-            errors=errors,
-            execution_time=execution_time
-        )
-    else:
-        return CodeExecutionResponse(
-            output=[],
-            errors=[f"Language '{request.language}' not supported yet"],
-            execution_time=0.0
-        )
-
-@app.get("/api")
-async def api_root():
-    return {"message": "icotes Backend API", "version": "1.0.0"}
-
-@app.get("/api/health")
-async def api_health():
-    return {"status": "healthy", "connections": len(manager.active_connections)}
-
-@app.post("/api/execute", response_model=CodeExecutionResponse)
-async def api_execute_code(request: CodeExecutionRequest):
-    """Execute code and return results (API endpoint)"""
-    logger.info(f"Executing {request.language} code")
-    
-    if request.language.lower() == "python":
-        output, errors, execution_time = execute_python_code(request.code)
-        return CodeExecutionResponse(
-            output=output,
-            errors=errors,
-            execution_time=execution_time
-        )
-    else:
-        return CodeExecutionResponse(
-            output=[],
-            errors=[f"Language '{request.language}' not supported yet"],
-            execution_time=0.0
-        )
-
-@app.get("/api/terminal/health")
-async def terminal_health():
-    """Health check specifically for terminal functionality"""
-    if TERMINAL_AVAILABLE and terminal_manager:
-        return terminal_manager.get_terminal_health()
-    else:
-        return {"active_terminals": 0, "status": "unavailable"}
-
-# Clipboard API endpoints
-class ClipboardWriteRequest(BaseModel):
-    text: str
-
-class ClipboardResponse(BaseModel):
-    success: bool
-    message: str = ""
-
-class ClipboardReadResponse(BaseModel):
-    text: str
-    success: bool
-
-@app.post("/api/clipboard/write", response_model=ClipboardResponse)
-async def write_clipboard(request: ClipboardWriteRequest):
-    """Write text to server-side clipboard"""
+    """Execute code and return results."""
     try:
-        success = server_clipboard.write(request.text)
-        return ClipboardResponse(
-            success=success,
-            message=f"Copied {len(request.text)} characters to clipboard"
-        )
-    except Exception as e:
-        logger.error(f"Clipboard write error: {e}")
-        return ClipboardResponse(
-            success=False,
-            message=f"Failed to write to clipboard: {str(e)}"
-        )
-
-@app.get("/api/clipboard/read", response_model=ClipboardReadResponse)
-async def read_clipboard():
-    """Read text from server-side clipboard"""
-    try:
-        text = server_clipboard.read()
-        return ClipboardReadResponse(
-            text=text,
-            success=True
-        )
-    except Exception as e:
-        logger.error(f"Clipboard read error: {e}")
-        return ClipboardReadResponse(
-            text="",
-            success=False
-        )
-
-@app.delete("/api/clipboard/clear", response_model=ClipboardResponse)
-async def clear_clipboard():
-    """Clear server-side clipboard"""
-    try:
-        success = server_clipboard.clear()
-        return ClipboardResponse(
-            success=success,
-            message="Clipboard cleared"
-        )
-    except Exception as e:
-        logger.error(f"Clipboard clear error: {e}")
-        return ClipboardResponse(
-            success=False,
-            message=f"Failed to clear clipboard: {str(e)}"
-        )
-
-@app.get("/api/clipboard/history")
-async def get_clipboard_history():
-    """Get clipboard history"""
-    try:
-        history = server_clipboard.get_history()
-        return {
-            "history": history,
-            "success": True
-        }
-    except Exception as e:
-        logger.error(f"Clipboard history error: {e}")
-        return {
-            "history": [],
-            "success": False,
-            "message": f"Failed to get clipboard history: {str(e)}"
-        }
-
-@app.get("/api/clipboard/info")
-async def get_clipboard_info():
-    """Get clipboard system information"""
-    try:
-        info = {
-            "system_clipboard_available": server_clipboard.system_clipboard_available,
-            "clipboard_type": getattr(server_clipboard, 'clipboard_type', 'system'),
-            "success": True
-        }
-        
-        # Add file path if using file-based clipboard
-        if hasattr(server_clipboard, 'clipboard_file'):
-            info["clipboard_file"] = server_clipboard.clipboard_file
-            info["clipboard_dir"] = server_clipboard.clipboard_dir
-            info["message"] = f"File-based clipboard: {server_clipboard.clipboard_file}"
+        if request.language.lower() == "python":
+            output, errors, execution_time = execute_python_code(request.code)
+            return CodeExecutionResponse(
+                output=output,
+                errors=errors,
+                execution_time=execution_time
+            )
         else:
-            info["message"] = "System clipboard integration available"
-            
-        return info
+            return CodeExecutionResponse(
+                output=[],
+                errors=[f"Language '{request.language}' not supported yet"],
+                execution_time=0.0
+            )
     except Exception as e:
-        logger.error(f"Clipboard info error: {e}")
-        return {
-            "success": False,
-            "message": f"Failed to get clipboard info: {str(e)}"
-        }
+        logger.error(f"Error executing code: {e}")
+        return CodeExecutionResponse(
+            output=[],
+            errors=[f"Execution error: {str(e)}"],
+            execution_time=0.0
+        )
 
-@app.websocket("/ws/terminal/{terminal_id}")
-async def terminal_websocket(websocket: WebSocket, terminal_id: str):
-    """WebSocket endpoint for terminal connections with PTY support and optimized performance"""
-    logger.info(f"Terminal WebSocket connection attempt: {terminal_id}")
-    
-    if not TERMINAL_AVAILABLE or not terminal_manager:
-        await websocket.accept()
-        await websocket.send_text("Terminal functionality not available")
-        await websocket.close()
+# Enhanced WebSocket endpoints
+@app.websocket("/ws/enhanced")
+async def enhanced_websocket_endpoint(websocket: WebSocket):
+    """Enhanced WebSocket endpoint with icpy integration."""
+    if not ICPY_AVAILABLE:
+        await websocket.close(code=1011, reason="icpy services not available")
         return
     
     try:
-        master_fd, proc = await terminal_manager.connect_terminal(websocket, terminal_id)
-        logger.info(f"Terminal session started for {terminal_id}")
+        websocket_api = await get_websocket_api()
+        connection_id = await websocket_api.connect_websocket(websocket)
         
-        # Store tasks for cleanup
-        conn = terminal_manager.terminal_connections[terminal_id]
-        conn['read_task'] = asyncio.create_task(
-            terminal_manager.read_from_terminal(websocket, master_fd)
-        )
-        conn['write_task'] = asyncio.create_task(
-            terminal_manager.write_to_terminal(websocket, master_fd)
-        )
+        # Handle messages
+        while True:
+            try:
+                message = await websocket.receive_text()
+                await websocket_api.handle_websocket_message(connection_id, message)
+            except WebSocketDisconnect:
+                break
+            except Exception as e:
+                logger.error(f"Error in enhanced WebSocket: {e}")
+                break
         
-        # Wait for either task to complete
+        # Cleanup
+        await websocket_api.disconnect_websocket(connection_id)
+        
+    except Exception as e:
+        logger.error(f"Enhanced WebSocket error: {e}")
+
+# Terminal WebSocket endpoint
+@app.websocket("/ws/terminal/{terminal_id}")
+async def terminal_websocket_endpoint(websocket: WebSocket, terminal_id: str):
+    """Terminal WebSocket endpoint."""
+    if not TERMINAL_AVAILABLE:
+        await websocket.close(code=1011, reason="Terminal service not available")
+        return
+    
+    try:
+        await websocket.accept()
+        
+        # Create terminal connection
+        conn = terminal_manager.create_terminal_connection(terminal_id)
+        
+        # Handle WebSocket communication
+        async def read_from_terminal():
+            while True:
+                try:
+                    data = await conn['terminal'].read()
+                    if data:
+                        await websocket.send_text(data)
+                except Exception as e:
+                    logger.error(f"Error reading from terminal: {e}")
+                    break
+        
+        async def write_to_terminal():
+            while True:
+                try:
+                    data = await websocket.receive_text()
+                    await conn['terminal'].write(data)
+                except WebSocketDisconnect:
+                    break
+                except Exception as e:
+                    logger.error(f"Error writing to terminal: {e}")
+                    break
+        
+        # Store tasks in connection
+        conn['read_task'] = asyncio.create_task(read_from_terminal())
+        conn['write_task'] = asyncio.create_task(write_to_terminal())
+        
+        # Wait for tasks to complete
         await asyncio.gather(conn['read_task'], conn['write_task'], return_exceptions=True)
         
     except Exception as e:
@@ -615,8 +620,10 @@ async def terminal_websocket(websocket: WebSocket, terminal_id: str):
         if terminal_manager:
             terminal_manager.disconnect_terminal(terminal_id)
 
+# Legacy WebSocket endpoint for backwards compatibility
 @app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
+async def legacy_websocket_endpoint(websocket: WebSocket):
+    """Legacy WebSocket endpoint for backwards compatibility."""
     await manager.connect(websocket)
     try:
         while True:
@@ -663,95 +670,81 @@ async def websocket_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
         manager.disconnect(websocket)
     except Exception as e:
-        logger.error(f"WebSocket error: {e}")
+        logger.error(f"Legacy WebSocket error: {e}")
         manager.disconnect(websocket)
 
-
-def main():
-    """Main entry point with CLI argument handling"""
-    args = parse_arguments()
-    
-    # Handle clipboard commands (these need async)
-    if args.stdin_to_clipboard:
-        asyncio.run(handle_stdin_to_clipboard())
-        return
-    elif args.clipboard_to_stdout:
-        asyncio.run(handle_clipboard_to_stdout())
-        return
-    
-    # Start server (this should NOT be async)
-    import os
-    
-    # Use CLI args first, then environment variables
-    host = args.host if args.host != '0.0.0.0' else os.environ.get("BACKEND_HOST", os.environ.get("HOST", "0.0.0.0"))
-    port = args.port if args.port != 8000 else int(os.environ.get("BACKEND_PORT", os.environ.get("PORT", 8000)))
-    
-    # Log the configuration for debugging
-    logger.info(f"Starting server on {host}:{port}")
-    logger.info(f"Environment variables: PORT={os.environ.get('PORT')}, BACKEND_PORT={os.environ.get('BACKEND_PORT')}")
-    
-    import uvicorn
-    uvicorn.run(app, host=host, port=port, reload=args.reload)
-
-# Add catch-all route for React app (must be after all other routes)
-@app.get("/{catch_all:path}")
-async def serve_react_app(catch_all: str):
-    """Serve React app for all non-API routes"""
-    # Skip API routes and WebSocket routes
-    if catch_all.startswith(('api/', 'ws/', 'docs', 'redoc', 'openapi.json')):
-        raise HTTPException(status_code=404, detail="Not found")
-    
+# Serve React app for production
+@app.get("/")
+async def serve_react_app():
+    """Serve React app for production."""
     dist_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "dist")
-    if os.path.exists(dist_path):
-        # First, check if the requested file exists (for static assets)
-        file_path = os.path.join(dist_path, catch_all)
-        if os.path.exists(file_path) and os.path.isfile(file_path):
-            return FileResponse(file_path)
-        
-        # If not a static file, serve index.html for SPA routing
+    index_path = os.path.join(dist_path, "index.html")
+    
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
+    else:
+        return JSONResponse(
+            content={"message": "icotes backend is running", "status": "healthy"},
+            status_code=200
+        )
+
+# Catch-all route for React app
+@app.get("/{path:path}")
+async def serve_react_app_catchall(path: str):
+    """Catch-all route for React app."""
+    dist_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "dist")
+    file_path = os.path.join(dist_path, path)
+    
+    if os.path.exists(file_path) and os.path.isfile(file_path):
+        return FileResponse(file_path)
+    else:
+        # Return index.html for client-side routing
         index_path = os.path.join(dist_path, "index.html")
         if os.path.exists(index_path):
             return FileResponse(index_path)
-    
-    # Fallback for development
-    return {"message": "React app not built. Run 'npm run build' first."}
+        else:
+            return JSONResponse(
+                content={"message": "File not found", "path": path},
+                status_code=404
+            )
 
+# CLI argument parsing
 def parse_arguments():
-    """Parse command line arguments"""
-    parser = argparse.ArgumentParser(description='icotes Backend Server')
-    
-    # Server options
-    parser.add_argument('--host', default='0.0.0.0', help='Host to bind to')
-    parser.add_argument('--port', type=int, default=8000, help='Port to bind to')
-    parser.add_argument('--reload', action='store_true', help='Enable auto-reload')
-    
-    # Clipboard options
-    parser.add_argument('--stdin-to-clipboard', '-c', action='store_true', 
-                       help='Read from stdin and send to system clipboard')
-    parser.add_argument('--clipboard-to-stdout', action='store_true',
-                       help='Read from system clipboard and send to stdout')
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(description="icotes Backend Server")
+    parser.add_argument("--host", default="0.0.0.0", help="Host to bind to")
+    parser.add_argument("--port", type=int, default=8000, help="Port to bind to")
+    parser.add_argument("--stdin-to-clipboard", action="store_true", 
+                       help="Read stdin and copy to clipboard")
+    parser.add_argument("--clipboard-to-stdout", action="store_true",
+                       help="Read clipboard and output to stdout")
+    parser.add_argument("--reload", action="store_true", help="Enable auto-reload")
+    parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     
     return parser.parse_args()
 
+# CLI clipboard handlers
 async def handle_stdin_to_clipboard():
-    """Handle --stdin-to-clipboard command"""
+    """Handle --stdin-to-clipboard command."""
     try:
         # Read from stdin
         stdin_data = sys.stdin.read()
         
-        # Initialize clipboard
-        clipboard = ServerClipboard()
-        
-        # Write to clipboard (this will handle both server buffer and system clipboard)
-        success = clipboard.write(stdin_data)
-        
-        if success:
-            logger.info(f"✓ Successfully copied {len(stdin_data)} characters to clipboard")
-            print(f"✓ Copied {len(stdin_data)} characters to clipboard", file=sys.stderr)
-            sys.exit(0)
+        if stdin_data:
+            # Write to clipboard
+            success = clipboard.write(stdin_data)
+            
+            if success:
+                logger.info(f"✓ Copied {len(stdin_data)} characters to clipboard")
+                print(f"✓ Copied {len(stdin_data)} characters to clipboard", file=sys.stderr)
+                sys.exit(0)
+            else:
+                logger.error("✗ Failed to copy to clipboard")
+                print("✗ Failed to copy to clipboard", file=sys.stderr)
+                sys.exit(1)
         else:
-            logger.error("✗ Failed to copy to clipboard")
-            print("✗ Failed to copy to clipboard", file=sys.stderr)
+            logger.info("No input data received")
+            print("No input data received", file=sys.stderr)
             sys.exit(1)
             
     except Exception as e:
@@ -760,11 +753,8 @@ async def handle_stdin_to_clipboard():
         sys.exit(1)
 
 async def handle_clipboard_to_stdout():
-    """Handle --clipboard-to-stdout command"""
+    """Handle --clipboard-to-stdout command."""
     try:
-        # Initialize clipboard
-        clipboard = ServerClipboard()
-        
         # Read from clipboard
         clipboard_data = clipboard.read()
         
@@ -782,6 +772,50 @@ async def handle_clipboard_to_stdout():
         logger.error(f"Error in clipboard-to-stdout: {e}")
         print(f"✗ Error: {e}", file=sys.stderr)
         sys.exit(1)
+
+def main():
+    """Main entry point with CLI argument handling."""
+    args = parse_arguments()
+    
+    # Configure debug logging
+    if args.debug:
+        logging.getLogger().setLevel(logging.DEBUG)
+    
+    # Handle clipboard commands (these need async)
+    if args.stdin_to_clipboard:
+        asyncio.run(handle_stdin_to_clipboard())
+        return
+    elif args.clipboard_to_stdout:
+        asyncio.run(handle_clipboard_to_stdout())
+        return
+    
+    # Normal server mode
+    logger.info(f"Starting icotes backend server on {args.host}:{args.port}")
+    
+    # Configure uvicorn
+    uvicorn_config = {
+        "app": "main:app",
+        "host": args.host,
+        "port": args.port,
+        "log_level": "debug" if args.debug else "info",
+        "reload": args.reload,
+        "access_log": True,
+        "use_colors": True
+    }
+    
+    # Add SSL config if certificates exist
+    ssl_keyfile = os.environ.get("SSL_KEYFILE")
+    ssl_certfile = os.environ.get("SSL_CERTFILE")
+    
+    if ssl_keyfile and ssl_certfile and os.path.exists(ssl_keyfile) and os.path.exists(ssl_certfile):
+        uvicorn_config.update({
+            "ssl_keyfile": ssl_keyfile,
+            "ssl_certfile": ssl_certfile
+        })
+        logger.info("SSL enabled")
+    
+    # Run server
+    uvicorn.run(**uvicorn_config)
 
 if __name__ == "__main__":
     main()

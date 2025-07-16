@@ -4,9 +4,29 @@
 A web-based JavaScript code editor built with ViteReact, CodeMirror 6, and modern web technologies. The goal is to create a powerful, The world's most powerful notebook for developers, it includes 3 core parts: 1. rich text editor, similar to evernote/notion hybrid, 2. code editor + terminal, 3. AI agent that can be customized with agentic frameworks such as crew ai, or openai agent sdk, or any other agentic framework.
 
 ## In Progress
-- [] work on icpy_plan.md 3.1 and make sure google style docstrings are always added
+- [ ] work on icpy_plan.md 3.2 and make sure google style docstrings are always added
 
 ## Recently Finished
+- [x] work on icpy_plan.md 3.1 and make sure google style docstrings are always added
+### Phase 3.1: WebSocket API Enhancement (COMPLETED)
+- **Task**: Enhanced WebSocket API with message broker integration and real-time capabilities
+- **Deliverable**: Created `backend/icpy/api/websocket_api.py` with comprehensive WebSocket functionality
+- **Key Features**:
+  - Enhanced WebSocket API with message broker integration
+  - Multi-client connection management with state synchronization
+  - Connection recovery and message replay capabilities
+  - JSON-RPC protocol support over WebSocket
+  - Real-time event broadcasting to subscribed clients
+  - Connection authentication and session management
+  - WebSocket connection health monitoring and cleanup
+  - Message queuing and history for client recovery
+  - Topic-based subscription system for selective event delivery
+  - Google-style docstrings for all methods
+  - Background tasks for connection maintenance and cleanup
+  - Comprehensive error handling and connection recovery
+- **Test Coverage**: 27 integration tests covering all WebSocket API functionality
+- **Status**: Complete - Phase 3.1 of icpy_plan.md implemented and tested
+
 - [x] work on icpy_plan.md 2.3
 - [x] work on icpy_plan.md 2.2
 - [x] Make sure google style docstrings are always added
