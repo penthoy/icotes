@@ -4,9 +4,27 @@
 A web-based JavaScript code editor built with ViteReact, CodeMirror 6, and modern web technologies. The goal is to create a powerful, The world's most powerful notebook for developers, it includes 3 core parts: 1. rich text editor, similar to evernote/notion hybrid, 2. code editor + terminal, 3. AI agent that can be customized with agentic frameworks such as crew ai, or openai agent sdk, or any other agentic framework.
 
 ## In Progress
-- [] work on icpy_plan.md 1.4
+- [] work on icpy_plan.md 2.2
 
 ## Recently Finished
+
+### Phase 2.1: Workspace Service (COMPLETED)
+- **Task**: Implemented workspace service for application state management
+- **Deliverable**: Created `backend/icpy/services/workspace_service.py` with comprehensive workspace management
+- **Key Features**:
+  - Complete workspace state management (files, panels, terminals, layouts)
+  - Workspace creation, loading, switching, and persistence
+  - File operations with recent files tracking
+  - Panel management for different component types (editor, terminal, output)
+  - Terminal session management with metadata
+  - Layout management and saving/loading
+  - User preferences and configuration management
+  - Event-driven architecture with message broker integration
+  - Concurrent operations support with proper state synchronization
+  - Comprehensive error handling and recovery mechanisms
+  - Statistics tracking and workspace analytics
+- **Test Coverage**: 19 integration tests covering workspace management, file operations, panels, terminals, layouts, preferences, persistence, events, and concurrent operations
+- **Status**: Complete - Phase 2.1 of icpy_plan.md implemented and tested
 
 ### Phase 1.3: Connection Manager and API Gateway (COMPLETED)
 - **Task**: Implemented connection management and API gateway infrastructure
