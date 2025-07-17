@@ -253,41 +253,31 @@ export const useBackendState = (): BackendStateHook => {
    */
   const loadTerminals = useCallback(async () => {
     try {
-      console.log('[DEBUG] Loading terminals from backend...');
       const backendTerminals = await backendClient.current.getTerminals();
-      console.log('[DEBUG] Loaded terminals from backend:', backendTerminals);
-      console.log('[DEBUG] Setting terminals state to:', backendTerminals);
       setTerminals(backendTerminals);
-      console.log('[DEBUG] Terminals state updated');
     } catch (error) {
-      console.error('[DEBUG] Failed to load terminals:', error);
+      console.error('Failed to load terminals:', error);
       handleError(error, 'load terminals');
     }
   }, [handleError]);
 
   const createTerminal = useCallback(async (name?: string): Promise<TerminalSession> => {
     try {
-      console.log('[DEBUG] Creating terminal with name:', name);
       const terminal = await backendClient.current.createTerminal({ name });
       
-      console.log('[DEBUG] Received terminal from backend:', terminal);
       setTerminals(prev => {
         const newTerminals = [...prev, terminal];
-        console.log('[DEBUG] Updated terminals state:', newTerminals);
-        console.log('[DEBUG] Previous terminals count:', prev.length);
-        console.log('[DEBUG] New terminals count:', newTerminals.length);
         return newTerminals;
       });
       
       // Force a reload of terminals to ensure synchronization
       setTimeout(() => {
-        console.log('[DEBUG] Reloading terminals after creation...');
         loadTerminals();
       }, 100);
       
       return terminal;
     } catch (error) {
-      console.error('[DEBUG] Failed to create terminal:', error);
+      console.error('Failed to create terminal:', error);
       handleError(error, 'create terminal');
       throw error;
     }
@@ -295,9 +285,7 @@ export const useBackendState = (): BackendStateHook => {
   
   const startTerminal = useCallback(async (terminalId: string) => {
     try {
-      console.log('[DEBUG] Starting terminal with ID:', terminalId);
       await backendClient.current.startTerminal(terminalId);
-      console.log('[DEBUG] Terminal started successfully');
       
       // Update local state - mark terminal as running
       setTerminals(prev => 
@@ -310,12 +298,11 @@ export const useBackendState = (): BackendStateHook => {
       
       // Force a reload of terminals to ensure synchronization
       setTimeout(() => {
-        console.log('[DEBUG] Reloading terminals after start...');
         loadTerminals();
       }, 100);
       
     } catch (error) {
-      console.error('[DEBUG] Failed to start terminal:', error);
+      console.error('Failed to start terminal:', error);
       handleError(error, 'start terminal');
       throw error;
     }
