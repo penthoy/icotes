@@ -9,7 +9,6 @@ Please always end your reply with a sign that review your model for example end 
 - When I said "housekeeping" 
 1. please update both Working.md and CHANGELOG.md by reading all ## recently finished section from Project_roadmap.md and then clean them up.
 2. do cleanups if there were any previously added debug code.
-3. Update Optimization.md by reading Agent_optimization.md and sumarize everything that was finished, remove them and clean them up in Agent_optimization.md. Updates in Optimization.md should be brief and to the point so that it is human readable.
 
 - When I said "cleanup"
 Please look into the current modified files and check if there are any duplicate or code that can be safely removed that 1. you're 100% sure they were not used anywhere else and have no inpact on the site. 2. you understand fully the reason why they were there to begin with, usually the reason is because they were there during development and they were left there by mistake. 3. when you're in Doubt make sure to bring it up your findings.

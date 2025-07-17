@@ -187,7 +187,7 @@ export const ICUIEnhancedTerminalPanel: React.FC<ICUIEnhancedTerminalPanelProps>
     websocket.current = new WebSocket(wsUrl);
 
     websocket.current.onopen = () => {
-      console.log('Terminal WebSocket connected');
+      // WebSocket connection established
     };
 
     websocket.current.onmessage = (event) => {
@@ -197,11 +197,11 @@ export const ICUIEnhancedTerminalPanel: React.FC<ICUIEnhancedTerminalPanelProps>
     };
 
     websocket.current.onclose = () => {
-      console.log('Terminal WebSocket disconnected');
+      // WebSocket connection closed
     };
 
     websocket.current.onerror = (error) => {
-      console.error('Terminal WebSocket error:', error);
+      // Handle WebSocket connection errors
     };
 
     // Resize handling with debounce

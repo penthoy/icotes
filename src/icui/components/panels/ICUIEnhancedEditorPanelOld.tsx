@@ -54,7 +54,6 @@ const ICUIEnhancedEditorPanel: React.FC<ICUIEnhancedEditorPanelProps> = ({
 // This is a minimal code editor implementation
 
 function helloWorld() {
-  console.log("Hello from ICUI Editor!");
   return "Hello World!";
 }
 
@@ -95,7 +94,7 @@ helloWorld();`);
   // Handle save action
   const handleSave = () => {
     setIsModified(false);
-    console.log('File saved:', content);
+    // File save logic would go here
   };
 
   // Handle run code action
@@ -104,10 +103,10 @@ helloWorld();`);
       // Simple code execution for demonstration
       if (language === 'javascript') {
         const result = eval(content);
-        console.log('Code execution result:', result);
+        // Code execution result would be displayed in UI
       }
     } catch (error) {
-      console.error('Code execution error:', error);
+      // Handle execution errors appropriately
     }
   };
 

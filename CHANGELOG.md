@@ -8,25 +8,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **Enhanced Multi-Layer Clipboard System**: Comprehensive clipboard solution bypassing browser security
-  - Multi-layer clipboard service with automatic fallback hierarchy
-  - Server-side system clipboard integration via file-based storage
-  - Cross-platform support (Linux, macOS, Windows clipboard tools)
-  - Visual notifications and real-time status indicators
-  - Clipboard history management and persistence
-  - React-compatible service with event emitters
-  - Keyboard shortcuts (Ctrl+Shift+C/V) with user feedback
+- **Enhanced Multi-Layer Clipboard System (PARTIAL)**: Comprehensive clipboard solution bypassing browser security
+  - Multi-layer clipboard service with automatic fallback hierarchy (Native API → Server → CLI → File)
+  - Server-side system clipboard integration via file-based storage and CLI tools
+  - Cross-platform support (Linux xclip/xsel, macOS pbcopy, Windows clip)
+  - Visual notifications and real-time status indicators showing active clipboard method
+  - Clipboard history management and persistence across sessions
+  - React-compatible service with event emitters and TypeScript interfaces
+  - Keyboard shortcuts (Ctrl+Shift+C/V) with user feedback and error handling
+  - Enhanced backend endpoints: `/clipboard/status` and `/clipboard/clear`
+  - Note: System clipboard bypass works via file storage but needs display/X11 for full cross-app access
 - **Simple Terminal Implementation**: Clean terminal component for testing and debugging
-  - Minimal terminal based on ICUITerminalPanel.tsx
-  - Direct WebSocket connection to ICPY backend
-  - Backend clipboard API integration
-  - Theme-aware styling and proper scrolling behavior
-  - Connection status monitoring and error handling
+  - Minimal terminal based on ICUITerminalPanel.tsx with direct WebSocket connection
+  - Backend clipboard API integration with copy/paste keyboard shortcuts
+  - Theme-aware styling, proper scrolling behavior, and connection monitoring
+  - Accessible at `/simple-terminal` route for isolated testing
+  - Error handling, reconnection logic, and responsive terminal sizing
+- **File Explorer Integration**: Backend-connected file explorer component
+  - Real-time directory tree loading from ICPY backend filesystem service
+  - File and folder operations (create, delete, navigate) via backend API
+  - Connection status monitoring with auto-refresh after operations
+  - Seamless integration with IntegratedHome test environment
+- **Integration Test Environment**: Comprehensive test environment with backend connectivity
+  - Debug integration component for connectivity troubleshooting
+  - Integration test accessible at `/integration` route with status monitoring
+  - Manual testing environment for backend component integration
+  - TypeScript compilation fixes and proper error handling
+- **Backend State Synchronization**: Infrastructure for ICUI-ICPY integration
+  - Backend context provider for application-wide backend access
+  - Real-time workspace state synchronization with bi-directional updates
+  - Connection monitoring, auto-reconnection, and local state persistence
+  - Type-safe backend communication with comprehensive error handling
 - **Single-Port Architecture**: Unified server configuration
   - Backend serves both static files and API endpoints on single port
   - Environment-based configuration using .env variables
-  - Dynamic WebSocket URL construction
-  - Consistent port usage across frontend and backend
+  - Dynamic WebSocket URL construction and consistent port usage
 
 ### Fixed
 - **Backend Configuration**: Fixed hardcoded port issues
