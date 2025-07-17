@@ -42,11 +42,13 @@ try:
     from icpy.api import get_websocket_api, shutdown_websocket_api, get_rest_api, shutdown_rest_api
     from icpy.core.connection_manager import get_connection_manager
     from icpy.services import get_workspace_service, get_filesystem_service, get_terminal_service
+    from icpy.services.clipboard_service import clipboard_service
     ICPY_AVAILABLE = True
     logger.info("icpy modules loaded successfully")
 except ImportError as e:
     logger.warning(f"icpy modules not available: {e}")
     ICPY_AVAILABLE = False
+    clipboard_service = None
 
 # Import terminal module
 try:
@@ -343,6 +345,7 @@ class ClipboardResponse(BaseModel):
     success: bool
     message: str
     text: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
 
 # Legacy ConnectionManager for backwards compatibility
 class ConnectionManager:
@@ -504,26 +507,36 @@ else:
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
+    clipboard_status = await clipboard_service.get_status() if ICPY_AVAILABLE else {"capabilities": {"read": False, "write": False}}
     return {
         "status": "healthy",
         "services": {
             "icpy": ICPY_AVAILABLE,
             "terminal": TERMINAL_AVAILABLE,
-            "clipboard": clipboard.system_clipboard_available
+            "clipboard": clipboard_status["capabilities"]
         },
         "timestamp": asyncio.get_event_loop().time()
     }
 
-# Clipboard endpoints
+# Enhanced Clipboard endpoints with multi-layer support
 @app.post("/clipboard", response_model=ClipboardResponse)
 async def set_clipboard(request: ClipboardRequest):
-    """Set clipboard content."""
+    """Set clipboard content using enhanced multi-layer strategy."""
     try:
-        success = clipboard.write(request.text)
-        return ClipboardResponse(
-            success=success,
-            message="Clipboard updated successfully" if success else "Failed to update clipboard"
-        )
+        if ICPY_AVAILABLE and clipboard_service:
+            result = await clipboard_service.write_clipboard(request.text)
+            return ClipboardResponse(
+                success=result["success"],
+                message=f"Clipboard updated via {result['method']}" if result["success"] else result.get("error", "Failed to update clipboard"),
+                metadata=result
+            )
+        else:
+            # Fallback to old system
+            success = clipboard.write(request.text)
+            return ClipboardResponse(
+                success=success,
+                message="Clipboard updated successfully" if success else "Failed to update clipboard"
+            )
     except Exception as e:
         logger.error(f"Error setting clipboard: {e}")
         return ClipboardResponse(
@@ -533,14 +546,24 @@ async def set_clipboard(request: ClipboardRequest):
 
 @app.get("/clipboard", response_model=ClipboardResponse)
 async def get_clipboard():
-    """Get clipboard content."""
+    """Get clipboard content using enhanced multi-layer strategy."""
     try:
-        text = clipboard.read()
-        return ClipboardResponse(
-            success=True,
-            message="Clipboard retrieved successfully",
-            text=text
-        )
+        if ICPY_AVAILABLE and clipboard_service:
+            result = await clipboard_service.read_clipboard()
+            return ClipboardResponse(
+                success=result["success"],
+                message=f"Clipboard retrieved via {result['method']}" if result["success"] else result.get("error", "Failed to retrieve clipboard"),
+                text=result.get("content", ""),
+                metadata=result
+            )
+        else:
+            # Fallback to old system
+            text = clipboard.read()
+            return ClipboardResponse(
+                success=True,
+                message="Clipboard retrieved successfully",
+                text=text
+            )
     except Exception as e:
         logger.error(f"Error getting clipboard: {e}")
         return ClipboardResponse(
@@ -552,14 +575,79 @@ async def get_clipboard():
 async def get_clipboard_history():
     """Get clipboard history."""
     try:
-        history = clipboard.get_history()
-        return {
-            "success": True,
-            "history": history,
-            "count": len(history)
-        }
+        if ICPY_AVAILABLE and clipboard_service:
+            history = await clipboard_service.get_history()
+            return {
+                "success": True,
+                "history": history,
+                "count": len(history)
+            }
+        else:
+            # Fallback to old system
+            history = clipboard.get_history()
+            return {
+                "success": True,
+                "history": history,
+                "count": len(history)
+            }
     except Exception as e:
         logger.error(f"Error getting clipboard history: {e}")
+        return {
+            "success": False,
+            "message": f"Error: {str(e)}"
+        }
+
+@app.get("/clipboard/status")
+async def get_clipboard_status():
+    """Get clipboard service status and capabilities."""
+    try:
+        if ICPY_AVAILABLE and clipboard_service:
+            status = await clipboard_service.get_status()
+            return {
+                "success": True,
+                "status": status
+            }
+        else:
+            # Fallback status
+            return {
+                "success": True,
+                "status": {
+                    "system": "legacy",
+                    "available_methods": ["file_fallback"],
+                    "capabilities": {
+                        "read": True,
+                        "write": True,
+                        "history": True,
+                        "multi_format": False
+                    }
+                }
+            }
+    except Exception as e:
+        logger.error(f"Error getting clipboard status: {e}")
+        return {
+            "success": False,
+            "message": f"Error: {str(e)}"
+        }
+
+@app.post("/clipboard/clear")
+async def clear_clipboard():
+    """Clear clipboard content."""
+    try:
+        if ICPY_AVAILABLE and clipboard_service:
+            result = await clipboard_service.clear_clipboard()
+            return {
+                "success": result["success"],
+                "message": f"Clipboard cleared via {result['method']}" if result["success"] else result.get("error", "Failed to clear clipboard")
+            }
+        else:
+            # Fallback clear
+            clipboard.write("")
+            return {
+                "success": True,
+                "message": "Clipboard cleared"
+            }
+    except Exception as e:
+        logger.error(f"Error clearing clipboard: {e}")
         return {
             "success": False,
             "message": f"Error: {str(e)}"

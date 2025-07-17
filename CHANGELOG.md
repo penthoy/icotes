@@ -8,6 +8,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Enhanced Multi-Layer Clipboard System**: Comprehensive clipboard solution bypassing browser security
+  - Multi-layer clipboard service with automatic fallback hierarchy
+  - Server-side system clipboard integration via file-based storage
+  - Cross-platform support (Linux, macOS, Windows clipboard tools)
+  - Visual notifications and real-time status indicators
+  - Clipboard history management and persistence
+  - React-compatible service with event emitters
+  - Keyboard shortcuts (Ctrl+Shift+C/V) with user feedback
+- **Simple Terminal Implementation**: Clean terminal component for testing and debugging
+  - Minimal terminal based on ICUITerminalPanel.tsx
+  - Direct WebSocket connection to ICPY backend
+  - Backend clipboard API integration
+  - Theme-aware styling and proper scrolling behavior
+  - Connection status monitoring and error handling
+- **Single-Port Architecture**: Unified server configuration
+  - Backend serves both static files and API endpoints on single port
+  - Environment-based configuration using .env variables
+  - Dynamic WebSocket URL construction
+  - Consistent port usage across frontend and backend
+
+### Fixed
+- **Backend Configuration**: Fixed hardcoded port issues
+  - Backend now properly uses .env configuration (PORT, BACKEND_HOST, etc.)
+  - Removed hardcoded port 8888 references
+  - Single-port solution implemented using port 8000
+- **Terminal Double Echo**: Removed debug logging causing character duplication
+  - Clean terminal output without debug noise
+  - Proper backend-only echo handling
 - **ICUI Enhanced Editor Implementation**: Complete editor system overhaul
   - New ICUIEnhancedEditorPanel.tsx combining best features from all implementations
   - Framework abstraction with syntaxHighlighting.ts utility functions

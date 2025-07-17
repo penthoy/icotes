@@ -128,6 +128,27 @@ Create a backend that acts as a **single source of truth** for the frontend, is 
   - Error handling and resource cleanup
   - Message broker integration for event-driven operations
 
+#### Step 2.4: Enhanced Clipboard Service
+**Goal**: Implement multi-layer clipboard system with browser security bypass
+
+- Create `backend/icpy/services/clipboard_service.py`
+- Implement multi-layer clipboard strategy:
+  1. Browser native Clipboard API (when available in secure context)
+  2. Server-side clipboard bridge with system integration
+  3. CLI-based clipboard commands (`xclip`, `pbcopy`, etc.)
+  4. File-based clipboard fallback (`/tmp/icpy_clipboard.txt`)
+- Add clipboard operations: read, write, clear, status
+- Support multiple clipboard formats (text, HTML, images)
+- Implement automatic fallback hierarchy with user feedback
+- Add secure context detection and PWA support
+- Include clipboard history and persistence options
+- Integrate with message broker for real-time clipboard sync
+- **Integration Test**: `tests/backend/icpy/test_clipboard_service.py`
+  - Multi-layer clipboard operations
+  - Fallback hierarchy and error handling
+  - System integration and security contexts
+  - Cross-platform compatibility
+
 ### Phase 3: Unified API Layer
 **Goal**: Create single interfaces for all client types
 

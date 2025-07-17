@@ -187,6 +187,47 @@ This document outlines the step-by-step plan for rewriting the UI with a modular
 **Extra details**:
 - Create a ICUITEST4.9 for test
 
+#### Step 4.10: Enhanced Clipboard System with Browser Security Bypass
+**Problem**: Browser security restrictions prevent clipboard access in insecure contexts (HTTP, IP addresses), causing clipboard functionality to fail in development and deployment scenarios.
+
+**Solution**: Implement code-server's proven multi-layer clipboard strategy:
+- **Layer 1: Native Clipboard API** - Use browser's native clipboard when available (HTTPS, localhost)
+- **Layer 2: Server-Side Clipboard Bridge** - Fallback to backend clipboard service via HTTP endpoints
+- **Layer 3: CLI Integration** - Support `--stdin-to-clipboard` for terminal applications
+- **Layer 4: File Download/Upload** - Ultimate fallback using File API for content transfer
+
+**Implementation Details**:
+- Create `src/icui/services/ClipboardService.tsx` with multi-layer clipboard management
+- Implement secure context detection and capability testing
+- Add progressive fallback hierarchy with user feedback
+- Create `src/icui/components/ClipboardManager.tsx` for UI integration
+- Update all panel implementations to use enhanced clipboard service
+- Add user notifications for clipboard limitations and alternatives
+
+**Key Features**:
+- **Context Detection**: Automatically detect secure/insecure context capabilities
+- **Progressive Enhancement**: Try best option first, fall back gracefully
+- **User Communication**: Clear messaging about limitations and alternatives
+- **PWA Support**: Leverage PWA installation to bypass some restrictions
+- **Cross-Platform**: Work consistently across all environments
+
+**Files to Create**:
+- `src/icui/services/ClipboardService.tsx` - Multi-layer clipboard management
+- `src/icui/components/ClipboardManager.tsx` - UI integration component
+- `src/icui/hooks/useClipboard.tsx` - React hook for clipboard operations
+- Update existing panels (Terminal, Editor, Chat) to use new clipboard system
+
+**Integration Points**:
+- Backend clipboard service (`/clipboard` endpoints)
+- Browser native clipboard API (when available)
+- File download/upload as ultimate fallback
+- PWA installation prompts for enhanced capabilities
+
+**Extra details**:
+- Create ICUITEST4.10 for testing all clipboard scenarios
+- Test across different security contexts (HTTP, HTTPS, localhost, IP addresses)
+- Validate fallback behavior and user experience
+
 ### Phase 5: Modular Menu System
 **Goal**: Create flexible file and layout menus using the same modular principles
 
