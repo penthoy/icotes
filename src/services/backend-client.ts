@@ -382,24 +382,39 @@ export class BackendClient {
    * Get all terminal sessions
    */
   async getTerminals(): Promise<TerminalSession[]> {
-    return this.makeRequest('/api/terminals');
+    const response = await this.makeRequest('/api/terminals');
+    return response.data;
   }
 
   /**
    * Create new terminal session
    */
   async createTerminal(config: TerminalConfig = {}): Promise<TerminalSession> {
-    return this.makeRequest('/api/terminals', {
+    console.log('[BackendClient] Creating terminal with config:', config);
+    const response = await this.makeRequest('/api/terminals', {
       method: 'POST',
       body: JSON.stringify(config)
     });
+    console.log('[BackendClient] Terminal creation response:', response);
+    console.log('[BackendClient] Extracted terminal data:', response.data);
+    return response.data;
   }
 
   /**
    * Get terminal session
    */
   async getTerminal(terminalId: string): Promise<TerminalSession> {
-    return this.makeRequest(`/api/terminals/${terminalId}`);
+    const response = await this.makeRequest(`/api/terminals/${terminalId}`);
+    return response.data;
+  }
+
+  /**
+   * Start terminal session
+   */
+  async startTerminal(terminalId: string): Promise<void> {
+    return this.makeRequest(`/api/terminals/${terminalId}/start`, {
+      method: 'POST'
+    });
   }
 
   /**
@@ -576,14 +591,29 @@ export class BackendClient {
 }
 
 // Default configuration
-const defaultConfig: BackendConfig = {
-  websocket_url: 'ws://192.168.2.195:8000/ws',
-  http_base_url: 'http://192.168.2.195:8000',
-  reconnect_attempts: 5,
-  reconnect_delay: 1000,
-  request_timeout: 10000,
-  heartbeat_interval: 30000
+const getDefaultConfig = (): BackendConfig => {
+  // Use Vite environment variables if available, otherwise construct dynamically
+  const websocketUrl = import.meta.env.VITE_WS_URL || 
+    (typeof window !== 'undefined' 
+      ? `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`
+      : 'ws://localhost:8000/ws');
+
+  const httpBaseUrl = import.meta.env.VITE_API_URL || 
+    (typeof window !== 'undefined' 
+      ? `${window.location.protocol}//${window.location.host}`
+      : 'http://localhost:8000');
+
+  return {
+    websocket_url: websocketUrl,
+    http_base_url: httpBaseUrl,
+    reconnect_attempts: 5,
+    reconnect_delay: 1000,
+    request_timeout: 10000,
+    heartbeat_interval: 30000
+  };
 };
+
+const defaultConfig = getDefaultConfig();
 
 // Singleton instance
 let backendClient: BackendClient | null = null;

@@ -77,9 +77,11 @@ const TestControls: React.FC = () => {
   
   const handleCreateTerminal = useCallback(async () => {
     try {
-      await actions.createTerminal('Test Terminal');
+      const newTerminal = await actions.createTerminal('Test Terminal');
+      // Start the terminal to transition it to running state
+      await actions.startTerminal(newTerminal.id);
     } catch (error) {
-      console.error('Failed to create terminal:', error);
+      console.error('Failed to create/start terminal:', error);
     }
   }, [actions]);
   
@@ -160,19 +162,38 @@ const FileList: React.FC = () => {
  * Terminal List Display with Backend Terminal Integration
  */
 const TerminalList: React.FC = () => {
-  const { terminals } = useBackendState();
+  const { terminals, actions } = useBackendState();
   const [selectedTerminalId, setSelectedTerminalId] = useState<string | null>(null);
+  const { isConnected } = useBackendContext();
+  
+  // Debug logging
+  console.log('[TerminalList] Current state:', { 
+    terminals: terminals.length, 
+    selectedTerminalId, 
+    isConnected,
+    terminalDetails: terminals.map(t => ({ id: t.id, name: t.name, status: t.status }))
+  });
+  
+  // Select first terminal if available and none selected
+  useEffect(() => {
+    if (terminals.length > 0 && !selectedTerminalId) {
+      console.log('[TerminalList] Selecting first terminal:', terminals[0].id);
+      setSelectedTerminalId(terminals[0].id);
+    }
+  }, [terminals, selectedTerminalId]);
   
   return (
     <div className="h-full flex flex-col">
-      <div className="p-2 border-b">
-        <h3 className="text-sm font-semibold">Terminals ({terminals.length})</h3>
+      <div className="p-2 border-b bg-blue-100">
+        <h3 className="text-sm font-semibold">Terminal List ({terminals.length})</h3>
+        <div className="text-xs text-gray-600">Available terminals</div>
       </div>
       
       <div className="flex-1 flex flex-col">
         {terminals.length === 0 ? (
           <div className="p-4 text-center text-gray-500">
             <p>No terminals created</p>
+            <p className="text-xs mt-1">Terminal will be created automatically</p>
           </div>
         ) : (
           <>
@@ -187,7 +208,10 @@ const TerminalList: React.FC = () => {
                         ? 'bg-blue-100 border-blue-300' 
                         : 'hover:bg-gray-100'
                     }`}
-                    onClick={() => setSelectedTerminalId(terminal.id)}
+                    onClick={() => {
+                      console.log('[TerminalList] Selecting terminal:', terminal.id);
+                      setSelectedTerminalId(terminal.id);
+                    }}
                   >
                     <div className="flex items-center justify-between">
                       <span className="font-mono">{terminal.name || terminal.id}</span>
@@ -202,15 +226,21 @@ const TerminalList: React.FC = () => {
               </div>
             </div>
             
-            {/* Terminal Display */}
+            {/* Terminal Display - Always show if there's a selected terminal */}
             {selectedTerminalId && (
               <div className="flex-1 min-h-0">
-                <BackendConnectedTerminal 
-                  terminalId={selectedTerminalId}
-                  className="h-full"
-                  onTerminalOutput={(output) => console.log('Terminal output:', output)}
-                  onTerminalExit={(code) => console.log('Terminal exit:', code)}
-                />
+                <div className="h-full border border-red-500 bg-yellow-100 p-2">
+                  <div className="text-xs text-red-600 mb-2">
+                    [DEBUG] Terminal container - selectedTerminalId: {selectedTerminalId}
+                  </div>
+                  <BackendConnectedTerminal 
+                    terminalId={selectedTerminalId}
+                    className="h-full"
+                    onTerminalReady={(terminal) => console.log('[TerminalList] Terminal ready:', terminal)}
+                    onTerminalOutput={(output) => console.log('[TerminalList] Terminal output:', output)}
+                    onTerminalExit={(code) => console.log('[TerminalList] Terminal exit:', code)}
+                  />
+                </div>
               </div>
             )}
           </>
@@ -236,6 +266,57 @@ export const IntegratedHome: React.FC = () => {
   } = useBackendState();
   
   const { isConnected } = useBackendContext();
+  
+  // Debug logging for terminal state
+  console.log('[IntegratedHome] Terminal state:', { 
+    terminalsCount: terminals.length,
+    terminals: terminals.map(t => ({ id: t.id, name: t.name, status: t.status })),
+    isConnected
+  });
+  
+  // Debug: log the first terminal details
+  if (terminals.length > 0) {
+    console.log('[IntegratedHome] First terminal details:', {
+      id: terminals[0].id,
+      name: terminals[0].name,
+      status: terminals[0].status,
+      type: typeof terminals[0].id
+    });
+  }
+  
+  // Auto-create terminal on load - but only ONCE
+  useEffect(() => {
+    const createInitialTerminal = async () => {
+      if (isConnected && terminals.length === 0) {
+        console.log('[IntegratedHome] Auto-creating initial terminal...');
+        try {
+          const newTerminal = await actions.createTerminal('Auto Terminal');
+          console.log('[IntegratedHome] Initial terminal created successfully:', newTerminal);
+          console.log('[IntegratedHome] Terminal ID:', newTerminal?.id);
+          
+          // Start the terminal to transition it to running state
+          if (newTerminal && newTerminal.id) {
+            console.log('[IntegratedHome] Starting terminal...');
+            await actions.startTerminal(newTerminal.id);
+            console.log('[IntegratedHome] Terminal started successfully');
+          } else {
+            console.error('[IntegratedHome] Terminal creation failed - no ID returned');
+          }
+        } catch (error) {
+          console.error('[IntegratedHome] Failed to create/start initial terminal:', error);
+          console.error('[IntegratedHome] Error details:', {
+            message: error.message,
+            stack: error.stack,
+            name: error.name
+          });
+        }
+      }
+    };
+    
+    // Add a small delay to prevent race conditions
+    const timeoutId = setTimeout(createInitialTerminal, 100);
+    return () => clearTimeout(timeoutId);
+  }, [isConnected, terminals.length, actions]);
   
   // Initialize workspace state from backend
   useEffect(() => {
@@ -298,9 +379,11 @@ export const IntegratedHome: React.FC = () => {
   // Terminal operations
   const handleTerminalCreate = useCallback(async (name?: string) => {
     try {
-      await actions.createTerminal(name);
+      const newTerminal = await actions.createTerminal(name);
+      // Start the terminal to transition it to running state
+      await actions.startTerminal(newTerminal.id);
     } catch (error) {
-      console.error('Failed to create terminal:', error);
+      console.error('Failed to create/start terminal:', error);
     }
   }, [actions]);
   
@@ -314,99 +397,113 @@ export const IntegratedHome: React.FC = () => {
   
   return (
     <div className={`integrated-home ${theme} h-screen flex flex-col`}>
-      <header className="bg-gray-800 text-white p-4">
+      <header className="bg-gray-800 text-white p-2">
         <div className="flex justify-between items-center">
-          <h1 className="text-xl font-bold">ICUI-ICPY Integration Test</h1>
+          <h1 className="text-xl font-bold">Terminal Integration Test</h1>
           <ConnectionStatus />
         </div>
       </header>
       
       <main className="flex-1 overflow-hidden flex">
-        <div className="w-1/3 bg-gray-100 border-r flex flex-col">
-          <div className="h-1/2 border-b">
+        {/* Left Panel - Controls */}
+        <div className="w-1/4 bg-gray-100 border-r flex flex-col">
+          <div className="h-1/3 border-b">
             <BackendConnectedExplorer 
               className="h-full"
               onFileSelect={(file) => console.log('File selected:', file)}
             />
           </div>
-          <div className="h-1/2">
+          <div className="h-2/3">
             <TerminalList />
           </div>
         </div>
         
+        {/* Right Panel - Main Terminal Display */}
         <div className="flex-1 flex flex-col">
-          {/* Main Content Area */}
-          <div className="flex-1 p-4 overflow-auto">
-            <div className="mb-4">
-              <h2 className="text-lg font-semibold mb-2">Integration Status</h2>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <span className="font-medium">Connection:</span> {isConnected ? 'Connected' : 'Disconnected'}
-                </div>
-                <div>
-                  <span className="font-medium">Files:</span> {files.length}
-                </div>
-                <div>
-                  <span className="font-medium">Terminals:</span> {terminals.length}
-                </div>
-                <div>
-                  <span className="font-medium">Workspace:</span> {workspaceState?.name || 'Default'}
-                </div>
+          {/* Status Bar */}
+          <div className="p-2 bg-blue-50 border-b">
+            <div className="flex justify-between items-center text-sm">
+              <div className="flex space-x-4">
+                <span><strong>Connection:</strong> {isConnected ? 'Connected' : 'Disconnected'}</span>
+                <span><strong>Files:</strong> {files.length}</span>
+                <span><strong>Terminals:</strong> {terminals.length}</span>
+                <span><strong>Workspace:</strong> {workspaceState?.name || 'Default'}</span>
+              </div>
+              <div className="text-xs text-gray-600">
+                Testing URL: http://192.168.2.195:8000/integration
               </div>
             </div>
-            
-            <div className="mb-4">
-              <h3 className="text-md font-medium mb-2">Theme Control</h3>
-              <select 
-                value={theme} 
-                onChange={(e) => handleThemeChange(e.target.value)}
-                className="px-3 py-1 border rounded"
-              >
-                <option value="light">Light</option>
-                <option value="dark">Dark</option>
-                <option value="blue">Blue</option>
-                <option value="green">Green</option>
-                <option value="purple">Purple</option>
-              </select>
-            </div>
-            
-            <div className="mb-4">
-              <h3 className="text-md font-medium mb-2">File Operations</h3>
-              <div className="space-y-2">
-                <button
-                  onClick={() => handleFileCreate('example.js', 'console.log("Hello World!");')}
-                  disabled={!isConnected}
-                  className="block px-3 py-1 rounded bg-blue-500 hover:bg-blue-600 text-white disabled:opacity-50"
-                >
-                  Create Example File
-                </button>
-                <button
-                  onClick={() => handleFileCreate('test.py', 'print("Hello from Python!")')}
-                  disabled={!isConnected}
-                  className="block px-3 py-1 rounded bg-green-500 hover:bg-green-600 text-white disabled:opacity-50"
-                >
-                  Create Python File
-                </button>
+          </div>
+          
+          {/* Main Terminal Area */}
+          <div className="flex-1 flex flex-col">
+            {terminals.length === 0 ? (
+              <div className="flex-1 flex items-center justify-center bg-gray-50">
+                <div className="text-center">
+                  <div className="text-gray-500 mb-4">No terminals available</div>
+                  <button
+                    onClick={() => handleTerminalCreate('Main Terminal')}
+                    disabled={!isConnected}
+                    className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
+                  >
+                    Create Terminal
+                  </button>
+                </div>
               </div>
-            </div>
-            
-            <div>
-              <h3 className="text-md font-medium mb-2">Terminal Operations</h3>
-              <div className="space-y-2">
-                <button
-                  onClick={() => handleTerminalCreate('Development Terminal')}
-                  disabled={!isConnected}
-                  className="block px-3 py-1 rounded bg-purple-500 hover:bg-purple-600 text-white disabled:opacity-50"
+            ) : (
+              <div className="flex-1 min-h-0">
+                <div className="h-full border-2 border-green-500 bg-green-50 p-1">
+                  <div className="text-xs text-green-600 mb-1 font-bold">
+                    [DEBUG] MAIN TERMINAL DISPLAY - {terminals.length} terminal(s) available
+                  </div>
+                  <BackendConnectedTerminal 
+                    terminalId={terminals[0].id}
+                    className="h-full"
+                    onTerminalReady={(terminal) => console.log('[IntegratedHome] Main terminal ready:', terminal)}
+                    onTerminalOutput={(output) => console.log('[IntegratedHome] Main terminal output:', output)}
+                    onTerminalExit={(code) => console.log('[IntegratedHome] Main terminal exit:', code)}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+          
+          {/* Control Panel */}
+          <div className="p-4 bg-gray-50 border-t">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <h3 className="text-md font-medium mb-2">Theme Control</h3>
+                <select 
+                  value={theme} 
+                  onChange={(e) => handleThemeChange(e.target.value)}
+                  className="px-3 py-1 border rounded"
                 >
-                  Create Development Terminal
-                </button>
-                <button
-                  onClick={() => handleTerminalCreate('Test Terminal')}
-                  disabled={!isConnected}
-                  className="block px-3 py-1 rounded bg-orange-500 hover:bg-orange-600 text-white disabled:opacity-50"
-                >
-                  Create Test Terminal
-                </button>
+                  <option value="light">Light</option>
+                  <option value="dark">Dark</option>
+                  <option value="blue">Blue</option>
+                  <option value="green">Green</option>
+                  <option value="purple">Purple</option>
+                </select>
+              </div>
+              
+              <div>
+                <h3 className="text-md font-medium mb-2">Quick Actions</h3>
+                <div className="space-y-2">
+                  <button
+                    onClick={() => handleTerminalCreate('Additional Terminal')}
+                    disabled={!isConnected}
+                    className="block w-full px-3 py-1 text-sm rounded bg-purple-500 hover:bg-purple-600 text-white disabled:opacity-50"
+                  >
+                    Create Additional Terminal
+                  </button>
+                  <button
+                    onClick={() => handleFileCreate('test.py', 'print("Hello from Python!")')}
+                    disabled={!isConnected}
+                    className="block w-full px-3 py-1 text-sm rounded bg-green-500 hover:bg-green-600 text-white disabled:opacity-50"
+                  >
+                    Create Test File
+                  </button>
+                </div>
               </div>
             </div>
           </div>

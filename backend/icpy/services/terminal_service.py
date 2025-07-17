@@ -143,8 +143,8 @@ class TerminalService:
         
         # Configuration
         self.max_sessions = 100
-        self.session_timeout = 3600  # 1 hour
-        self.cleanup_interval = 300  # 5 minutes
+        self.session_timeout = 600  # Reduce session timeout to 10 minutes
+        self.cleanup_interval = 30  # Reduce cleanup interval to 30 seconds
         
         # Default shell paths
         self.shell_paths = ['/bin/bash', '/usr/bin/bash', '/usr/local/bin/bash']
@@ -217,7 +217,9 @@ class TerminalService:
         Raises:
             Exception: If session creation fails
         """
+        logger.debug(f"[DEBUG] Attempting to create session: name={name}, config={config}")
         if len(self.sessions) >= self.max_sessions:
+            logger.error(f"[DEBUG] Maximum number of sessions ({self.max_sessions}) reached")
             raise Exception(f"Maximum number of sessions ({self.max_sessions}) reached")
         
         # Generate session ID and name
@@ -249,6 +251,7 @@ class TerminalService:
             'timestamp': time.time()
         })
         
+        logger.debug(f"[DEBUG] Session created successfully: session_id={session_id}, name={name}")
         logger.info(f"Terminal session created: {session_id} (name: {name})")
         return session_id
 

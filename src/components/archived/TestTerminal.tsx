@@ -15,7 +15,7 @@ const TestTerminal: React.FC = () => {
     if (wsBaseUrl) {
       wsUrl = `${wsBaseUrl}/ws/terminal/${terminalId}`;
     } else if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-      wsUrl = `${protocol}//localhost:8000/ws/terminal/${terminalId}`;
+      wsUrl = `${protocol}//192.168.2.195:8000/ws/terminal/${terminalId}`;
     } else {
       wsUrl = `${protocol}//${window.location.hostname}:8000/ws/terminal/${terminalId}`;
     }

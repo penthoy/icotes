@@ -85,3 +85,6 @@ celerybeat.pid
 
 # SageMath parsed files
 *.sage.py
+
+# Ignore Python test environment
+backend/test_env/

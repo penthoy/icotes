@@ -116,12 +116,13 @@ fi
 
 # Set default values if not provided
 # Support both BACKEND_PORT and PORT environment variables (for platform flexibility)
-export BACKEND_HOST=${BACKEND_HOST:-0.0.0.0}
+export BACKEND_HOST=${BACKEND_HOST:-${SITE_URL:-0.0.0.0}}
 export BACKEND_PORT=${BACKEND_PORT:-${PORT:-8000}}
 export WORKERS=${WORKERS:-1}
 
 echo "🔧 Environment Configuration:"
 echo "   NODE_ENV: $NODE_ENV"
+echo "   SITE_URL: $SITE_URL"
 echo "   BACKEND_HOST: $BACKEND_HOST"
 echo "   BACKEND_PORT: $BACKEND_PORT"
 echo "   WORKERS: $WORKERS"

@@ -511,7 +511,14 @@ class RestAPI:
                     name=getattr(request, 'name', None),
                     config=config
                 )
-                return SuccessResponse(data={'terminal_id': terminal_id}, message="Terminal created successfully")
+                
+                # Get the full terminal object after creation
+                terminal = await self.terminal_service.get_session(terminal_id)
+                if not terminal:
+                    raise HTTPException(status_code=500, detail="Failed to retrieve created terminal")
+                
+                logger.info(f"[DEBUG] Created terminal: {terminal}")
+                return SuccessResponse(data=terminal, message="Terminal created successfully")
             except Exception as e:
                 logger.error(f"Error creating terminal: {e}")
                 raise HTTPException(status_code=500, detail=str(e))
@@ -528,6 +535,19 @@ class RestAPI:
                 raise
             except Exception as e:
                 logger.error(f"Error getting terminal: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+        
+        @self.app.post("/api/terminals/{terminal_id}/start")
+        async def start_terminal(terminal_id: str):
+            """Start a terminal session."""
+            try:
+                success = await self.terminal_service.start_session(terminal_id)
+                if success:
+                    return SuccessResponse(message="Terminal started successfully")
+                else:
+                    raise HTTPException(status_code=500, detail="Failed to start terminal")
+            except Exception as e:
+                logger.error(f"Error starting terminal: {e}")
                 raise HTTPException(status_code=500, detail=str(e))
         
         @self.app.post("/api/terminals/{terminal_id}/input")

@@ -18,26 +18,27 @@ export default defineConfig({
     },
   },
   server: {
-    host: process.env.FRONTEND_HOST || 'localhost',
+    host: process.env.FRONTEND_HOST || process.env.SITE_URL || '0.0.0.0',
     port: parseInt(process.env.FRONTEND_PORT || '5173'),
     // @ts-ignore
     allowedHosts: true,
     proxy: {
       '/ws': {
-        target: process.env.VITE_WS_URL || 'ws://localhost:8000',
+        target: process.env.VITE_WS_URL || `ws://${process.env.SITE_URL || '0.0.0.0'}:${process.env.PORT || '8000'}`,
         ws: true,
         changeOrigin: true,
+        secure: false,
       },
       '/api': {
-        target: process.env.VITE_API_URL || 'http://localhost:8000',
+        target: process.env.VITE_API_URL || `http://${process.env.SITE_URL || '0.0.0.0'}:${process.env.PORT || '8000'}`,
         changeOrigin: true,
       },
       '/execute': {
-        target: process.env.VITE_API_URL || 'http://localhost:8000',
+        target: process.env.VITE_API_URL || `http://${process.env.SITE_URL || '0.0.0.0'}:${process.env.PORT || '8000'}`,
         changeOrigin: true,
       },
       '/health': {
-        target: process.env.VITE_API_URL || 'http://localhost:8000',
+        target: process.env.VITE_API_URL || `http://${process.env.SITE_URL || '0.0.0.0'}:${process.env.PORT || '8000'}`,
         changeOrigin: true,
       },
     },

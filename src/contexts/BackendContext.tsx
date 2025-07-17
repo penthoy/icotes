@@ -13,15 +13,30 @@ import type {
 } from '../types/backend-types';
 
 // Backend configuration
-const defaultBackendConfig: BackendConfig = {
-  websocket_url: process.env.VITE_WEBSOCKET_URL || 'ws://192.168.2.195:8000/ws/enhanced',
-  http_base_url: process.env.VITE_API_URL || 'http://192.168.2.195:8000',
-  request_timeout: 10000,
-  reconnect_attempts: 5,
-  reconnect_delay: 1000,
-  heartbeat_interval: 30000,
-  enable_logging: process.env.NODE_ENV === 'development'
+const getDefaultBackendConfig = (): BackendConfig => {
+  // Use Vite environment variables if available, otherwise construct dynamically
+  const websocketUrl = import.meta.env.VITE_WS_URL || 
+    (typeof window !== 'undefined' 
+      ? `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/enhanced`
+      : 'ws://localhost:8000/ws/enhanced');
+
+  const httpBaseUrl = import.meta.env.VITE_API_URL || 
+    (typeof window !== 'undefined' 
+      ? `${window.location.protocol}//${window.location.host}`
+      : 'http://localhost:8000');
+
+  return {
+    websocket_url: websocketUrl,
+    http_base_url: httpBaseUrl,
+    request_timeout: 10000,
+    reconnect_attempts: 5,
+    reconnect_delay: 1000,
+    heartbeat_interval: 30000,
+    enable_logging: import.meta.env.DEV
+  };
 };
+
+const defaultBackendConfig = getDefaultBackendConfig();
 
 export interface BackendContextType {
   // Services

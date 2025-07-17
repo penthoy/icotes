@@ -440,9 +440,43 @@ frontend_url = os.environ.get("FRONTEND_URL")
 if frontend_url:
     allowed_origins.append(frontend_url)
 
+# Add SITE_URL-based origins for both single-port and dual-port setups
+site_url = os.environ.get("SITE_URL")
+if site_url:
+    # Single-port setup (backend serves frontend)
+    backend_port = os.environ.get("BACKEND_PORT") or os.environ.get("PORT") or "8000"
+    allowed_origins.append(f"http://{site_url}:{backend_port}")
+    allowed_origins.append(f"https://{site_url}:{backend_port}")
+    
+    # Dual-port setup (separate frontend)
+    frontend_port = os.environ.get("FRONTEND_PORT") or "5173"
+    allowed_origins.append(f"http://{site_url}:{frontend_port}")
+    allowed_origins.append(f"https://{site_url}:{frontend_port}")
+
+# For development, allow localhost and common development ports
+if os.environ.get("NODE_ENV") == "development":
+    allowed_origins.extend([
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ])
+    
+    # Add SITE_URL with common development ports
+    if site_url:
+        for port in ["8000", "3000", "5173"]:
+            allowed_origins.append(f"http://{site_url}:{port}")
+            allowed_origins.append(f"https://{site_url}:{port}")
+
 # For production, allow all origins if not specified (Coolify handles this)
 if os.environ.get("NODE_ENV") == "production" and not allowed_origins:
     allowed_origins = ["*"]
+
+# Remove duplicates and log
+allowed_origins = list(set(allowed_origins))
+logger.info(f"CORS allowed origins: {allowed_origins}")
 
 # Add CORS middleware
 app.add_middleware(
@@ -557,6 +591,183 @@ async def execute_code(request: CodeExecutionRequest):
             execution_time=0.0
         )
 
+# Terminal API endpoints
+@app.post("/api/terminals")
+async def create_terminal(request: Dict[str, Any]):
+    """Create a new terminal session."""
+    try:
+        if not TERMINAL_AVAILABLE:
+            raise HTTPException(status_code=503, detail="Terminal service not available")
+        
+        terminal_id = f"{os.urandom(8).hex()}-{os.urandom(4).hex()}-{os.urandom(4).hex()}-{os.urandom(4).hex()}-{os.urandom(8).hex()}"
+        name = request.get("name", f"Terminal {len(terminal_manager.terminal_connections) + 1}")
+        
+        # Create terminal entry
+        terminal_data = {
+            "id": terminal_id,
+            "name": name,
+            "config": {
+                "shell": "/bin/bash",
+                "term": "xterm-256color",
+                "cols": 80,
+                "rows": 24,
+                "env": {},
+                "cwd": os.path.expanduser("~"),
+                "startup_script": None
+            },
+            "state": "created",
+            "created_at": asyncio.get_event_loop().time(),
+            "last_activity": asyncio.get_event_loop().time(),
+            "pid": None,
+            "has_process": False
+        }
+        
+        # Store terminal info
+        terminal_manager.terminal_connections[terminal_id] = {
+            "data": terminal_data,
+            "websocket": None,
+            "master_fd": None,
+            "process": None,
+            "read_task": None,
+            "write_task": None
+        }
+        
+        return {
+            "success": True,
+            "data": terminal_data,
+            "message": "Terminal created successfully",
+            "timestamp": asyncio.get_event_loop().time()
+        }
+    except Exception as e:
+        logger.error(f"Error creating terminal: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create terminal: {str(e)}")
+
+@app.get("/api/terminals")
+async def get_terminals():
+    """Get all terminal sessions."""
+    try:
+        if not TERMINAL_AVAILABLE:
+            raise HTTPException(status_code=503, detail="Terminal service not available")
+        
+        terminals = []
+        for terminal_id, connection in terminal_manager.terminal_connections.items():
+            terminals.append(connection["data"])
+        
+        return {
+            "success": True,
+            "data": terminals,
+            "message": None,
+            "timestamp": asyncio.get_event_loop().time()
+        }
+    except Exception as e:
+        logger.error(f"Error getting terminals: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get terminals: {str(e)}")
+
+@app.get("/api/terminals/{terminal_id}")
+async def get_terminal(terminal_id: str):
+    """Get a specific terminal session."""
+    try:
+        if not TERMINAL_AVAILABLE:
+            raise HTTPException(status_code=503, detail="Terminal service not available")
+        
+        if terminal_id not in terminal_manager.terminal_connections:
+            raise HTTPException(status_code=404, detail="Terminal not found")
+        
+        connection = terminal_manager.terminal_connections[terminal_id]
+        return {
+            "success": True,
+            "data": connection["data"],
+            "message": None,
+            "timestamp": asyncio.get_event_loop().time()
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting terminal {terminal_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get terminal: {str(e)}")
+
+@app.post("/api/terminals/{terminal_id}/start")
+async def start_terminal(terminal_id: str):
+    """Start a terminal session."""
+    try:
+        if not TERMINAL_AVAILABLE:
+            raise HTTPException(status_code=503, detail="Terminal service not available")
+        
+        if terminal_id not in terminal_manager.terminal_connections:
+            raise HTTPException(status_code=404, detail="Terminal not found")
+        
+        connection = terminal_manager.terminal_connections[terminal_id]
+        
+        # Update terminal state
+        connection["data"]["state"] = "running"
+        connection["data"]["last_activity"] = asyncio.get_event_loop().time()
+        
+        return {
+            "success": True,
+            "data": None,
+            "message": "Terminal started successfully",
+            "timestamp": asyncio.get_event_loop().time()
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error starting terminal {terminal_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to start terminal: {str(e)}")
+
+@app.delete("/api/terminals/{terminal_id}")
+async def delete_terminal(terminal_id: str):
+    """Delete a terminal session."""
+    try:
+        if not TERMINAL_AVAILABLE:
+            raise HTTPException(status_code=503, detail="Terminal service not available")
+        
+        if terminal_id not in terminal_manager.terminal_connections:
+            raise HTTPException(status_code=404, detail="Terminal not found")
+        
+        # Clean up terminal connection
+        terminal_manager.disconnect_terminal(terminal_id)
+        
+        return {
+            "success": True,
+            "data": None,
+            "message": "Terminal deleted successfully",
+            "timestamp": asyncio.get_event_loop().time()
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting terminal {terminal_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete terminal: {str(e)}")
+
+@app.post("/api/terminals/{terminal_id}/input")
+async def send_terminal_input(terminal_id: str, request: Dict[str, Any]):
+    """Send input to a terminal session."""
+    try:
+        if not TERMINAL_AVAILABLE:
+            raise HTTPException(status_code=503, detail="Terminal service not available")
+        
+        if terminal_id not in terminal_manager.terminal_connections:
+            raise HTTPException(status_code=404, detail="Terminal not found")
+        
+        input_data = request.get("input", "")
+        connection = terminal_manager.terminal_connections[terminal_id]
+        
+        # Send input to terminal if WebSocket is connected
+        if connection.get("websocket") and connection["websocket"].client_state.name == "CONNECTED":
+            await connection["websocket"].send_text(input_data)
+        
+        return {
+            "success": True,
+            "data": None,
+            "message": "Input sent successfully",
+            "timestamp": asyncio.get_event_loop().time()
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error sending input to terminal {terminal_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to send input: {str(e)}")
+
 # Enhanced WebSocket endpoints
 @app.websocket("/ws/enhanced")
 async def enhanced_websocket_endpoint(websocket: WebSocket):
@@ -590,49 +801,38 @@ async def enhanced_websocket_endpoint(websocket: WebSocket):
 @app.websocket("/ws/terminal/{terminal_id}")
 async def terminal_websocket_endpoint(websocket: WebSocket, terminal_id: str):
     """Terminal WebSocket endpoint."""
-    if not TERMINAL_AVAILABLE:
+    logger.info(f"[DEBUG] Terminal WebSocket connection attempt for terminal_id: {terminal_id}")
+    
+    if not TERMINAL_AVAILABLE or terminal_manager is None:
+        logger.error(f"[DEBUG] Terminal service not available for terminal_id: {terminal_id}")
         await websocket.close(code=1011, reason="Terminal service not available")
         return
     
     try:
-        await websocket.accept()
-        
-        # Create terminal connection
-        conn = terminal_manager.create_terminal_connection(terminal_id)
+        # Connect terminal using TerminalManager
+        master_fd, proc = await terminal_manager.connect_terminal(websocket, terminal_id)
+        logger.info(f"[DEBUG] Terminal connected for terminal_id: {terminal_id}")
         
         # Handle WebSocket communication
         async def read_from_terminal():
-            while True:
-                try:
-                    data = await conn['terminal'].read()
-                    if data:
-                        await websocket.send_text(data)
-                except Exception as e:
-                    logger.error(f"Error reading from terminal: {e}")
-                    break
+            logger.info(f"[DEBUG] Starting read_from_terminal task for terminal_id: {terminal_id}")
+            if terminal_manager:
+                await terminal_manager.read_from_terminal(websocket, master_fd)
         
         async def write_to_terminal():
-            while True:
-                try:
-                    data = await websocket.receive_text()
-                    await conn['terminal'].write(data)
-                except WebSocketDisconnect:
-                    break
-                except Exception as e:
-                    logger.error(f"Error writing to terminal: {e}")
-                    break
-        
-        # Store tasks in connection
-        conn['read_task'] = asyncio.create_task(read_from_terminal())
-        conn['write_task'] = asyncio.create_task(write_to_terminal())
+            logger.info(f"[DEBUG] Starting write_to_terminal task for terminal_id: {terminal_id}")
+            if terminal_manager:
+                await terminal_manager.write_to_terminal(websocket, master_fd)
         
         # Wait for tasks to complete
-        await asyncio.gather(conn['read_task'], conn['write_task'], return_exceptions=True)
+        await asyncio.gather(read_from_terminal(), write_to_terminal(), return_exceptions=True)
+        logger.info(f"[DEBUG] Terminal tasks completed for terminal_id: {terminal_id}")
         
     except Exception as e:
-        logger.error(f"Terminal WebSocket error: {e}")
+        logger.error(f"[DEBUG] Terminal WebSocket error for terminal_id {terminal_id}: {e}")
     finally:
         if terminal_manager:
+            logger.info(f"[DEBUG] Disconnecting terminal {terminal_id}")
             terminal_manager.disconnect_terminal(terminal_id)
 
 # Legacy WebSocket endpoint for backwards compatibility
@@ -727,8 +927,15 @@ async def serve_react_app_catchall(path: str):
 def parse_arguments():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(description="icotes Backend Server")
-    parser.add_argument("--host", default="0.0.0.0", help="Host to bind to")
-    parser.add_argument("--port", type=int, default=8000, help="Port to bind to")
+    
+    # Host configuration priority: BACKEND_HOST -> SITE_URL -> HOST -> default
+    default_host = os.getenv('BACKEND_HOST') or os.getenv('SITE_URL') or os.getenv('HOST') or '0.0.0.0'
+    parser.add_argument("--host", default=default_host, help="Host to bind to")
+    
+    # Port configuration priority: BACKEND_PORT -> PORT -> default
+    default_port = int(os.getenv('BACKEND_PORT') or os.getenv('PORT') or '8000')
+    parser.add_argument("--port", type=int, default=default_port, help="Port to bind to")
+    
     parser.add_argument("--stdin-to-clipboard", action="store_true", 
                        help="Read stdin and copy to clipboard")
     parser.add_argument("--clipboard-to-stdout", action="store_true",

@@ -239,37 +239,66 @@ const BackendConnectedExplorer: React.FC<BackendConnectedExplorerProps> = ({
 
 **✅ Phase 2.1 Complete**: File Explorer successfully integrated with ICPY backend filesystem service.
 
-#### Phase 2.2: Terminal Integration
+#### Phase 2.2: Terminal Integration ✅ COMPLETED
 **Target**: Connect `ICUIEnhancedTerminalPanel` to `terminal_service.py`
 
-**Implementation Steps**:
-1. **Terminal Session Management**: Replace mock terminal with real PTY sessions
-2. **Bidirectional Communication**: Implement input/output through WebSocket
-3. **Terminal Lifecycle**: Handle terminal creation, destruction, and resizing
-4. **Multiple Terminal Support**: Support multiple concurrent terminal sessions
+**Implementation Status**: ✅ Complete
+- [x] Created BackendConnectedTerminal component
+- [x] Integrated with useBackendState hook for terminal operations
+- [x] Connected to backend terminal service via WebSocket
+- [x] Implemented bidirectional terminal I/O through WebSocket
+- [x] Terminal lifecycle management (create, destroy, resize)
+- [x] Multiple terminal support with session management
+- [x] Real-time terminal output via WebSocket events
+- [x] Terminal connection status monitoring
+- [x] Error handling and recovery mechanisms
+- [x] Terminal theme integration (dark/light mode)
+- [x] Integrated into IntegratedHome component for testing
 
-**Key Changes**:
+**Implementation Details**:
 ```typescript
-// Terminal session management
-const createTerminal = useCallback(async (name?: string) => {
-  try {
-    const terminal = await backendClient.createTerminal({ name });
-    setTerminals(prev => [...prev, terminal]);
-    return terminal;
-  } catch (error) {
-    console.error('Failed to create terminal:', error);
+// BackendConnectedTerminal.tsx
+const BackendConnectedTerminal = forwardRef<BackendConnectedTerminalRef, BackendConnectedTerminalProps>(
+  ({ terminalId, onTerminalReady, onTerminalOutput, onTerminalExit, className = '' }, ref) => {
+    const { actions, terminals } = useBackendState();
+    const { isConnected } = useBackendContext();
+    
+    // Set up terminal event handlers
+    terminalInstance.onData((data) => {
+      if (currentTerminalId) {
+        actions.sendTerminalInput(currentTerminalId, data);
+      }
+    });
+    
+    // Subscribe to terminal output via WebSocket
+    wsService.current.on('terminal.output', (data: any) => {
+      if (data.terminalId === session.id && terminal.current) {
+        terminal.current.write(data.data);
+        onTerminalOutput?.(data.data);
+      }
+    });
   }
-}, []);
-
-// Terminal I/O handling
-const handleTerminalInput = useCallback((terminalId: string, input: string) => {
-  websocketService.send({
-    type: 'terminal.input',
-    terminalId,
-    data: input
-  });
-}, []);
+);
 ```
+
+**Key Features Implemented**:
+- **Real PTY Sessions**: Backend terminal sessions via terminal service
+- **Bidirectional Communication**: Input/output through WebSocket
+- **Terminal Lifecycle**: Create, destroy, resize operations
+- **Multiple Terminal Support**: Support for concurrent terminal sessions
+- **Connection Status**: Visual indication of backend connection state
+- **Error Handling**: Proper error states and user feedback
+- **Theme Integration**: Dark/light mode support for terminal themes
+- **Session Management**: Terminal session tracking and selection
+
+**Files Created**:
+- `tests/integration/components/BackendConnectedTerminal.tsx` - Backend-connected terminal component
+- Enhanced `tests/integration/components/IntegratedHome.tsx` - Integrated terminal list with selection
+- Updated `src/hooks/useBackendState.ts` - Terminal operations (already implemented)
+
+**WebSocket Integration**: Successfully connected to ICPY backend terminal service with proper event handling.
+
+**✅ Phase 2.2 Complete**: Terminal successfully integrated with ICPY backend terminal service.
 
 #### Phase 2.3: Editor Integration
 **Target**: Connect `ICUIEnhancedEditorPanel` to backend file operations
@@ -298,6 +327,17 @@ const handleFileRun = useCallback(async (fileId: string, content: string, langua
   try {
     const result = await backendClient.executeCode({
       fileId,
+      content,
+      language
+    });
+    
+    // Display result in terminal or output panel
+    displayExecutionResult(result);
+  } catch (error) {
+    console.error('Code execution failed:', error);
+  }
+}, []);
+```
       content,
       language
     });

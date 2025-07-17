@@ -25,6 +25,59 @@ sudo ./deploy-production.sh --domain your-domain.com --ssl-email your-email@doma
 2. Set environment variables (see below)
 3. Deploy (auto-detected by Nixpacks)
 
+## Deployment Architecture
+
+### Single-Port Setup (Default)
+The application runs on **one port** with the backend serving both the API and the built frontend:
+- **Default Port**: 8000
+- **Frontend**: Served as static files from `/dist`
+- **Backend API**: Available at `/api/*`
+- **WebSocket**: Available at `/ws/*`
+- **Health Check**: Available at `/health`
+
+**Advantages:**
+- Simplified deployment (one port to manage)
+- No CORS issues (same origin)
+- Better for production and containers
+- Easier firewall configuration
+
+**Usage:**
+```bash
+# Single-port production
+./start.sh
+
+# Single-port development
+./start-dev.sh
+```
+
+### Dual-Port Setup (Development/Scaling)
+The application runs on **two ports** with separate frontend and backend servers:
+- **Backend Port**: 8000 (API and WebSocket)
+- **Frontend Port**: 5173 (Vite development server)
+- **Cross-Origin**: Frontend communicates with backend via CORS
+
+**Advantages:**
+- Hot reload during development
+- Better for frontend development
+- Can scale frontend and backend independently
+- Development-friendly
+
+**Usage:**
+```bash
+# Start backend (port 8000)
+cd backend && python3 main.py
+
+# Start frontend (port 5173) - in another terminal
+npm run dev
+```
+
+### Architecture Flexibility
+The backend is designed to support both setups seamlessly:
+- **Single-port**: Backend serves static files when `dist/` exists
+- **Dual-port**: Backend runs API-only when no `dist/` directory found
+- **Dynamic URLs**: Frontend automatically detects the current host/port
+- **CORS**: Automatically configured for both setups based on environment
+
 ## Deployment Options
 
 ### 1. Simple Production Start (`start.sh`)
@@ -113,16 +166,45 @@ docker run -e BACKEND_PORT=3000 -p 3000:3000 your-app
 
 ### Required Variables
 ```bash
-NODE_ENV=production
-BACKEND_HOST=0.0.0.0     # For containers, 127.0.0.1 for nginx
-BACKEND_PORT=8000
+# Primary Configuration
+SITE_URL=192.168.2.195        # Your server IP or domain
+NODE_ENV=production           # or development
+
+# Single-Port Setup (Default)
+PORT=8000                     # Backend port (serves both frontend and API)
+BACKEND_HOST=192.168.2.195    # Backend host (defaults to SITE_URL)
+BACKEND_PORT=8000             # Backend port (defaults to PORT)
 ```
+
+### Dual-Port Setup (Development/Scaling)
+```bash
+# Backend Configuration
+BACKEND_HOST=192.168.2.195    # Backend host
+BACKEND_PORT=8000             # Backend API port
+
+# Frontend Configuration  
+FRONTEND_HOST=192.168.2.195   # Frontend host
+FRONTEND_PORT=5173            # Frontend development server port
+FRONTEND_URL=http://192.168.2.195:5173
+
+# API Configuration (Used by Frontend)
+VITE_API_URL=http://192.168.2.195:8000
+VITE_WS_URL=ws://192.168.2.195:8000
+```
+
+### Configuration Priority
+The backend uses the following priority for configuration:
+- **Host**: `BACKEND_HOST` → `SITE_URL` → `HOST` → `0.0.0.0`
+- **Port**: `BACKEND_PORT` → `PORT` → `8000`
 
 ### Optional Variables
 ```bash
 WORKERS=2                # Number of uvicorn workers
 DEBUG=false             # Enable debug logging
 ALLOWED_ORIGINS=*       # CORS origins (comma-separated)
+FRONTEND_URL=http://...  # Explicit frontend URL for CORS
+SSL_KEYFILE=/path/to/key.pem    # SSL certificate key
+SSL_CERTFILE=/path/to/cert.pem  # SSL certificate file
 ```
 
 ## Prerequisites

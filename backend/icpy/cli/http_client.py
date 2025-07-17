@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class CliConfig:
     """Configuration for CLI operations"""
-    backend_url: str = "http://192.168.2.195:8000"
+    backend_url: str = f"http://{os.getenv('SITE_URL', '0.0.0.0')}:{os.getenv('PORT', '8000')}"
     timeout: int = 30
     retry_count: int = 3
     retry_delay: float = 1.0

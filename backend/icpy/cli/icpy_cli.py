@@ -134,8 +134,8 @@ class IcpyCLI:
         # Configuration options
         parser.add_argument(
             '--backend-url',
-            default='http://192.168.2.195:8000',
-            help='Backend server URL (default: http://192.168.2.195:8000)'
+            default=f"http://{os.getenv('SITE_URL', '0.0.0.0')}:{os.getenv('PORT', '8000')}",
+            help=f'Backend server URL (default: http://{os.getenv("SITE_URL", "0.0.0.0")}:{os.getenv("PORT", "8000")})'
         )
         
         parser.add_argument(
