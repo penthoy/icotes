@@ -1,4 +1,4 @@
 #!/bin/bash
-cd "$(dirname "$0")"
-export PYTHONPATH=.
-./venv/bin/python main.py
+cd /home/penthoy/ilaborcode/backend
+export PYTHONPATH=/home/penthoy/ilaborcode/backend
+/home/penthoy/ilaborcode/backend/venv/bin/python main.py
