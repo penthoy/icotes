@@ -710,7 +710,9 @@ class FileSystemService:
         try:
             # Create parent directories if needed
             if create_dirs:
-                os.makedirs(os.path.dirname(file_path), exist_ok=True)
+                dir_path = os.path.dirname(file_path)
+                if dir_path:  # Only create directory if path is not empty
+                    os.makedirs(dir_path, exist_ok=True)
             
             # Check if file exists for operation tracking
             file_exists = os.path.exists(file_path)

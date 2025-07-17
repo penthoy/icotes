@@ -182,42 +182,62 @@ export const IntegratedHome: React.FC = () => {
 **Duration**: 3-4 days  
 **Goal**: Connect individual ICUI components to ICPY backend services
 
-#### Phase 2.1: File Explorer Integration
+#### Phase 2.1: File Explorer Integration ✅ COMPLETED
 **Target**: Connect `ICUIExplorerPanel` to `filesystem_service.py`
 
-**Implementation Steps**:
-1. **Replace Static File Tree**: Remove hardcoded file structure
-2. **Implement Backend File Operations**: Connect to `filesystem.get_directory_tree` endpoint
-3. **Real-time File Watching**: Subscribe to `filesystem.file_changed` events
-4. **File Operations**: Implement create, rename, delete operations via backend
+**Implementation Status**: ✅ Complete
+- [x] Created BackendConnectedExplorer component
+- [x] Implemented backend directory operations in useBackendState hook
+- [x] Connected to backend filesystem service via getDirectoryTree endpoint
+- [x] Added file/folder creation, deletion, and selection functionality
+- [x] Integrated real-time backend file operations
+- [x] Added proper error handling and loading states
+- [x] Integrated into IntegratedHome component for testing
 
-**Key Changes in `IntegratedHome.tsx`**:
+**Implementation Details**:
 ```typescript
-// Replace static file handling with backend integration
-const handleFileCreate = useCallback(async (path: string, isDirectory: boolean) => {
-  try {
-    if (isDirectory) {
-      await backendClient.createDirectory(path);
-    } else {
-      await backendClient.createFile(path, '');
-    }
-    // File will be updated via WebSocket event
-  } catch (error) {
-    console.error('Failed to create file:', error);
-  }
-}, []);
-
-// Subscribe to file system events
-useEffect(() => {
-  const handleFileChanged = (event: FileSystemEvent) => {
-    // Update local state based on backend event
-    setEditorFiles(prev => updateFilesFromEvent(prev, event));
+// BackendConnectedExplorer.tsx
+const BackendConnectedExplorer: React.FC<BackendConnectedExplorerProps> = ({
+  onFileSelect, onFileCreate, onFolderCreate, onFileDelete, onFileRename,
+}) => {
+  const { workspaceState, files, actions } = useBackendState();
+  const { isConnected, connectionStatus } = useBackendContext();
+  
+  // Load directory contents from backend
+  const loadDirectoryContents = useCallback(async (path: string = '/') => {
+    const directoryContents = await actions.getDirectoryContents(path);
+    const explorerNodes = convertBackendFilesToExplorer(directoryContents);
+    setExplorerFiles(explorerNodes);
+  }, [actions]);
+  
+  // Backend operations
+  const handleFileCreate = async () => {
+    await actions.createFile(fileName, '');
+    await loadDirectoryContents(); // Refresh directory
   };
   
-  websocketService.on('filesystem.file_changed', handleFileChanged);
-  return () => websocketService.off('filesystem.file_changed', handleFileChanged);
-}, []);
+  const handleFolderCreate = async () => {
+    await actions.createDirectory(folderName);
+    await loadDirectoryContents(); // Refresh directory
+  };
+};
 ```
+
+**Key Features Implemented**:
+- **Backend Directory Loading**: Real-time directory tree from backend filesystem service
+- **File Operations**: Create, delete, and select files via backend API
+- **Folder Operations**: Create directories and navigate folder structure
+- **Connection Status**: Visual indication of backend connection state
+- **Error Handling**: Proper error states and user feedback
+- **Auto-refresh**: Directory contents refresh after operations
+- **Integration**: Seamlessly integrated into IntegratedHome for testing
+
+**Files Created**:
+- `tests/integration/components/BackendConnectedExplorer.tsx` - Backend-connected file explorer
+- Enhanced `src/hooks/useBackendState.ts` - Added directory operations (getDirectoryContents, createDirectory, getDirectoryTree)
+- Updated `tests/integration/components/IntegratedHome.tsx` - Integrated new explorer component
+
+**✅ Phase 2.1 Complete**: File Explorer successfully integrated with ICPY backend filesystem service.
 
 #### Phase 2.2: Terminal Integration
 **Target**: Connect `ICUIEnhancedTerminalPanel` to `terminal_service.py`

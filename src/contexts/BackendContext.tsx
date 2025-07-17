@@ -14,8 +14,8 @@ import type {
 
 // Backend configuration
 const defaultBackendConfig: BackendConfig = {
-  websocket_url: process.env.VITE_WEBSOCKET_URL || 'ws://localhost:8000/ws/enhanced',
-  http_base_url: process.env.VITE_API_URL || 'http://localhost:8000',
+  websocket_url: process.env.VITE_WEBSOCKET_URL || 'ws://192.168.2.195:8000/ws/enhanced',
+  http_base_url: process.env.VITE_API_URL || 'http://192.168.2.195:8000',
   request_timeout: 10000,
   reconnect_attempts: 5,
   reconnect_delay: 1000,

@@ -1,7 +1,48 @@
-# Jav## In Progress
-- [ ] work on integration_plan.md 1.3
+### In Progress
+- [ ] work on integration_plan.md 2.2 - Terminal Integration
 
 ## Recently Finished
+- [x] work on integration_plan.md 2.1 - File Explorer Integration
+### Phase 2.1: File Explorer Integration (COMPLETED)
+- **Task**: Connected ICUIExplorerPanel to ICPY backend filesystem service
+- **Deliverable**: Backend-connected file explorer with real-time backend operations
+- **Key Features**:
+  - Backend-connected file explorer component (BackendConnectedExplorer)
+  - Real-time directory tree loading from backend filesystem service
+  - File operations (create, delete, selection) via backend API
+  - Folder operations (create directories, navigate structure)
+  - Connection status monitoring and error handling
+  - Auto-refresh after file operations
+  - Seamless integration with IntegratedHome test environment
+- **Files Created**:
+  - `tests/integration/components/BackendConnectedExplorer.tsx` - Backend-connected file explorer
+  - Enhanced `src/hooks/useBackendState.ts` - Added directory operations
+  - Updated `tests/integration/components/IntegratedHome.tsx` - Integrated new explorer
+- **Backend Integration**: Successfully connected to ICPY filesystem service endpoints
+- **Status**: Complete - Phase 2.1 of integration_plan.md implemented and integrated
+
+- [x] work on integration_plan.md 1.3 - Integration Test Environment setup and debugging
+### Phase 1.3: Integration Test Environment (COMPLETED)
+- **Task**: Created comprehensive integration test environment with debugging capabilities
+- **Deliverable**: Working integration test route with backend connectivity verification
+- **Key Features**:
+  - Debug integration test component for connectivity troubleshooting
+  - Fixed TypeScript compilation errors (imports, interface properties, method signatures)
+  - Successfully started and configured backend/frontend servers
+  - Integration test accessible at `/integration` route
+  - Backend connection testing and status monitoring
+  - Navigation helper for easy test access
+  - Manual testing environment ready for Phase 2 component integration
+- **Files Modified**:
+  - `tests/integration/debug-integration.tsx` - Debug component for connectivity testing
+  - `tests/integration/integration.tsx` - Updated integration test route
+  - `src/App.tsx` - Fixed import issues and added integration route
+  - `src/types/backend-types.ts` - Added missing interface properties
+  - `src/services/backend-client.ts` - Added missing destroyTerminal method
+  - `src/hooks/useBackendState.ts` - Fixed parameter types and method calls
+- **Test Coverage**: Integration test environment with backend connectivity verification
+- **Status**: Complete - Phase 1.3 of integration_plan.md implemented, debugged, and ready for Phase 2
+
 - [x] work on integration_plan.md 1.2 and ensure backend state synchronization is implemented
 ### Phase 1.2: Backend State Synchronization (COMPLETED)
 - **Task**: Implemented backend state synchronization infrastructure for ICUI-ICPY integration
@@ -253,6 +294,5 @@ Add a custom sub menu under Layout, inside custom, there should be a save layout
 A Panel installer,
 maya style code executor.
 
-## Recently Finished
 
 

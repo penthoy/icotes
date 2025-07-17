@@ -321,6 +321,14 @@ export class WebSocketService {
         case 'pong':
           this.handlePongMessage(message.payload);
           break;
+        case 'heartbeat':
+          // Handle heartbeat messages (backend sends these)
+          this.handleHeartbeatMessage(message.payload);
+          break;
+        case 'welcome':
+          // Handle welcome messages from backend
+          this.handleWelcomeMessage(message.payload);
+          break;
         default:
           console.warn('Unknown message type:', message.type);
       }
@@ -370,9 +378,32 @@ export class WebSocketService {
    * Handle pong messages for heartbeat
    */
   private handlePongMessage(payload: any): void {
-    if (payload.timestamp === this.lastPingTime) {
+    // Check if payload and timestamp exist before accessing
+    if (payload && payload.timestamp && payload.timestamp === this.lastPingTime) {
       this.statistics.latency = Date.now() - this.lastPingTime;
     }
+  }
+
+  /**
+   * Handle heartbeat messages from backend
+   */
+  private handleHeartbeatMessage(payload: any): void {
+    // Backend sends heartbeat messages, we can respond with pong
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.send({
+        type: 'pong',
+        payload: { timestamp: Date.now() }
+      });
+    }
+  }
+
+  /**
+   * Handle welcome messages from backend
+   */
+  private handleWelcomeMessage(payload: any): void {
+    // Backend sends welcome message on connection
+    console.log('Received welcome message from backend:', payload);
+    this.emit('welcome', payload);
   }
 
   /**
@@ -449,8 +480,8 @@ export class WebSocketService {
 
 // Default configuration
 const defaultConfig: BackendConfig = {
-  websocket_url: 'ws://localhost:8000/ws',
-  http_base_url: 'http://localhost:8000',
+  websocket_url: 'ws://192.168.2.195:8000/ws/enhanced',
+  http_base_url: 'http://192.168.2.195:8000',
   reconnect_attempts: 5,
   reconnect_delay: 1000,
   request_timeout: 10000,

@@ -408,16 +408,18 @@ class RestAPI:
         @self.app.post("/api/files")
         async def create_file(request: FileOperationRequest):
             """Create or update file."""
+            import traceback
             try:
+                logger.error(f"[DEBUG] Incoming create_file request: path={request.path}, content_len={len(request.content or '')}, encoding={request.encoding}, create_dirs={request.create_dirs}")
                 await self.filesystem_service.write_file(
-                    path=request.path,
+                    file_path=request.path,
                     content=request.content or "",
                     encoding=request.encoding,
                     create_dirs=request.create_dirs
                 )
                 return SuccessResponse(message="File created successfully")
             except Exception as e:
-                logger.error(f"Error creating file: {e}")
+                logger.error(f"[DEBUG] Error creating file: {e}\n{traceback.format_exc()}")
                 raise HTTPException(status_code=500, detail=str(e))
         
         @self.app.put("/api/files")

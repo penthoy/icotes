@@ -10,19 +10,14 @@ import { IntegratedHome } from './components/IntegratedHome';
 import DebugIntegration from './debug-integration';
 
 const Integration: React.FC = () => {
-  // Use debug component for now to isolate the issue
+  // Switch back to full integration test now that debug test worked
   return (
-    <div style={{ padding: '20px' }}>
-      <h1>Integration Test</h1>
-      <DebugIntegration />
-      
-      {/* Uncomment when debug passes */}
-      {/* 
-      <BackendContextProvider>
+    <BackendContextProvider>
+      <div style={{ padding: '20px' }}>
+        <h1>Integration Test</h1>
         <IntegratedHome />
-      </BackendContextProvider>
-      */}
-    </div>
+      </div>
+    </BackendContextProvider>
   );
 };
 

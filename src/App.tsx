@@ -14,6 +14,7 @@ import { ICUITestEnhanced } from "../tests/integration/icui/ICUITestEnhanced";
 import { ICUITerminalTest } from "../tests/integration/icui/icuiTerminaltest";
 import Integration from "../tests/integration/integration";
 import NavigationHelper from "./components/NavigationHelper";
+import { BackendContextProvider } from "./contexts/BackendContext";
 
 function App() {
   return (
@@ -22,7 +23,11 @@ function App() {
       <div style={{ marginRight: '300px' }}>
         <Suspense fallback={<p>Loading...</p>}>
           <Routes>
-            <Route path="/" element={<Home />} />
+            <Route path="/" element={
+              <BackendContextProvider>
+                <Home />
+              </BackendContextProvider>
+            } />
             <Route path="/integration" element={<Integration />} />
             <Route path="/icui-test" element={<ICUITest />} />
             <Route path="/icui-test2" element={<ICUITest2 />} />

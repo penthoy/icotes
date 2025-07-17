@@ -44,6 +44,11 @@ export interface BackendStateHook {
     openFile: (fileId: string) => Promise<void>;
     closeFile: (fileId: string) => Promise<void>;
     
+    // Directory operations
+    getDirectoryContents: (path: string) => Promise<any[]>;
+    createDirectory: (path: string) => Promise<void>;
+    getDirectoryTree: (path?: string) => Promise<any>;
+    
     // Terminal operations
     createTerminal: (name?: string) => Promise<TerminalSession>;
     destroyTerminal: (terminalId: string) => Promise<void>;
@@ -273,6 +278,44 @@ export const useBackendState = (): BackendStateHook => {
   }, [handleError]);
   
   /**
+   * Get directory contents
+   */
+  const getDirectoryContents = useCallback(async (path: string = '/'): Promise<any[]> => {
+    try {
+      const tree = await backendClient.current.getDirectoryTree(path);
+      return tree.children || [];
+    } catch (error) {
+      handleError(error, 'get directory contents');
+      return [];
+    }
+  }, [handleError]);
+
+  /**
+   * Create directory
+   */
+  const createDirectory = useCallback(async (path: string): Promise<void> => {
+    try {
+      await backendClient.current.createDirectory(path);
+      // Re-fetch workspace state to reflect the new directory
+      fetchWorkspaceState().catch(console.error);
+    } catch (error) {
+      handleError(error, 'create directory');
+    }
+  }, [handleError, fetchWorkspaceState]);
+
+  /**
+   * Get directory tree
+   */
+  const getDirectoryTree = useCallback(async (path: string = '/'): Promise<any> => {
+    try {
+      return await backendClient.current.getDirectoryTree(path);
+    } catch (error) {
+      handleError(error, 'get directory tree');
+      return { files: [] };
+    }
+  }, [handleError]);
+
+  /**
    * Code execution
    */
   const executeCode = useCallback(async (fileId: string, content: string, language: string) => {
@@ -300,17 +343,44 @@ export const useBackendState = (): BackendStateHook => {
     };
     
     const handleWorkspaceEvent = (event: any) => {
+      // Only re-fetch workspace state for specific events that actually change the workspace
       switch (event.type) {
-        case 'file_created':
-        case 'file_updated':
-        case 'file_deleted':
+        case 'workspace_activated':
+        case 'workspace_created':
+        case 'workspace_deleted':
           // Re-fetch workspace state to sync changes
           fetchWorkspaceState().catch(console.error);
           break;
+        case 'file_created':
+        case 'file_updated':
+        case 'file_deleted':
+          // Update local files state instead of re-fetching entire workspace
+          if (event.data && event.data.file) {
+            const fileData = event.data.file;
+            switch (event.type) {
+              case 'file_created':               setFiles(prev => [...prev, convertToICUIFile(fileData)]);
+                break;
+              case 'file_updated':               setFiles(prev => prev.map(file => 
+                  file.id === fileData.id ? convertToICUIFile(fileData) : file
+                ));
+                break;
+              case 'file_deleted':               setFiles(prev => prev.filter(file => file.id !== fileData.id));
+                break;
+            }
+          }
+          break;
         case 'terminal_created':
         case 'terminal_destroyed':
-          // Re-fetch workspace state to sync terminal changes
-          fetchWorkspaceState().catch(console.error);
+          // Update local terminals state instead of re-fetching entire workspace
+          if (event.data && event.data.terminal) {
+            const terminalData = event.data.terminal;
+            switch (event.type) {
+              case 'terminal_created':               setTerminals(prev => [...prev, terminalData]);
+                break;
+              case 'terminal_destroyed':               setTerminals(prev => prev.filter(terminal => terminal.id !== terminalData.id));
+                break;
+            }
+          }
           break;
         default:
           break;
@@ -325,7 +395,7 @@ export const useBackendState = (): BackendStateHook => {
       wsService.current.off('connection_status', handleConnectionStatusChange);
       wsService.current.off('workspace_event', handleWorkspaceEvent);
     };
-  }, [fetchWorkspaceState]);
+  }, [fetchWorkspaceState, convertToICUIFile]);
   
   /**
    * Initialize workspace state on connection
@@ -358,6 +428,9 @@ export const useBackendState = (): BackendStateHook => {
       saveFile,
       openFile,
       closeFile,
+      getDirectoryContents,
+      createDirectory,
+      getDirectoryTree,
       createTerminal,
       destroyTerminal,
       sendTerminalInput,

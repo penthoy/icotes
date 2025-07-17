@@ -3,6 +3,9 @@ When I said "continue progress" in the prompt, check ##In Progress section in th
 
 Please read Agent_dev_workflow.md to learn how to iterate.
 
+Please always end your reply with a sign that review your model for example end with:
+-claude Sonnet 007 or -o5 mini or - Gemini 4.5 pro, make sure you're certain what you are, if you're unsure do -unknown
+
 - When I said "housekeeping" 
 1. please update both Working.md and CHANGELOG.md by reading all ## recently finished section from Project_roadmap.md and then clean them up.
 2. do cleanups if there were any previously added debug code.
