@@ -10,6 +10,7 @@ import { Link, useLocation } from 'react-router-dom';
 const routes = [
   { path: '/', label: 'Home', description: 'Main application' },
   { path: '/integration', label: 'Integration Test', description: 'ICUI-ICPY Backend Integration Test' },
+  { path: '/simple-terminal', label: 'Simple Terminal', description: 'Simple terminal implementation' },
   { path: '/icui-test', label: 'ICUI Test', description: 'Basic ICUI components test' },
   { path: '/icui-test2', label: 'ICUI Test 2', description: 'Advanced ICUI components test' },
   { path: '/icui-test3', label: 'ICUI Test 3', description: 'ICUI layout test' },
