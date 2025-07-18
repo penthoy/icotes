@@ -228,141 +228,215 @@ This document outlines the step-by-step plan for rewriting the UI with a modular
 - Test across different security contexts (HTTP, HTTPS, localhost, IP addresses)
 - Validate fallback behavior and user experience
 
-### Phase 5: Modular Menu System
+
+
+
+
+- Validate fallback behavior and user experience
+
+### Phase 5: Reusable Abstractions from SimpleEditor Analysis
+**Goal**: Extract and generalize reusable abstractions identified in the analysis of `simpleeditor.tsx` for broader ICUI framework use.
+
+#### Step 5.1: Notification Service Framework Integration
+**Problem**: Frontend components need a unified notification system for user feedback, error handling, and status updates. Currently, `simpleeditor.tsx` implements a custom NotificationService that could be generalized for the entire ICUI framework.
+
+**Solution**: Extract and generalize the notification service from `simpleeditor.tsx` into the ICUI framework core.
+
+**Implementation Details**:
+- Create `src/icui/services/ICUINotificationService.tsx` based on patterns from `simpleeditor.tsx`
+- Support multiple notification types: success, error, warning, info
+- Include toast-style notifications with auto-dismiss
+- Provide notification queue management for multiple simultaneous notifications
+- Integrate with ICUI theming system using CSS variables
+- Support customizable notification positioning and duration
+- Export hook `useICUINotifications()` for React components
+
+**Key Features from SimpleEditor Analysis**:
+- Type-safe notification methods: `show(message, type, duration?)`
+- Automatic cleanup and dismissal
+- Visual feedback with appropriate colors for each type
+- Non-blocking UI notifications that don't interrupt workflow
+
+#### Step 5.2: Backend Client Abstraction Framework
+**Problem**: Multiple components need to interact with backend services, but each implements its own client logic. The `EditorBackendClient` in `simpleeditor.tsx` demonstrates a clean abstraction pattern that should be generalized.
+
+**Solution**: Create a generalized backend client abstraction framework for the ICUI system.
+
+**Implementation Details**:
+- Create `src/icui/services/ICUIBackendClient.tsx` as base class
+- Extract common patterns from `EditorBackendClient` in `simpleeditor.tsx`:
+  - Connection status management and health checks
+  - Fallback mode handling when services are unavailable
+  - Service availability detection (ICPY, REST API endpoints)
+  - Automatic retry logic and error handling
+  - Base URL configuration and environment handling
+
+**Key Abstractions from SimpleEditor Analysis**:
+- **Connection Management**: `getConnectionStatus()`, `checkServiceAvailability()`
+- **Fallback Patterns**: Graceful degradation when backend services are unavailable
+- **Error Handling**: Consistent error responses across all backend operations
+- **Service Detection**: Dynamic detection of available backend capabilities
+- **Environment Adaptation**: Automatic adaptation to different deployment scenarios
+
+**Specialized Clients**:
+- Create `ICUIFileClient extends ICUIBackendClient` for file operations
+- Create `ICUITerminalClient extends ICUIBackendClient` for terminal operations
+- Create `ICUIExecutionClient extends ICUIBackendClient` for code execution
+
+#### Step 5.3: File Management Service Framework
+**Problem**: File operations are scattered across different components. The `simpleeditor.tsx` implements comprehensive file CRUD operations with fallback logic that should be standardized.
+
+**Solution**: Extract file management patterns into a reusable ICUI service.
+
+**Implementation Details**:
+- Create `src/icui/services/ICUIFileService.tsx`
+- Extract patterns from `simpleeditor.tsx` file operations:
+  - CRUD operations: `listFiles()`, `getFile()`, `saveFile()`, `createFile()`, `deleteFile()`
+  - Language detection from file extensions
+  - Workspace path management
+  - Auto-save functionality with debouncing
+  - File modification tracking
+
+**Key Features from SimpleEditor Analysis**:
+- **Language Detection**: Automatic language detection from file extensions
+- **Path Management**: Consistent handling of file paths and workspace directories
+- **Fallback Content**: Demo/sample files when backend is unavailable
+- **Auto-save**: Debounced auto-save with configurable delay
+- **Modification Tracking**: Track file changes for UI indicators
+
+#### Step 5.4: Theme Detection and Management Service
+**Problem**: Multiple components implement their own theme detection logic. The pattern in both `simpleeditor.tsx` and `ICUIEnhancedEditorPanel.tsx` should be centralized.
+
+**Solution**: Create a unified theme management service for the ICUI framework.
+
+**Implementation Details**:
+- Create `src/icui/services/ICUIThemeService.tsx`
+- Extract theme detection logic from both editor implementations
+- Provide React hook `useICUITheme()` for components
+- Support theme switching and persistence
+- Integrate with existing ICUI CSS variable system
+
+**Key Features from Editor Analysis**:
+- **Automatic Detection**: MutationObserver-based theme class detection
+- **Theme Persistence**: Remember user theme preferences
+- **CSS Variable Integration**: Work seamlessly with ICUI theming system
+- **React Hook Pattern**: Easy integration with React components
+
+### Phase 6: Modular Menu System
 **Goal**: Create flexible file and layout menus using the same modular principles
 
-#### Step 5.1: Top Menu Bar
+#### Step 6.1: Top Menu Bar
 - Create `src/components/ui/MenuBar.tsx`
 - Implement dropdown menus for File, Edit, View, Layout
 - Add keyboard shortcut support
 - Support menu customization
 
-#### Step 5.2: File Menu Implementation
+#### Step 6.2: File Menu Implementation
 - Create `src/components/menus/FileMenu.tsx`
 - Add file operations (New, Open, Save, Close)
 - Include recent files list
 - Support project management
 
-#### Step 5.3: Layout Menu Implementation
+#### Step 6.3: Layout Menu Implementation
 - Create `src/components/menus/LayoutMenu.tsx`
 - Add layout presets and templates
 - Include panel creation options
 - Support layout reset functionality
 
-### Phase 6: Panel Registry and Factory
+### Phase 7: Panel Registry and Factory
 **Goal**: Create a system to register and instantiate different panel types
 
-#### Step 5.1: Panel Registry
-- Create `src/lib/panelRegistry.ts`
-- Register all available panel types
-- Support dynamic panel type loading
-- Include panel metadata (icons, descriptions)
-
-#### Step 6.2: Panel Factory
-- Create `src/lib/panelFactory.ts`
-- Handle panel instantiation based on type
-- Support panel configuration and props
-- Include error handling for unknown panel types
-
-### Phase 7: Context Menu System
-**Goal**: Implement right-click context menus for panel operations
-
-#### Step 6.1: Context Menu Component
-- Create `src/components/ui/ContextMenu.tsx`
+#### Step 7.1: Context Menu Component
+- Create `src/icui/components/ui/ContextMenu.tsx`
 - Support dynamic menu items based on context
 - Add panel transformation options
 - Include split/merge operations
 
-#### Step 7.2: Panel Context Actions
-- Create `src/lib/panelActions.ts`
+#### Step 7.2: Panel Registry
+- Create `src/icui/lib/panelRegistry.ts`
+- Register all available panel types
+- Support dynamic panel type loading
+- Include panel metadata (icons, descriptions)
+
+#### Step 7.3: Panel Factory
+- Create `src/icui/lib/panelFactory.ts`
+- Handle panel instantiation based on type
+- Support panel configuration and props
+- Include error handling for unknown panel types
+
+### Phase 8: Context Menu System
+**Goal**: Implement right-click context menus for panel operations
+
+#### Step 8.1: Panel Context Actions
+- Create `src/icui/lib/panelActions.ts`
 - Implement split panel horizontally/vertically
 - Add change panel type functionality
 - Support panel duplication and removal
 
 ## File Structure
+
+The following file structure will be created as we implement the modular panel system:
+
 ```
 src/
+├── icui/
+│   ├── components/
+│   │   ├── ui/
+│   │   │   ├── FrameContainer.tsx         # Phase 1.1
+│   │   │   ├── SplitPanel.tsx             # Phase 1.2
+│   │   │   ├── BasePanel.tsx              # Phase 2.1
+│   │   │   ├── PanelHeader.tsx            # Phase 2.2
+│   │   │   ├── PanelContent.tsx           # Phase 2.3
+│   │   │   ├── PanelArea.tsx              # Phase 3.1
+│   │   │   ├── MenuBar.tsx                # Phase 6.1
+│   │   │   └── ContextMenu.tsx            # Phase 8.1
+│   │   ├── panels/
+│   │   │   ├── ICUITerminalPanel.tsx      # Phase 4.1
+│   │   │   ├── ICUIEditorPanel.tsx        # Phase 4.2
+│   │   │   ├── ICUIExplorerPanel.tsx      # Phase 4.3
+│   │   │   ├── ICUIChatPanel.tsx          # Phase 4.6
+│   │   │   └── ICUIEditorPanelFromScratch.tsx # Phase 4.9
+│   │   ├── menus/
+│   │   │   ├── FileMenu.tsx               # Phase 6.2
+│   │   │   └── LayoutMenu.tsx             # Phase 6.3
+│   │   └── ClipboardManager.tsx           # Phase 4.10
+│   ├── services/
+│   │   ├── ICUINotificationService.tsx    # Phase 5.1
+│   │   ├── ICUIBackendClient.tsx          # Phase 5.2
+│   │   ├── ICUIFileService.tsx            # Phase 5.3
+│   │   ├── ICUIThemeService.tsx           # Phase 5.4
+│   │   └── ClipboardService.tsx           # Phase 4.10
+│   ├── hooks/
+│   │   ├── useICUINotifications.tsx       # Phase 5.1
+│   │   ├── useICUITheme.tsx               # Phase 5.4
+│   │   └── useClipboard.tsx               # Phase 4.10
+│   └── lib/
+│       ├── layoutState.ts                 # Phase 1.3
+│       ├── panelDockManager.ts            # Phase 3.2
+│       ├── panelRegistry.ts               # Phase 7.1
+│       ├── panelFactory.ts                # Phase 7.2
+│       └── panelActions.ts                # Phase 8.2
 ├── components/
-│   ├── ui/
-│   │   ├── FrameContainer.tsx
-│   │   ├── SplitPanel.tsx
-│   │   ├── BasePanel.tsx
-│   │   ├── PanelHeader.tsx
-│   │   ├── PanelContent.tsx
-│   │   ├── PanelArea.tsx          # NEW: Dockable panel container
-│   │   ├── MenuBar.tsx
-│   │   └── ContextMenu.tsx
-│   ├── panels/
-│   │   ├── TerminalPanel.tsx
-│   │   ├── EditorPanel.tsx
-│   │   ├── ExplorerPanel.tsx
-│   │   └── OutputPanel.tsx
-│   ├── menus/
-│   │   ├── FileMenu.tsx
-│   │   ├── LayoutMenu.tsx
-│   │   └── ViewMenu.tsx
-│   └── [existing components remain]
-├── lib/
-│   ├── layoutState.ts
-│   ├── panelDockManager.ts        # NEW: Panel docking management
-│   ├── panelRegistry.ts
-│   ├── panelFactory.ts
-│   └── panelActions.ts
-└── types/
-    ├── panel.ts
-    ├── layout.ts
-    └── dock.ts                    # NEW: Docking system types
+│   └── ui/                                # Legacy components (to be migrated)
+└── tests/
+    └── integration/
+        └── icui/
+            ├── ICUITest4.5.tsx            # Phase 4.4
+            ├── ICUITest4.9.tsx            # Phase 4.9
+            └── ICUITest4.10.tsx           # Phase 4.10
 ```
 
-## Migration Strategy
-1. **Phase 1-2**: Build foundation without touching existing UI
-2. **Phase 3**: Implement docking and tabbing system - **CRITICAL FOR IDE FUNCTIONALITY**
-3. **Phase 4**: Create panel wrappers for existing components that work in dock areas
-4. **Phase 5**:
-6. **Phase 5**: Add menu system and panel registry
-5. **Phase 7**: Implement context menus and advanced features
-6. **Phase 8**: Create toggle to switch between old and new UI
-7. **Phase 9**: Test thoroughly and migrate completely
+## Current Status
 
-## Testing Strategy
-- Unit tests for each component
-- Integration tests for panel interactions
-- Visual regression tests for UI consistency
-- Performance tests for large numbers of panels
-- Accessibility tests for keyboard navigation
+- ✅ **Phase 1-3**: Framework foundation and panel system
+- ✅ **Phase 4**: Specialized panel implementations (in progress)
+- 🔄 **Phase 5**: Reusable abstractions from SimpleEditor analysis (next priority)
+- ⏳ **Phase 6-9**: Advanced features and menu systems
 
-## Rollback Plan
-- Keep existing UI components intact during development
-- Implement feature flag to toggle between old and new UI
-- Maintain backward compatibility during transition
-- Document migration path for users
+## Next Steps
 
-## Timeline Estimate
-- Phase 1: 2-3 days (Frame foundation)
-- Phase 2: 2-3 days (Generic panel system)
-- **Phase 3: 4-5 days (Docking and tabbing system) - CRITICAL FOUNDATION**
-- Phase 4: 3-4 days (Specialized panels with docking support)
-- Phase 5: 2-3 days (Menu system)
-- Phase 6: 1-2 days (Registry and factory)
-- Phase 7: 2-3 days (Context menus)
-- Testing and refinement: 2-3 days
-
-**Total estimated time**: 18-26 days
-
-## Success Criteria
-- [ ] Users can create/remove panels dynamically
-- [ ] Any panel can be transformed into any other panel type
-- [ ] **Panels can be docked into areas with tabbed interfaces**
-- [ ] **Multiple panels can share the same area with tab switching**
-- [ ] **Panels can be dragged between different dock areas**
-- [ ] **Empty areas show drop zones for panel docking**
-- [ ] Layout is fully responsive and handles various screen sizes
-- [ ] Panel arrangement can be saved and restored
-- [ ] Performance remains smooth with multiple panels
-- [ ] Accessibility standards are maintained
-- [ ] Existing functionality is preserved
-- [ ] Migration path is smooth and non-disruptive
-
----
-
-*This plan is ready for review and modification before implementation begins.*
+1. Complete Phase 4 remaining steps (4.10 clipboard system)
+2. Begin Phase 5 implementation of reusable abstractions
+3. Extract NotificationService from simpleeditor.tsx
+4. Create ICUIBackendClient base class
+5. Implement unified theme management service

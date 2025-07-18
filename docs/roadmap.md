@@ -52,5 +52,18 @@ Add a custom sub menu under Layout, inside custom, there should be a save layout
 A Panel installer,
 maya style code executor.
 
+-- Framework Enhancement:
+- [] **Notification Service Integration** - Extract and generalize the NotificationService from `tests/integration/simpleeditor.tsx` into `src/icui/services/ICUINotificationService.tsx`. The current implementation in simpleeditor provides a clean pattern for toast notifications with auto-dismiss, multiple types (success, error, warning), and non-blocking UI feedback.
+
+- [] **Backend Client Abstraction** - Create `src/icui/services/ICUIBackendClient.tsx` base class based on the `EditorBackendClient` pattern from simpleeditor. Key features include connection status management, fallback mode handling, service availability detection, and consistent error handling across all backend operations.
+
+- [] **File Management Service** - Extract file CRUD operations from simpleeditor into `src/icui/services/ICUIFileService.tsx`. Include language detection, workspace path management, auto-save with debouncing, and file modification tracking. The current implementation handles both ICPY and fallback modes effectively.
+
+- [] **Theme Management Service** - Centralize theme detection logic from multiple editor components into `src/icui/services/ICUIThemeService.tsx` with `useICUITheme()` hook. Both simpleeditor and ICUIEnhancedEditorPanel implement similar MutationObserver-based theme detection that should be unified.
+
+- [] **Connection Status Components** - Create reusable connection status indicators based on the pattern in simpleeditor. Include visual connection state, error reporting, and refresh functionality for backend health monitoring.
+
+- [] **Auto-save Framework** - Generalize the debounced auto-save pattern from simpleeditor into a reusable hook or service. Include configurable delays, modification tracking, and integration with notification system for save confirmations.
+
 
 
