@@ -14,6 +14,7 @@ import { ICUITestEnhanced } from "../tests/integration/icui/ICUITestEnhanced";
 import { ICUITerminalTest } from "../tests/integration/icui/icuiTerminaltest";
 import Integration from "../tests/integration/integration";
 import SimpleTerminal from "../tests/integration/simpleterminal";
+import SimpleEditor from "../tests/integration/simpleeditor";
 import { BackendContextProvider } from "./contexts/BackendContext";
 
 function App() {
@@ -28,6 +29,7 @@ function App() {
           } />
           <Route path="/integration" element={<Integration />} />
           <Route path="/simple-terminal" element={<SimpleTerminal />} />
+          <Route path="/simple-editor" element={<SimpleEditor />} />
           <Route path="/icui-test" element={<ICUITest />} />
           <Route path="/icui-test2" element={<ICUITest2 />} />
           <Route path="/icui-test3" element={<ICUITest3 />} />
