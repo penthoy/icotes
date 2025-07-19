@@ -2,18 +2,13 @@
 A web-based JavaScript code editor built with ViteReact, CodeMirror 6, and modern web technologies. The goal is to create a powerful, The world's most powerful notebook for developers, it includes 3 core parts: 1. rich text editor, similar to evernote/notion hybrid, 2. code editor + terminal, 3. AI agent that can be customized with agentic frameworks such as crew ai, or openai agent sdk, or any other agentic framework.
 
 ### In Progress
-- [] work on icui_plan.md Phase 6: Modular Menu System (6.2 File Menu Implementation)
 
 ## Recently Finished
-- [✓] work on icui_plan.md Phase 6.1: **Top Menu Bar Implementation** - Created `src/icui/components/ui/MenuBar.tsx` with complete dropdown menu system including File, Edit, View, and Layout menus. Features keyboard shortcut support (Ctrl+N, Ctrl+S, etc.), menu customization, submenu support, ICUI theming integration, and notification system integration. Includes test page at `/icui-test6.1` route demonstrating all functionality including custom menus, keyboard shortcuts, and accessibility features.
-
-- [✓] work on icui_plan.md 5.3: **File Management Service Framework** - Created `src/icui/services/fileService.tsx` with comprehensive file CRUD operations, language detection from extensions, auto-save with debouncing, file modification tracking, workspace path management, and fallback mode support. Includes both ICPY backend integration and client-side fallback capabilities.
-
-- [✓] work on icui_plan.md 5.4: **Theme Detection and Management Service** - Created `src/icui/services/themeService.tsx` with MutationObserver-based automatic theme detection, React hook `useTheme()` integration, theme persistence and switching, multiple theme support (GitHub, Monokai, One Dark, Solarized), and ICUI CSS variable integration.
-
-- [✓] **Service Naming Cleanup** - Removed redundant ICUI prefixes from service files since they're already in the `icui/` folder. Updated all imports and references: `notificationService.tsx`, `backendClient.tsx`, `FileClient`, `TerminalClient`, `ExecutionClient`, `useNotifications()` hook.
+- [✅] **Critical Backend Issues Resolution** - **COMPLETED** - Fixed all critical backend issues in icpy_plan.md Phase 0: Critical Infrastructure Fixes. Resolved Pydantic version compatibility (v2.5.0 in virtual environment vs v1.10.14 in system), ensured ICPY modules load successfully when using virtual environment, removed temporary fallback code (lines 521-647) from backend/main.py, and restored proper ICPY REST API integration. Backend now shows "icpy modules loaded successfully" and all services initialize correctly with event-driven architecture active.
 
 ## Future task
+- [] work on icui_plan.md Phase 6: Modular Menu System (6.2 File Menu Implementation)
+
 - [✓] work on integration_plan.md 2.3: Editor Integration, create a simpleeditor.tsx like the simpleterminal, using the simple reference icuieditorpanel from panels as a base, and then add it into App.tsx route - **COMPLETED with fallback mode for ICPY unavailability**
 
 - [] work on integration_plan.md 2.3: Editor Integration
@@ -60,6 +55,15 @@ Add a custom sub menu under Layout, inside custom, there should be a save layout
 -- Later
 A Panel installer,
 maya style code executor.
+
+## Recently Finished
+- [✓] work on icui_plan.md Phase 6.1: **Top Menu Bar Implementation** - Created `src/icui/components/ui/MenuBar.tsx` with complete dropdown menu system including File, Edit, View, and Layout menus. Features keyboard shortcut support (Ctrl+N, Ctrl+S, etc.), menu customization, submenu support, ICUI theming integration, and notification system integration. Includes test page at `/icui-test6.1` route demonstrating all functionality including custom menus, keyboard shortcuts, and accessibility features.
+
+- [✓] work on icui_plan.md 5.3: **File Management Service Framework** - Created `src/icui/services/fileService.tsx` with comprehensive file CRUD operations, language detection from extensions, auto-save with debouncing, file modification tracking, workspace path management, and fallback mode support. Includes both ICPY backend integration and client-side fallback capabilities.
+
+- [✓] work on icui_plan.md 5.4: **Theme Detection and Management Service** - Created `src/icui/services/themeService.tsx` with MutationObserver-based automatic theme detection, React hook `useTheme()` integration, theme persistence and switching, multiple theme support (GitHub, Monokai, One Dark, Solarized), and ICUI CSS variable integration.
+
+- [✓] **Service Naming Cleanup** - Removed redundant ICUI prefixes from service files since they're already in the `icui/` folder. Updated all imports and references: `notificationService.tsx`, `backendClient.tsx`, `FileClient`, `TerminalClient`, `ExecutionClient`, `useNotifications()` hook.
 
 -- Framework Enhancement:
 - [✓] **Notification Service Integration** - Extract and generalize the NotificationService from `tests/integration/simpleeditor.tsx` into `src/icui/services/notificationService.tsx`. The current implementation in simpleeditor provides a clean pattern for toast notifications with auto-dismiss, multiple types (success, error, warning), and non-blocking UI feedback.
