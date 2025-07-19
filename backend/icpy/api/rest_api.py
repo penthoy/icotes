@@ -427,9 +427,10 @@ class RestAPI:
             """Update file content."""
             try:
                 await self.filesystem_service.write_file(
-                    path=request.path,
+                    file_path=request.path,
                     content=request.content or "",
-                    encoding=request.encoding
+                    encoding=request.encoding,
+                    create_dirs=request.create_dirs
                 )
                 return SuccessResponse(message="File updated successfully")
             except Exception as e:

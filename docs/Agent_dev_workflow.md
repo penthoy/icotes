@@ -9,3 +9,6 @@ This project is only using a single port 8000 by default, both frontend and back
 
 if you need error checking, "npm run build" is what you can run
 
+please make sure to always use the environment variables in the .env file and never hardcode port and site names
+
+When starting the python backend, make sure to use venv

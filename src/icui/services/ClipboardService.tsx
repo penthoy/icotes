@@ -79,21 +79,26 @@ export class ClipboardService extends SimpleEventEmitter {
   }
 
   private initializeCapabilities(): ClipboardCapabilities {
+    const hasNativeAccess = !!(navigator.clipboard && window.isSecureContext);
     return {
-      hasNativeAccess: !!(navigator.clipboard && window.isSecureContext),
+      hasNativeAccess,
       hasServerAccess: false, // Will be updated after server check
       hasFileAccess: true, // Always available as fallback
       isSecureContext: window.isSecureContext,
       canInstallPWA: this.detectPWASupport(),
       platform: navigator.platform,
-      availableMethods: this.getAvailableMethods()
+      availableMethods: this.getAvailableMethodsForCapabilities(hasNativeAccess)
     };
   }
 
-  private getAvailableMethods(): string[] {
+  private getAvailableMethodsForCapabilities(hasNativeAccess: boolean): string[] {
     const methods = ['fallback'];
-    if (this.capabilities.hasNativeAccess) methods.push('native');
+    if (hasNativeAccess) methods.push('native');
     return methods;
+  }
+
+  private getAvailableMethods(): string[] {
+    return this.getAvailableMethodsForCapabilities(this.capabilities?.hasNativeAccess || false);
   }
 
   private detectPWASupport(): boolean {

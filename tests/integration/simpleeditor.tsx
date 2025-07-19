@@ -54,7 +54,6 @@ class NotificationService {
 class EditorBackendClient {
   private backendUrl: string;
   public baseUrl: string;
-  public isIcpyAvailable: boolean = false;
 
   constructor() {
     const backendUrl = import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL;
@@ -63,39 +62,12 @@ class EditorBackendClient {
     }
     this.backendUrl = backendUrl;
     this.baseUrl = backendUrl;
-  }
-
-  async checkIcpyAvailability(): Promise<boolean> {
-    try {
-      const workspacePath = '/home/penthoy/ilaborcode/workspace';
-      const response = await fetch(`${this.baseUrl}/api/files?path=${encodeURIComponent(workspacePath)}`);
-      
-      if (response.status === 404 || response.status === 405) {
-        this.isIcpyAvailable = false;
-      } else if (response.ok) {
-        this.isIcpyAvailable = true;
-      } else {
-        this.isIcpyAvailable = false;
-      }
-      
-      return this.isIcpyAvailable;
-    } catch (error) {
-      this.isIcpyAvailable = false;
-      return false;
-    }
+    console.log('EditorBackendClient initialized with URL:', this.baseUrl); // Debug log
   }
 
   async listFiles(): Promise<SimpleFile[]> {
-    if (this.isIcpyAvailable) {
-      return this.listFilesIcpy();
-    } else {
-      return this.listFilesFallback();
-    }
-  }
-
-  private async listFilesIcpy(): Promise<SimpleFile[]> {
     try {
-      // Use workspace directory instead of root
+      // Use workspace directory for ICPY file operations
       const workspacePath = '/home/penthoy/ilaborcode/workspace';
       const response = await fetch(`${this.baseUrl}/api/files?path=${encodeURIComponent(workspacePath)}`);
       if (!response.ok) {
@@ -123,28 +95,6 @@ class EditorBackendClient {
     }
   }
 
-  private async listFilesFallback(): Promise<SimpleFile[]> {
-    // Return sample files when ICPY is not available
-    return [
-      {
-        id: 'example.js',
-        name: 'example.js',
-        language: 'javascript',
-        content: `console.log("Hello from Simple Editor!");`,
-        modified: false,
-        path: 'example.js'
-      },
-      {
-        id: 'test.py',
-        name: 'test.py',
-        language: 'python',
-        content: `print("Hello from Python!")`,
-        modified: false,
-        path: 'test.py'
-      }
-    ];
-  }
-
   private getLanguageFromExtension(filename: string): string {
     const ext = filename.split('.').pop()?.toLowerCase();
     switch (ext) {
@@ -160,14 +110,6 @@ class EditorBackendClient {
   }
 
   async getFile(fileId: string): Promise<SimpleFile> {
-    if (this.isIcpyAvailable) {
-      return this.getFileIcpy(fileId);
-    } else {
-      return this.getFileFallback(fileId);
-    }
-  }
-
-  private async getFileIcpy(fileId: string): Promise<SimpleFile> {
     try {
       const response = await fetch(`${this.baseUrl}/api/files/content?path=${encodeURIComponent(fileId)}`);
       if (!response.ok) {
@@ -194,25 +136,7 @@ class EditorBackendClient {
     }
   }
 
-  private async getFileFallback(fileId: string): Promise<SimpleFile> {
-    // In fallback mode, return the file from our sample files
-    const sampleFiles = await this.listFilesFallback();
-    const file = sampleFiles.find(f => f.id === fileId);
-    if (file) {
-      return file;
-    }
-    throw new Error('File not found');
-  }
-
   async saveFile(file: SimpleFile): Promise<void> {
-    if (this.isIcpyAvailable) {
-      return this.saveFileIcpy(file);
-    } else {
-      return this.saveFileFallback(file);
-    }
-  }
-
-  private async saveFileIcpy(file: SimpleFile): Promise<void> {
     try {
       const response = await fetch(`${this.baseUrl}/api/files`, {
         method: 'PUT',
@@ -238,20 +162,7 @@ class EditorBackendClient {
     }
   }
 
-  private async saveFileFallback(file: SimpleFile): Promise<void> {
-    // In fallback mode, simulate save (client-side only)
-    await new Promise(resolve => setTimeout(resolve, 100));
-  }
-
   async createFile(name: string, language: string = 'javascript'): Promise<SimpleFile> {
-    if (this.isIcpyAvailable) {
-      return this.createFileIcpy(name, language);
-    } else {
-      return this.createFileFallback(name, language);
-    }
-  }
-
-  private async createFileIcpy(name: string, language: string = 'javascript'): Promise<SimpleFile> {
     try {
       // Add appropriate extension based on language
       const extension = this.getExtensionFromLanguage(language);
@@ -292,62 +203,6 @@ class EditorBackendClient {
     }
   }
 
-  private async createFileFallback(name: string, language: string = 'javascript'): Promise<SimpleFile> {
-    // In fallback mode, we'll try to use a simple file creation endpoint
-    // that might exist in the basic backend, or create client-side only
-    const extension = this.getExtensionFromLanguage(language);
-    const filename = name.includes('.') ? name : `${name}.${extension}`;
-    
-    // Try to create the file using the /execute endpoint as a workaround
-    try {
-      // Use Python since that's the only language supported by the execute endpoint
-      const content = language === 'python' 
-        ? `# New ${language} file: ${filename}\n# Created via Simple Editor\n\n`
-        : `// New ${language} file: ${filename}\n// Created via Simple Editor\n\n`;
-      
-      const workspacePath = '/home/penthoy/ilaborcode/workspace';
-      const createScript = `# Creating file: ${filename} in workspace
-import os
-os.chdir('${workspacePath}')
-with open('${filename}', 'w') as f:
-    f.write('''${content}''')
-print(f'File {filename} created successfully in workspace')`;
-
-      const response = await fetch(`${this.baseUrl}/execute`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          code: createScript,
-          language: 'python'
-        }),
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        if (result.errors && result.errors.length > 0) {
-          NotificationService.show(`File creation failed: ${result.errors.join(', ')}`, 'error');
-        } else {
-          NotificationService.show(`File ${filename} created in workspace`, 'success');
-        }
-      } else {
-        NotificationService.show(`Backend file creation failed, file exists client-side only`, 'warning');
-      }
-    } catch (error) {
-      NotificationService.show(`Backend error: ${error.message}`, 'error');
-    }
-
-    // Always return a client-side file object for the UI
-    const fileId = `${Date.now()}_${filename}`;
-    return {
-      id: fileId,
-      name: filename,
-      language,
-      content: `// New ${language} file: ${filename}\n\n`,
-      modified: false,
-      path: filename
-    };
-  }
-
   private getExtensionFromLanguage(language: string): string {
     switch (language) {
       case 'javascript': return 'js';
@@ -362,14 +217,6 @@ print(f'File {filename} created successfully in workspace')`;
   }
 
   async deleteFile(fileId: string): Promise<void> {
-    if (this.isIcpyAvailable) {
-      return this.deleteFileIcpy(fileId);
-    } else {
-      return this.deleteFileFallback(fileId);
-    }
-  }
-
-  private async deleteFileIcpy(fileId: string): Promise<void> {
     try {
       const response = await fetch(`${this.baseUrl}/api/files?path=${encodeURIComponent(fileId)}`, {
         method: 'DELETE'
@@ -387,11 +234,6 @@ print(f'File {filename} created successfully in workspace')`;
       console.error('Error deleting file:', error);
       throw error;
     }
-  }
-
-  private async deleteFileFallback(fileId: string): Promise<void> {
-    // In fallback mode, simulate deletion
-    await new Promise(resolve => setTimeout(resolve, 100));
   }
 
   async executeCode(file: SimpleFile): Promise<any> {
@@ -453,7 +295,6 @@ const SimpleEditor: React.FC<SimpleEditorProps> = ({ className = '' }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [showLineNumbers, setShowLineNumbers] = useState(true);
   const [isConnected, setIsConnected] = useState(false);
-  const [icpyAvailable, setIcpyAvailable] = useState<boolean>(false);
 
   // Refs
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -490,14 +331,6 @@ const SimpleEditor: React.FC<SimpleEditorProps> = ({ className = '' }) => {
       const status = await backendClient.current.getConnectionStatus();
       setConnectionStatus(status);
       setIsConnected(status.connected);
-      
-      // Check ICPY availability if connected
-      if (status.connected) {
-        const icpyCheck = await backendClient.current.checkIcpyAvailability();
-        setIcpyAvailable(icpyCheck);
-      } else {
-        setIcpyAvailable(false);
-      }
     } catch (error) {
       setIsConnected(false);
       setConnectionStatus({ connected: false, error: error.message });
@@ -512,44 +345,34 @@ const SimpleEditor: React.FC<SimpleEditorProps> = ({ className = '' }) => {
     try {
       const loadedFiles = await backendClient.current.listFiles();
       
-      if (backendClient.current.isIcpyAvailable) {
-        // Load content for the first few files when ICPY is available
-        const filesWithContent = await Promise.all(
-          loadedFiles.slice(0, 5).map(async (file) => {
-            try {
-              if (file.path) {
-                const fileWithContent = await backendClient.current.getFile(file.path);
-                return fileWithContent;
-              }
-              return file;
-            } catch (error) {
-              console.warn(`Failed to load content for ${file.name}:`, error);
-              return file;
+      // Load content for the first few files
+      const filesWithContent = await Promise.all(
+        loadedFiles.slice(0, 5).map(async (file) => {
+          try {
+            if (file.path) {
+              const fileWithContent = await backendClient.current.getFile(file.path);
+              return fileWithContent;
             }
-          })
-        );
-        setFiles(filesWithContent);
-        
-        if (filesWithContent.length > 0 && !activeFileId) {
-          setActiveFileId(filesWithContent[0].id);
-        }
-      } else {
-        // In fallback mode, files already have content
-        setFiles(loadedFiles);
-        
-        if (loadedFiles.length > 0 && !activeFileId) {
-          setActiveFileId(loadedFiles[0].id);
-        }
+            return file;
+          } catch (error) {
+            console.warn(`Failed to load content for ${file.name}:`, error);
+            return file;
+          }
+        })
+      );
+      setFiles(filesWithContent);
+      
+      if (filesWithContent.length > 0 && !activeFileId) {
+        setActiveFileId(filesWithContent[0].id);
       }
       
-      const mode = icpyAvailable ? 'full' : 'fallback';
-      NotificationService.show(`Loaded ${loadedFiles.length} files (${mode} mode)`, 'success');
+      NotificationService.show(`Loaded ${loadedFiles.length} files`, 'success');
     } catch (error) {
       NotificationService.show(`Failed to load files: ${error.message}`, 'error');
     } finally {
       setIsLoading(false);
     }
-  }, [isConnected, activeFileId, icpyAvailable]);
+  }, [isConnected, activeFileId]);
 
   // Handle file activation (load content if not already loaded)
   const handleFileActivate = useCallback(async (fileId: string) => {
@@ -716,9 +539,6 @@ const SimpleEditor: React.FC<SimpleEditorProps> = ({ className = '' }) => {
             <div className="font-semibold">Simple Editor</div>
             <div className="text-xs text-gray-600">
               Direct REST API connection to ICPY backend
-              {!icpyAvailable && isConnected && (
-                <span className="text-orange-600 ml-2">(Fallback mode - ICPY unavailable)</span>
-              )}
             </div>
           </div>
           <div className="flex items-center space-x-2">

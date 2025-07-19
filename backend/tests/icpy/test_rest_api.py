@@ -475,5 +475,113 @@ class TestRestAPI:
         assert data["info"]["title"] == "icpy REST API"
 
 
+class TestFileApiRegression:
+    """Regression tests for file API bug fixes."""
+    
+    def test_put_files_parameter_mapping(self, client_with_rest_api, mock_filesystem_service):
+        """Test that PUT /api/files correctly maps parameters to filesystem service.
+        
+        This test covers the specific bug where the REST API was passing incorrect
+        parameter names to the filesystem service, causing 500 errors.
+        """
+        # Test data
+        test_path = "/workspace/test_file.py"
+        test_content = "print('Hello, World!')\n"
+        test_encoding = "utf-8"
+        test_create_dirs = True
+        
+        # Make the request
+        response = client_with_rest_api.put("/api/files", json={
+            "path": test_path,
+            "content": test_content,
+            "encoding": test_encoding,
+            "create_dirs": test_create_dirs
+        })
+        
+        # Verify the response is successful
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert data["message"] == "File updated successfully"
+        
+        # Most importantly: verify the filesystem service was called with correct parameters
+        mock_filesystem_service.write_file.assert_called_once_with(
+            file_path=test_path,
+            content=test_content,
+            encoding=test_encoding,
+            create_dirs=test_create_dirs
+        )
+    
+    def test_put_files_with_defaults(self, client_with_rest_api, mock_filesystem_service):
+        """Test PUT /api/files with default parameter values."""
+        test_path = "/workspace/simple_file.txt"
+        test_content = "Simple content"
+        
+        # Make request with minimal parameters
+        response = client_with_rest_api.put("/api/files", json={
+            "path": test_path,
+            "content": test_content
+        })
+        
+        # Verify success
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        
+        # Verify correct parameters were passed (including defaults)
+        mock_filesystem_service.write_file.assert_called_once_with(
+            file_path=test_path,
+            content=test_content,
+            encoding=None,  # Default from FileOperationRequest
+            create_dirs=False  # Default from FileOperationRequest
+        )
+    
+    def test_put_files_empty_content(self, client_with_rest_api, mock_filesystem_service):
+        """Test PUT /api/files handles empty content correctly."""
+        test_path = "/workspace/empty_file.txt"
+        
+        # Make request with None content
+        response = client_with_rest_api.put("/api/files", json={
+            "path": test_path,
+            "content": None
+        })
+        
+        # Verify success
+        assert response.status_code == 200
+        
+        # Verify empty string was passed to filesystem service
+        mock_filesystem_service.write_file.assert_called_once()
+        call_args = mock_filesystem_service.write_file.call_args
+        assert call_args.kwargs["content"] == ""
+    
+    def test_put_files_filesystem_error_handling(self, client_with_rest_api, mock_filesystem_service):
+        """Test PUT /api/files handles filesystem service errors properly."""
+        # Configure mock to raise an exception
+        mock_filesystem_service.write_file.side_effect = Exception("Permission denied")
+        
+        # Make request
+        response = client_with_rest_api.put("/api/files", json={
+            "path": "/readonly/file.txt",
+            "content": "test content"
+        })
+        
+        # Verify error response
+        assert response.status_code == 500
+        assert "Permission denied" in response.json()["detail"]
+    
+    def test_put_files_missing_path(self, client_with_rest_api, mock_filesystem_service):
+        """Test PUT /api/files handles missing path parameter."""
+        # Make request without path
+        response = client_with_rest_api.put("/api/files", json={
+            "content": "test content"
+        })
+        
+        # Should return validation error (422)
+        assert response.status_code == 422
+        
+        # Filesystem service should not have been called
+        mock_filesystem_service.write_file.assert_not_called()
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
