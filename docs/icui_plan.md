@@ -226,13 +226,6 @@ This document outlines the step-by-step plan for rewriting the UI with a modular
 **Extra details**:
 - Create ICUITEST4.10 for testing all clipboard scenarios
 - Test across different security contexts (HTTP, HTTPS, localhost, IP addresses)
-- Validate fallback behavior and user experience
-
-
-
-
-
-- Validate fallback behavior and user experience
 
 ### Phase 5: Reusable Abstractions from SimpleEditor Analysis
 **Goal**: Extract and generalize reusable abstractions identified in the analysis of `simpleeditor.tsx` for broader ICUI framework use.
@@ -243,13 +236,13 @@ This document outlines the step-by-step plan for rewriting the UI with a modular
 **Solution**: Extract and generalize the notification service from `simpleeditor.tsx` into the ICUI framework core.
 
 **Implementation Details**:
-- Create `src/icui/services/ICUINotificationService.tsx` based on patterns from `simpleeditor.tsx`
+- Create `src/icui/services/notificationService.tsx` based on patterns from `simpleeditor.tsx`
 - Support multiple notification types: success, error, warning, info
 - Include toast-style notifications with auto-dismiss
 - Provide notification queue management for multiple simultaneous notifications
 - Integrate with ICUI theming system using CSS variables
 - Support customizable notification positioning and duration
-- Export hook `useICUINotifications()` for React components
+- Export hook `useNotifications()` for React components
 
 **Key Features from SimpleEditor Analysis**:
 - Type-safe notification methods: `show(message, type, duration?)`
@@ -263,7 +256,7 @@ This document outlines the step-by-step plan for rewriting the UI with a modular
 **Solution**: Create a generalized backend client abstraction framework for the ICUI system.
 
 **Implementation Details**:
-- Create `src/icui/services/ICUIBackendClient.tsx` as base class
+- Create `src/icui/services/backendClient.tsx` as base class
 - Extract common patterns from `EditorBackendClient` in `simpleeditor.tsx`:
   - Connection status management and health checks
   - Fallback mode handling when services are unavailable
@@ -279,9 +272,9 @@ This document outlines the step-by-step plan for rewriting the UI with a modular
 - **Environment Adaptation**: Automatic adaptation to different deployment scenarios
 
 **Specialized Clients**:
-- Create `ICUIFileClient extends ICUIBackendClient` for file operations
-- Create `ICUITerminalClient extends ICUIBackendClient` for terminal operations
-- Create `ICUIExecutionClient extends ICUIBackendClient` for code execution
+- Create `FileClient extends BackendClient` for file operations
+- Create `TerminalClient extends BackendClient` for terminal operations
+- Create `ExecutionClient extends BackendClient` for code execution
 
 #### Step 5.3: File Management Service Framework
 **Problem**: File operations are scattered across different components. The `simpleeditor.tsx` implements comprehensive file CRUD operations with fallback logic that should be standardized.
@@ -289,7 +282,7 @@ This document outlines the step-by-step plan for rewriting the UI with a modular
 **Solution**: Extract file management patterns into a reusable ICUI service.
 
 **Implementation Details**:
-- Create `src/icui/services/ICUIFileService.tsx`
+- Create `src/icui/services/fileService.tsx`
 - Extract patterns from `simpleeditor.tsx` file operations:
   - CRUD operations: `listFiles()`, `getFile()`, `saveFile()`, `createFile()`, `deleteFile()`
   - Language detection from file extensions
@@ -310,9 +303,9 @@ This document outlines the step-by-step plan for rewriting the UI with a modular
 **Solution**: Create a unified theme management service for the ICUI framework.
 
 **Implementation Details**:
-- Create `src/icui/services/ICUIThemeService.tsx`
+- Create `src/icui/services/themeService.tsx`
 - Extract theme detection logic from both editor implementations
-- Provide React hook `useICUITheme()` for components
+- Provide React hook `useTheme()` for components
 - Support theme switching and persistence
 - Integrate with existing ICUI CSS variable system
 
@@ -326,19 +319,19 @@ This document outlines the step-by-step plan for rewriting the UI with a modular
 **Goal**: Create flexible file and layout menus using the same modular principles
 
 #### Step 6.1: Top Menu Bar
-- Create `src/components/ui/MenuBar.tsx`
+- Create `src/icui/components/ui/MenuBar.tsx`
 - Implement dropdown menus for File, Edit, View, Layout
 - Add keyboard shortcut support
 - Support menu customization
 
 #### Step 6.2: File Menu Implementation
-- Create `src/components/menus/FileMenu.tsx`
+- Create `src/icui/components/menus/FileMenu.tsx`
 - Add file operations (New, Open, Save, Close)
 - Include recent files list
 - Support project management
 
 #### Step 6.3: Layout Menu Implementation
-- Create `src/components/menus/LayoutMenu.tsx`
+- Create `src/icui/components/menus/LayoutMenu.tsx`
 - Add layout presets and templates
 - Include panel creation options
 - Support layout reset functionality
@@ -401,14 +394,14 @@ src/
 │   │   │   └── LayoutMenu.tsx             # Phase 6.3
 │   │   └── ClipboardManager.tsx           # Phase 4.10
 │   ├── services/
-│   │   ├── ICUINotificationService.tsx    # Phase 5.1
-│   │   ├── ICUIBackendClient.tsx          # Phase 5.2
-│   │   ├── ICUIFileService.tsx            # Phase 5.3
-│   │   ├── ICUIThemeService.tsx           # Phase 5.4
+│   │   ├── notificationService.tsx        # Phase 5.1
+│   │   ├── backendClient.tsx              # Phase 5.2
+│   │   ├── fileService.tsx                # Phase 5.3
+│   │   ├── themeService.tsx               # Phase 5.4
 │   │   └── ClipboardService.tsx           # Phase 4.10
 │   ├── hooks/
-│   │   ├── useICUINotifications.tsx       # Phase 5.1
-│   │   ├── useICUITheme.tsx               # Phase 5.4
+│   │   ├── useNotifications.tsx           # Phase 5.1
+│   │   ├── useTheme.tsx                   # Phase 5.4
 │   │   └── useClipboard.tsx               # Phase 4.10
 │   └── lib/
 │       ├── layoutState.ts                 # Phase 1.3
@@ -438,5 +431,5 @@ src/
 1. Complete Phase 4 remaining steps (4.10 clipboard system)
 2. Begin Phase 5 implementation of reusable abstractions
 3. Extract NotificationService from simpleeditor.tsx
-4. Create ICUIBackendClient base class
+4. Create BackendClient base class
 5. Implement unified theme management service

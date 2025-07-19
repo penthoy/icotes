@@ -1,18 +1,36 @@
 /**
- * Enhanced Clipboard Service for ICUI
+ * Enhanced Clipboard Service with Browser Security Bypass
  * 
- * Multi-layer clipboard system that bypasses browser security limitations
- * by providing multiple fallback strategies, similar to code-server's approach.
- * 
- * Fallback Hierarchy:
- * 1. Browser native Clipboard API (when available in secure context)
- * 2. Server-side clipboard bridge with system integration
+ * Multi-layer clipboard strategy:
+ * 1. Native Clipboard API when available (HTTPS/localhost)
+ * 2. Server-side clipboard bridge for HTTP environments
  * 3. In-memory fallback for session continuity
  * 
  * @author ICUI Development Team
  */
 
-import { EventEmitter } from 'events';
+// Simple event emitter for browser compatibility
+class SimpleEventEmitter {
+  private listeners: Map<string, Function[]> = new Map();
+
+  on(event: string, listener: Function) {
+    if (!this.listeners.has(event)) {
+      this.listeners.set(event, []);
+    }
+    this.listeners.get(event)!.push(listener);
+  }
+
+  emit(event: string, ...args: any[]) {
+    const eventListeners = this.listeners.get(event);
+    if (eventListeners) {
+      eventListeners.forEach(listener => listener(...args));
+    }
+  }
+
+  removeAllListeners() {
+    this.listeners.clear();
+  }
+}
 
 export interface ClipboardEntry {
   content: string;
@@ -46,7 +64,7 @@ export interface ClipboardResult {
   metadata?: any;
 }
 
-export class ClipboardService extends EventEmitter {
+export class ClipboardService extends SimpleEventEmitter {
   private fallbackContent: string = '';
   private history: ClipboardEntry[] = [];
   private maxHistory: number = 50;

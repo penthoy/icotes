@@ -2,14 +2,23 @@
 A web-based JavaScript code editor built with ViteReact, CodeMirror 6, and modern web technologies. The goal is to create a powerful, The world's most powerful notebook for developers, it includes 3 core parts: 1. rich text editor, similar to evernote/notion hybrid, 2. code editor + terminal, 3. AI agent that can be customized with agentic frameworks such as crew ai, or openai agent sdk, or any other agentic framework.
 
 ### In Progress
+- [] work on icui_plan.md Phase 6: Modular Menu System (6.2 File Menu Implementation)
 
 ## Recently Finished
+- [✓] work on icui_plan.md Phase 6.1: **Top Menu Bar Implementation** - Created `src/icui/components/ui/MenuBar.tsx` with complete dropdown menu system including File, Edit, View, and Layout menus. Features keyboard shortcut support (Ctrl+N, Ctrl+S, etc.), menu customization, submenu support, ICUI theming integration, and notification system integration. Includes test page at `/icui-test6.1` route demonstrating all functionality including custom menus, keyboard shortcuts, and accessibility features.
 
+- [✓] work on icui_plan.md 5.3: **File Management Service Framework** - Created `src/icui/services/fileService.tsx` with comprehensive file CRUD operations, language detection from extensions, auto-save with debouncing, file modification tracking, workspace path management, and fallback mode support. Includes both ICPY backend integration and client-side fallback capabilities.
+
+- [✓] work on icui_plan.md 5.4: **Theme Detection and Management Service** - Created `src/icui/services/themeService.tsx` with MutationObserver-based automatic theme detection, React hook `useTheme()` integration, theme persistence and switching, multiple theme support (GitHub, Monokai, One Dark, Solarized), and ICUI CSS variable integration.
+
+- [✓] **Service Naming Cleanup** - Removed redundant ICUI prefixes from service files since they're already in the `icui/` folder. Updated all imports and references: `notificationService.tsx`, `backendClient.tsx`, `FileClient`, `TerminalClient`, `ExecutionClient`, `useNotifications()` hook.
+
+## Future task
 - [✓] work on integration_plan.md 2.3: Editor Integration, create a simpleeditor.tsx like the simpleterminal, using the simple reference icuieditorpanel from panels as a base, and then add it into App.tsx route - **COMPLETED with fallback mode for ICPY unavailability**
 
-- [] we are at integration_plan.md 2.3: Editor Integration
-- [] we are at icpy_plan.md 
-- [] we are at icui_plan.md 4.10 clipboard, need to update 5 and beyond
+- [] work on integration_plan.md 2.3: Editor Integration
+- [] work on icpy_plan.md 
+- [] work on icui_plan.md 4.10 clipboard, need to update 5 and beyond
 
 -- Milestone 1:
 Complete icui-icpy connection and integration plan so that the old home route is using icpy backend.
@@ -31,7 +40,7 @@ Everything that copilot, cursor can do
 -- Milestone 5:
 uncharted teritories, vanture where no other editor has gone, features:
 multiple agents working side by side in async. they're AI employees, in crew AI they'll be given name and backstory and role, this is for the purpose of devide and concour, they'll each have limited context so in their context they'll be specialized in one part of the code base, such as back end, frontend or integration, they're able to talk to each other
-## Future task
+
 
 -- Bug Fix:
 - [] Fix panel flickering issue
@@ -53,13 +62,13 @@ A Panel installer,
 maya style code executor.
 
 -- Framework Enhancement:
-- [] **Notification Service Integration** - Extract and generalize the NotificationService from `tests/integration/simpleeditor.tsx` into `src/icui/services/ICUINotificationService.tsx`. The current implementation in simpleeditor provides a clean pattern for toast notifications with auto-dismiss, multiple types (success, error, warning), and non-blocking UI feedback.
+- [✓] **Notification Service Integration** - Extract and generalize the NotificationService from `tests/integration/simpleeditor.tsx` into `src/icui/services/notificationService.tsx`. The current implementation in simpleeditor provides a clean pattern for toast notifications with auto-dismiss, multiple types (success, error, warning), and non-blocking UI feedback.
 
-- [] **Backend Client Abstraction** - Create `src/icui/services/ICUIBackendClient.tsx` base class based on the `EditorBackendClient` pattern from simpleeditor. Key features include connection status management, fallback mode handling, service availability detection, and consistent error handling across all backend operations.
+- [✓] **Backend Client Abstraction** - Create `src/icui/services/backendClient.tsx` base class based on the `EditorBackendClient` pattern from simpleeditor. Key features include connection status management, fallback mode handling, service availability detection, and consistent error handling across all backend operations.
 
-- [] **File Management Service** - Extract file CRUD operations from simpleeditor into `src/icui/services/ICUIFileService.tsx`. Include language detection, workspace path management, auto-save with debouncing, and file modification tracking. The current implementation handles both ICPY and fallback modes effectively.
+- [] **File Management Service** - Extract file CRUD operations from simpleeditor into `src/icui/services/fileService.tsx`. Include language detection, workspace path management, auto-save with debouncing, and file modification tracking. The current implementation handles both ICPY and fallback modes effectively.
 
-- [] **Theme Management Service** - Centralize theme detection logic from multiple editor components into `src/icui/services/ICUIThemeService.tsx` with `useICUITheme()` hook. Both simpleeditor and ICUIEnhancedEditorPanel implement similar MutationObserver-based theme detection that should be unified.
+- [] **Theme Management Service** - Centralize theme detection logic from multiple editor components into `src/icui/services/themeService.tsx` with `useTheme()` hook. Both simpleeditor and ICUIEnhancedEditorPanel implement similar MutationObserver-based theme detection that should be unified.
 
 - [] **Connection Status Components** - Create reusable connection status indicators based on the pattern in simpleeditor. Include visual connection state, error reporting, and refresh functionality for backend health monitoring.
 

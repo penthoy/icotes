@@ -7,11 +7,14 @@ import { ICUITest3 } from "../tests/integration/icui/ICUITest3";
 import { ICUITest4 } from "../tests/integration/icui/ICUITest4";
 import { ICUITest45 } from "../tests/integration/icui/ICUITest4.5";
 import ICUITest49 from "../tests/integration/icui/ICUITest4.9";
+import ICUITest61 from "../tests/integration/icui/ICUITest6.1";
 import ICUIEditorComparison from "../tests/integration/icui/ICUIEditorComparison";
 import { ICUIReferenceLayouts } from "../tests/integration/icui/ICUIReferenceLayouts";
 import { ICUIMainPage } from "../tests/integration/icui/ICUIMainPage";
 import { ICUITestEnhanced } from "../tests/integration/icui/ICUITestEnhanced";
 import { ICUITerminalTest } from "../tests/integration/icui/icuiTerminaltest";
+import ICUIServicesTest from "../tests/integration/icui/ICUIServicesTest";
+import ICUIServicesPhase2Test from "../tests/integration/icui/ICUIServicesPhase2Test";
 import Integration from "../tests/integration/integration";
 import SimpleTerminal from "../tests/integration/simpleterminal";
 import SimpleEditor from "../tests/integration/simpleeditor";
@@ -36,6 +39,9 @@ function App() {
           <Route path="/icui-test4" element={<ICUITest4 />} />
           <Route path="/icui-test4.5" element={<ICUITest45 />} />
           <Route path="/icui-test4.9" element={<ICUITest49 />} />
+          <Route path="/icui-test6.1" element={<ICUITest61 />} />
+          <Route path="/icui-services-test" element={<ICUIServicesTest />} />
+          <Route path="/icui-services-phase2-test" element={<ICUIServicesPhase2Test />} />
           <Route path="/icui-editor-comparison" element={<ICUIEditorComparison />} />
           <Route path="/icui-layouts" element={<ICUIReferenceLayouts />} />
           <Route path="/icui-main" element={<ICUIMainPage />} />
