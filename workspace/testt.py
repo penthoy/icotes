@@ -1,2 +1,2 @@
-// New python file: test.py
+// New python file: testhehe.py
 

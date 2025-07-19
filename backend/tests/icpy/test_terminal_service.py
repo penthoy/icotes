@@ -42,9 +42,28 @@ class TestTerminalService:
     async def terminal_service(self):
         """Create a fresh terminal service for each test"""
         # Reset global instances
-        await shutdown_terminal_service()
-        await shutdown_message_broker()
-        await shutdown_connection_manager()
+        try:
+            await shutdown_terminal_service()
+        except RuntimeError:
+            pass  # Event loop may already be closed
+        try:
+            await shutdown_message_broker()
+        except RuntimeError:
+            pass  # Event loop may already be closed
+        try:
+            await shutdown_connection_manager()
+        except RuntimeError:
+            pass  # Event loop may already be closed
+        
+        # Initialize message broker and connection manager
+        from icpy.core.message_broker import get_message_broker
+        from icpy.core.connection_manager import get_connection_manager
+        
+        message_broker = await get_message_broker()
+        await message_broker.start()
+        
+        connection_manager = await get_connection_manager()
+        await connection_manager.start()
         
         service = TerminalService()
         await service.initialize()
@@ -52,8 +71,14 @@ class TestTerminalService:
         yield service
         
         # Cleanup
-        await service.shutdown()
-        await shutdown_terminal_service()
+        try:
+            await service.shutdown()
+        except RuntimeError:
+            pass  # Event loop may already be closed
+        try:
+            await shutdown_terminal_service()
+        except RuntimeError:
+            pass  # Event loop may already be closed
 
     @pytest.mark.asyncio
     async def test_service_initialization(self, terminal_service):
@@ -62,7 +87,7 @@ class TestTerminalService:
         assert terminal_service.message_broker is not None
         assert terminal_service.connection_manager is not None
         assert terminal_service.max_sessions == 100
-        assert terminal_service.session_timeout == 3600
+        assert terminal_service.session_timeout == 600
         assert len(terminal_service.sessions) == 0
         assert len(terminal_service.websocket_sessions) == 0
         

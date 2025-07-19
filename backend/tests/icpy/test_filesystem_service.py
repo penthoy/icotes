@@ -41,9 +41,28 @@ class TestFileSystemService:
     async def filesystem_service(self, temp_dir):
         """Create a fresh filesystem service for each test"""
         # Reset global instances
-        await shutdown_filesystem_service()
-        await shutdown_message_broker()
-        await shutdown_connection_manager()
+        try:
+            await shutdown_filesystem_service()
+        except RuntimeError:
+            pass  # Event loop may already be closed
+        try:
+            await shutdown_message_broker()
+        except RuntimeError:
+            pass  # Event loop may already be closed
+        try:
+            await shutdown_connection_manager()
+        except RuntimeError:
+            pass  # Event loop may already be closed
+        
+        # Initialize message broker and connection manager
+        from icpy.core.message_broker import get_message_broker
+        from icpy.core.connection_manager import get_connection_manager
+        
+        message_broker = await get_message_broker()
+        await message_broker.start()
+        
+        connection_manager = await get_connection_manager()
+        await connection_manager.start()
         
         service = FileSystemService(root_path=temp_dir)
         await service.initialize()
@@ -51,8 +70,14 @@ class TestFileSystemService:
         yield service
         
         # Cleanup
-        await service.shutdown()
-        await shutdown_filesystem_service()
+        try:
+            await service.shutdown()
+        except RuntimeError:
+            pass  # Event loop may already be closed
+        try:
+            await shutdown_filesystem_service()
+        except RuntimeError:
+            pass  # Event loop may already be closed
     
     @pytest_asyncio.fixture
     async def sample_files(self, temp_dir, filesystem_service):
