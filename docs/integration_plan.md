@@ -300,54 +300,291 @@ const BackendConnectedTerminal = forwardRef<BackendConnectedTerminalRef, Backend
 
 **✅ Phase 2.2 Complete**: Terminal successfully integrated with ICPY backend terminal service.
 
-#### Phase 2.3: Editor Integration
+#### Phase 2.3: Editor Integration ✅ COMPLETED
 **Target**: Connect `ICUIEnhancedEditorPanel` to backend file operations
 
-**Implementation Steps**:
-1. **File Content Loading**: Load file content from backend instead of local state
-2. **Real-time Collaboration**: Implement operational transformation for concurrent editing
-3. **Auto-save Integration**: Save file changes to backend with debouncing
-4. **Code Execution**: Replace local `eval()` with backend code execution
+**Implementation Status**: ✅ Complete
+- [x] Created BackendConnectedEditor component
+- [x] Integrated with useBackendState hook for file operations
+- [x] Connected to backend filesystem service for file content
+- [x] Implemented file content loading from backend
+- [x] File saving with debounced auto-save functionality
+- [x] Code execution via backend code execution service
+- [x] Multi-language support (JavaScript, Python, etc.)
+- [x] Error handling and recovery mechanisms
+- [x] Integration with IntegratedHome component for testing
 
-**Key Changes**:
+**Implementation Details**:
 ```typescript
-// File content management
-const handleFileChange = useCallback((fileId: string, newContent: string) => {
-  // Update local state immediately for responsive UI
-  setEditorFiles(prev => prev.map(file => 
-    file.id === fileId ? { ...file, content: newContent, modified: true } : file
-  ));
+// BackendConnectedEditor.tsx
+const BackendConnectedEditor: React.FC<BackendConnectedEditorProps> = ({
+  files, activeFileId, onFileChange, onFileRun, onFileCreate, onFileClose
+}) => {
+  const { workspaceState, actions } = useBackendState();
+  const { isConnected } = useBackendContext();
   
-  // Debounced save to backend
-  debouncedSave(fileId, newContent);
-}, []);
-
-// Backend code execution
-const handleFileRun = useCallback(async (fileId: string, content: string, language: string) => {
-  try {
-    const result = await backendClient.executeCode({
-      fileId,
-      content,
-      language
-    });
-    
-    // Display result in terminal or output panel
-    displayExecutionResult(result);
-  } catch (error) {
-    console.error('Code execution failed:', error);
-  }
-}, []);
+  // Load file content from backend
+  const loadFileContent = useCallback(async (fileId: string) => {
+    const content = await actions.getFileContent(fileId);
+    return content;
+  }, [actions]);
+  
+  // Auto-save with debouncing
+  const debouncedSave = useMemo(() => 
+    debounce(async (fileId: string, content: string) => {
+      await actions.updateFile(fileId, content);
+    }, 1500), [actions]
+  );
+  
+  // Backend code execution
+  const handleFileRun = useCallback(async (fileId: string, content: string, language: string) => {
+    try {
+      const result = await actions.executeCode({ fileId, content, language });
+      displayExecutionResult(result);
+    } catch (error) {
+      console.error('Code execution failed:', error);
+    }
+  }, [actions]);
+};
 ```
-      content,
-      language
+
+**Key Features Implemented**:
+- **Backend File Loading**: Load file content from backend filesystem service
+- **Auto-save Integration**: Debounced file saving to backend
+- **Code Execution**: Backend code execution with output display
+- **Multi-language Support**: Support for JavaScript, Python, and other languages
+- **Connection Status**: Visual indication of backend connection state
+- **Error Handling**: Proper error states and user feedback
+- **Real-time Updates**: File content synchronized across clients
+
+**Files Created**:
+- `tests/integration/components/BackendConnectedEditor.tsx` - Backend-connected editor component
+- Enhanced `src/hooks/useBackendState.ts` - Added file content operations (getFileContent, updateFile, executeCode)
+- Updated `tests/integration/components/IntegratedHome.tsx` - Integrated editor component with file management
+
+**✅ Phase 2.3 Complete**: Editor successfully integrated with ICPY backend filesystem and execution services.
+
+#### Phase 2.4: Comprehensive Integration Test Environment
+**Target**: Create comprehensive integration test with all 3 panels (explorer, terminal, editor) working together in a unified environment that demonstrates complete backend integration
+
+**Goal**: Build a complete integration test that showcases all Phase 2 components working together seamlessly, serving as the foundation for Milestone 1 and demonstrating that the ICUI-ICPY integration is fully functional.
+
+**Implementation Steps**:
+
+**Step 2.4.1: Enhanced IntegratedHome Component**
+- **Target File**: `tests/integration/components/IntegratedHome.tsx`
+- **Enhancement**: Transform into complete development environment
+- **Key Features**:
+  - **Unified Panel Management**: All 3 panels (explorer, terminal, editor) in synchronized layout
+  - **Cross-Panel Communication**: File selection in explorer opens in editor, code execution shows in terminal
+  - **Real-time State Sync**: All components reflect backend state changes immediately
+  - **Complete Workflow Demo**: Full file-to-execution development workflow
+
+```typescript
+// Enhanced IntegratedHome.tsx
+export const IntegratedHome: React.FC = () => {
+  const { workspaceState, files, terminals, actions } = useBackendState();
+  const [activeFileId, setActiveFileId] = useState<string | null>(null);
+  const [selectedTerminalId, setSelectedTerminalId] = useState<string | null>(null);
+  
+  // Cross-panel communication handlers
+  const handleExplorerFileSelect = useCallback((filePath: string) => {
+    // Open selected file in editor
+    actions.openFile(filePath).then(fileContent => {
+      setActiveFileId(filePath);
     });
+  }, [actions]);
+  
+  const handleEditorCodeRun = useCallback((content: string, language: string) => {
+    // Execute code and show output in terminal
+    actions.executeCode({ content, language }).then(result => {
+      // Output displays in active terminal
+    });
+  }, [actions, selectedTerminalId]);
+  
+  // Unified layout configuration
+  const layoutConfig: ICUILayoutConfig = {
+    areas: {
+      left: { panels: [{ type: 'explorer', id: 'main-explorer' }] },
+      center: { panels: [{ type: 'editor', id: 'main-editor' }] },
+      bottom: { panels: [{ type: 'terminal', id: 'main-terminal' }] }
+    }
+  };
+  
+  return (
+    <div className="integrated-home">
+      <div className="integration-status">
+        <ConnectionStatus />
+        <BackendMetrics />
+      </div>
+      
+      <ICUIEnhancedLayout config={layoutConfig}>
+        <BackendConnectedExplorer 
+          onFileSelect={handleExplorerFileSelect}
+          onFileCreate={handleFileCreate}
+        />
+        <BackendConnectedEditor
+          files={files}
+          activeFileId={activeFileId}
+          onFileChange={handleFileChange}
+          onFileRun={handleEditorCodeRun}
+        />
+        <BackendConnectedTerminal
+          terminalId={selectedTerminalId}
+          onTerminalOutput={handleTerminalOutput}
+        />
+      </ICUIEnhancedLayout>
+    </div>
+  );
+};
+```
+
+**Step 2.4.2: Complete Integration Test Page**
+- **Target File**: `tests/integration/integration.tsx`
+- **Enhancement**: Comprehensive test environment with all controls
+- **Key Features**:
+  - **Test Controls Panel**: Manual testing controls for all operations
+  - **Backend Status Dashboard**: Real-time backend connection and service status
+  - **Operation Logs**: Visual log of all backend operations and responses
+  - **Development Workflow Demo**: Complete file creation → editing → execution workflow
+
+```typescript
+// Enhanced integration.tsx
+export const Integration: React.FC = () => {
+  const [testMode, setTestMode] = useState<'manual' | 'automated'>('manual');
+  const [operationLogs, setOperationLogs] = useState<OperationLog[]>([]);
+  
+  return (
+    <BackendContextProvider config={{ backendUrl: 'ws://localhost:8000' }}>
+      <div className="integration-test-environment">
+        <TestControlPanel 
+          onRunWorkflowTest={handleWorkflowTest}
+          onClearLogs={() => setOperationLogs([])}
+          testMode={testMode}
+          onTestModeChange={setTestMode}
+        />
+        
+        <BackendStatusDashboard 
+          logs={operationLogs}
+          onLogAdd={addOperationLog}
+        />
+        
+        <IntegratedHome />
+        
+        <AutomatedTestSuite 
+          enabled={testMode === 'automated'}
+          onTestResult={handleTestResult}
+        />
+      </div>
+    </BackendContextProvider>
+  );
+};
+```
+
+**Step 2.4.3: Backend Status and Monitoring Components**
+- **Target Files**: 
+  - `tests/integration/components/ConnectionStatus.tsx`
+  - `tests/integration/components/BackendStatusDashboard.tsx`
+  - `tests/integration/components/TestControlPanel.tsx`
+
+```typescript
+// ConnectionStatus.tsx
+export const ConnectionStatus: React.FC = () => {
+  const { isConnected, connectionStatus, lastError } = useBackendContext();
+  const { workspaceState } = useBackendState();
+  
+  return (
+    <div className="connection-status">
+      <StatusIndicator status={connectionStatus} />
+      <ServiceHealth services={['filesystem', 'terminal', 'execution']} />
+      <WorkspaceInfo state={workspaceState} />
+    </div>
+  );
+};
+```
+
+**Step 2.4.4: Automated Test Suite Integration**
+- **Target File**: `tests/integration/components/AutomatedTestSuite.tsx`
+- **Features**: Automated testing of complete development workflows
+
+```typescript
+// AutomatedTestSuite.tsx
+export const AutomatedTestSuite: React.FC<AutomatedTestSuiteProps> = ({ enabled, onTestResult }) => {
+  const runCompleteWorkflowTest = useCallback(async () => {
+    // 1. Create new file via explorer
+    await testFileCreation();
     
-    // Display result in terminal or output panel
-    displayExecutionResult(result);
-  } catch (error) {
-    console.error('Code execution failed:', error);
-  }
-}, []);
+    // 2. Edit file content in editor
+    await testFileEditing();
+    
+    // 3. Execute code and verify terminal output
+    await testCodeExecution();
+    
+    // 4. Verify cross-panel synchronization
+    await testPanelSynchronization();
+    
+    onTestResult({ passed: true, workflow: 'complete-development-cycle' });
+  }, [onTestResult]);
+  
+  return enabled ? (
+    <div className="automated-test-suite">
+      <button onClick={runCompleteWorkflowTest}>Run Complete Workflow Test</button>
+      <TestResults />
+    </div>
+  ) : null;
+};
+```
+
+**Step 2.4.5: Integration with Current Home Route**
+- **Target**: Demonstrate path to replace current home.tsx
+- **Create**: `tests/integration/components/HomeReplacement.tsx` 
+- **Purpose**: Show how IntegratedHome can replace current home.tsx
+
+```typescript
+// HomeReplacement.tsx - Demonstration of home.tsx replacement
+export const HomeReplacement: React.FC<HomeProps> = ({ className }) => {
+  return (
+    <BackendContextProvider>
+      <IntegratedHome />
+    </BackendContextProvider>
+  );
+};
+```
+
+**Files to Create**:
+1. **Enhanced Integration Components**:
+   - `tests/integration/components/IntegratedHome.tsx` (enhance existing)
+   - `tests/integration/components/ConnectionStatus.tsx`
+   - `tests/integration/components/BackendStatusDashboard.tsx`
+   - `tests/integration/components/TestControlPanel.tsx`
+   - `tests/integration/components/AutomatedTestSuite.tsx`
+   - `tests/integration/components/HomeReplacement.tsx`
+
+2. **Enhanced Integration Page**:
+   - `tests/integration/integration.tsx` (enhance existing)
+   - `tests/integration/styles/integration.css`
+
+3. **Supporting Utilities**:
+   - `tests/integration/utils/testHelpers.ts`
+   - `tests/integration/types/integration-types.ts`
+
+**Success Criteria**:
+- [ ] All 3 panels (explorer, terminal, editor) display and function correctly
+- [ ] Cross-panel communication working (explorer → editor, editor → terminal)
+- [ ] Backend integration fully functional for all operations
+- [ ] Real-time state synchronization across all components
+- [ ] Complete development workflow testable (create → edit → execute)
+- [ ] Automated test suite validates all integrations
+- [ ] Ready to serve as foundation for Milestone 1
+
+**Testing Approach**:
+1. **Manual Testing**: Use enhanced integration.tsx page for interactive testing
+2. **Automated Testing**: Run automated test suite to verify workflows
+3. **Cross-Component Testing**: Verify all panels work together seamlessly
+4. **Backend Integration Testing**: Ensure all backend services respond correctly
+5. **Real-time Updates Testing**: Verify state changes propagate across components
+
+**✅ Phase 2.4 Deliverables**: Complete integration test environment with all 3 panels working together, demonstrating full ICUI-ICPY integration and serving as foundation for Milestone 1.
 ```
 
 ## MILESTONE 1: Core Feature Parity with Current home.tsx
