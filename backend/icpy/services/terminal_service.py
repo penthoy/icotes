@@ -58,20 +58,17 @@ class TerminalState(Enum):
 @dataclass
 class TerminalConfig:
     """Configuration for terminal sessions."""
-    shell: str = "/bin/bash"
+    shell: str = None
     term: str = "xterm-256color"
-    cols: int = 80
-    rows: int = 24
+    cols: int = None
+    rows: int = None
     env: Dict[str, str] = None
     cwd: str = None
     startup_script: str = None
     
     def __post_init__(self):
         """Initialize default values."""
-        if self.env is None:
-            self.env = {}
-        if self.cwd is None:
-            self.cwd = os.path.expanduser('~')
+        pass
 
 
 @dataclass
@@ -231,6 +228,17 @@ class TerminalService:
         if config is None:
             config = TerminalConfig()
         
+        if config.shell is None:
+            config.shell = "/bin/bash"
+        if config.cols is None:
+            config.cols = 80
+        if config.rows is None:
+            config.rows = 24
+        if config.cwd is None:
+            config.cwd = os.path.expanduser('~')
+        if config.env is None:
+            config.env = {}
+
         # Create session object
         session = TerminalSession(
             id=session_id,

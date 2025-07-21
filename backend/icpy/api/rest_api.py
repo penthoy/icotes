@@ -92,8 +92,8 @@ class FileOperationRequest(BaseModel):
     """Request model for file operations."""
     path: str = Field(..., description="File path")
     content: Optional[str] = Field(None, description="File content")
-    encoding: Optional[str] = Field("utf-8", description="File encoding")
-    create_dirs: Optional[bool] = Field(True, description="Create directories if needed")
+    encoding: Optional[str] = Field(None, description="File encoding")
+    create_dirs: Optional[bool] = Field(False, description="Create directories if needed")
 
 
 class FileSearchRequest(BaseModel):
@@ -111,8 +111,8 @@ class TerminalCreateRequest(BaseModel):
     shell: Optional[str] = Field(None, description="Shell to use")
     cwd: Optional[str] = Field(None, description="Working directory")
     env: Optional[Dict[str, str]] = Field(None, description="Environment variables")
-    rows: Optional[int] = Field(24, description="Terminal rows")
-    cols: Optional[int] = Field(80, description="Terminal columns")
+    rows: Optional[int] = Field(None, description="Terminal rows")
+    cols: Optional[int] = Field(None, description="Terminal columns")
 
 
 class TerminalInputRequest(BaseModel):
@@ -497,19 +497,19 @@ class RestAPI:
                 
                 # Create terminal configuration
                 config = TerminalConfig()
-                if hasattr(request, 'shell') and request.shell:
+                if request.shell is not None:
                     config.shell = request.shell
-                if hasattr(request, 'cwd') and request.cwd:
+                if request.cwd is not None:
                     config.cwd = request.cwd
-                if hasattr(request, 'env') and request.env:
+                if request.env is not None:
                     config.env = request.env
-                if hasattr(request, 'rows') and request.rows:
+                if request.rows is not None:
                     config.rows = request.rows
-                if hasattr(request, 'cols') and request.cols:
+                if request.cols is not None:
                     config.cols = request.cols
                 
                 terminal_id = await self.terminal_service.create_session(
-                    name=getattr(request, 'name', None),
+                    name=request.name,
                     config=config
                 )
                 
