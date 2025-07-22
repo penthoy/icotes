@@ -13,19 +13,19 @@ A web-based JavaScript code editor built with ViteReact, CodeMirror 6, and moder
 -- Theme fix:
 - [] terminal theme looking wrong, 
 - [] Monokai is wrong
-- [] editor tab color is wrong.
+- [] editor tab color is wrong, please use the same color as the panel tabs, the active tab should have lighter color
 
 -- integration 2.5:
 Now that explorer, code editor and terminal works, next is how they talk to each other.
 1. Editor:remove the Connected area, there's no need for editor to show connection independently.
 2. Editor
 - [] Update integration details: explorer is empty by defaul, but populates 
-
+3. use src/icui/menus on inthome.tsx
 
 -- keep progressing on icui and icpy, need context right click menu
 - [] work on integration_plan.md 2.3: Editor Integration
 - [] work on icpy_plan.md 
-- [] work on icui_plan.md 4.10 clipboard, need to update 5 and beyond
+- [] work on icui_plan.md 7.1 clipboard, need to update 5 and beyond
 
 - [] housekeeping, clean up unused routes in App.tsx
   

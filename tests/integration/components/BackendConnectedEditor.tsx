@@ -150,7 +150,7 @@ class EditorBackendClient {
   async readFile(path: string): Promise<string> {
     try {
       const encodedPath = encodeURIComponent(path);
-      const response = await fetch(`${this.baseUrl}/files/read?path=${encodedPath}`);
+      const response = await fetch(`${this.baseUrl}/files/content?path=${encodedPath}`);
       
       if (!response.ok) {
         throw new Error(`Failed to read file: ${response.status} ${response.statusText}`);
