@@ -24,11 +24,31 @@ A FastAPI backend for icotes that provides code execution capabilities and WebSo
 
 ## Setup
 
+**CRITICAL: Always use the virtual environment for any Python operations!**
+
 1. Install Python 3.8+ and pip
-2. Install dependencies:
+2. Set up virtual environment and install dependencies:
    ```bash
+   cd backend
+   python3 -m venv venv
+   source venv/bin/activate  # ALWAYS DO THIS FIRST!
    pip install -r requirements.txt
    ```
+
+**Common mistake:** Running `python3` or `python` directly without `source venv/bin/activate` first will cause pydantic version conflicts and import errors.
+
+## Development
+
+```bash
+# ALWAYS start with this:
+cd backend
+source venv/bin/activate
+
+# Then run any Python commands:
+python main.py
+python -m pytest
+python -c "from icpy.api import get_rest_api"
+```
 3. Start the server:
    ```bash
    python main.py

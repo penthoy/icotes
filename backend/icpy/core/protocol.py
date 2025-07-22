@@ -12,6 +12,8 @@ from typing import Dict, List, Any, Optional, Union, Callable
 from dataclasses import dataclass, field, asdict
 from enum import Enum
 import asyncio
+
+# Pydantic imports - requires pydantic v2
 from pydantic import BaseModel, Field, field_validator, ValidationError
 
 logger = logging.getLogger(__name__)
@@ -100,8 +102,8 @@ class JsonRpcRequest(BaseModel):
     @field_validator('method')
     @classmethod
     def validate_method(cls, v):
-        if not v or not isinstance(v, str):
-            raise ValueError("Method must be a non-empty string")
+        if not v:
+            raise ValueError("Method cannot be empty")
         return v
     
     def is_notification(self) -> bool:

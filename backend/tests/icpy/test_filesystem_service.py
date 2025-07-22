@@ -701,6 +701,194 @@ class TestFileSystemService:
         file_info = await filesystem_service.get_file_info(sample_files['data.json'])
         assert 'json' in file_info.mime_type or file_info.mime_type.startswith('text/')
 
+    @pytest.mark.asyncio
+    async def test_create_directory(self, filesystem_service, temp_dir):
+        """Test basic directory creation"""
+        test_dir = os.path.join(temp_dir, 'new_directory')
+        
+        # Directory should not exist initially
+        assert not os.path.exists(test_dir)
+        
+        # Create directory
+        success = await filesystem_service.create_directory(test_dir)
+        
+        # Verify success
+        assert success is True
+        assert os.path.exists(test_dir)
+        assert os.path.isdir(test_dir)
+        
+        # Verify file info
+        file_info = await filesystem_service.get_file_info(test_dir)
+        assert file_info is not None
+        assert file_info.is_directory is True
+        assert file_info.type == FileType.DIRECTORY
+
+    @pytest.mark.asyncio
+    async def test_create_nested_directory(self, filesystem_service, temp_dir):
+        """Test nested directory creation with parents"""
+        test_dir = os.path.join(temp_dir, 'parent', 'child', 'grandchild')
+        
+        # Directory should not exist initially
+        assert not os.path.exists(test_dir)
+        assert not os.path.exists(os.path.join(temp_dir, 'parent'))
+        
+        # Create nested directory with parents
+        success = await filesystem_service.create_directory(test_dir, parents=True)
+        
+        # Verify success
+        assert success is True
+        assert os.path.exists(test_dir)
+        assert os.path.isdir(test_dir)
+        
+        # Verify parent directories were created
+        assert os.path.exists(os.path.join(temp_dir, 'parent'))
+        assert os.path.exists(os.path.join(temp_dir, 'parent', 'child'))
+
+    @pytest.mark.asyncio
+    async def test_create_nested_directory_without_parents(self, filesystem_service, temp_dir):
+        """Test nested directory creation without parents should fail"""
+        test_dir = os.path.join(temp_dir, 'nonexistent', 'child')
+        
+        # Directory should not exist initially
+        assert not os.path.exists(test_dir)
+        assert not os.path.exists(os.path.join(temp_dir, 'nonexistent'))
+        
+        # Create nested directory without parents should fail
+        success = await filesystem_service.create_directory(test_dir, parents=False)
+        
+        # Verify failure
+        assert success is False
+        assert not os.path.exists(test_dir)
+
+    @pytest.mark.asyncio
+    async def test_create_existing_directory(self, filesystem_service, temp_dir):
+        """Test creating directory that already exists"""
+        test_dir = os.path.join(temp_dir, 'existing_dir')
+        
+        # Create directory first
+        os.makedirs(test_dir)
+        assert os.path.exists(test_dir)
+        
+        # Try to create the same directory again
+        success = await filesystem_service.create_directory(test_dir)
+        
+        # Should succeed (idempotent operation)
+        assert success is True
+        assert os.path.exists(test_dir)
+        assert os.path.isdir(test_dir)
+
+    @pytest.mark.asyncio
+    async def test_create_directory_where_file_exists(self, filesystem_service, temp_dir):
+        """Test creating directory where file already exists"""
+        test_path = os.path.join(temp_dir, 'conflict_test')
+        
+        # Create a file first
+        with open(test_path, 'w') as f:
+            f.write('existing file')
+        
+        assert os.path.exists(test_path)
+        assert os.path.isfile(test_path)
+        
+        # Try to create directory with same name
+        success = await filesystem_service.create_directory(test_path)
+        
+        # Should fail
+        assert success is False
+        
+        # File should still exist and be a file
+        assert os.path.exists(test_path)
+        assert os.path.isfile(test_path)
+
+    @pytest.mark.asyncio
+    async def test_create_directory_with_special_characters(self, filesystem_service, temp_dir):
+        """Test creating directory with special characters in name"""
+        special_names = [
+            'directory with spaces',
+            'directory-with-hyphens',
+            'directory_with_underscores',
+            'directory.with.dots'
+        ]
+        
+        for dir_name in special_names:
+            test_dir = os.path.join(temp_dir, dir_name)
+            
+            # Create directory
+            success = await filesystem_service.create_directory(test_dir)
+            
+            # Verify success
+            assert success is True, f"Failed to create directory: {dir_name}"
+            assert os.path.exists(test_dir)
+            assert os.path.isdir(test_dir)
+
+    @pytest.mark.asyncio
+    async def test_create_directory_event_publishing(self, filesystem_service, temp_dir):
+        """Test that directory creation publishes events"""
+        test_dir = os.path.join(temp_dir, 'event_test_dir')
+        
+        # Mock the message broker to capture events
+        original_publish = filesystem_service.message_broker.publish
+        published_events = []
+        
+        async def mock_publish(event_type, data):
+            published_events.append((event_type, data))
+            return await original_publish(event_type, data)
+        
+        filesystem_service.message_broker.publish = mock_publish
+        
+        # Create directory
+        success = await filesystem_service.create_directory(test_dir)
+        
+        # Verify success and event publishing
+        assert success is True
+        assert os.path.exists(test_dir)
+        
+        # Check that the correct event was published
+        directory_created_events = [event for event in published_events if event[0] == 'fs.directory_created']
+        assert len(directory_created_events) == 1
+        
+        event_type, event_data = directory_created_events[0]
+        assert event_data['dir_path'] == os.path.abspath(test_dir)
+        assert event_data['parents'] is True
+        assert 'timestamp' in event_data
+        
+        # Restore original publish method
+        filesystem_service.message_broker.publish = original_publish
+
+    @pytest.mark.asyncio
+    async def test_create_directory_statistics_update(self, filesystem_service, temp_dir):
+        """Test that directory creation updates statistics"""
+        test_dir = os.path.join(temp_dir, 'stats_test_dir')
+        
+        # Get initial stats
+        initial_stats = await filesystem_service.get_stats()
+        initial_files_created = initial_stats['files_created']
+        
+        # Create directory
+        success = await filesystem_service.create_directory(test_dir)
+        
+        # Verify stats were updated
+        assert success is True
+        final_stats = await filesystem_service.get_stats()
+        assert final_stats['files_created'] == initial_files_created + 1
+
+    @pytest.mark.asyncio
+    async def test_create_directory_permissions(self, filesystem_service, temp_dir):
+        """Test directory creation with proper permissions"""
+        test_dir = os.path.join(temp_dir, 'permissions_test')
+        
+        # Create directory
+        success = await filesystem_service.create_directory(test_dir)
+        assert success is True
+        
+        # Check permissions
+        file_info = await filesystem_service.get_file_info(test_dir)
+        assert file_info is not None
+        
+        # Should have read and write permissions at minimum
+        permission_values = [p.value for p in file_info.permissions]
+        assert 'read' in permission_values
+        assert 'write' in permission_values
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

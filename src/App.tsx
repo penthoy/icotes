@@ -1,6 +1,7 @@
 import { Suspense } from "react";
-import { Routes, Route } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 import Home from "./components/home";
+import IntegratedHome from "../tests/integration/inthome";
 import { ICUITest } from "../tests/integration/icui/ICUITest";
 import { ICUITest2 } from "../tests/integration/icui/ICUITest2";
 import { ICUITest3 } from "../tests/integration/icui/ICUITest3";
@@ -20,6 +21,7 @@ import ICUIServicesPhase2Test from "../tests/integration/icui/ICUIServicesPhase2
 import Integration from "../tests/integration/integration";
 import SimpleTerminal from "../tests/integration/simpleterminal";
 import SimpleEditor from "../tests/integration/simpleeditor";
+import SimpleExplorer from "../tests/integration/simpleexplorer";
 import { BackendContextProvider } from "./contexts/BackendContext";
 
 function App() {
@@ -32,9 +34,15 @@ function App() {
               <Home />
             </BackendContextProvider>
           } />
+          <Route path="/inthome" element={
+            <BackendContextProvider>
+              <IntegratedHome />
+            </BackendContextProvider>
+          } />
           <Route path="/integration" element={<Integration />} />
           <Route path="/simple-terminal" element={<SimpleTerminal />} />
           <Route path="/simple-editor" element={<SimpleEditor />} />
+          <Route path="/simple-explorer" element={<SimpleExplorer />} />
           <Route path="/icui-test" element={<ICUITest />} />
           <Route path="/icui-test2" element={<ICUITest2 />} />
           <Route path="/icui-test3" element={<ICUITest3 />} />
@@ -51,6 +59,13 @@ function App() {
           <Route path="/icui-main" element={<ICUIMainPage />} />
           <Route path="/icui-enhanced" element={<ICUITestEnhanced />} />
           <Route path="/icui-terminal-test" element={<ICUITerminalTest />} />
+          
+          {/* Handle double slash routes */}
+          <Route path="//inthome" element={<Navigate to="/inthome" replace />} />
+          <Route path="//integration" element={<Navigate to="/integration" replace />} />
+          
+          {/* Catch-all route */}
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Suspense>
     </div>

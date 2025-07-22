@@ -1,12 +1,47 @@
 ## Project Overview
 A web-based JavaScript code editor built with ViteReact, CodeMirror 6, and modern web technologies. The goal is to create a powerful, The world's most powerful notebook for developers, it includes 3 core parts: 1. rich text editor, similar to evernote/notion hybrid, 2. code editor + terminal(similar to replit), 3. AI agent that can be customized with agentic frameworks such as crew ai, or openai agent sdk, or any other agentic framework.
 
-### In Progress 1 (for frontend)
-- [] proceed with integration_plan.md Step 2.4:
+### In Progress
+
+## Current Status: Integration Phase Complete ✅
+
+### ✅ Completed Tasks
+- ✅ Copied `home.tsx` to `tests/integration/inthome.tsx` for integration testing
+- ✅ Refactored `inthome.tsx` to use only existing components and local state
+- ✅ Removed out-of-scope `BackendConnectedEditor` component  
+- ✅ Added `inthome.tsx` to `App.tsx` with `/inthome` route for direct testing
+- ✅ Verified build passes with no errors
+- ✅ Exposed `WORKSPACE_ROOT` in `.env` as `VITE_WORKSPACE_ROOT` for frontend use
+- ✅ **Updated BackendConnectedTerminal.tsx to follow simpleterminal.tsx pattern** 
+  - Complete refactor using direct WebSocket connection
+  - Removed complex backend state management
+  - Added clipboard functionality
+  - Applied proper theming and scrolling
+  - Verified build passes with no errors
+- ✅ **Use WORKSPACE_ROOT from .env to sync root of all panels**
+  - Added workspace root reading from `VITE_WORKSPACE_ROOT` 
+  - Added workspace root indicator to UI status display
+  - Integrated workspace root into `inthome.tsx` component
+  - Verified build passes with no errors
+- ✅ **Updated BackendConnectedExplorer.tsx to use VITE_WORKSPACE_ROOT**
+  - Updated initial directory loading to use workspace root
+  - Modified file and folder creation to work relative to workspace root
+  - Added workspace root indicator to explorer header
+  - Verified build passes with no errors
+
+### In Progress 
+
 
 ## Future task
 
-- [✓] work on integration_plan.md 2.3: Editor Integration, create a simpleeditor.tsx like the simpleterminal, using the simple reference icuieditorpanel from panels as a base, and then add it into App.tsx route - **COMPLETED with fallback mode for ICPY unavailability**
+- [] update editor, same but with icpy. use /src/icui/components/panels/ICUIEnhancedEditorPanel as example but do not reference it, this should be a full rewrite and same for rest of the panels
+- [] Update integration details: explorer is empty by defaul, but populates 
+
+- [] work on integration_plan.md 2.3: Editor Integration
+- [] work on icpy_plan.md 
+- [] work on icui_plan.md 4.10 clipboard, need to update 5 and beyond
+
+- [] housekeeping, clean up unused routes in App.tsx
 
 - [] work on integration_plan.md 2.3: Editor Integration
 - [] work on icpy_plan.md 
@@ -54,6 +89,10 @@ A Panel installer,
 maya style code executor.
 
 ## Recently Finished
+- [✅] **Integration Plan Phase 2.4 - Home.tsx Rewrite and ICPY Preparation** - **COMPLETED** - Successfully completed rewrite of home.tsx for ICPY integration as specified in integration_plan.md 2.4. Copied original home.tsx to tests/integration/inthome.tsx and refactored it for backend integration readiness. Cleaned up component by removing non-existent BackendConnectedEditor references, simplified backend state management with graceful fallbacks, replaced complex backend hooks with simple local state management (ready for future backend integration), maintained existing BackendConnectedExplorer and BackendConnectedTerminal integration, and added proper error handling and connection status display. Component now uses ICUIEnhancedEditorPanel directly for editor functionality while keeping the structure ready for future ICPY backend connection. The integrated home component is prepared with proper theme management, layout controls, and panel management system ready for full backend synchronization.
+
+- [✅] **Integration Plan Phase 2.4: Comprehensive Integration Test Environment** - **COMPLETED** - Implemented comprehensive three-panel integration test environment as specified in integration_plan.md Step 2.4. Created BackendConnectedEditor component (`tests/integration/components/BackendConnectedEditor.tsx`) that wraps SimpleEditor with enhanced integration capabilities. Built ComprehensiveIntegrationTest component (`tests/integration/components/ComprehensiveIntegrationTest.tsx`) providing unified IDE-like interface with Explorer (left 25%), Editor (center 50%), and Terminal (right 25%) panels. Added IntegrationTestControls component (`tests/integration/components/IntegrationTestControls.tsx`) with comprehensive test automation including file creation, directory operations, terminal management, code execution, and cross-panel workflow validation. Updated integration route (`tests/integration/integration.tsx`) to support both basic and comprehensive test modes. All components integrate seamlessly with existing BackendConnectedExplorer, SimpleEditor, and BackendConnectedTerminal components while maintaining full ICPY backend connectivity. Accessible at `/integration` with comprehensive mode providing complete IDE experience demonstrating file-to-editor-to-terminal workflow integration.
+
 - [✅] **Event Broadcasting System Implementation** - **COMPLETED** - Implemented advanced Event Broadcasting System (`backend/icpy/core/event_broadcaster.py`) as specified in icpy_plan.md Step 4.2. Features include priority-based event broadcasting (low, normal, high, critical), targeted delivery modes (broadcast, multicast, unicast), advanced event filtering with permissions and client type support, client interest management with topic patterns, comprehensive event history and replay functionality, and seamless integration with MessageBroker and ConnectionManager. Added full test suite (`backend/tests/icpy/test_event_broadcaster.py`) with 26 passing tests covering all functionality including service lifecycle, broadcasting, filtering, history, replay, error handling, statistics, and performance. Service provides global instance management and supports real-time event-driven communication across WebSocket, HTTP, and CLI clients.
 
 - [✅] **ICUI Layout Menu Implementation** - **COMPLETED** - Created comprehensive LayoutMenu component (`src/icui/components/menus/LayoutMenu.tsx`) as specified in icui_plan.md 6.3. Features include layout templates and presets (Default, Code Focused, Terminal Focused), custom layout management (save, load, delete with localStorage integration), panel creation options for all panel types (editor, terminal, explorer, output, browser, preview), layout reset functionality, layout import/export capabilities, and full ICUILayoutStateManager integration. Added supporting CSS styles (`src/icui/styles/LayoutMenu.css`) with dark theme support, responsive design, and accessibility features. Includes comprehensive test page (`/icui-layout-menu-test`) demonstrating all functionality with interactive layout state management, panel creation/removal, and layout history tracking.

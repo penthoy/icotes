@@ -94,6 +94,7 @@ class FileOperationRequest(BaseModel):
     content: Optional[str] = Field(None, description="File content")
     encoding: Optional[str] = Field("utf-8", description="File encoding")
     create_dirs: Optional[bool] = Field(True, description="Create directories if needed")
+    type: Optional[str] = Field("file", description="Type of item to create: 'file' or 'directory'")
 
 
 class FileSearchRequest(BaseModel):
@@ -407,19 +408,33 @@ class RestAPI:
         
         @self.app.post("/api/files")
         async def create_file(request: FileOperationRequest):
-            """Create or update file."""
+            """Create file or directory based on request type."""
             import traceback
             try:
-                logger.error(f"[DEBUG] Incoming create_file request: path={request.path}, content_len={len(request.content or '')}, encoding={request.encoding}, create_dirs={request.create_dirs}")
-                await self.filesystem_service.write_file(
-                    file_path=request.path,
-                    content=request.content or "",
-                    encoding=request.encoding,
-                    create_dirs=request.create_dirs
-                )
-                return SuccessResponse(message="File created successfully")
+                logger.info(f"[DEBUG] Incoming create request: path={request.path}, type={request.type}, content_len={len(request.content or '')}")
+                
+                if request.type == "directory":
+                    # Create directory
+                    success = await self.filesystem_service.create_directory(
+                        dir_path=request.path,
+                        parents=request.create_dirs
+                    )
+                    if success:
+                        return SuccessResponse(message="Directory created successfully")
+                    else:
+                        raise Exception("Failed to create directory")
+                else:
+                    # Create file (existing logic)
+                    await self.filesystem_service.write_file(
+                        file_path=request.path,
+                        content=request.content or "",
+                        encoding=request.encoding,
+                        create_dirs=request.create_dirs
+                    )
+                    return SuccessResponse(message="File created successfully")
             except Exception as e:
-                logger.error(f"[DEBUG] Error creating file: {e}\n{traceback.format_exc()}")
+                error_type = "directory" if request.type == "directory" else "file"
+                logger.error(f"[DEBUG] Error creating {error_type}: {e}\n{traceback.format_exc()}")
                 raise HTTPException(status_code=500, detail=str(e))
         
         @self.app.put("/api/files")

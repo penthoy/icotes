@@ -1,14 +1,11 @@
 /**
  * Backend-Connected Explorer Panel
  * 
- * This component extends the ICUIExplorerPanel to work with the ICPY backend
- * via the useBackendState hook. It replaces static file data with real backend
- * file system operations.
+ * Updated to use direct backend API calls like simpleexplorer.tsx
+ * This provides reliable backend connectivity without complex state management
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { useBackendState } from '../../../src/hooks/useBackendState';
-import { useBackendContext } from '../../../src/contexts/BackendContext';
 
 interface FileNode {
   id: string;
@@ -16,7 +13,7 @@ interface FileNode {
   type: 'file' | 'folder';
   path: string;
   children?: FileNode[];
-  isExpanded?: boolean;
+  isExpanded?: boolean; 
   size?: number;
   modified?: string;
 }
@@ -30,6 +27,113 @@ interface BackendConnectedExplorerProps {
   onFileRename?: (oldPath: string, newPath: string) => void;
 }
 
+// Backend client for file operations (following simpleexplorer.tsx pattern)
+class ExplorerBackendClient {
+  private baseUrl: string;
+
+  constructor() {
+    this.baseUrl = (import.meta as any).env?.VITE_API_URL || '';
+  }
+
+  async checkConnection(): Promise<boolean> {
+    try {
+      const response = await fetch(`${this.baseUrl}/health`);
+      return response.ok;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  async getDirectoryContents(path: string = '/'): Promise<FileNode[]> {
+    try {
+      console.log('[BackendConnectedExplorer-FIXED] Loading directory:', path);
+      const encodedPath = encodeURIComponent(path);
+      const response = await fetch(`${this.baseUrl}/files?path=${encodedPath}`);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to get directory contents: ${response.status} ${response.statusText}`);
+      }
+      
+      const result = await response.json();
+      
+      if (!result.success) {
+        throw new Error(result.message || 'API request failed');
+      }
+      
+      const fileList = result.data || [];
+      
+      // Convert backend response to FileNode format
+      return fileList.map((item: any) => ({
+        id: item.path,
+        name: item.name,
+        type: item.is_directory ? 'folder' : 'file',
+        path: item.path,
+        size: item.size,
+        modified: item.modified_at ? new Date(item.modified_at * 1000).toISOString() : undefined,
+        isExpanded: false,
+        children: item.is_directory ? [] : undefined
+      }));
+    } catch (error) {
+      console.error('Failed to get directory contents:', error);
+      throw error;
+    }
+  }
+
+  async createFile(path: string, content: string = ''): Promise<void> {
+    try {
+      const response = await fetch(`${this.baseUrl}/files`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ path, content }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to create file: ${response.status} ${response.statusText}`);
+      }
+    } catch (error) {
+      console.error('Failed to create file:', error);
+      throw error;
+    }
+  }
+
+  async createDirectory(path: string): Promise<void> {
+    try {
+      const response = await fetch(`${this.baseUrl}/files`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ path, type: 'directory' }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to create directory: ${response.status} ${response.statusText}`);
+      }
+    } catch (error) {
+      console.error('Failed to create directory:', error);
+      throw error;
+    }
+  }
+
+  async deleteFile(path: string): Promise<void> {
+    try {
+      const encodedPath = encodeURIComponent(path);
+      const response = await fetch(`${this.baseUrl}/files?path=${encodedPath}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to delete file: ${response.status} ${response.statusText}`);
+      }
+    } catch (error) {
+      console.error('Failed to delete file:', error);
+      throw error;
+    }
+  }
+}
+
 const BackendConnectedExplorer: React.FC<BackendConnectedExplorerProps> = ({
   className = '',
   onFileSelect,
@@ -38,35 +142,28 @@ const BackendConnectedExplorer: React.FC<BackendConnectedExplorerProps> = ({
   onFileDelete,
   onFileRename,
 }) => {
-  const { workspaceState, files, actions } = useBackendState();
-  const { isConnected, connectionStatus } = useBackendContext();
-  
-  const [explorerFiles, setExplorerFiles] = useState<FileNode[]>([]);
+  const [files, setFiles] = useState<FileNode[]>([]);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [lastLoadTime, setLastLoadTime] = useState(0); // Track last load time to prevent rapid reloads
+  const [isConnected, setIsConnected] = useState(false);
+  const [currentPath, setCurrentPath] = useState<string>((import.meta as any).env?.VITE_WORKSPACE_ROOT || '/home/penthoy/ilaborcode/workspace');
+  const [lastLoadTime, setLastLoadTime] = useState(0);
 
-  // Convert backend files to explorer format
-  const convertBackendFilesToExplorer = useCallback((backendFiles: any[]): FileNode[] => {
-    return backendFiles.map(file => ({
-      id: file.id || file.path,
-      name: file.name || file.path.split('/').pop() || 'Unknown',
-      type: file.type || (file.isDirectory ? 'folder' : 'file'),
-      path: file.path,
-      isExpanded: false,
-      size: file.size,
-      modified: file.modified_at || file.lastModified,
-    }));
+  const backendClient = new ExplorerBackendClient();
+
+  // Check connection status
+  const checkConnection = useCallback(async () => {
+    const connected = await backendClient.checkConnection();
+    setIsConnected(connected);
+    return connected;
   }, []);
 
-  // Load directory contents from backend
-  const loadDirectoryContents = useCallback(async (path: string = '/') => {
-    if (!isConnected) return;
-    
+  // Load directory contents
+  const loadDirectory = useCallback(async (path: string = (import.meta as any).env?.VITE_WORKSPACE_ROOT || '/home/penthoy/ilaborcode/workspace') => {
     // Prevent rapid successive calls (debounce)
     const now = Date.now();
-    if (now - lastLoadTime < 100) { // 100ms debounce
+    if (now - lastLoadTime < 100) {
       return;
     }
     
@@ -75,143 +172,139 @@ const BackendConnectedExplorer: React.FC<BackendConnectedExplorerProps> = ({
     setLastLoadTime(now);
     
     try {
-      // Use the backend client to get directory contents
-      const directoryContents = await actions.getDirectoryContents(path);
-      const explorerNodes = convertBackendFilesToExplorer(directoryContents);
-      setExplorerFiles(explorerNodes);
+      const connected = await checkConnection();
+      if (!connected) {
+        throw new Error('Backend not connected');
+      }
+
+      console.log('Loading directory:', path);
+      const directoryContents = await backendClient.getDirectoryContents(path);
+      console.log('Directory contents received:', directoryContents);
+      setFiles(directoryContents);
+      setCurrentPath(path);
     } catch (err) {
-      console.error('Failed to load directory contents:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load directory');
+      console.error('Failed to load directory:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [isConnected, actions, convertBackendFilesToExplorer, lastLoadTime]);
+  }, [checkConnection, lastLoadTime]);
 
-  // Load initial directory contents when connected
+  // Initial load
   useEffect(() => {
-    if (isConnected && explorerFiles.length === 0) {
-      loadDirectoryContents();
-    }
-  }, [isConnected]); // Remove loadDirectoryContents from dependencies to prevent infinite loops
+    loadDirectory();
+  }, []);
 
   // Handle file/folder selection
   const handleItemClick = useCallback((item: FileNode) => {
+    setSelectedFile(item.id);
+    onFileSelect?.(item);
+    
     if (item.type === 'folder') {
-      // Toggle folder expansion and load contents if needed
-      setExplorerFiles(prev => {
-        const updateNode = (nodes: FileNode[]): FileNode[] => {
-          return nodes.map(node => {
-            if (node.id === item.id && node.type === 'folder') {
-              const newExpanded = !node.isExpanded;
-              // Load folder contents if expanding
-              if (newExpanded && !node.children) {
-                loadDirectoryContents(item.path);
-              }
-              return { ...node, isExpanded: newExpanded };
-            }
-            if (node.children) {
-              return { ...node, children: updateNode(node.children) };
-            }
-            return node;
-          });
-        };
-        return updateNode(prev);
-      });
-    } else {
-      // File selection
-      setSelectedFile(item.id);
-      onFileSelect?.(item);
+      loadDirectory(item.path);
     }
-  }, [onFileSelect, loadDirectoryContents]);
+  }, [loadDirectory, onFileSelect]);
 
-  // Handle file creation
-  const handleFileCreate = useCallback(async () => {
+  // Handle creating new files/folders
+  const handleCreateFile = useCallback(async () => {
     if (!isConnected) return;
     
     const fileName = prompt('Enter file name:');
-    if (!fileName) return;
-    
+    if (!fileName?.trim()) return;
+
+    const newPath = `${currentPath}/${fileName.trim()}`.replace(/\/+/g, '/');
+
     try {
-      await actions.createFile(fileName, '');
-      await loadDirectoryContents(); // Refresh directory
-      onFileCreate?.(fileName);
+      await backendClient.createFile(newPath);
+      await loadDirectory(currentPath);
+      onFileCreate?.(newPath);
     } catch (err) {
       console.error('Failed to create file:', err);
-      setError('Failed to create file');
+      setError(err instanceof Error ? err.message : 'Failed to create file');
     }
-  }, [isConnected, actions, loadDirectoryContents, onFileCreate]);
+  }, [isConnected, currentPath, loadDirectory, onFileCreate]);
 
-  // Handle folder creation
-  const handleFolderCreate = useCallback(async () => {
+  const handleCreateFolder = useCallback(async () => {
     if (!isConnected) return;
-    
+
     const folderName = prompt('Enter folder name:');
-    if (!folderName) return;
-    
+    if (!folderName?.trim()) return;
+
+    const newPath = `${currentPath}/${folderName.trim()}`.replace(/\/+/g, '/');
+
     try {
-      await actions.createDirectory(folderName);
-      await loadDirectoryContents(); // Refresh directory
-      onFolderCreate?.(folderName);
+      await backendClient.createDirectory(newPath);
+      await loadDirectory(currentPath);
+      onFolderCreate?.(newPath);
     } catch (err) {
       console.error('Failed to create folder:', err);
-      setError('Failed to create folder');
+      setError(err instanceof Error ? err.message : 'Failed to create folder');
     }
-  }, [isConnected, actions, loadDirectoryContents, onFolderCreate]);
+  }, [isConnected, currentPath, loadDirectory, onFolderCreate]);
 
-  // Handle file deletion
-  const handleFileDelete = useCallback(async (file: FileNode) => {
+  // Handle deleting items
+  const handleDeleteItem = useCallback(async (item: FileNode) => {
     if (!isConnected) return;
-    
-    if (!confirm(`Are you sure you want to delete ${file.name}?`)) return;
-    
-    try {
-      await actions.deleteFile(file.id);
-      await loadDirectoryContents(); // Refresh directory
-      onFileDelete?.(file.path);
-    } catch (err) {
-      console.error('Failed to delete file:', err);
-      setError('Failed to delete file');
+
+    if (!confirm(`Are you sure you want to delete "${item.name}"?`)) {
+      return;
     }
-  }, [isConnected, actions, loadDirectoryContents, onFileDelete]);
+
+    try {
+      await backendClient.deleteFile(item.path);
+      await loadDirectory(currentPath);
+      onFileDelete?.(item.path);
+    } catch (err) {
+      console.error('Failed to delete item:', err);
+      setError(err instanceof Error ? err.message : 'Failed to delete item');
+    }
+  }, [isConnected, currentPath, loadDirectory, onFileDelete]);
+
+  // Navigate up one level
+  const navigateUp = useCallback(() => {
+    const parentPath = currentPath.split('/').slice(0, -1).join('/') || '/';
+    loadDirectory(parentPath);
+  }, [currentPath, loadDirectory]);
 
   // Handle refresh
   const handleRefresh = useCallback(() => {
-    loadDirectoryContents();
-  }, [loadDirectoryContents]);
+    loadDirectory(currentPath);
+  }, [currentPath, loadDirectory]);
 
-  // Render file tree recursively
-  const renderFileTree = (nodes: FileNode[], level: number = 0) => {
+  // Render file tree
+  const renderFileTree = (nodes: FileNode[]) => {
     return nodes.map(node => (
       <div key={node.id}>
         <div
-          className={`flex items-center py-1 px-2 cursor-pointer hover:opacity-80 transition-opacity ${
+          className={`flex items-center py-1 px-2 cursor-pointer hover:opacity-80 transition-opacity group ${
             selectedFile === node.id ? 'opacity-100' : ''
           }`}
           style={{ 
-            paddingLeft: `${(level * 16) + 8}px`,
             backgroundColor: selectedFile === node.id ? 'var(--icui-accent)' : 'transparent',
             color: 'var(--icui-text-primary)'
           }}
           onClick={() => handleItemClick(node)}
           onContextMenu={(e) => {
             e.preventDefault();
-            // Future: Show context menu for file operations
+            if (node.type === 'file') {
+              handleDeleteItem(node);
+            }
           }}
         >
           <span className="mr-2 text-sm">
-            {node.type === 'folder' ? (node.isExpanded ? '📂' : '📁') : '📄'}
+            {node.type === 'folder' ? '📁' : '📄'}
           </span>
           <span className="text-sm flex-1">{node.name}</span>
-          {node.type === 'file' && node.size && (
+          {node.size && (
             <span className="text-xs text-gray-500 ml-2">
-              {(node.size / 1024).toFixed(1)}KB
+              {Math.round(node.size / 1024)}KB
             </span>
           )}
           {node.type === 'file' && (
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                handleFileDelete(node);
+                handleDeleteItem(node);
               }}
               className="ml-2 text-xs text-red-500 hover:text-red-700 opacity-0 group-hover:opacity-100"
               title="Delete file"
@@ -220,43 +313,31 @@ const BackendConnectedExplorer: React.FC<BackendConnectedExplorerProps> = ({
             </button>
           )}
         </div>
-        {node.type === 'folder' && node.isExpanded && node.children && (
-          <div>
-            {renderFileTree(node.children, level + 1)}
-          </div>
-        )}
       </div>
     ));
-  };
-
-  // Connection status indicator
-  const renderConnectionStatus = () => {
-    if (!isConnected) {
-      return (
-        <div className="px-3 py-2 text-center text-sm text-yellow-600 bg-yellow-50 border-b">
-          Not connected to backend
-        </div>
-      );
-    }
-    return null;
   };
 
   return (
     <div className={`backend-connected-explorer h-full flex flex-col ${className}`} style={{ backgroundColor: 'var(--icui-bg-primary)', color: 'var(--icui-text-primary)' }}>
       {/* Connection Status */}
-      {renderConnectionStatus()}
-      
+      {!isConnected && (
+        <div className="px-3 py-2 text-center text-sm text-yellow-600 bg-yellow-50 border-b">
+          Not connected to backend
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between p-2 border-b" style={{ backgroundColor: 'var(--icui-bg-secondary)', borderBottomColor: 'var(--icui-border-subtle)' }}>
         <div className="flex items-center space-x-2">
-          <span className="text-sm font-medium" style={{ color: 'var(--icui-text-primary)' }}>
-            Backend Explorer
-          </span>
+          <span className="text-sm font-medium" style={{ color: 'var(--icui-text-primary)' }}>Explorer</span>
           {loading && <span className="text-xs text-blue-500">Loading...</span>}
+          <span className="text-xs px-2 py-1 rounded" style={{ backgroundColor: 'var(--icui-bg-tertiary)', color: 'var(--icui-text-secondary)' }}>
+            {currentPath}
+          </span>
         </div>
         <div className="flex items-center space-x-1">
           <button
-            onClick={handleFileCreate}
+            onClick={handleCreateFile}
             disabled={!isConnected}
             className="text-xs px-2 py-1 rounded hover:opacity-80 transition-opacity disabled:opacity-50"
             style={{ backgroundColor: 'var(--icui-bg-tertiary)', color: 'var(--icui-text-primary)' }}
@@ -265,7 +346,7 @@ const BackendConnectedExplorer: React.FC<BackendConnectedExplorerProps> = ({
             📄
           </button>
           <button
-            onClick={handleFolderCreate}
+            onClick={handleCreateFolder}
             disabled={!isConnected}
             className="text-xs px-2 py-1 rounded hover:opacity-80 transition-opacity disabled:opacity-50"
             style={{ backgroundColor: 'var(--icui-bg-tertiary)', color: 'var(--icui-text-primary)' }}
@@ -285,7 +366,7 @@ const BackendConnectedExplorer: React.FC<BackendConnectedExplorerProps> = ({
         </div>
       </div>
 
-      {/* Error Display */}
+      {/* Error display */}
       {error && (
         <div className="px-3 py-2 text-sm text-red-600 bg-red-50 border-b">
           {error}
@@ -298,13 +379,13 @@ const BackendConnectedExplorer: React.FC<BackendConnectedExplorerProps> = ({
           <div className="p-4 text-center text-sm text-gray-500">
             Loading directory contents...
           </div>
-        ) : explorerFiles.length === 0 ? (
+        ) : files.length === 0 ? (
           <div className="p-4 text-center text-sm text-gray-500">
-            {isConnected ? 'No files found' : 'Connect to backend to view files'}
+            {error ? 'Failed to load directory' : isConnected ? 'Directory is empty' : 'Connect to backend to view files'}
           </div>
         ) : (
           <div className="p-1">
-            {renderFileTree(explorerFiles)}
+            {renderFileTree(files)}
           </div>
         )}
       </div>
@@ -313,13 +394,10 @@ const BackendConnectedExplorer: React.FC<BackendConnectedExplorerProps> = ({
       <div className="px-3 py-1 border-t text-xs" style={{ backgroundColor: 'var(--icui-bg-secondary)', borderTopColor: 'var(--icui-border-subtle)', color: 'var(--icui-text-muted)' }}>
         <div className="flex items-center justify-between">
           <span>
-            {selectedFile 
-              ? `Selected: ${explorerFiles.find(f => f.id === selectedFile)?.name || 'Unknown'}` 
-              : `${explorerFiles.length} items`
-            }
+            {selectedFile ? `Selected: ${files.find(f => f.id === selectedFile)?.name || 'Unknown'}` : `${files.length} items`}
           </span>
-          <span className={`text-xs ${isConnected ? 'text-green-600' : 'text-red-600'}`}>
-            {connectionStatus}
+          <span className={isConnected ? 'text-green-600' : 'text-red-600'}>
+            {isConnected ? 'Connected' : 'Disconnected'}
           </span>
         </div>
       </div>

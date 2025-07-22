@@ -126,7 +126,19 @@ echo "=============================================="
 echo ""
 
 # Start the backend server in foreground with development features
-python3 -m uvicorn main:app \
+echo "🔧 Activating virtual environment..."
+cd backend
+source venv/bin/activate || {
+    echo "❌ Error: Virtual environment not found or not activated."
+    echo "   Please ensure venv exists and contains a proper Python virtual environment."
+    exit 1
+}
+
+echo "✅ Virtual environment activated: $(which python)"
+echo "🔧 Using Python: $(python --version)"
+
+# Use the venv's uvicorn instead of system uvicorn
+uvicorn main:app \
     --host "$BACKEND_HOST" \
     --port "$BACKEND_PORT" \
     --reload \

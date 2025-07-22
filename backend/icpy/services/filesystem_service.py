@@ -756,6 +756,49 @@ class FileSystemService:
             logger.error(f"Error writing file {file_path}: {e}")
             return False
 
+    async def create_directory(self, dir_path: str, parents: bool = True) -> bool:
+        """Create a directory.
+        
+        Args:
+            dir_path: Path to the directory to create
+            parents: Whether to create parent directories if they don't exist
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Normalize path
+            full_path = os.path.abspath(dir_path)
+            
+            # Check if directory already exists
+            if os.path.exists(full_path):
+                if os.path.isdir(full_path):
+                    logger.info(f"Directory already exists: {full_path}")
+                    return True
+                else:
+                    logger.error(f"Path exists but is not a directory: {full_path}")
+                    return False
+            
+            # Create directory
+            os.makedirs(full_path, exist_ok=True) if parents else os.mkdir(full_path)
+            
+            # Update statistics
+            self.stats['files_created'] += 1
+            
+            # Publish event
+            await self.message_broker.publish('fs.directory_created', {
+                'dir_path': full_path,
+                'parents': parents,
+                'timestamp': time.time()
+            })
+            
+            logger.info(f"Directory created successfully: {full_path}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error creating directory {dir_path}: {e}")
+            return False
+
     async def delete_file(self, file_path: str) -> bool:
         """Delete a file or directory.
         

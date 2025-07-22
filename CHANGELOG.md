@@ -24,6 +24,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Theme-aware styling, proper scrolling behavior, and connection monitoring
   - Accessible at `/simple-terminal` route for isolated testing
   - Error handling, reconnection logic, and responsive terminal sizing
+- **Simple Explorer Implementation**: Clean file explorer component for testing and debugging
+  - Minimal file explorer based on BackendConnectedExplorer.tsx with direct REST API connection
+  - File system operations (create file/folder, delete, navigate directory tree)
+  - Theme-aware styling, connection status monitoring, and error handling
+  - Accessible at `/simple-explorer` route for isolated testing
+  - Real-time directory contents loading and visual feedback for all operations
+  - Fixed API endpoint issues: uses `/health` instead of missing `/api/status`
+  - Respects VITE_WORKSPACE_ROOT environment variable for workspace root
+  - Fixed API URL configuration and response parsing for proper file display
+  - Full CRUD file operations working with ICPY backend file system service
 - **File Explorer Integration**: Backend-connected file explorer component
   - Real-time directory tree loading from ICPY backend filesystem service
   - File and folder operations (create, delete, navigate) via backend API
@@ -45,6 +55,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Dynamic WebSocket URL construction and consistent port usage
 
 ### Fixed
+- **Simple Explorer API Issues**: Fixed connection and endpoint issues ✅ RESOLVED
+  - Backend team confirmed all REST API endpoints are fully functional when run in virtual environment
+  - Updated simple-explorer to use correct `/api/health` and `/api/files` endpoints  
+  - Fixed VITE_API_URL configuration to use full URL from environment
+  - Added proper VITE_WORKSPACE_ROOT environment variable support
+  - Confirmed full file system operations working: create, read, delete, list directories
+  - Successfully tested with backend running in virtual environment per TICKET_RESPONSE.md
+  - Simple Explorer now fully functional at `/simple-explorer` route
 - **Backend Configuration**: Fixed hardcoded port issues
   - Backend now properly uses .env configuration (PORT, BACKEND_HOST, etc.)
   - Removed hardcoded port 8888 references

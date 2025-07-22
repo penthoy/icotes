@@ -300,6 +300,52 @@ class TestRestAPI:
         assert data["success"] is True
         assert data["message"] == "File created successfully"
 
+    def test_create_directory(self, client_with_rest_api, mock_filesystem_service):
+        """Test create directory endpoint."""
+        response = client_with_rest_api.post("/api/files", json={
+            "path": "/test/new_directory",
+            "type": "directory"
+        })
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert data["message"] == "Directory created successfully"
+        
+        # Verify create_directory was called on the service
+        mock_filesystem_service.create_directory.assert_called_once_with("/test/new_directory")
+
+    def test_create_nested_directory(self, client_with_rest_api, mock_filesystem_service):
+        """Test create nested directory endpoint."""
+        response = client_with_rest_api.post("/api/files", json={
+            "path": "/test/nested/deep/directory",
+            "type": "directory"
+        })
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert data["message"] == "Directory created successfully"
+        
+        # Verify create_directory was called with the full path
+        mock_filesystem_service.create_directory.assert_called_once_with("/test/nested/deep/directory")
+
+    def test_create_directory_without_type_creates_file(self, client_with_rest_api, mock_filesystem_service):
+        """Test that omitting type defaults to file creation."""
+        response = client_with_rest_api.post("/api/files", json={
+            "path": "/test/ambiguous_item",
+            "content": "some content"
+        })
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert data["message"] == "File created successfully"
+        
+        # Verify write_file was called, not create_directory
+        mock_filesystem_service.write_file.assert_called_once()
+        mock_filesystem_service.create_directory.assert_not_called()
+
     def test_update_file(self, client_with_rest_api, mock_filesystem_service):
         """Test update file endpoint."""
         response = client_with_rest_api.put("/api/files", json={

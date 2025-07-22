@@ -1,22 +1,14 @@
 #!/usr/bin/env python3
 """
-Enhanced icotes Backend Server
-Provides terminal and clipboard functionality for the icotes code editor
-with advanced WebSocket API integration and message broker support.
+Main entry point for the icotes backend server.
 
-This version integrates the new icpy backend architecture with:
-- Enhanced WebSocket API with state synchronization
-- Message broker for real-time communication
-- Modular service architecture
-- Connection recovery and message replay
-- Multi-client support with session management
+This module sets up and runs the FastAPI application with WebSocket support
+for the icotes code editor interface.
 
-Author: GitHub Copilot
-Date: July 16, 2025
+IMPORTANT: Always run this in the virtual environment!
+Run with: source venv/bin/activate && python main.py
 """
 
-import sys
-import argparse
 import asyncio
 import logging
 import json
@@ -1000,10 +992,14 @@ async def serve_react_app():
             status_code=200
         )
 
-# Catch-all route for React app
+# Catch-all route for React app (excluding API routes)
 @app.get("/{path:path}")
 async def serve_react_app_catchall(path: str):
-    """Catch-all route for React app."""
+    """Catch-all route for React app, excluding API routes."""
+    # Skip API routes - let them be handled by their specific handlers
+    if path.startswith("api/") or path.startswith("ws/"):
+        raise HTTPException(status_code=404, detail="API endpoint not found")
+    
     dist_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "dist")
     file_path = os.path.join(dist_path, path)
     

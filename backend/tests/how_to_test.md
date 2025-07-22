@@ -2,11 +2,15 @@
 
 Quick guide to run tests for the ICPY backend system.
 
+**⚠️ CRITICAL: Always use the virtual environment!**
+
+**Common mistake:** Running tests without `source venv/bin/activate` first will cause pydantic version conflicts and import errors.
+
 ## Quick Start
 
 ```bash
 cd backend
-source venv/bin/activate
+source venv/bin/activate  # ALWAYS DO THIS FIRST!
 export PYTHONPATH=$(pwd)
 pytest tests/ -v
 ```
