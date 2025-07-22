@@ -97,14 +97,16 @@ class EditorNotificationService {
 // Backend client for editor operations (following simpleeditor pattern)
 class EditorBackendClient {
   private baseUrl: string;
+  private backendUrl: string;
 
   constructor() {
     this.baseUrl = (import.meta as any).env?.VITE_API_URL || '';
+    this.backendUrl = (import.meta as any).env?.VITE_BACKEND_URL || (import.meta as any).env?.VITE_API_URL || '';
   }
 
   async checkConnection(): Promise<boolean> {
     try {
-      const response = await fetch(`${this.baseUrl}/health`);
+      const response = await fetch(`${this.backendUrl}/health`);
       return response.ok;
     } catch (error) {
       return false;
@@ -234,9 +236,9 @@ class EditorBackendClient {
     }
   }
 
-  async executeCode(code: string, language: string, filename?: string): Promise<any> {
+  async executeCode(code: string, language: string, filePath?: string): Promise<any> {
     try {
-      const response = await fetch(`${this.baseUrl}/execute`, {
+      const response = await fetch(`${this.backendUrl}/execute`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -244,7 +246,7 @@ class EditorBackendClient {
         body: JSON.stringify({ 
           code, 
           language,
-          filename: filename || 'untitled'
+          file_path: filePath || 'untitled'
         }),
       });
 
@@ -303,6 +305,7 @@ const BackendConnectedEditor: React.FC<BackendConnectedEditorProps> = ({
   const editorViewRef = useRef<EditorView | null>(null);
   const backendClient = useRef(new EditorBackendClient());
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const currentContentRef = useRef<string>(''); // Track current content to prevent loops
 
   // Get workspace root from environment (following BackendConnectedExplorer pattern)
   const effectiveWorkspaceRoot = workspaceRoot || (import.meta as any).env?.VITE_WORKSPACE_ROOT || '/home/penthoy/ilaborcode/workspace';
@@ -428,53 +431,49 @@ const BackendConnectedEditor: React.FC<BackendConnectedEditorProps> = ({
     }
   }, [propFiles, propActiveFileId, activeFileId]);
 
-  // Get current active file
+  // Get current active file (fresh on every render)
   const activeFile = files.find(file => file.id === activeFileId);
 
   // Handle content changes with auto-save (following simpleeditor pattern)
   const handleContentChange = useCallback((newContent: string) => {
-    if (!activeFile) return;
+    if (!activeFileId) return;
 
-    // Update file content and mark as modified
-    setFiles(prevFiles => 
-      prevFiles.map(file => 
-        file.id === activeFileId 
+    setFiles(currentFiles => {
+      const updatedFiles = currentFiles.map(file =>
+        file.id === activeFileId
           ? { ...file, content: newContent, modified: true }
           : file
-      )
-    );
+      );
 
-    // Call external handler
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+      }
+
+      const fileToSave = updatedFiles.find(f => f.id === activeFileId);
+      if (autoSave && connectionStatus.connected && fileToSave?.path) {
+        autoSaveTimerRef.current = setTimeout(async () => {
+          try {
+            await backendClient.current.writeFile(fileToSave.path!, newContent);
+            
+            setFiles(prevFiles =>
+              prevFiles.map(f =>
+                f.id === activeFileId ? { ...f, modified: false } : f
+              )
+            );
+            
+            EditorNotificationService.show(`Auto-saved ${fileToSave.name}`, 'success');
+          } catch (error) {
+            console.error(`Failed to auto-save file ${fileToSave.name}:`, error);
+            EditorNotificationService.show(`Failed to auto-save ${fileToSave.name}`, 'error');
+          }
+        }, autoSaveDelay);
+      }
+      
+      return updatedFiles;
+    });
+
     onFileChange?.(activeFileId, newContent);
-
-    // Cancel previous auto-save timer
-    if (autoSaveTimerRef.current) {
-      clearTimeout(autoSaveTimerRef.current);
-    }
-
-    // Set up debounced auto-save if enabled and connected
-    if (autoSave && connectionStatus.connected && activeFile.path) {
-      autoSaveTimerRef.current = setTimeout(async () => {
-        try {
-          await backendClient.current.writeFile(activeFile.path!, newContent);
-          
-          // Mark file as saved
-          setFiles(prevFiles => 
-            prevFiles.map(file => 
-              file.id === activeFileId 
-                ? { ...file, modified: false }
-                : file
-            )
-          );
-          
-          EditorNotificationService.show(`Auto-saved ${activeFile.name}`, 'success');
-        } catch (error) {
-          console.error(`Failed to auto-save file ${activeFile.name}:`, error);
-          EditorNotificationService.show(`Failed to auto-save ${activeFile.name}`, 'error');
-        }
-      }, autoSaveDelay);
-    }
-  }, [activeFile, activeFileId, onFileChange, autoSave, connectionStatus.connected, autoSaveDelay]);
+  }, [activeFileId, onFileChange, autoSave, connectionStatus.connected, autoSaveDelay]);
 
   // Create editor extensions (following ICUIEnhancedEditorPanel pattern)
   const createExtensions = useCallback((language: string): Extension[] => {
@@ -516,8 +515,9 @@ const BackendConnectedEditor: React.FC<BackendConnectedEditorProps> = ({
       EditorView.updateListener.of((update) => {
         if (update.docChanged) {
           const newContent = update.state.doc.toString();
-          // Only trigger change if content actually changed from what we have
-          if (newContent !== activeFile.content) {
+          // Compare against the ref to avoid stale closure issues
+          if (newContent !== currentContentRef.current) {
+            currentContentRef.current = newContent;
             handleContentChange(newContent);
           }
         }
@@ -541,6 +541,7 @@ const BackendConnectedEditor: React.FC<BackendConnectedEditorProps> = ({
 
     // Get current content from existing view if it exists, otherwise use active file content
     const currentContent = editorViewRef.current?.state.doc.toString() || activeFile.content;
+    currentContentRef.current = currentContent; // Update ref
 
     // Clean up existing editor
     if (editorViewRef.current) {
@@ -569,7 +570,7 @@ const BackendConnectedEditor: React.FC<BackendConnectedEditorProps> = ({
         editorViewRef.current = null;
       }
     };
-  }, [activeFile?.language, createExtensions, isDarkTheme]); // Only recreate when language or theme changes, NOT file id
+  }, [isDarkTheme, activeFile?.language, createExtensions]); // Only recreate when theme or language changes, NOT file id
 
   // Update editor content when switching between files (without recreating editor)
   useEffect(() => {
@@ -585,8 +586,10 @@ const BackendConnectedEditor: React.FC<BackendConnectedEditorProps> = ({
           insert: activeFile.content,
         },
       });
+      // Update the ref to match new content
+      currentContentRef.current = activeFile.content;
     }
-  }, [activeFile?.content, activeFile?.id]); // Include file id to trigger when switching files
+  }, [activeFile?.content]); // Only trigger when content changes, NOT file id
 
   // File operations (following simpleeditor pattern)
   const handleSaveFile = useCallback(async (fileId: string) => {
@@ -622,7 +625,7 @@ const BackendConnectedEditor: React.FC<BackendConnectedEditorProps> = ({
 
     setIsLoading(true);
     try {
-      const result = await backendClient.current.executeCode(file.content, file.language, file.name);
+      const result = await backendClient.current.executeCode(file.content, file.language, file.path);
       EditorNotificationService.show(`Executed ${file.name}`, 'success');
       onFileRun?.(fileId, file.content, file.language);
       
