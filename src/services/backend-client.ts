@@ -390,13 +390,10 @@ export class BackendClient {
    * Create new terminal session
    */
   async createTerminal(config: TerminalConfig = {}): Promise<TerminalSession> {
-    console.log('[BackendClient] Creating terminal with config:', config);
     const response = await this.makeRequest('/api/terminals', {
       method: 'POST',
       body: JSON.stringify(config)
     });
-    console.log('[BackendClient] Terminal creation response:', response);
-    console.log('[BackendClient] Extracted terminal data:', response.data);
     return response.data;
   }
 

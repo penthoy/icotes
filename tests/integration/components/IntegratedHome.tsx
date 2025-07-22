@@ -166,18 +166,9 @@ const TerminalList: React.FC = () => {
   const [selectedTerminalId, setSelectedTerminalId] = useState<string | null>(null);
   const { isConnected } = useBackendContext();
   
-  // Debug logging
-  console.log('[TerminalList] Current state:', { 
-    terminals: terminals.length, 
-    selectedTerminalId, 
-    isConnected,
-    terminalDetails: terminals.map(t => ({ id: t.id, name: t.name, status: t.status }))
-  });
-  
   // Select first terminal if available and none selected
   useEffect(() => {
     if (terminals.length > 0 && !selectedTerminalId) {
-      console.log('[TerminalList] Selecting first terminal:', terminals[0].id);
       setSelectedTerminalId(terminals[0].id);
     }
   }, [terminals, selectedTerminalId]);
@@ -209,7 +200,6 @@ const TerminalList: React.FC = () => {
                         : 'hover:bg-gray-100'
                     }`}
                     onClick={() => {
-                      console.log('[TerminalList] Selecting terminal:', terminal.id);
                       setSelectedTerminalId(terminal.id);
                     }}
                   >
@@ -229,16 +219,10 @@ const TerminalList: React.FC = () => {
             {/* Terminal Display - Always show if there's a selected terminal */}
             {selectedTerminalId && (
               <div className="flex-1 min-h-0">
-                <div className="h-full border border-red-500 bg-yellow-100 p-2">
-                  <div className="text-xs text-red-600 mb-2">
-                    [DEBUG] Terminal container - selectedTerminalId: {selectedTerminalId}
-                  </div>
+                <div className="h-full">
                   <BackendConnectedTerminal 
                     terminalId={selectedTerminalId}
                     className="h-full"
-                    onTerminalReady={(terminal) => console.log('[TerminalList] Terminal ready:', terminal)}
-                    onTerminalOutput={(output) => console.log('[TerminalList] Terminal output:', output)}
-                    onTerminalExit={(code) => console.log('[TerminalList] Terminal exit:', code)}
                   />
                 </div>
               </div>
@@ -267,48 +251,19 @@ export const IntegratedHome: React.FC = () => {
   
   const { isConnected } = useBackendContext();
   
-  // Debug logging for terminal state
-  console.log('[IntegratedHome] Terminal state:', { 
-    terminalsCount: terminals.length,
-    terminals: terminals.map(t => ({ id: t.id, name: t.name, status: t.status })),
-    isConnected
-  });
-  
-  // Debug: log the first terminal details
-  if (terminals.length > 0) {
-    console.log('[IntegratedHome] First terminal details:', {
-      id: terminals[0].id,
-      name: terminals[0].name,
-      status: terminals[0].status,
-      type: typeof terminals[0].id
-    });
-  }
-  
   // Auto-create terminal on load - but only ONCE
   useEffect(() => {
     const createInitialTerminal = async () => {
       if (isConnected && terminals.length === 0) {
-        console.log('[IntegratedHome] Auto-creating initial terminal...');
         try {
           const newTerminal = await actions.createTerminal('Auto Terminal');
-          console.log('[IntegratedHome] Initial terminal created successfully:', newTerminal);
-          console.log('[IntegratedHome] Terminal ID:', newTerminal?.id);
           
           // Start the terminal to transition it to running state
           if (newTerminal && newTerminal.id) {
-            console.log('[IntegratedHome] Starting terminal...');
             await actions.startTerminal(newTerminal.id);
-            console.log('[IntegratedHome] Terminal started successfully');
-          } else {
-            console.error('[IntegratedHome] Terminal creation failed - no ID returned');
           }
         } catch (error) {
-          console.error('[IntegratedHome] Failed to create/start initial terminal:', error);
-          console.error('[IntegratedHome] Error details:', {
-            message: error.message,
-            stack: error.stack,
-            name: error.name
-          });
+          console.error('Failed to create/start initial terminal:', error);
         }
       }
     };
@@ -410,7 +365,6 @@ export const IntegratedHome: React.FC = () => {
           <div className="h-1/3 border-b">
             <BackendConnectedExplorer 
               className="h-full"
-              onFileSelect={(file) => console.log('File selected:', file)}
             />
           </div>
           <div className="h-2/3">
@@ -452,16 +406,10 @@ export const IntegratedHome: React.FC = () => {
               </div>
             ) : (
               <div className="flex-1 min-h-0">
-                <div className="h-full border-2 border-green-500 bg-green-50 p-1">
-                  <div className="text-xs text-green-600 mb-1 font-bold">
-                    [DEBUG] MAIN TERMINAL DISPLAY - {terminals.length} terminal(s) available
-                  </div>
+                <div className="h-full">
                   <BackendConnectedTerminal 
                     terminalId={terminals[0].id}
                     className="h-full"
-                    onTerminalReady={(terminal) => console.log('[IntegratedHome] Main terminal ready:', terminal)}
-                    onTerminalOutput={(output) => console.log('[IntegratedHome] Main terminal output:', output)}
-                    onTerminalExit={(code) => console.log('[IntegratedHome] Main terminal exit:', code)}
                   />
                 </div>
               </div>

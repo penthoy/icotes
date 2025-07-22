@@ -46,7 +46,6 @@ class ExplorerBackendClient {
 
   async getDirectoryContents(path: string = '/'): Promise<FileNode[]> {
     try {
-      console.log('[BackendConnectedExplorer-FIXED] Loading directory:', path);
       const encodedPath = encodeURIComponent(path);
       const response = await fetch(`${this.baseUrl}/files?path=${encodedPath}`);
       

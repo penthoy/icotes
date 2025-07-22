@@ -26,9 +26,6 @@ import BackendConnectedExplorer from './components/BackendConnectedExplorer';
 import BackendConnectedTerminal from './components/BackendConnectedTerminal';
 import BackendConnectedEditor from './components/BackendConnectedEditor';
 
-// Ensure we're importing the fixed explorer component
-console.log('[IntegratedHome] Imported BackendConnectedExplorer from:', './components/BackendConnectedExplorer');
-
 import type { ICUILayoutConfig } from '../../src/icui/components/ICUIEnhancedLayout';
 import type { ICUIEnhancedPanel } from '../../src/icui/components/ICUIEnhancedPanelArea';
 import type { ICUIPanelType } from '../../src/icui/components/ICUIPanelSelector';
@@ -77,12 +74,6 @@ const defaultLayout: ICUILayoutConfig = {
 const IntegratedHome: React.FC<IntegratedHomeProps> = ({ className = '' }) => {
   // Get workspace root from environment - this will sync all panels to the same root directory
   const workspaceRoot = (import.meta as any).env?.VITE_WORKSPACE_ROOT as string | undefined;
-  
-  // Log workspace root for debugging
-  useEffect(() => {
-    console.log('[IntegratedHome] Workspace root from env:', workspaceRoot);
-  }, [workspaceRoot]);
-
   // UI state - keeping it simple for now, ready for backend integration later
   const [layout, setLayout] = useState<ICUILayoutConfig>(defaultLayout);
   // Remove local file management - let BackendConnectedEditor handle its own files

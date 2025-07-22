@@ -115,7 +115,6 @@ class EditorBackendClient {
 
   async listFiles(workspacePath: string): Promise<EditorFile[]> {
     try {
-      console.log('[BackendConnectedEditor-FIXED] Loading files from workspace:', workspacePath);
       const encodedPath = encodeURIComponent(workspacePath);
       const response = await fetch(`${this.baseUrl}/files?path=${encodedPath}`);
       
@@ -150,9 +149,8 @@ class EditorBackendClient {
 
   async readFile(path: string): Promise<string> {
     try {
-      console.log('[BackendConnectedEditor-FIXED] Reading file:', path);
       const encodedPath = encodeURIComponent(path);
-      const response = await fetch(`${this.baseUrl}/files/content?path=${encodedPath}`);
+      const response = await fetch(`${this.baseUrl}/files/read?path=${encodedPath}`);
       
       if (!response.ok) {
         throw new Error(`Failed to read file: ${response.status} ${response.statusText}`);
@@ -309,8 +307,6 @@ const BackendConnectedEditor: React.FC<BackendConnectedEditorProps> = ({
 
   // Get workspace root from environment (following BackendConnectedExplorer pattern)
   const effectiveWorkspaceRoot = workspaceRoot || (import.meta as any).env?.VITE_WORKSPACE_ROOT || '/home/penthoy/ilaborcode/workspace';
-
-  console.log('[BackendConnectedEditor-FIXED] Workspace root from env:', effectiveWorkspaceRoot);
 
   // Theme detection (following BackendConnectedTerminal pattern)
   useEffect(() => {
@@ -628,9 +624,6 @@ const BackendConnectedEditor: React.FC<BackendConnectedEditorProps> = ({
       const result = await backendClient.current.executeCode(file.content, file.language, file.path);
       EditorNotificationService.show(`Executed ${file.name}`, 'success');
       onFileRun?.(fileId, file.content, file.language);
-      
-      // You could emit the result to terminal or output panel here
-      console.log('Execution result:', result);
     } catch (error) {
       console.error('Failed to execute file:', error);
       EditorNotificationService.show(`Failed to execute ${file.name}`, 'error');
