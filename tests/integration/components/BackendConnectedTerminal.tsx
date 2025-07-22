@@ -193,32 +193,49 @@ const BackendConnectedTerminal = forwardRef<BackendConnectedTerminalRef, Backend
     }
   }, []);
 
-  // Theme detection (same as SimpleTerminal)
+  // Theme detection (following ICUIEnhancedTerminalPanel pattern with debouncing)
   useEffect(() => {
+    let timeoutId: NodeJS.Timeout;
+    
     const detectTheme = () => {
-      const htmlElement = document.documentElement;
-      const isDark = htmlElement.classList.contains('dark') || 
-                     htmlElement.classList.contains('icui-theme-github-dark') ||
-                     htmlElement.classList.contains('icui-theme-monokai') ||
-                     htmlElement.classList.contains('icui-theme-one-dark');
-      setIsDarkTheme(isDark);
+      // Debounce theme detection to prevent rapid changes
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        const htmlElement = document.documentElement;
+        const isDark = htmlElement.classList.contains('dark') || 
+                       htmlElement.classList.contains('icui-theme-github-dark') ||
+                       htmlElement.classList.contains('icui-theme-monokai') ||
+                       htmlElement.classList.contains('icui-theme-one-dark') ||
+                       htmlElement.classList.contains('icui-theme-dracula') ||
+                       htmlElement.classList.contains('icui-theme-solarized-dark');
+        setIsDarkTheme(isDark);
+      }, 50); // 50ms debounce
     };
 
     detectTheme();
+    
+    // Create observer to watch for theme changes
     const observer = new MutationObserver(detectTheme);
     observer.observe(document.documentElement, {
       attributes: true,
       attributeFilter: ['class']
     });
 
-    return () => observer.disconnect();
+    return () => {
+      clearTimeout(timeoutId);
+      observer.disconnect();
+    };
   }, []);
 
   // Main terminal initialization - runs only once (following SimpleTerminal pattern)
   useEffect(() => {
     if (!terminalRef.current) return;
     
-    // Create terminal with default theme colors (will be updated by theme effect)
+    // Get theme colors from CSS variables
+    const computedStyle = getComputedStyle(document.documentElement);
+    const getThemeVar = (varName: string) => computedStyle.getPropertyValue(varName).trim();
+    
+    // Create terminal with theme-aware colors using ICUI CSS variables
     terminal.current = new Terminal({
       scrollback: 1000,
       fontSize: 14,
@@ -226,27 +243,29 @@ const BackendConnectedTerminal = forwardRef<BackendConnectedTerminalRef, Backend
       cursorStyle: 'block',
       cursorBlink: true,
       theme: {
-        background: '#1e1e1e', // Default dark theme, will be updated by theme effect
-        foreground: '#d4d4d4',
-        cursor: '#d4d4d4',
-        cursorAccent: '#1e1e1e',
-        selectionBackground: '#264f78',
-        black: '#000000',
-        brightBlack: '#666666',
-        red: '#cd3131',
-        brightRed: '#f14c4c',
-        green: '#0dbc79',
-        brightGreen: '#23d18b',
-        yellow: '#e5e510',
-        brightYellow: '#f5f543',
-        blue: '#2472c8',
-        brightBlue: '#3b8eea',
-        magenta: '#bc3fbc',
-        brightMagenta: '#d670d6',
-        cyan: '#11a8cd',
-        brightCyan: '#29b8db',
-        white: '#e5e5e5',
-        brightWhite: '#ffffff',
+        // Use ICUI CSS variables for background to match other panels
+        background: getThemeVar('--icui-bg-primary') || (isDarkTheme ? '#1e1e1e' : '#ffffff'),
+        foreground: getThemeVar('--icui-text-primary') || (isDarkTheme ? '#d4d4d4' : '#000000'),
+        cursor: getThemeVar('--icui-text-primary') || (isDarkTheme ? '#d4d4d4' : '#000000'),
+        cursorAccent: getThemeVar('--icui-bg-primary') || (isDarkTheme ? '#1e1e1e' : '#ffffff'),
+        selectionBackground: isDarkTheme ? '#264f78' : '#add6ff',
+        // Use ICUI terminal color variables
+        black: getThemeVar('--icui-terminal-black') || '#000000',
+        brightBlack: getThemeVar('--icui-terminal-bright-black') || '#666666',
+        red: getThemeVar('--icui-terminal-red') || '#cd3131',
+        brightRed: getThemeVar('--icui-terminal-bright-red') || '#f14c4c',
+        green: getThemeVar('--icui-terminal-green') || '#0dbc79',
+        brightGreen: getThemeVar('--icui-terminal-bright-green') || '#23d18b',
+        yellow: getThemeVar('--icui-terminal-yellow') || '#e5e510',
+        brightYellow: getThemeVar('--icui-terminal-bright-yellow') || '#f5f543',
+        blue: getThemeVar('--icui-terminal-blue') || '#2472c8',
+        brightBlue: getThemeVar('--icui-terminal-bright-blue') || '#3b8eea',
+        magenta: getThemeVar('--icui-terminal-magenta') || '#bc3fbc',
+        brightMagenta: getThemeVar('--icui-terminal-bright-magenta') || '#d670d6',
+        cyan: getThemeVar('--icui-terminal-cyan') || '#11a8cd',
+        brightCyan: getThemeVar('--icui-terminal-bright-cyan') || '#29b8db',
+        white: getThemeVar('--icui-terminal-white') || '#e5e5e5',
+        brightWhite: getThemeVar('--icui-terminal-bright-white') || '#ffffff',
       },
     });
 
@@ -368,33 +387,46 @@ const BackendConnectedTerminal = forwardRef<BackendConnectedTerminalRef, Backend
   // Separate effect to update terminal theme when isDarkTheme changes
   useEffect(() => {
     if (terminal.current && terminal.current.options) {
-      const newTheme = {
-        background: isDarkTheme ? '#1e1e1e' : '#ffffff',
-        foreground: isDarkTheme ? '#d4d4d4' : '#000000',
-        cursor: isDarkTheme ? '#d4d4d4' : '#000000',
-        cursorAccent: isDarkTheme ? '#1e1e1e' : '#ffffff',
-        selectionBackground: isDarkTheme ? '#264f78' : '#add6ff',
-        black: '#000000',
-        brightBlack: '#666666',
-        red: '#cd3131',
-        brightRed: '#f14c4c',
-        green: '#0dbc79',
-        brightGreen: '#23d18b',
-        yellow: '#e5e510',
-        brightYellow: '#f5f543',
-        blue: '#2472c8',
-        brightBlue: '#3b8eea',
-        magenta: '#bc3fbc',
-        brightMagenta: '#d670d6',
-        cyan: '#11a8cd',
-        brightCyan: '#29b8db',
-        white: '#e5e5e5',
-        brightWhite: '#ffffff',
-      };
-      
-      // Update theme without reinitializing terminal
-      terminal.current.options.theme = newTheme;
-      terminal.current.refresh(0, terminal.current.rows - 1);
+      // Add a small delay to ensure CSS variables have propagated
+      const themeUpdateTimeout = setTimeout(() => {
+        // Get theme colors from CSS variables
+        const computedStyle = getComputedStyle(document.documentElement);
+        const getThemeVar = (varName: string) => computedStyle.getPropertyValue(varName).trim();
+        
+        const newTheme = {
+          // Use ICUI CSS variables for background to match other panels
+          background: getThemeVar('--icui-bg-primary') || (isDarkTheme ? '#1e1e1e' : '#ffffff'),
+          foreground: getThemeVar('--icui-text-primary') || (isDarkTheme ? '#d4d4d4' : '#000000'),
+          cursor: getThemeVar('--icui-text-primary') || (isDarkTheme ? '#d4d4d4' : '#000000'),
+          cursorAccent: getThemeVar('--icui-bg-primary') || (isDarkTheme ? '#1e1e1e' : '#ffffff'),
+          selectionBackground: isDarkTheme ? '#264f78' : '#add6ff',
+          // Use ICUI terminal color variables
+          black: getThemeVar('--icui-terminal-black') || '#000000',
+          brightBlack: getThemeVar('--icui-terminal-bright-black') || '#666666',
+          red: getThemeVar('--icui-terminal-red') || '#cd3131',
+          brightRed: getThemeVar('--icui-terminal-bright-red') || '#f14c4c',
+          green: getThemeVar('--icui-terminal-green') || '#0dbc79',
+          brightGreen: getThemeVar('--icui-terminal-bright-green') || '#23d18b',
+          yellow: getThemeVar('--icui-terminal-yellow') || '#e5e510',
+          brightYellow: getThemeVar('--icui-terminal-bright-yellow') || '#f5f543',
+          blue: getThemeVar('--icui-terminal-blue') || '#2472c8',
+          brightBlue: getThemeVar('--icui-terminal-bright-blue') || '#3b8eea',
+          magenta: getThemeVar('--icui-terminal-magenta') || '#bc3fbc',
+          brightMagenta: getThemeVar('--icui-terminal-bright-magenta') || '#d670d6',
+          cyan: getThemeVar('--icui-terminal-cyan') || '#11a8cd',
+          brightCyan: getThemeVar('--icui-terminal-bright-cyan') || '#29b8db',
+          white: getThemeVar('--icui-terminal-white') || '#e5e5e5',
+          brightWhite: getThemeVar('--icui-terminal-bright-white') || '#ffffff',
+        };
+        
+        // Update theme without reinitializing terminal
+        if (terminal.current) {
+          terminal.current.options.theme = newTheme;
+          terminal.current.refresh(0, terminal.current.rows - 1);
+        }
+      }, 100); // 100ms delay
+
+      return () => clearTimeout(themeUpdateTimeout);
     }
   }, [isDarkTheme]);
 
@@ -422,10 +454,16 @@ const BackendConnectedTerminal = forwardRef<BackendConnectedTerminalRef, Backend
 
   // Apply critical CSS for viewport scrolling (same as SimpleTerminal)
   useEffect(() => {
+    // Get theme colors from CSS variables for viewport styling
+    const computedStyle = getComputedStyle(document.documentElement);
+    const bgColor = computedStyle.getPropertyValue('--icui-bg-primary').trim() || 
+                   (isDarkTheme ? '#1e1e1e' : '#ffffff');
+    
     const styleElement = document.createElement('style');
+    styleElement.id = 'backend-connected-terminal-styles'; // Add ID for easier cleanup
     styleElement.textContent = `
       .backend-connected-terminal-container .xterm .xterm-viewport {
-        background-color: ${isDarkTheme ? '#1e1e1e' : '#ffffff'} !important;
+        background-color: ${bgColor} !important;
         overflow-y: scroll !important;
         position: absolute !important;
         top: 0 !important;
@@ -444,14 +482,42 @@ const BackendConnectedTerminal = forwardRef<BackendConnectedTerminalRef, Backend
         top: 0 !important;
       }
     `;
-    document.head.appendChild(styleElement);
     
+    // Remove any existing styles with the same ID first
+    const existingStyle = document.getElementById('backend-connected-terminal-styles');
+    if (existingStyle) {
+      existingStyle.remove();
+    }
+    
+    document.head.appendChild(styleElement);
+
     return () => {
-      if (styleElement.parentNode) {
-        styleElement.parentNode.removeChild(styleElement);
+      // Clean up the style element
+      const elementToRemove = document.getElementById('backend-connected-terminal-styles');
+      if (elementToRemove) {
+        elementToRemove.remove();
       }
     };
-  }, [isDarkTheme]);
+  }, [isDarkTheme]); // Add isDarkTheme dependency to update when theme changes
+
+  // Additional effect to force update terminal viewport background when theme changes
+  useEffect(() => {
+    if (!terminalRef.current || !terminal.current) return;
+
+    // Add a small delay to ensure CSS variables have propagated
+    const updateTimeout = setTimeout(() => {
+      // Force update viewport background directly
+      const terminalViewport = terminalRef.current?.querySelector('.xterm-viewport');
+      if (terminalViewport) {
+        const computedStyle = getComputedStyle(document.documentElement);
+        const bgColor = computedStyle.getPropertyValue('--icui-bg-primary').trim() || 
+                       (isDarkTheme ? '#1e1e1e' : '#ffffff');
+        (terminalViewport as HTMLElement).style.backgroundColor = bgColor;
+      }
+    }, 100); // 100ms delay to ensure CSS variables are updated
+
+    return () => clearTimeout(updateTimeout);
+  }, [isDarkTheme]); // Update viewport background when theme changes
 
   // Expose terminal methods via ref (matching SimpleTerminal pattern)
   useImperativeHandle(ref, () => ({

@@ -122,7 +122,11 @@ export const ICUIEnhancedTerminalPanel: React.FC<ICUIEnhancedTerminalPanelProps>
   useEffect(() => {
     if (!terminalRef.current) return;
     
-    // Create terminal with enhanced theme-aware colors using ICUI CSS variables
+    // Get theme colors from CSS variables
+    const computedStyle = getComputedStyle(document.documentElement);
+    const getThemeVar = (varName: string) => computedStyle.getPropertyValue(varName).trim();
+
+    // Create terminal with theme-aware colors using ICUI CSS variables
     terminal.current = new Terminal({
       scrollback: 1000,
       fontSize: 14,
@@ -130,27 +134,29 @@ export const ICUIEnhancedTerminalPanel: React.FC<ICUIEnhancedTerminalPanelProps>
       cursorStyle: 'block',
       cursorBlink: true,
       theme: {
-        background: isDarkTheme ? '#1e1e1e' : '#ffffff',
-        foreground: isDarkTheme ? '#d4d4d4' : '#000000',
-        cursor: isDarkTheme ? '#d4d4d4' : '#000000',
-        cursorAccent: isDarkTheme ? '#1e1e1e' : '#ffffff',
+        // Use ICUI CSS variables for background to match other panels
+        background: getThemeVar('--icui-bg-primary') || (isDarkTheme ? '#1e1e1e' : '#ffffff'),
+        foreground: getThemeVar('--icui-text-primary') || (isDarkTheme ? '#d4d4d4' : '#000000'),
+        cursor: getThemeVar('--icui-text-primary') || (isDarkTheme ? '#d4d4d4' : '#000000'),
+        cursorAccent: getThemeVar('--icui-bg-primary') || (isDarkTheme ? '#1e1e1e' : '#ffffff'),
         selectionBackground: isDarkTheme ? '#264f78' : '#add6ff',
-        black: '#000000',
-        brightBlack: '#666666',
-        red: '#cd3131',
-        brightRed: '#f14c4c',
-        green: '#0dbc79',
-        brightGreen: '#23d18b',
-        yellow: '#e5e510',
-        brightYellow: '#f5f543',
-        blue: '#2472c8',
-        brightBlue: '#3b8eea',
-        magenta: '#bc3fbc',
-        brightMagenta: '#d670d6',
-        cyan: '#11a8cd',
-        brightCyan: '#29b8db',
-        white: '#e5e5e5',
-        brightWhite: '#ffffff',
+        // Use ICUI terminal color variables
+        black: getThemeVar('--icui-terminal-black') || '#000000',
+        brightBlack: getThemeVar('--icui-terminal-bright-black') || '#666666',
+        red: getThemeVar('--icui-terminal-red') || '#cd3131',
+        brightRed: getThemeVar('--icui-terminal-bright-red') || '#f14c4c',
+        green: getThemeVar('--icui-terminal-green') || '#0dbc79',
+        brightGreen: getThemeVar('--icui-terminal-bright-green') || '#23d18b',
+        yellow: getThemeVar('--icui-terminal-yellow') || '#e5e510',
+        brightYellow: getThemeVar('--icui-terminal-bright-yellow') || '#f5f543',
+        blue: getThemeVar('--icui-terminal-blue') || '#2472c8',
+        brightBlue: getThemeVar('--icui-terminal-bright-blue') || '#3b8eea',
+        magenta: getThemeVar('--icui-terminal-magenta') || '#bc3fbc',
+        brightMagenta: getThemeVar('--icui-terminal-bright-magenta') || '#d670d6',
+        cyan: getThemeVar('--icui-terminal-cyan') || '#11a8cd',
+        brightCyan: getThemeVar('--icui-terminal-bright-cyan') || '#29b8db',
+        white: getThemeVar('--icui-terminal-white') || '#e5e5e5',
+        brightWhite: getThemeVar('--icui-terminal-bright-white') || '#ffffff',
       },
     });
 
@@ -330,39 +336,48 @@ export const ICUIEnhancedTerminalPanel: React.FC<ICUIEnhancedTerminalPanelProps>
   // Only update theme when it changes
   useEffect(() => {
     if (terminal.current) {
-      // Update terminal theme
+      // Get theme colors from CSS variables
+      const computedStyle = getComputedStyle(document.documentElement);
+      const getThemeVar = (varName: string) => computedStyle.getPropertyValue(varName).trim();
+
+      // Update terminal theme with CSS variables
       terminal.current.options.theme = {
-        background: isDarkTheme ? '#1e1e1e' : '#ffffff',
-        foreground: isDarkTheme ? '#d4d4d4' : '#000000',
-        cursor: isDarkTheme ? '#d4d4d4' : '#000000',
-        cursorAccent: isDarkTheme ? '#1e1e1e' : '#ffffff',
+        // Use ICUI CSS variables for background to match other panels
+        background: getThemeVar('--icui-bg-primary') || (isDarkTheme ? '#1e1e1e' : '#ffffff'),
+        foreground: getThemeVar('--icui-text-primary') || (isDarkTheme ? '#d4d4d4' : '#000000'),
+        cursor: getThemeVar('--icui-text-primary') || (isDarkTheme ? '#d4d4d4' : '#000000'),
+        cursorAccent: getThemeVar('--icui-bg-primary') || (isDarkTheme ? '#1e1e1e' : '#ffffff'),
         selectionBackground: isDarkTheme ? '#264f78' : '#add6ff',
-        black: '#000000',
-        brightBlack: '#666666',
-        red: '#cd3131',
-        brightRed: '#f14c4c',
-        green: '#0dbc79',
-        brightGreen: '#23d18b',
-        yellow: '#e5e510',
-        brightYellow: '#f5f543',
-        blue: '#2472c8',
-        brightBlue: '#3b8eea',
-        magenta: '#bc3fbc',
-        brightMagenta: '#d670d6',
-        cyan: '#11a8cd',
-        brightCyan: '#29b8db',
-        white: '#e5e5e5',
-        brightWhite: '#ffffff',
+        // Use ICUI terminal color variables
+        black: getThemeVar('--icui-terminal-black') || '#000000',
+        brightBlack: getThemeVar('--icui-terminal-bright-black') || '#666666',
+        red: getThemeVar('--icui-terminal-red') || '#cd3131',
+        brightRed: getThemeVar('--icui-terminal-bright-red') || '#f14c4c',
+        green: getThemeVar('--icui-terminal-green') || '#0dbc79',
+        brightGreen: getThemeVar('--icui-terminal-bright-green') || '#23d18b',
+        yellow: getThemeVar('--icui-terminal-yellow') || '#e5e510',
+        brightYellow: getThemeVar('--icui-terminal-bright-yellow') || '#f5f543',
+        blue: getThemeVar('--icui-terminal-blue') || '#2472c8',
+        brightBlue: getThemeVar('--icui-terminal-bright-blue') || '#3b8eea',
+        magenta: getThemeVar('--icui-terminal-magenta') || '#bc3fbc',
+        brightMagenta: getThemeVar('--icui-terminal-bright-magenta') || '#d670d6',
+        cyan: getThemeVar('--icui-terminal-cyan') || '#11a8cd',
+        brightCyan: getThemeVar('--icui-terminal-bright-cyan') || '#29b8db',
+        white: getThemeVar('--icui-terminal-white') || '#e5e5e5',
+        brightWhite: getThemeVar('--icui-terminal-bright-white') || '#ffffff',
       };
     }
   }, [isDarkTheme]);
 
-  // Apply critical CSS for viewport scrolling
+  // Apply critical CSS for viewport scrolling with theme-aware colors
   useEffect(() => {
     const styleElement = document.createElement('style');
+    const computedStyle = getComputedStyle(document.documentElement);
+    const terminalBg = computedStyle.getPropertyValue('--icui-bg-primary').trim() || (isDarkTheme ? '#1e1e1e' : '#ffffff');
+    
     styleElement.textContent = `
       .terminal-container .xterm .xterm-viewport {
-        background-color: ${isDarkTheme ? '#1e1e1e' : '#ffffff'} !important;
+        background-color: ${terminalBg} !important;
         overflow-y: scroll !important;
         position: absolute !important;
         top: 0 !important;
@@ -373,6 +388,7 @@ export const ICUIEnhancedTerminalPanel: React.FC<ICUIEnhancedTerminalPanelProps>
       
       .terminal-container .xterm .xterm-screen {
         position: relative !important;
+        background-color: ${terminalBg} !important;
       }
       
       .terminal-container .xterm .xterm-screen canvas {

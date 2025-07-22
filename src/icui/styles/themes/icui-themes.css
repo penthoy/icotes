@@ -164,6 +164,7 @@
   --icui-warning: #d29922;
   
   /* Terminal Colors */
+  --icui-terminal-black: #000000;
   --icui-terminal-white: var(--icui-github-dark-terminal-white);
   --icui-terminal-bright-white: var(--icui-github-dark-terminal-bright-white);
   --icui-terminal-bright-black: var(--icui-github-dark-terminal-bright-black);
@@ -181,23 +182,23 @@
   --icui-terminal-bright-red: var(--icui-github-dark-terminal-bright-red);
 }
 
-/* Dark theme specific tab overrides */
+/* Dark theme specific tab overrides - FIXED: Active tabs should be lighter */
 .icui-theme-github-dark .icui-panel-tab {
-  background-color: var(--icui-bg-tertiary);
+  background-color: transparent;
   color: var(--icui-text-secondary);
 }
 
 .icui-theme-github-dark .icui-panel-tab:hover {
-  background-color: var(--icui-bg-secondary);
+  background-color: var(--icui-bg-tertiary);
 }
 
 .icui-theme-github-dark .icui-panel-tab.active {
-  background-color: var(--icui-bg-secondary);
+  background-color: var(--icui-bg-tertiary);
   color: var(--icui-text-primary);
 }
 
 .icui-theme-github-dark .icui-tab-container .icui-tab {
-  background-color: var(--icui-bg-secondary);
+  background-color: transparent;
 }
 
 .icui-theme-github-dark .icui-tab-container .icui-tab:hover {
@@ -233,6 +234,7 @@
   --icui-warning: #e6db74;
   
   /* Terminal Colors - Using dark theme colors */
+  --icui-terminal-black: #000000;
   --icui-terminal-white: var(--icui-github-dark-terminal-white);
   --icui-terminal-bright-white: var(--icui-github-dark-terminal-bright-white);
   --icui-terminal-bright-black: var(--icui-github-dark-terminal-bright-black);
@@ -250,23 +252,23 @@
   --icui-terminal-bright-red: var(--icui-github-dark-terminal-bright-red);
 }
 
-/* Monokai dark theme tab overrides */
+/* Monokai dark theme tab overrides - FIXED: Active tabs should be lighter */
 .icui-theme-monokai .icui-panel-tab {
-  background-color: var(--icui-bg-tertiary);
+  background-color: transparent;
   color: var(--icui-text-secondary);
 }
 
 .icui-theme-monokai .icui-panel-tab:hover {
-  background-color: var(--icui-bg-secondary);
+  background-color: var(--icui-bg-tertiary);
 }
 
 .icui-theme-monokai .icui-panel-tab.active {
-  background-color: var(--icui-bg-secondary);
+  background-color: var(--icui-bg-tertiary);
   color: var(--icui-text-primary);
 }
 
 .icui-theme-monokai .icui-tab-container .icui-tab {
-  background-color: var(--icui-bg-secondary);
+  background-color: transparent;
 }
 
 .icui-theme-monokai .icui-tab-container .icui-tab:hover {
@@ -302,6 +304,7 @@
   --icui-warning: #e5c07b;
   
   /* Terminal Colors - Using dark theme colors */
+  --icui-terminal-black: #000000;
   --icui-terminal-white: var(--icui-github-dark-terminal-white);
   --icui-terminal-bright-white: var(--icui-github-dark-terminal-bright-white);
   --icui-terminal-bright-black: var(--icui-github-dark-terminal-bright-black);
@@ -319,23 +322,23 @@
   --icui-terminal-bright-red: var(--icui-github-dark-terminal-bright-red);
 }
 
-/* One Dark theme tab overrides */
+/* One Dark theme tab overrides - FIXED: Active tabs should be lighter */
 .icui-theme-one-dark .icui-panel-tab {
-  background-color: var(--icui-bg-tertiary);
+  background-color: transparent;
   color: var(--icui-text-secondary);
 }
 
 .icui-theme-one-dark .icui-panel-tab:hover {
-  background-color: var(--icui-bg-secondary);
+  background-color: var(--icui-bg-tertiary);
 }
 
 .icui-theme-one-dark .icui-panel-tab.active {
-  background-color: var(--icui-bg-secondary);
+  background-color: var(--icui-bg-tertiary);
   color: var(--icui-text-primary);
 }
 
 .icui-theme-one-dark .icui-tab-container .icui-tab {
-  background-color: var(--icui-bg-secondary);
+  background-color: transparent;
 }
 
 .icui-theme-one-dark .icui-tab-container .icui-tab:hover {
@@ -364,6 +367,7 @@
   --icui-warning: var(--icui-github-light-warning);
   
   /* Terminal Colors */
+  --icui-terminal-black: #000000;
   --icui-terminal-white: var(--icui-github-light-terminal-white);
   --icui-terminal-bright-white: var(--icui-github-light-terminal-bright-white);
   --icui-terminal-bright-black: var(--icui-github-light-terminal-bright-black);
@@ -399,6 +403,7 @@
   --icui-warning: var(--icui-vscode-light-warning);
   
   /* Terminal Colors */
+  --icui-terminal-black: #000000;
   --icui-terminal-white: var(--icui-vscode-light-terminal-white);
   --icui-terminal-bright-white: var(--icui-vscode-light-terminal-bright-white);
   --icui-terminal-bright-black: var(--icui-vscode-light-terminal-bright-black);
@@ -668,6 +673,7 @@
   --icui-warning: var(--icui-github-dark-warning);
   
   /* Terminal Colors - Default for all dark themes */
+  --icui-terminal-black: #000000;
   --icui-terminal-white: var(--icui-github-dark-terminal-white);
   --icui-terminal-bright-white: var(--icui-github-dark-terminal-bright-white);
   --icui-terminal-bright-black: var(--icui-github-dark-terminal-bright-black);
@@ -742,6 +748,7 @@
   --icui-warning: var(--icui-github-light-warning);
   
   /* Terminal Colors - Default for all light themes */
+  --icui-terminal-black: #000000;
   --icui-terminal-white: var(--icui-github-light-terminal-white);
   --icui-terminal-bright-white: var(--icui-github-light-terminal-bright-white);
   --icui-terminal-bright-black: var(--icui-github-light-terminal-bright-black);

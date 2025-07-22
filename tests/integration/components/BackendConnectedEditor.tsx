@@ -308,25 +308,38 @@ const BackendConnectedEditor: React.FC<BackendConnectedEditorProps> = ({
   // Get workspace root from environment (following BackendConnectedExplorer pattern)
   const effectiveWorkspaceRoot = workspaceRoot || (import.meta as any).env?.VITE_WORKSPACE_ROOT || '/home/penthoy/ilaborcode/workspace';
 
-  // Theme detection (following BackendConnectedTerminal pattern)
+  // Theme detection (following BackendConnectedTerminal pattern with all themes)
   useEffect(() => {
+    let timeoutId: NodeJS.Timeout;
+    
     const detectTheme = () => {
-      const htmlElement = document.documentElement;
-      const isDark = htmlElement.classList.contains('dark') || 
-                     htmlElement.classList.contains('icui-theme-github-dark') ||
-                     htmlElement.classList.contains('icui-theme-monokai') ||
-                     htmlElement.classList.contains('icui-theme-one-dark');
-      setIsDarkTheme(isDark);
+      // Debounce theme detection to prevent rapid changes
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        const htmlElement = document.documentElement;
+        const isDark = htmlElement.classList.contains('dark') || 
+                       htmlElement.classList.contains('icui-theme-github-dark') ||
+                       htmlElement.classList.contains('icui-theme-monokai') ||
+                       htmlElement.classList.contains('icui-theme-one-dark') ||
+                       htmlElement.classList.contains('icui-theme-dracula') ||
+                       htmlElement.classList.contains('icui-theme-solarized-dark');
+        setIsDarkTheme(isDark);
+      }, 50); // 50ms debounce
     };
 
     detectTheme();
+    
+    // Create observer to watch for theme changes
     const observer = new MutationObserver(detectTheme);
     observer.observe(document.documentElement, {
       attributes: true,
       attributeFilter: ['class']
     });
 
-    return () => observer.disconnect();
+    return () => {
+      clearTimeout(timeoutId);
+      observer.disconnect();
+    };
   }, []);
 
   // Backend connection check (following simpleeditor pattern)
@@ -566,7 +579,7 @@ const BackendConnectedEditor: React.FC<BackendConnectedEditorProps> = ({
         editorViewRef.current = null;
       }
     };
-  }, [isDarkTheme, activeFile?.language, createExtensions]); // Only recreate when theme or language changes, NOT file id
+  }, [isDarkTheme, activeFile?.id, createExtensions]); // Recreate on file change AND theme change
 
   // Update editor content when switching between files (without recreating editor)
   useEffect(() => {
@@ -673,58 +686,80 @@ const BackendConnectedEditor: React.FC<BackendConnectedEditorProps> = ({
 
   return (
     <div className={`backend-connected-editor-container h-full flex flex-col ${className}`}>
-      {/* Connection Status Bar */}
-      <div className="flex items-center justify-between p-2 border-b bg-gray-50 dark:bg-gray-800 text-sm">
+      {/* Connection Status Bar - FIXED: Use ICUI theme variables */}
+      <div className="flex items-center justify-between p-2 border-b text-sm" style={{ backgroundColor: 'var(--icui-bg-secondary)', borderColor: 'var(--icui-border-subtle)' }}>
         <div className="flex items-center space-x-4">
           <div className="flex items-center space-x-2">
             <div 
-              className={`w-2 h-2 rounded-full ${
-                connectionStatus.connected ? 'bg-green-500' : 'bg-red-500'
-              }`}
+              className={`w-2 h-2 rounded-full`}
+              style={{ backgroundColor: connectionStatus.connected ? 'var(--icui-success)' : 'var(--icui-danger)' }}
             />
-            <span className="text-xs">
+            <span className="text-xs" style={{ color: 'var(--icui-text-primary)' }}>
               {connectionStatus.connected ? 'Connected' : 'Disconnected'}
             </span>
           </div>
-          <span className="text-xs text-gray-500">
+          <span className="text-xs" style={{ color: 'var(--icui-text-secondary)' }}>
             Workspace: {effectiveWorkspaceRoot}
           </span>
         </div>
         <div className="flex items-center space-x-2">
           {isLoading && (
-            <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+            <div 
+              className="w-4 h-4 border-2 border-t-transparent rounded-full animate-spin" 
+              style={{ borderColor: 'var(--icui-accent)', borderTopColor: 'transparent' }}
+            />
           )}
           <button
             onClick={checkBackendConnection}
-            className="px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600"
+            className="px-2 py-1 text-xs rounded transition-colors"
+            style={{ backgroundColor: 'var(--icui-accent)', color: 'white' }}
           >
             Refresh
           </button>
         </div>
       </div>
 
-      {/* File Tabs */}
-      <div className="flex bg-gray-100 dark:bg-gray-700 border-b overflow-x-auto">
+      {/* File Tabs - FIXED: Use ICUI theme variables for consistency */}
+      <div className="flex overflow-x-auto border-b" style={{ backgroundColor: 'var(--icui-bg-secondary)', borderColor: 'var(--icui-border-subtle)' }}>
         {files.map((file) => (
           <div
             key={file.id}
-            className={`flex items-center px-3 py-2 border-r cursor-pointer min-w-0 ${
+            className={`flex items-center px-3 py-2 border-r cursor-pointer min-w-0 transition-all duration-200 ${
               file.id === activeFileId
-                ? 'bg-white dark:bg-gray-800 border-b-2 border-blue-500'
-                : 'hover:bg-gray-50 dark:hover:bg-gray-600'
+                ? 'border-b-2'
+                : ''
             }`}
+            style={{
+              backgroundColor: file.id === activeFileId 
+                ? 'var(--icui-bg-tertiary)' 
+                : 'transparent',
+              borderRightColor: 'var(--icui-border-subtle)',
+              borderBottomColor: file.id === activeFileId ? 'var(--icui-accent)' : 'transparent',
+              color: file.id === activeFileId ? 'var(--icui-text-primary)' : 'var(--icui-text-secondary)'
+            }}
             onClick={() => handleActivateFile(file.id)}
+            onMouseEnter={(e) => {
+              if (file.id !== activeFileId) {
+                e.currentTarget.style.backgroundColor = 'var(--icui-bg-tertiary)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (file.id !== activeFileId) {
+                e.currentTarget.style.backgroundColor = 'transparent';
+              }
+            }}
           >
             <span className="truncate text-sm">
               {file.name}
-              {file.modified && <span className="text-orange-500 ml-1">•</span>}
+              {file.modified && <span style={{ color: 'var(--icui-warning)' }} className="ml-1">•</span>}
             </span>
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 handleCloseFile(file.id);
               }}
-              className="ml-2 text-gray-400 hover:text-red-500 text-xs"
+              className="ml-2 text-xs transition-colors hover:opacity-80"
+              style={{ color: 'var(--icui-text-secondary)' }}
             >
               ×
             </button>
@@ -732,32 +767,43 @@ const BackendConnectedEditor: React.FC<BackendConnectedEditorProps> = ({
         ))}
         <button
           onClick={onFileCreate}
-          className="px-3 py-2 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 text-sm"
+          className="px-3 py-2 text-sm transition-colors hover:opacity-80"
+          style={{ color: 'var(--icui-text-secondary)' }}
           title="New File"
         >
           +
         </button>
       </div>
 
-      {/* File Actions */}
+      {/* File Actions - FIXED: Use ICUI theme variables */}
       {activeFile && (
-        <div className="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-800 border-b">
+        <div className="flex items-center justify-between p-2 border-b" style={{ backgroundColor: 'var(--icui-bg-secondary)', borderColor: 'var(--icui-border-subtle)' }}>
           <div className="flex items-center space-x-2">
-            <span className="text-sm font-medium">{activeFile.name}</span>
-            <span className="text-xs text-gray-500">({activeFile.language})</span>
+            <span className="text-sm font-medium" style={{ color: 'var(--icui-text-primary)' }}>{activeFile.name}</span>
+            <span className="text-xs" style={{ color: 'var(--icui-text-secondary)' }}>({activeFile.language})</span>
           </div>
           <div className="flex items-center space-x-2">
             <button
               onClick={() => handleSaveFile(activeFile.id)}
               disabled={!activeFile.modified || !connectionStatus.connected || isLoading}
-              className="px-3 py-1 text-xs bg-green-500 text-white rounded hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-3 py-1 text-xs rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{ 
+                backgroundColor: 'var(--icui-success)', 
+                color: 'white',
+                opacity: (!activeFile.modified || !connectionStatus.connected || isLoading) ? 0.5 : 1
+              }}
             >
               Save
             </button>
             <button
               onClick={() => handleRunFile(activeFile.id)}
               disabled={!connectionStatus.connected || isLoading}
-              className="px-3 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-3 py-1 text-xs rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{ 
+                backgroundColor: 'var(--icui-accent)', 
+                color: 'white',
+                opacity: (!connectionStatus.connected || isLoading) ? 0.5 : 1
+              }}
             >
               Run
             </button>
@@ -774,12 +820,13 @@ const BackendConnectedEditor: React.FC<BackendConnectedEditorProps> = ({
             style={{ height: '100%' }}
           />
         ) : (
-          <div className="flex items-center justify-center h-full text-gray-500">
+          <div className="flex items-center justify-center h-full" style={{ color: 'var(--icui-text-secondary)' }}>
             <div className="text-center">
               <p className="text-lg mb-2">No file open</p>
               <button
                 onClick={onFileCreate}
-                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                className="px-4 py-2 rounded transition-colors"
+                style={{ backgroundColor: 'var(--icui-accent)', color: 'white' }}
               >
                 Create New File
               </button>

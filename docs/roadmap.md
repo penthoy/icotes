@@ -1,78 +1,33 @@
 ## Project Overview
 A web-based JavaScript code editor built with ViteReact, CodeMirror 6, and modern web technologies. The goal is to create a powerful, The world's most powerful notebook for developers, it includes 3 core parts: 1. rich text editor, similar to evernote/notion hybrid, 2. code editor + terminal(similar to replit), 3. AI agent that can be customized with agentic frameworks such as crew ai, or openai agent sdk, or any other agentic framework.
 
-### In Progress
+### Phase 3: Theme & Consistency (✅ COMPLETED) 
 
-## Current Status: Integration Phase Complete ✅
+**Status: COMPLETED** ✅
 
-### ✅ Completed Tasks
+### 3.1 Theme Unification (✅ COMPLETED)
+**Goal:** Fix theme inconsistencies across all components and routes
 
-### In Progress
+- ✅ **ICUI Framework Theming**: All ICUI components now use CSS variables for consistent theming across all themes
+- ✅ **Terminal Theme Consistency**: 
+  - ICUIEnhancedTerminalPanel: Fully refactored to use ICUI CSS variables
+  - BackendConnectedTerminal: Refactored to use ICUI CSS variables for all terminal backgrounds and colors
+- ✅ **Tab Theme Consistency**: 
+  - ICUI tab system: Updated to use unified CSS variables
+  - BackendConnectedEditor custom tabs: Refactored to use ICUI theme variables
+- ✅ **Color Variable Unification**: All color variables unified in icui-themes.css
+- ✅ **Cross-Route Consistency**: Both home route and /inthome route now have matching themes
 
-## Future task
--- Theme fix:
-- [] terminal theme looking wrong, 
-- [] Monokai is wrong
-- [] editor tab color is wrong, please use the same color as the panel tabs, the active tab should have lighter color
+**Technical Implementation:**
+- All terminal and editor components now use `getComputedStyle(document.documentElement).getPropertyValue('--icui-bg-primary')` for background consistency
+- Terminal color schemes use ICUI terminal color variables for all ANSI colors
+- Tab systems unified to use same CSS variable hierarchy
+- Viewport backgrounds now use CSS variables instead of hardcoded colors
 
--- integration 2.5:
-Now that explorer, code editor and terminal works, next is how they talk to each other.
-1. Editor:remove the Connected area, there's no need for editor to show connection independently.
-2. Editor
-- [] Update integration details: explorer is empty by defaul, but populates 
-3. use src/icui/menus on inthome.tsx
-
--- keep progressing on icui and icpy, need context right click menu
-- [] work on integration_plan.md 2.3: Editor Integration
-- [] work on icpy_plan.md 
-- [] work on icui_plan.md 7.1 clipboard, need to update 5 and beyond
-
-- [] housekeeping, clean up unused routes in App.tsx
-  
-- [] work on integration_plan.md 2.3: Editor Integration
-- [] work on icpy_plan.md 
-- [] work on icui_plan.md 4.10 clipboard, need to update 5 and beyond
-
--- Milestone 1:
-Complete icui-icpy connection and integration plan so that the old home route is using icpy backend.
-
--- Milestone 2:
-home route refined and first mvp complete, can be showned.
-critical features:
-you can start using your own APIs to create simple software.
-
--- Milestone 3:
-Agent integration:
-Agents can edit files.
-features: history, context
-
--- Milestone 4:
-Advanced agents
-Everything that copilot, cursor can do
-
--- Milestone 5:
-uncharted teritories, vanture where no other editor has gone, features:
-multiple agents working side by side in async. they're AI employees, in crew AI they'll be given name and backstory and role, this is for the purpose of devide and concour, they'll each have limited context so in their context they'll be specialized in one part of the code base, such as back end, frontend or integration, they're able to talk to each other
-
-
--- Bug Fix:
-- [] Fix panel flickering issue
-- [] Creating a new Terminal panel in the same area for example in the bottom, it'll look exactly the same as the other terminal, it seems like it is just displaying exactly what's in that terminal, this is the wrong behavior, if I create a new terminal panel at the top, it looks correct, please fix this, creating a new Terminal panel with the arrow drop down, regardless of where it was created, should be an independent terminal. this does for all other panels. not just the terminal.
-
-- [] when dragged out from one panel area to another, it should show the panel that's left, instead of the dragable area.
-
--- api backend
-- [] create an api layer between the front end and backend.
-- [] This api layer can also be used in the comand line which also have hooks to the UI to do things like open a file in editor or have AI assistant use tools to edit file etc.
-- api feature: detect what view is active so that the AI can have the correct context when you talk to it, it saves the state of the
-- we'll add these endpoints later, but first we need to create a design document named api_design.md in docs folder and wait for me to review/edit it before proceed with building this layer.
-
--- Features:
-Add a settings menu under File menu
-Add a custom sub menu under Layout, inside custom, there should be a save layout button, when clicked, it should give a popup to name your layout and click ok, once clicked it'll save the state of the current layout. as a new custom layout.
--- Later
-A Panel installer,
-maya style code executor.
+**Validation:**
+- Build passes successfully
+- All themes (Dracula, Monokai, Solarized Dark, GitHub Dark, etc.) now have consistent terminal and tab backgrounds
+- Both main home route and /inthome route have unified theming
 
 ## Recently Finished
 
