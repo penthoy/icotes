@@ -18,6 +18,7 @@ A web-based JavaScript code editor built with ViteReact, CodeMirror 6, and moder
   - Added clipboard functionality
   - Applied proper theming and scrolling
   - Verified build passes with no errors
+  - Fixed double WebSocket connection issue by separating terminal initialization from theme updates
 - ✅ **Use WORKSPACE_ROOT from .env to sync root of all panels**
   - Added workspace root reading from `VITE_WORKSPACE_ROOT` 
   - Added workspace root indicator to UI status display
@@ -27,14 +28,32 @@ A web-based JavaScript code editor built with ViteReact, CodeMirror 6, and moder
   - Updated initial directory loading to use workspace root
   - Modified file and folder creation to work relative to workspace root
   - Added workspace root indicator to explorer header
+  - Fixed double API path issues (/api/api/files) with direct backend integration
+  - Verified build passes with no errors
+- ✅ **Updated BackendConnectedEditor.tsx with direct backend integration**
+  - Complete rewrite following simpleeditor.tsx pattern with direct API calls
+  - Removed complex backend state management (useBackendState/useBackendContext)
+  - Added CodeMirror 6 integration with syntax highlighting and theming
+  - Implemented multi-file tabs with backend synchronization
+  - Added auto-save with debouncing for file operations
+  - Integrated workspace root support (VITE_WORKSPACE_ROOT)
+  - Added connection status display and error handling
+  - Updated inthome.tsx to use new BackendConnectedEditor
+  - **Fixed workspace file loading** - now loads actual files from workspace instead of demo files
+  - **Fixed demo mode issue in inthome.tsx** - removed hardcoded demo files to let BackendConnectedEditor handle file loading
+  - **Fixed tab flashing bug** - removed duplicate file state management causing conflicts
+  - **Fixed CodeMirror cursor positioning issue** - followed exact ICUIEnhancedEditorPanel pattern:
+    * Removed activeFile?.id from editor initialization dependencies (was causing unnecessary recreation)  
+    * Added content comparison in updateListener to prevent unnecessary updates
+    * Fixed content update effect to use currentContent.length instead of state.doc.length
+    * Cleaned up unused duplicate getLanguageFromExtension function
   - Verified build passes with no errors
 
-### In Progress 
-
+### In Progress
 
 ## Future task
 
-- [] update editor, same but with icpy. use /src/icui/components/panels/ICUIEnhancedEditorPanel as example but do not reference it, this should be a full rewrite and same for rest of the panels
+
 - [] Update integration details: explorer is empty by defaul, but populates 
 
 - [] work on integration_plan.md 2.3: Editor Integration
@@ -42,7 +61,7 @@ A web-based JavaScript code editor built with ViteReact, CodeMirror 6, and moder
 - [] work on icui_plan.md 4.10 clipboard, need to update 5 and beyond
 
 - [] housekeeping, clean up unused routes in App.tsx
-
+  
 - [] work on integration_plan.md 2.3: Editor Integration
 - [] work on icpy_plan.md 
 - [] work on icui_plan.md 4.10 clipboard, need to update 5 and beyond

@@ -45,9 +45,7 @@ import {
   foldKeymap,
   foldGutter,
 } from "@codemirror/language";
-import { python } from '@codemirror/lang-python';
-import { javascript } from '@codemirror/lang-javascript';
-import { createICUISyntaxHighlighting, createICUIEnhancedEditorTheme } from '../../../src/icui/utils/syntaxHighlighting';
+import { createICUISyntaxHighlighting, createICUIEnhancedEditorTheme, getLanguageExtension } from '../../../src/icui/utils/syntaxHighlighting';
 
 // File interface (following ICUIEnhancedEditorPanel pattern)
 interface EditorFile {
@@ -94,7 +92,7 @@ class EditorNotificationService {
   }
 }
 
-// Backend client for editor operations (following simpleeditor pattern)
+// Backend client for editor operations (following BackendConnectedExplorer pattern)
 class EditorBackendClient {
   private baseUrl: string;
 
@@ -111,46 +109,11 @@ class EditorBackendClient {
     }
   }
 
-  async listFiles(workspacePath: string): Promise<EditorFile[]> {
-    try {
-      console.log('[BackendConnectedEditor-FIXED] Loading files from workspace:', workspacePath);
-      const encodedPath = encodeURIComponent(workspacePath);
-      const response = await fetch(`${this.baseUrl}/files?path=${encodedPath}`);
-      
-      if (!response.ok) {
-        throw new Error(`Failed to list files: ${response.status} ${response.statusText}`);
-      }
-      
-      const result = await response.json();
-      
-      if (!result.success) {
-        throw new Error(result.message || 'API request failed');
-      }
-      
-      const fileList = result.data || [];
-      
-      // Convert backend response to EditorFile format, filter out directories
-      return fileList
-        .filter((item: any) => !item.is_directory)
-        .map((item: any, index: number) => ({
-          id: item.path || `file_${index}`,
-          name: item.name,
-          language: this.getLanguageFromExtension(item.name),
-          content: '', // Content will be loaded separately
-          modified: false,
-          path: item.path
-        }));
-    } catch (error) {
-      console.error('Failed to list files:', error);
-      throw error;
-    }
-  }
-
   async readFile(path: string): Promise<string> {
     try {
       console.log('[BackendConnectedEditor-FIXED] Reading file:', path);
       const encodedPath = encodeURIComponent(path);
-      const response = await fetch(`${this.baseUrl}/files/content?path=${encodedPath}`);
+      const response = await fetch(`${this.baseUrl}/files/${encodedPath}/content`);
       
       if (!response.ok) {
         throw new Error(`Failed to read file: ${response.status} ${response.statusText}`);
@@ -166,47 +129,6 @@ class EditorBackendClient {
     } catch (error) {
       console.error('Failed to read file:', error);
       throw error;
-    }
-  }
-
-  async getFile(filePath: string): Promise<EditorFile> {
-    try {
-      const content = await this.readFile(filePath);
-      const filename = filePath.split('/').pop() || 'untitled';
-      
-      return {
-        id: filePath,
-        name: filename,
-        language: this.getLanguageFromExtension(filename),
-        content: content,
-        modified: false,
-        path: filePath
-      };
-    } catch (error) {
-      console.error('Failed to get file:', error);
-      throw error;
-    }
-  }
-
-  private getLanguageFromExtension(filename: string): string {
-    const ext = filename.split('.').pop()?.toLowerCase();
-    switch (ext) {
-      case 'js':
-        return 'javascript';
-      case 'ts':
-        return 'typescript';
-      case 'py':
-        return 'python';
-      case 'html':
-        return 'html';
-      case 'css':
-        return 'css';
-      case 'json':
-        return 'json';
-      case 'md':
-        return 'markdown';
-      default:
-        return 'text';
     }
   }
 
@@ -292,8 +214,17 @@ const BackendConnectedEditor: React.FC<BackendConnectedEditorProps> = ({
   workspaceRoot
 }) => {
   // State management (following simpleeditor pattern)
-  const [files, setFiles] = useState<EditorFile[]>(propFiles);
-  const [activeFileId, setActiveFileId] = useState<string>(propActiveFileId || '');
+  const [files, setFiles] = useState<EditorFile[]>(propFiles.length > 0 ? propFiles : [
+    {
+      id: '1',
+      name: 'welcome.js',
+      language: 'javascript',
+      content: '// Welcome to the JavaScript Code Editor!\n// Built with React, CodeMirror 6, and the ICUI Framework\n\nfunction welcome() {\n  console.log("Welcome to your code editor!");\n  console.log("Start coding and see the magic happen!");\n  return "Happy coding!";\n}\n\nwelcome();',
+      modified: false,
+      path: '/workspace/welcome.js'
+    }
+  ]);
+  const [activeFileId, setActiveFileId] = useState<string>(propActiveFileId || files[0]?.id || '1');
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>({ connected: false });
   const [isDarkTheme, setIsDarkTheme] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -349,59 +280,6 @@ const BackendConnectedEditor: React.FC<BackendConnectedEditorProps> = ({
     }
   }, []);
 
-  // Load files from workspace (following simpleeditor pattern)
-  const loadFiles = useCallback(async () => {
-    if (!connectionStatus.connected) return;
-    
-    setIsLoading(true);
-    try {
-      const loadedFiles = await backendClient.current.listFiles(effectiveWorkspaceRoot);
-      
-      // Load content for the first few files (to avoid overwhelming the backend)
-      const filesWithContent = await Promise.all(
-        loadedFiles.slice(0, 5).map(async (file) => {
-          try {
-            if (file.path) {
-              const fileWithContent = await backendClient.current.getFile(file.path);
-              return fileWithContent;
-            }
-            return file;
-          } catch (error) {
-            console.warn(`Failed to load content for ${file.name}:`, error);
-            return file;
-          }
-        })
-      );
-      
-      setFiles(filesWithContent);
-      
-      if (filesWithContent.length > 0 && !activeFileId) {
-        setActiveFileId(filesWithContent[0].id);
-      }
-      
-      EditorNotificationService.show(`Loaded ${loadedFiles.length} files from workspace`, 'success');
-    } catch (error) {
-      console.error('Failed to load files:', error);
-      EditorNotificationService.show(`Failed to load files: ${error}`, 'error');
-      
-      // Fallback to demo files if workspace loading fails
-      const demoFiles: EditorFile[] = [
-        {
-          id: 'demo-welcome',
-          name: 'welcome.js',
-          language: 'javascript',
-          content: '// Welcome to the JavaScript Code Editor!\n// Built with React, CodeMirror 6, and the ICUI Framework\n\nfunction welcome() {\n  console.log("Welcome to your code editor!");\n  console.log("Start coding and see the magic happen!");\n  return "Happy coding!";\n}\n\nwelcome();',
-          modified: false,
-          path: `${effectiveWorkspaceRoot}/welcome.js`
-        }
-      ];
-      setFiles(demoFiles);
-      setActiveFileId(demoFiles[0].id);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [connectionStatus.connected, effectiveWorkspaceRoot, activeFileId]);
-
   // Initialize backend connection
   useEffect(() => {
     checkBackendConnection();
@@ -409,24 +287,79 @@ const BackendConnectedEditor: React.FC<BackendConnectedEditorProps> = ({
     return () => clearInterval(interval);
   }, [checkBackendConnection]);
 
-  // Load files when connected
-  useEffect(() => {
-    if (connectionStatus.connected && propFiles.length === 0) {
-      loadFiles(); // Only auto-load if no propFiles provided
+  // Get language extension helper (following ICUIEnhancedEditorPanel pattern)
+  const getLanguageFromExtension = useCallback((filename: string): string => {
+    const ext = filename.split('.').pop()?.toLowerCase();
+    switch (ext) {
+      case 'js':
+      case 'jsx':
+        return 'javascript';
+      case 'ts':
+      case 'tsx':
+        return 'typescript';
+      case 'py':
+        return 'python';
+      case 'html':
+        return 'html';
+      case 'css':
+        return 'css';
+      case 'json':
+        return 'json';
+      case 'md':
+        return 'markdown';
+      default:
+        return 'text';
     }
-  }, [connectionStatus.connected, loadFiles, propFiles.length]);
+  }, []);
 
-  // Update files when propFiles change
-  useEffect(() => {
-    if (propFiles.length > 0) {
-      setFiles(propFiles);
-      if (propActiveFileId) {
-        setActiveFileId(propActiveFileId);
-      } else if (propFiles.length > 0 && !activeFileId) {
-        setActiveFileId(propFiles[0].id);
-      }
+  // Create editor extensions (following ICUIEnhancedEditorPanel pattern)
+  const createExtensions = useCallback((language: string): Extension[] => {
+    const extensions: Extension[] = [
+      lineNumbers(),
+      dropCursor(),
+      indentOnInput(),
+      bracketMatching(),
+      closeBrackets(),
+      autocompletion(),
+      rectangularSelection(),
+      crosshairCursor(),
+      highlightSelectionMatches(),
+      searchKeymap,
+      history(),
+      foldGutter(),
+      keymap.of([
+        ...closeBracketsKeymap,
+        ...defaultKeymap,
+        ...searchKeymap,
+        ...historyKeymap,
+        ...foldKeymap,
+        ...completionKeymap,
+        indentWithTab,
+      ]),
+      syntaxHighlighting(createICUISyntaxHighlighting()),
+      createICUIEnhancedEditorTheme(isDarkTheme),
+      EditorView.theme({
+        '&': {
+          height: '100%',
+        },
+        '.cm-scroller': {
+          fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+          fontSize: '14px',
+        },
+        '.cm-focused': {
+          outline: 'none',
+        },
+      }),
+    ];
+
+    // Add language-specific extension
+    const langExtension = getLanguageExtension(language);
+    if (langExtension) {
+      extensions.push(langExtension);
     }
-  }, [propFiles, propActiveFileId, activeFileId]);
+
+    return extensions;
+  }, [isDarkTheme]);
 
   // Get current active file
   const activeFile = files.find(file => file.id === activeFileId);
@@ -476,71 +409,9 @@ const BackendConnectedEditor: React.FC<BackendConnectedEditorProps> = ({
     }
   }, [activeFile, activeFileId, onFileChange, autoSave, connectionStatus.connected, autoSaveDelay]);
 
-  // Create editor extensions (following ICUIEnhancedEditorPanel pattern)
-  const createExtensions = useCallback((language: string): Extension[] => {
-    const extensions: Extension[] = [
-      lineNumbers(),
-      dropCursor(),
-      indentOnInput(),
-      bracketMatching(),
-      closeBrackets(),
-      autocompletion(),
-      rectangularSelection(),
-      crosshairCursor(),
-      highlightSelectionMatches(),
-      history(),
-      keymap.of([
-        ...closeBracketsKeymap,
-        ...defaultKeymap,
-        ...searchKeymap,
-        ...historyKeymap,
-        ...foldKeymap,
-        ...completionKeymap,
-        indentWithTab,
-      ]),
-      syntaxHighlighting(createICUISyntaxHighlighting(isDarkTheme)),
-      EditorView.theme(createICUIEnhancedEditorTheme(isDarkTheme)),
-      EditorView.theme({
-        '&': {
-          height: '100%',
-        },
-        '.cm-scroller': {
-          fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-          fontSize: '14px',
-        },
-        '.cm-focused': {
-          outline: 'none',
-        },
-      }),
-      // Add update listener to handle content changes
-      EditorView.updateListener.of((update) => {
-        if (update.docChanged) {
-          const newContent = update.state.doc.toString();
-          // Only trigger change if content actually changed from what we have
-          if (newContent !== activeFile.content) {
-            handleContentChange(newContent);
-          }
-        }
-      }),
-    ];
-
-    // Add language-specific extension directly based on language
-    if (language === 'python') {
-      extensions.push(python());
-    } else if (language === 'javascript' || language === 'typescript') {
-      extensions.push(javascript());
-    }
-    // Add more languages as needed
-
-    return extensions;
-  }, [isDarkTheme, handleContentChange]);
-
   // Initialize CodeMirror editor (following ICUIEnhancedEditorPanel pattern)
   useEffect(() => {
     if (!editorRef.current || !activeFile) return;
-
-    // Get current content from existing view if it exists, otherwise use active file content
-    const currentContent = editorViewRef.current?.state.doc.toString() || activeFile.content;
 
     // Clean up existing editor
     if (editorViewRef.current) {
@@ -550,18 +421,28 @@ const BackendConnectedEditor: React.FC<BackendConnectedEditorProps> = ({
 
     // Create new editor state
     const state = EditorState.create({
-      doc: currentContent,
+      doc: activeFile.content,
       extensions: createExtensions(activeFile.language),
     });
 
-    // Create editor view - no custom dispatch, let CodeMirror handle it
-    editorViewRef.current = new EditorView({
+    // Create editor view
+    const view = new EditorView({
       state,
       parent: editorRef.current,
+      dispatch: (transaction) => {
+        view.update([transaction]);
+        
+        if (transaction.docChanged) {
+          const newContent = view.state.doc.toString();
+          handleContentChange(newContent);
+        }
+      },
     });
 
+    editorViewRef.current = view;
+
     // Focus the editor
-    editorViewRef.current.focus();
+    view.focus();
 
     return () => {
       if (editorViewRef.current) {
@@ -569,24 +450,7 @@ const BackendConnectedEditor: React.FC<BackendConnectedEditorProps> = ({
         editorViewRef.current = null;
       }
     };
-  }, [activeFile?.language, createExtensions, isDarkTheme]); // Only recreate when language or theme changes, NOT file id
-
-  // Update editor content when switching between files (without recreating editor)
-  useEffect(() => {
-    if (!editorViewRef.current || !activeFile) return;
-
-    const currentContent = editorViewRef.current.state.doc.toString();
-    if (currentContent !== activeFile.content) {
-      // Update editor content without recreating the view
-      editorViewRef.current.dispatch({
-        changes: {
-          from: 0,
-          to: currentContent.length, // Use current content length, not state doc length
-          insert: activeFile.content,
-        },
-      });
-    }
-  }, [activeFile?.content, activeFile?.id]); // Include file id to trigger when switching files
+  }, [activeFile?.id, activeFile?.content, activeFile?.language, createExtensions, handleContentChange]);
 
   // File operations (following simpleeditor pattern)
   const handleSaveFile = useCallback(async (fileId: string) => {

@@ -19,20 +19,29 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { 
   ICUIEnhancedLayout,
-  ICUIEnhancedEditorPanel,
   ICUIChatPanel
 } from '../../src/icui';
 import Layout from '../../src/components/Layout';
 import BackendConnectedExplorer from './components/BackendConnectedExplorer';
 import BackendConnectedTerminal from './components/BackendConnectedTerminal';
+import BackendConnectedEditor from './components/BackendConnectedEditor';
 
 // Ensure we're importing the fixed explorer component
 console.log('[IntegratedHome] Imported BackendConnectedExplorer from:', './components/BackendConnectedExplorer');
 
 import type { ICUILayoutConfig } from '../../src/icui/components/ICUIEnhancedLayout';
 import type { ICUIEnhancedPanel } from '../../src/icui/components/ICUIEnhancedPanelArea';
-import type { ICUIEditorFile } from '../../src/icui/components/panels/ICUIEnhancedEditorPanel';
 import type { ICUIPanelType } from '../../src/icui/components/ICUIPanelSelector';
+
+// Editor file interface (compatible with BackendConnectedEditor)
+interface EditorFile {
+  id: string;
+  name: string;
+  language: string;
+  content: string;
+  modified: boolean;
+  path?: string;
+}
 
 interface IntegratedHomeProps {
   className?: string;
@@ -47,23 +56,7 @@ const THEME_OPTIONS = [
   { id: 'vscode-light', name: 'VS Code Light', class: 'icui-theme-vscode-light' },
 ];
 
-// Default files for the editor
-const defaultFiles: ICUIEditorFile[] = [
-  {
-    id: 'welcome-js',
-    name: 'welcome.js',
-    language: 'javascript',
-    content: '// Welcome to the JavaScript Code Editor!\n// Built with React, CodeMirror 6, and the ICUI Framework\n\nfunction welcome() {\n  console.log("Welcome to your code editor!");\n  console.log("Start coding and see the magic happen!");\n  return "Happy coding!";\n}\n\nwelcome();',
-    modified: false,
-  },
-  {
-    id: 'example-py',
-    name: 'example.py',
-    language: 'python',
-    content: '# Python Example\n# This editor supports multiple programming languages\n\ndef hello_world():\n    """A simple hello world function"""\n    print("Hello from Python!")\n    return "Success"\n\nif __name__ == "__main__":\n    result = hello_world()\n    print(f"Result: {result}")',
-    modified: false,
-  },
-];
+// Remove default files - let BackendConnectedEditor handle file loading from backend
 
 // Default layout configuration
 const defaultLayout: ICUILayoutConfig = {
@@ -92,14 +85,13 @@ const IntegratedHome: React.FC<IntegratedHomeProps> = ({ className = '' }) => {
 
   // UI state - keeping it simple for now, ready for backend integration later
   const [layout, setLayout] = useState<ICUILayoutConfig>(defaultLayout);
-  const [editorFiles, setEditorFiles] = useState<ICUIEditorFile[]>(defaultFiles);
-  const [activeFileId, setActiveFileId] = useState<string>('welcome-js');
+  // Remove local file management - let BackendConnectedEditor handle its own files
   const [currentTheme, setCurrentTheme] = useState<string>('github-dark');
   const [panels, setPanels] = useState<ICUIEnhancedPanel[]>([]);
 
   // Simple connection status for now - will be replaced with actual backend connection
-  const isConnected = false;
-  const connectionStatus = 'disconnected';
+  const isConnected = true; // Set to true since BackendConnectedEditor will handle connection checking
+  const connectionStatus = 'connected';
 
   // Apply theme classes to document element for proper theme detection
   useEffect(() => {
@@ -132,77 +124,8 @@ const IntegratedHome: React.FC<IntegratedHomeProps> = ({ className = '' }) => {
     };
   }, [currentTheme]);
 
-  // Handle file changes
-  const handleFileChange = useCallback((fileId: string, newContent: string) => {
-    setEditorFiles(prev => prev.map(file => 
-      file.id === fileId 
-        ? { ...file, content: newContent, modified: true }
-        : file
-    ));
-  }, []);
-
-  // Handle file close
-  const handleFileClose = useCallback((fileId: string) => {
-    setEditorFiles(prev => {
-      const newFiles = prev.filter(file => file.id !== fileId);
-      if (fileId === activeFileId && newFiles.length > 0) {
-        setActiveFileId(newFiles[0].id);
-      }
-      return newFiles;
-    });
-  }, [activeFileId]);
-
-  // Handle file save
-  const handleFileSave = useCallback((fileId: string) => {
-    setEditorFiles(prev => prev.map(file => 
-      file.id === fileId 
-        ? { ...file, modified: false }
-        : file
-    ));
-  }, []);
-
-  // Handle file creation
-  const handleFileCreate = useCallback(() => {
-    const newFile: ICUIEditorFile = {
-      id: `new-file-${Date.now()}`,
-      name: `untitled-${editorFiles.length + 1}.js`,
-      language: 'javascript',
-      content: '// New file\nconsole.log("New file created!");',
-      modified: true,
-    };
-    setEditorFiles(prev => [...prev, newFile]);
-    setActiveFileId(newFile.id);
-  }, [editorFiles.length]);
-
-  // Handle code execution
-  const handleFileRun = useCallback((fileId: string, content: string, language: string) => {
-    if (language === 'javascript') {
-      try {
-        // Execute JavaScript code
-        eval(content);
-      } catch (error) {
-        console.error('Execution error:', error);
-      }
-    } else {
-      // For other languages, we could implement backend execution
-      console.log(`Code execution for ${language} not implemented yet`);
-    }
-  }, []);
-
-  // Handle file activation (tab switching)
-  const handleFileActivate = useCallback((fileId: string) => {
-    setActiveFileId(fileId);
-  }, []);
-
-  // Handle file reordering
-  const handleFileReorder = useCallback((fromIndex: number, toIndex: number) => {
-    setEditorFiles(prev => {
-      const newFiles = [...prev];
-      const [movedFile] = newFiles.splice(fromIndex, 1);
-      newFiles.splice(toIndex, 0, movedFile);
-      return newFiles;
-    });
-  }, []);
+  // Remove local file management handlers - let BackendConnectedEditor handle its own files
+  // These are kept for potential future use but do nothing now
 
   // Available panel types for the selector
   const availablePanelTypes: ICUIPanelType[] = [
@@ -231,19 +154,10 @@ const IntegratedHome: React.FC<IntegratedHomeProps> = ({ className = '' }) => {
         break;
       case 'editor':
         content = (
-          <ICUIEnhancedEditorPanel
-            files={editorFiles}
-            activeFileId={activeFileId}
-            onFileChange={handleFileChange}
-            onFileClose={handleFileClose}
-            onFileCreate={handleFileCreate}
-            onFileSave={handleFileSave}
-            onFileRun={handleFileRun}
-            onFileActivate={handleFileActivate}
-            onFileReorder={handleFileReorder}
+          <BackendConnectedEditor
             autoSave={true}
             autoSaveDelay={1500}
-            enableDragDrop={true}
+            workspaceRoot={workspaceRoot}
             className="h-full"
           />
         );
@@ -293,7 +207,7 @@ const IntegratedHome: React.FC<IntegratedHomeProps> = ({ className = '' }) => {
         }
       }
     }));
-  }, [editorFiles, activeFileId, handleFileChange, handleFileClose, handleFileCreate, handleFileSave, handleFileRun, handleFileActivate]);
+  }, []);
 
   // Initialize panels on mount
   useEffect(() => {
@@ -317,19 +231,10 @@ const IntegratedHome: React.FC<IntegratedHomeProps> = ({ className = '' }) => {
         icon: '📝',
         closable: true,
         content: (
-          <ICUIEnhancedEditorPanel
-            files={editorFiles}
-            activeFileId={activeFileId}
-            onFileChange={handleFileChange}
-            onFileClose={handleFileClose}
-            onFileCreate={handleFileCreate}
-            onFileSave={handleFileSave}
-            onFileRun={handleFileRun}
-            onFileActivate={handleFileActivate}
-            onFileReorder={handleFileReorder}
+          <BackendConnectedEditor
             autoSave={true}
             autoSaveDelay={1500}
-            enableDragDrop={true}
+            workspaceRoot={workspaceRoot}
             className="h-full"
           />
         )
@@ -358,34 +263,7 @@ const IntegratedHome: React.FC<IntegratedHomeProps> = ({ className = '' }) => {
     setPanels(initialPanels);
   }, []);
 
-  // Update editor panel content when files change
-  useEffect(() => {
-    setPanels(prev => prev.map(panel => {
-      if (panel.type === 'editor') {
-        return {
-          ...panel,
-          content: (
-            <ICUIEnhancedEditorPanel
-              files={editorFiles}
-              activeFileId={activeFileId}
-              onFileChange={handleFileChange}
-              onFileClose={handleFileClose}
-              onFileCreate={handleFileCreate}
-              onFileSave={handleFileSave}
-              onFileRun={handleFileRun}
-              onFileActivate={handleFileActivate}
-              onFileReorder={handleFileReorder}
-              autoSave={true}
-              autoSaveDelay={1500}
-              enableDragDrop={true}
-              className="h-full"
-            />
-          )
-        };
-      }
-      return panel;
-    }));
-  }, [editorFiles, activeFileId, handleFileChange, handleFileClose, handleFileCreate, handleFileSave, handleFileRun, handleFileActivate]);
+  // Remove editor panel update effect since BackendConnectedEditor manages its own files
 
   // Layout presets
   const createIDELayout = useCallback(() => {
@@ -433,20 +311,20 @@ const IntegratedHome: React.FC<IntegratedHomeProps> = ({ className = '' }) => {
     }
   }, [createHLayout, createIDELayout]);
 
-  // Handle file actions
+  // Handle file actions - simplified since BackendConnectedEditor manages files
   const handleFileAction = useCallback((action: string, fileId?: string) => {
     switch (action) {
       case 'new':
-        handleFileCreate();
+        // TODO: Implement file creation dialog or delegate to editor
+        console.log('File creation delegated to BackendConnectedEditor');
         break;
       case 'open':
         // TODO: Implement file open dialog
         console.log('Open file dialog not implemented yet');
         break;
       case 'save':
-        if (activeFileId) {
-          handleFileSave(activeFileId);
-        }
+        // TODO: Implement save action or delegate to editor
+        console.log('Save action delegated to BackendConnectedEditor');
         break;
       case 'save-as':
         // TODO: Implement save as dialog
@@ -457,7 +335,7 @@ const IntegratedHome: React.FC<IntegratedHomeProps> = ({ className = '' }) => {
         console.log('Exit confirmation not implemented yet');
         break;
     }
-  }, [handleFileCreate, handleFileSave, activeFileId]);
+  }, []);
 
   // Get current theme info
   const currentThemeInfo = THEME_OPTIONS.find(t => t.id === currentTheme) || THEME_OPTIONS[0];
@@ -468,7 +346,7 @@ const IntegratedHome: React.FC<IntegratedHomeProps> = ({ className = '' }) => {
       appState={{
         currentTheme,
         availableThemes: THEME_OPTIONS,
-        files: editorFiles.map(f => ({ id: f.id, name: f.name, modified: f.modified })),
+        files: [], // BackendConnectedEditor manages its own files now
         connectionStatus: 'connected', // TODO: Add real connection status
       }}
       onThemeChange={setCurrentTheme}
