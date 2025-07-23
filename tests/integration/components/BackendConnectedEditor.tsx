@@ -515,6 +515,15 @@ const BackendConnectedEditor: React.FC<BackendConnectedEditorProps> = ({
         '.cm-scroller': {
           fontFamily: 'Menlo, Monaco, "Courier New", monospace',
           fontSize: '14px',
+          overflow: 'auto',
+          height: '100%',
+        },
+        '.cm-editor': {
+          height: '100%',
+        },
+        '.cm-content': {
+          padding: '10px',
+          minHeight: 'calc(100% - 20px)', // Account for padding
         },
         '.cm-focused': {
           outline: 'none',
@@ -720,7 +729,7 @@ const BackendConnectedEditor: React.FC<BackendConnectedEditorProps> = ({
       </div>
 
       {/* File Tabs - FIXED: Use ICUI theme variables for consistency */}
-      <div className="flex overflow-x-auto border-b" style={{ backgroundColor: 'var(--icui-bg-secondary)', borderColor: 'var(--icui-border-subtle)' }}>
+      <div className="flex border-b" style={{ backgroundColor: 'var(--icui-bg-secondary)', borderColor: 'var(--icui-border-subtle)' }}>
         {files.map((file) => (
           <div
             key={file.id}
@@ -812,7 +821,7 @@ const BackendConnectedEditor: React.FC<BackendConnectedEditorProps> = ({
       )}
 
       {/* Editor Container */}
-      <div className="flex-1 relative">
+      <div className="flex-1 relative overflow-hidden">
         {activeFile ? (
           <div 
             ref={editorRef} 
