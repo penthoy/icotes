@@ -408,30 +408,29 @@ const ICUIEditor: React.FC<ICUIEditorProps> = ({
       const loadedFiles = await backendClient.current.listFiles(effectiveWorkspaceRoot);
       console.log('Loaded file list:', loadedFiles);
       
-      // Set files list immediately (without content)
-      setFiles(loadedFiles);
-      
-      // Set the first file as active if no active file is set
-      if (loadedFiles.length > 0 && !activeFileId) {
-        console.log('Setting active file to:', loadedFiles[0].id);
-        setActiveFileId(loadedFiles[0].id);
-        
-        // Load content for the first file immediately
+      if (loadedFiles.length > 0) {
+        // Load content for the first file immediately before setting files
         try {
           console.log('Loading content for first file:', loadedFiles[0].path);
           const fileWithContent = await backendClient.current.getFile(loadedFiles[0].path!);
           console.log('Loaded content for first file, length:', fileWithContent.content.length);
           
-          setFiles(prevFiles => 
-            prevFiles.map((f, index) => 
-              index === 0 
-                ? { ...f, content: fileWithContent.content }
-                : f
-            )
-          );
+          // Update the first file with content
+          loadedFiles[0] = { ...loadedFiles[0], content: fileWithContent.content };
         } catch (error) {
           console.warn(`Failed to load content for ${loadedFiles[0].name}:`, error);
         }
+        
+        // Set files list with first file content loaded
+        setFiles(loadedFiles);
+        
+        // Set the first file as active if no active file is set
+        if (!activeFileId) {
+          console.log('Setting active file to:', loadedFiles[0].id);
+          setActiveFileId(loadedFiles[0].id);
+        }
+      } else {
+        setFiles(loadedFiles);
       }
       
       EditorNotificationService.show(`Loaded ${loadedFiles.length} files from workspace`, 'success');
@@ -455,7 +454,7 @@ const ICUIEditor: React.FC<ICUIEditorProps> = ({
     } finally {
       setIsLoading(false);
     }
-  }, [connectionStatus.connected, effectiveWorkspaceRoot]); // FIXED: Removed activeFileId dependency to prevent reloading on tab switch
+  }, [connectionStatus.connected, effectiveWorkspaceRoot]); // FIXED: Remove activeFileId dependency to prevent reloading on tab switch
 
   // Initialize backend connection
   useEffect(() => {
@@ -629,10 +628,14 @@ const ICUIEditor: React.FC<ICUIEditorProps> = ({
       editorViewRef.current = null;
     }
 
+    // Don't initialize if no active file
+    if (!activeFile) {
+      console.log('No active file, skipping editor initialization');
+      return;
+    }
+
     // Use activeFile content or default content for initial setup
-    const initialContent = (activeFile?.content && activeFile.content.trim() !== '') 
-      ? activeFile.content 
-      : '// Welcome to the editor\n// Files will load automatically when connected to backend';
+    const initialContent = activeFile.content || '';
     
     console.log('Initializing editor with content:', initialContent.substring(0, 100) + (initialContent.length > 100 ? '...' : ''));
     currentContentRef.current = initialContent;
@@ -640,7 +643,7 @@ const ICUIEditor: React.FC<ICUIEditorProps> = ({
     // Create new editor state
     const state = EditorState.create({
       doc: initialContent,
-      extensions: createExtensions(activeFile?.language || 'javascript'),
+      extensions: createExtensions(activeFile.language || 'javascript'),
     });
 
     // Create editor view - no custom dispatch, let CodeMirror handle it
@@ -659,7 +662,7 @@ const ICUIEditor: React.FC<ICUIEditorProps> = ({
         editorViewRef.current = null;
       }
     };
-  }, [isDarkTheme, createExtensions, activeFile?.content]); // FIXED: Added activeFile?.content to reinitialize when content loads
+  }, [isDarkTheme, createExtensions, activeFile?.id, activeFile?.content]); // FIXED: Added activeFile dependencies
 
   // Update editor content when switching between files (FIXED: Prevent infinite loop)
   useEffect(() => {
@@ -668,39 +671,19 @@ const ICUIEditor: React.FC<ICUIEditorProps> = ({
     const currentContent = editorViewRef.current.state.doc.toString();
     
     console.log('Editor content update check:');
+    console.log('- Active file:', activeFile.id);
     console.log('- Current editor content length:', currentContent.length);
     console.log('- Active file content length:', activeFile.content?.length || 0);
-    console.log('- Current content ref:', currentContentRef.current === activeFile.content ? 'matches' : 'differs');
+    console.log('- Content matches?', currentContent === activeFile.content);
     
-    // Only update when switching to a different file, OR when content is loaded for the first time
-    const shouldUpdate = (currentContent !== activeFile.content && 
-                        currentContentRef.current !== activeFile.content) ||
-                        (activeFile.content && activeFile.content.length > 0 && 
-                         currentContent.includes('// Welcome to the editor'));
-    
-    console.log('Should update editor content?', shouldUpdate);
-    
-    if (shouldUpdate) {
-      // Save current content to the previously active file before switching (only if content has changed)
-      if (currentContentRef.current !== currentContent && 
-          currentContent.trim() !== '' && 
-          !currentContent.includes('// Welcome to the editor')) {
-        console.log('Saving current content to previous file before switching');
-        setFiles(prevFiles => {
-          const currentActiveFile = prevFiles.find(f => f.id === activeFileId);
-          if (currentActiveFile && currentActiveFile.content !== currentContent) {
-            return prevFiles.map(f => 
-              f.id === activeFileId 
-                ? { ...f, content: currentContent, modified: currentActiveFile.content !== currentContent }
-                : f
-            );
-          }
-          return prevFiles;
-        });
-      }
-
+    // Update when content is different (file switch or content loaded)
+    if (currentContent !== activeFile.content) {
       console.log('Updating editor with new file content');
-      // Update editor content to show the new active file
+      
+      // Update the ref first to prevent loops
+      currentContentRef.current = activeFile.content || '';
+      
+      // Update editor content
       editorViewRef.current.dispatch({
         changes: {
           from: 0,
@@ -708,13 +691,9 @@ const ICUIEditor: React.FC<ICUIEditorProps> = ({
           insert: activeFile.content || '',
         },
       });
-      
-      // Update the ref to match new content
-      currentContentRef.current = activeFile.content || '';
     }
-  }, [activeFile?.id, activeFile?.content, activeFileId]); // FIXED: Added activeFile?.content back to trigger when content loads
+  }, [activeFile?.id, activeFile?.content]); // Depend on both id and content
 
-  // File operations (following simpleeditor pattern)
   const handleSaveFile = useCallback(async (fileId: string) => {
     const file = files.find(f => f.id === fileId);
     if (!file || !file.path || !connectionStatus.connected) return;
@@ -806,16 +785,31 @@ const ICUIEditor: React.FC<ICUIEditorProps> = ({
 
   const handleActivateFile = useCallback(async (fileId: string) => {
     console.log('Activating file:', fileId);
-    setActiveFileId(fileId);
     
-    // Load file content if it's not already loaded
+    // Save current editor content before switching
+    if (activeFileId && editorViewRef.current) {
+      const currentContent = editorViewRef.current.state.doc.toString();
+      const currentFile = files.find(f => f.id === activeFileId);
+      
+      if (currentFile && currentContent !== currentFile.content) {
+        console.log('Saving current file content before switch');
+        setFiles(prevFiles => 
+          prevFiles.map(f => 
+            f.id === activeFileId 
+              ? { ...f, content: currentContent, modified: currentFile.content !== currentContent }
+              : f
+          )
+        );
+      }
+    }
+    
+    // Load file content if it's not already loaded BEFORE setting as active
     const file = files.find(f => f.id === fileId);
     console.log('Found file for activation:', file);
     
     if (file && file.path && connectionStatus.connected) {
       // Load content if it's empty or not loaded yet
-      const needsContent = !file.content || file.content.trim() === '' || 
-                          file.content.includes('// Welcome to the editor');
+      const needsContent = !file.content || file.content.trim() === '';
       
       console.log('File needs content?', needsContent, 'Current content length:', file.content?.length || 0);
       
@@ -825,6 +819,7 @@ const ICUIEditor: React.FC<ICUIEditorProps> = ({
           const fileWithContent = await backendClient.current.getFile(file.path);
           console.log('Loaded content, length:', fileWithContent.content.length);
           
+          // Update the file content first
           setFiles(prevFiles => 
             prevFiles.map(f => 
               f.id === fileId 
@@ -832,6 +827,9 @@ const ICUIEditor: React.FC<ICUIEditorProps> = ({
                 : f
             )
           );
+          
+          // Wait a tick to ensure state is updated before setting active file
+          await new Promise(resolve => setTimeout(resolve, 0));
         } catch (error) {
           console.warn(`Failed to load content for ${file.name}:`, error);
           EditorNotificationService.show(`Failed to load ${file.name}`, 'warning');
@@ -839,8 +837,10 @@ const ICUIEditor: React.FC<ICUIEditorProps> = ({
       }
     }
     
+    // Set active file after content is loaded
+    setActiveFileId(fileId);
     onFileActivate?.(fileId);
-  }, [files, connectionStatus.connected, onFileActivate]);
+  }, [files, activeFileId, connectionStatus.connected, onFileActivate]);
 
   // Cleanup auto-save timer on unmount
   useEffect(() => {
