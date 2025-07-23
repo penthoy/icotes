@@ -2,10 +2,7 @@
 A web-based JavaScript code editor built with ViteReact, CodeMirror 6, and modern web technologies. The goal is to create the world's most powerful notebook for developers and hackers, it includes 3 core parts: 1. rich text editor, similar to evernote/notion hybrid, 2. code editor + terminal(similar to replit), 3. AI agent that can be customized with agentic frameworks such as crew ai, or openai agent sdk, or any other agentic framework. This tool is designed to be infinitely hackable and flexible to empower the nextgeneration of AI powered developers.
 
 ### In Progress
--- Lets move the inthome to replace the current home steps:
-1. rename current home.tsx to home_deprecate.tsx rename all associated file with the _deprecate subfix.
-2. copy inthome.tsx to home.tsx and replace the current home.
-3. copy all dependencies of current inthome.tsx to the appropriate folders, 
+
 ## Future task
 
 -- editor:
@@ -94,6 +91,17 @@ A Panel installer,
 maya style code executor.
 
 ## Recently Finished
+
+-- Home Route Migration:
+- [✓] **IntHome to Home Migration** - Successfully migrated inthome.tsx to replace the current home.tsx:
+  1. ✓ Renamed current home.tsx to home_deprecate.tsx
+  2. ✓ Copied inthome.tsx to home.tsx and updated import paths
+  3. ✓ Copied all dependencies (BackendConnectedEditor, BackendConnectedExplorer, BackendConnectedTerminal) to src/icui/components/
+  4. ✓ Updated component name from IntegratedHome to Home with proper props interface
+  5. ✓ Verified build success - new home route is working properly
+  6. ✓ Removed floating UI elements (Backend Connected status and workspace path indicators)
+  7. ✓ Combined editor status bars: merged connection status with file info bar, removed redundant refresh button and file type display, now shows full file path for better context
+  8. ✓ Consolidated connection status: replaced non-functional bottom-right "Connected" status with real connection status from BackendConnectedEditor, moved connection status display from editor area to bottom-right footer for cleaner editor interface while maintaining single source of truth for backend connectivity
 
 -- Framework Enhancement:
 - [✓] **Notification Service Integration** - Extract and generalize the NotificationService from `tests/integration/simpleeditor.tsx` into `src/icui/services/notificationService.tsx`. The current implementation in simpleeditor provides a clean pattern for toast notifications with auto-dismiss, multiple types (success, error, warning), and non-blocking UI feedback.

@@ -3,7 +3,27 @@
  * Base footer component that provides common footer functionality and can be extended
  */
 
-import React from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+
+// Backend client for direct connection checking (from BackendConnectedEditor)
+class FooterBackendClient {
+  private backendUrl: string;
+
+  constructor() {
+    this.backendUrl = (import.meta as any).env?.VITE_BACKEND_URL || (import.meta as any).env?.VITE_API_URL || '';
+  }
+
+  async checkConnection(): Promise<boolean> {
+    try {
+      // Default to localhost:8000 if no backend URL is configured
+      const url = this.backendUrl || 'http://localhost:8000';
+      const response = await fetch(`${url}/health`);
+      return response.ok;
+    } catch (error) {
+      return false;
+    }
+  }
+}
 
 export interface ICUIBaseFooterProps {
   className?: string;
@@ -18,7 +38,7 @@ export interface ICUIBaseFooterProps {
     color?: string;
     onClick?: () => void;
   }>;
-  // Connection status
+  // Connection status (ignored - we check directly)
   connectionStatus?: 'connected' | 'disconnected' | 'connecting' | 'error';
   // Custom status text
   statusText?: string;
@@ -33,12 +53,38 @@ export const ICUIBaseFooter: React.FC<ICUIBaseFooterProps> = ({
   style,
   children,
   statusItems = [],
-  connectionStatus = 'connected',
+  connectionStatus = 'connected', // This prop is now ignored - we check directly
   statusText = 'Ready',
 }) => {
+  // Direct backend connection state (independent of props)
+  const [realConnectionStatus, setRealConnectionStatus] = useState<'connected' | 'disconnected' | 'connecting' | 'error'>('disconnected');
+  const backendClient = useRef(new FooterBackendClient());
+
+  // Direct backend connection check (same logic as BackendConnectedEditor)
+  const checkBackendConnection = useCallback(async () => {
+    try {
+      const isConnected = await backendClient.current.checkConnection();
+      setRealConnectionStatus(isConnected ? 'connected' : 'disconnected');
+      return isConnected;
+    } catch (error) {
+      setRealConnectionStatus('error');
+      return false;
+    }
+  }, []);
+
+  // Initialize backend connection check
+  useEffect(() => {
+    checkBackendConnection();
+    const interval = setInterval(checkBackendConnection, 30000); // Check every 30s
+    return () => clearInterval(interval);
+  }, [checkBackendConnection]);
+
+  // Use real connection status instead of prop
+  const effectiveConnectionStatus = realConnectionStatus;
+
   // Get connection status color
   const getConnectionStatusColor = () => {
-    switch (connectionStatus) {
+    switch (effectiveConnectionStatus) {
       case 'connected':
         return 'var(--icui-success)';
       case 'disconnected':
@@ -54,7 +100,7 @@ export const ICUIBaseFooter: React.FC<ICUIBaseFooterProps> = ({
 
   // Get connection status text
   const getConnectionStatusText = () => {
-    switch (connectionStatus) {
+    switch (effectiveConnectionStatus) {
       case 'connected':
         return 'Connected';
       case 'disconnected':
