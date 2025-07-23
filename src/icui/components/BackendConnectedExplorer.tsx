@@ -318,13 +318,6 @@ const BackendConnectedExplorer: React.FC<BackendConnectedExplorerProps> = ({
 
   return (
     <div className={`backend-connected-explorer h-full flex flex-col ${className}`} style={{ backgroundColor: 'var(--icui-bg-primary)', color: 'var(--icui-text-primary)' }}>
-      {/* Connection Status */}
-      {!isConnected && (
-        <div className="px-3 py-2 text-center text-sm text-yellow-600 bg-yellow-50 border-b">
-          Not connected to backend
-        </div>
-      )}
-
       {/* Header */}
       <div className="flex items-center justify-between p-2 border-b" style={{ backgroundColor: 'var(--icui-bg-secondary)', borderBottomColor: 'var(--icui-border-subtle)' }}>
         <div className="flex items-center space-x-2">
@@ -387,18 +380,6 @@ const BackendConnectedExplorer: React.FC<BackendConnectedExplorerProps> = ({
             {renderFileTree(files)}
           </div>
         )}
-      </div>
-
-      {/* Status bar */}
-      <div className="px-3 py-1 border-t text-xs" style={{ backgroundColor: 'var(--icui-bg-secondary)', borderTopColor: 'var(--icui-border-subtle)', color: 'var(--icui-text-muted)' }}>
-        <div className="flex items-center justify-between">
-          <span>
-            {selectedFile ? `Selected: ${files.find(f => f.id === selectedFile)?.name || 'Unknown'}` : `${files.length} items`}
-          </span>
-          <span className={isConnected ? 'text-green-600' : 'text-red-600'}>
-            {isConnected ? 'Connected' : 'Disconnected'}
-          </span>
-        </div>
       </div>
     </div>
   );
