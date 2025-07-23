@@ -5,9 +5,7 @@ A web-based JavaScript code editor built with ViteReact, CodeMirror 6, and moder
 
 ## Future task
 
--- editor:
-- [] Switching tabs should not reload the file or the whole tab, and swithing to other tab it should stay.
-- [] Bug: clicking on x close the tab, but clicking on another tab opens it back up, this should not be the case.
+## Future task
 
 -- Explorer:
 clicking on folder/directories should not go inside the directory
@@ -123,4 +121,18 @@ maya style code executor.
 
 -- Bug fix:
 - [✓] Editor: no scroll bar - FIXED: Added proper overflow handling to CodeMirror editor with overflow: 'auto' on .cm-scroller and proper height constraints on .cm-editor and .cm-content to enable vertical scrolling when content exceeds visible area
+
+-- Editor Tab Management:
+- [✓] **Tab Switching Without Reload** - FIXED: Completely redesigned tab switching mechanism in ICUIEditor to eliminate unnecessary editor recreation:
+  1. ✓ Editor instance now persists across tab switches - only recreated on theme changes, not file changes
+  2. ✓ Content switching uses CodeMirror's dispatch API to update editor content without destroying the editor
+  3. ✓ Preserved editor state (cursor position, scroll position, undo history) when switching between tabs
+  4. ✓ Improved state synchronization to save current editor content before switching to new file
+  5. ✓ Enhanced memory efficiency by keeping all opened tabs in memory without reload
+- [✓] **Tab Close Button Bug** - FIXED: Resolved issue where clicking "X" to close a tab would reopen when clicking another tab:
+  1. ✓ Improved file state management to properly remove closed files from the files array
+  2. ✓ Enhanced active file switching logic to handle edge cases when no files remain
+  3. ✓ Added proper content preservation before closing to prevent data loss
+  4. ✓ Fixed confirmation dialog to use the most current editor content for save prompts
+  5. ✓ Ensured closed files are permanently removed and don't reappear during tab navigation
 
