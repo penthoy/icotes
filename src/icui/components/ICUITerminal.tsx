@@ -1,5 +1,5 @@
 /**
- * Backend-Connected Terminal Component
+ * ICUI Terminal Component
  * Updated to follow simpleterminal.tsx pattern - the most complete terminal implementation
  * 
  * This component provides a direct WebSocket connection to ICPY backend terminal service,
@@ -143,7 +143,7 @@ class EnhancedClipboard {
   }
 }
 
-interface BackendConnectedTerminalProps {
+interface ICUITerminalProps {
   className?: string;
   terminalId?: string;
   onTerminalReady?: (terminal: Terminal) => void;
@@ -151,7 +151,7 @@ interface BackendConnectedTerminalProps {
   onTerminalExit?: (code: number) => void;
 }
 
-export interface BackendConnectedTerminalRef {
+export interface ICUITerminalRef {
   terminal: Terminal | null;
   sendInput: (input: string) => void;
   clear: () => void;
@@ -160,7 +160,7 @@ export interface BackendConnectedTerminalRef {
   destroy: () => void;
 }
 
-const BackendConnectedTerminal = forwardRef<BackendConnectedTerminalRef, BackendConnectedTerminalProps>(({
+const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
   className = '',
   terminalId: propTerminalId,
   onTerminalReady,
@@ -280,7 +280,7 @@ const BackendConnectedTerminal = forwardRef<BackendConnectedTerminalRef, Backend
     fitAddon.current.fit();
 
     // Write initial messages
-    terminal.current.write('BackendConnectedTerminal initialized!\r\n');
+    terminal.current.write('ICUITerminal initialized!\r\n');
     terminal.current.write('Terminal ID: ' + terminalId.current + '\r\n');
     terminal.current.write('Connecting to backend...\r\n');
 
@@ -311,7 +311,7 @@ const BackendConnectedTerminal = forwardRef<BackendConnectedTerminalRef, Backend
       terminal.current?.write('\r\n\x1b[32mConnected to backend!\x1b[0m\r\n');
       // Clear screen on connect
       terminal.current?.clear();
-      terminal.current?.write('BackendConnectedTerminal - Backend Connected!\r\n');
+      terminal.current?.write('ICUITerminal - Backend Connected!\r\n');
       terminal.current?.write('Terminal ID: ' + terminalId.current + '\r\n');
       terminal.current?.write('Ready for commands...\r\n');
       
@@ -341,7 +341,7 @@ const BackendConnectedTerminal = forwardRef<BackendConnectedTerminalRef, Backend
     };
     
     websocket.current.onerror = (error) => {
-      console.error('[BackendConnectedTerminal] WebSocket error:', error);
+      console.error('[ICUITerminal] WebSocket error:', error);
       terminal.current?.write("\r\n\x1b[31mTerminal connection error\x1b[0m\r\n");
     };
 
@@ -460,9 +460,9 @@ const BackendConnectedTerminal = forwardRef<BackendConnectedTerminalRef, Backend
                    (isDarkTheme ? '#1e1e1e' : '#ffffff');
     
     const styleElement = document.createElement('style');
-    styleElement.id = 'backend-connected-terminal-styles'; // Add ID for easier cleanup
+    styleElement.id = 'icui-terminal-styles'; // Add ID for easier cleanup
     styleElement.textContent = `
-      .backend-connected-terminal-container .xterm .xterm-viewport {
+      .icui-terminal-container .xterm .xterm-viewport {
         background-color: ${bgColor} !important;
         overflow-y: scroll !important;
         position: absolute !important;
@@ -472,11 +472,11 @@ const BackendConnectedTerminal = forwardRef<BackendConnectedTerminalRef, Backend
         right: 0 !important;
       }
       
-      .backend-connected-terminal-container .xterm .xterm-screen {
+      .icui-terminal-container .xterm .xterm-screen {
         position: relative !important;
       }
       
-      .backend-connected-terminal-container .xterm .xterm-screen canvas {
+      .icui-terminal-container .xterm .xterm-screen canvas {
         position: absolute !important;
         left: 0 !important;
         top: 0 !important;
@@ -484,7 +484,7 @@ const BackendConnectedTerminal = forwardRef<BackendConnectedTerminalRef, Backend
     `;
     
     // Remove any existing styles with the same ID first
-    const existingStyle = document.getElementById('backend-connected-terminal-styles');
+    const existingStyle = document.getElementById('icui-terminal-styles');
     if (existingStyle) {
       existingStyle.remove();
     }
@@ -549,14 +549,14 @@ const BackendConnectedTerminal = forwardRef<BackendConnectedTerminalRef, Backend
   }));
 
   return (
-    <div className={`backend-connected-terminal ${className}`}>
-      <div className="backend-connected-terminal-container h-full w-full">
+    <div className={`icui-terminal ${className}`}>
+      <div className="icui-terminal-container h-full w-full">
         <div ref={terminalRef} className="h-full w-full" />
       </div>
     </div>
   );
 });
 
-BackendConnectedTerminal.displayName = 'BackendConnectedTerminal';
+ICUITerminal.displayName = 'ICUITerminal';
 
-export default BackendConnectedTerminal;
+export default ICUITerminal;

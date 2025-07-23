@@ -1,7 +1,7 @@
 /**
  * ICUI Explorer Panel - Backend Connected Implementation
  * A file explorer panel that connects directly to the ICPY backend
- * Following the proven pattern from BackendConnectedExplorer
+ * Following the proven pattern from ICUIExplorer
  */
 
 import React, { useRef, useEffect, useState, useCallback } from 'react';

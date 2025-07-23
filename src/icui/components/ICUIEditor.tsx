@@ -1,9 +1,9 @@
 /**
- * Backend-Connected Editor Component
+ * ICUI Editor Component
  * 
  * Complete rewrite following the simpleeditor.tsx and direct backend API pattern.
  * This component provides reliable backend connectivity without complex state management,
- * similar to BackendConnectedExplorer and BackendConnectedTerminal.
+ * similar to ICUIExplorer and ICUITerminal.
  * 
  * Key Features:
  * - Direct backend API calls for file operations
@@ -266,7 +266,7 @@ class EditorBackendClient {
   }
 }
 
-interface BackendConnectedEditorProps {
+interface ICUIEditorProps {
   className?: string;
   files?: EditorFile[];
   activeFileId?: string;
@@ -283,7 +283,7 @@ interface BackendConnectedEditorProps {
   workspaceRoot?: string;
 }
 
-const BackendConnectedEditor: React.FC<BackendConnectedEditorProps> = ({
+const ICUIEditor: React.FC<ICUIEditorProps> = ({
   className = '',
   files: propFiles = [],
   activeFileId: propActiveFileId,
@@ -313,10 +313,10 @@ const BackendConnectedEditor: React.FC<BackendConnectedEditorProps> = ({
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const currentContentRef = useRef<string>(''); // Track current content to prevent loops
 
-  // Get workspace root from environment (following BackendConnectedExplorer pattern)
+  // Get workspace root from environment (following ICUIExplorer pattern)
   const effectiveWorkspaceRoot = workspaceRoot || (import.meta as any).env?.VITE_WORKSPACE_ROOT || '/home/penthoy/ilaborcode/workspace';
 
-  // Theme detection (following BackendConnectedTerminal pattern with all themes)
+  // Theme detection (following ICUITerminal pattern with all themes)
   useEffect(() => {
     let timeoutId: NodeJS.Timeout;
     
@@ -720,7 +720,7 @@ const BackendConnectedEditor: React.FC<BackendConnectedEditorProps> = ({
   }, []);
 
   return (
-    <div className={`backend-connected-editor-container h-full flex flex-col ${className}`}>
+    <div className={`icui-editor-container h-full flex flex-col ${className}`}>
       {/* File Tabs - FIXED: Use ICUI theme variables for consistency */}
       <div className="flex border-b" style={{ backgroundColor: 'var(--icui-bg-secondary)', borderColor: 'var(--icui-border-subtle)' }}>
         {files.map((file) => (
@@ -847,4 +847,4 @@ const BackendConnectedEditor: React.FC<BackendConnectedEditorProps> = ({
   );
 };
 
-export default BackendConnectedEditor;
+export default ICUIEditor;

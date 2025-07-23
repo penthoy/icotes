@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 
-// Backend client for direct connection checking (from BackendConnectedEditor)
+// Backend client for direct connection checking (from ICUIEditor)
 class FooterBackendClient {
   private backendUrl: string;
 
@@ -60,7 +60,7 @@ export const ICUIBaseFooter: React.FC<ICUIBaseFooterProps> = ({
   const [realConnectionStatus, setRealConnectionStatus] = useState<'connected' | 'disconnected' | 'connecting' | 'error'>('disconnected');
   const backendClient = useRef(new FooterBackendClient());
 
-  // Direct backend connection check (same logic as BackendConnectedEditor)
+  // Direct backend connection check (same logic as ICUIEditor)
   const checkBackendConnection = useCallback(async () => {
     try {
       const isConnected = await backendClient.current.checkConnection();

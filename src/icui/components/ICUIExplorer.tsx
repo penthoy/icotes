@@ -1,5 +1,5 @@
 /**
- * Backend-Connected Explorer Panel
+ * ICUI Explorer Panel
  * 
  * Updated to use direct backend API calls like simpleexplorer.tsx
  * This provides reliable backend connectivity without complex state management
@@ -18,7 +18,7 @@ interface FileNode {
   modified?: string;
 }
 
-interface BackendConnectedExplorerProps {
+interface ICUIExplorerProps {
   className?: string;
   onFileSelect?: (file: FileNode) => void;
   onFileCreate?: (path: string) => void;
@@ -133,7 +133,7 @@ class ExplorerBackendClient {
   }
 }
 
-const BackendConnectedExplorer: React.FC<BackendConnectedExplorerProps> = ({
+const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
   className = '',
   onFileSelect,
   onFileCreate,
@@ -317,11 +317,10 @@ const BackendConnectedExplorer: React.FC<BackendConnectedExplorerProps> = ({
   };
 
   return (
-    <div className={`backend-connected-explorer h-full flex flex-col ${className}`} style={{ backgroundColor: 'var(--icui-bg-primary)', color: 'var(--icui-text-primary)' }}>
+    <div className={`icui-explorer h-full flex flex-col ${className}`} style={{ backgroundColor: 'var(--icui-bg-primary)', color: 'var(--icui-text-primary)' }}>
       {/* Header */}
       <div className="flex items-center justify-between p-2 border-b" style={{ backgroundColor: 'var(--icui-bg-secondary)', borderBottomColor: 'var(--icui-border-subtle)' }}>
         <div className="flex items-center space-x-2">
-          <span className="text-sm font-medium" style={{ color: 'var(--icui-text-primary)' }}>Explorer</span>
           {loading && <span className="text-xs text-blue-500">Loading...</span>}
           <span className="text-xs px-2 py-1 rounded" style={{ backgroundColor: 'var(--icui-bg-tertiary)', color: 'var(--icui-text-secondary)' }}>
             {currentPath}
@@ -385,4 +384,4 @@ const BackendConnectedExplorer: React.FC<BackendConnectedExplorerProps> = ({
   );
 };
 
-export default BackendConnectedExplorer;
+export default ICUIExplorer;
