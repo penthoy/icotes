@@ -660,9 +660,10 @@ const ICUIEditor: React.FC<ICUIEditorProps> = ({
       if (editorViewRef.current) {
         editorViewRef.current.destroy();
         editorViewRef.current = null;
+        console.log('Editor instance destroyed on cleanup');
       }
     };
-  }, [isDarkTheme, createExtensions, activeFile?.id, activeFile?.content]); // FIXED: Added activeFile dependencies
+  }, [isDarkTheme, createExtensions, activeFile?.id]); // FIXED: Removed activeFile.content dependency
 
   // Update editor content when switching between files (FIXED: Prevent infinite loop)
   useEffect(() => {
