@@ -15,7 +15,7 @@
  * - Error handling and connection status display
  */
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react';
 import {
   EditorView,
   keymap,
@@ -275,6 +275,13 @@ class EditorBackendClient {
   }
 }
 
+// Ref interface for imperative control
+interface ICUIEditorRef {
+  openFile: (filePath: string) => Promise<void>;
+  openFileTemporary: (filePath: string) => Promise<void>;
+  openFilePermanent: (filePath: string) => Promise<void>;
+}
+
 interface ICUIEditorProps {
   className?: string;
   files?: EditorFile[];
@@ -292,7 +299,7 @@ interface ICUIEditorProps {
   workspaceRoot?: string;
 }
 
-const ICUIEditor: React.FC<ICUIEditorProps> = ({
+const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
   className = '',
   files: propFiles = [],
   activeFileId: propActiveFileId,
@@ -307,7 +314,7 @@ const ICUIEditor: React.FC<ICUIEditorProps> = ({
   autoSave = true,
   autoSaveDelay = 1500,
   workspaceRoot
-}) => {
+}, ref) => {
   // State management (following simpleeditor pattern)
   const [files, setFiles] = useState<EditorFile[]>(propFiles);
   const [activeFileId, setActiveFileId] = useState<string>(propActiveFileId || '');
@@ -325,6 +332,51 @@ const ICUIEditor: React.FC<ICUIEditorProps> = ({
 
   // Get workspace root from environment (following ICUIExplorer pattern)
   const effectiveWorkspaceRoot = workspaceRoot || (import.meta as any).env?.VITE_WORKSPACE_ROOT || '/home/penthoy/ilaborcode/workspace';
+
+  // File opening methods for external control (e.g., from Explorer)
+  const openFile = useCallback(async (filePath: string) => {
+    try {
+      setIsLoading(true);
+      const fileData = await backendClient.current.getFile(filePath);
+      
+      // Check if file is already open
+      const existingFileIndex = files.findIndex(f => f.path === filePath);
+      if (existingFileIndex >= 0) {
+        // File is already open, just activate it
+        setActiveFileId(files[existingFileIndex].id);
+      } else {
+        // Add new file to the list
+        setFiles(prev => [...prev, fileData]);
+        setActiveFileId(fileData.id);
+      }
+      
+      EditorNotificationService.show(`Opened ${fileData.name}`, 'success');
+    } catch (error) {
+      console.error('Failed to open file:', error);
+      EditorNotificationService.show(`Failed to open ${filePath}: ${error}`, 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [files]);
+
+  const openFileTemporary = useCallback(async (filePath: string) => {
+    // For temporary files, we'll add them but mark them as temporary
+    // This will be enhanced in the next phases for proper VS Code behavior
+    await openFile(filePath);
+  }, [openFile]);
+
+  const openFilePermanent = useCallback(async (filePath: string) => {
+    // For permanent files, same as openFile for now
+    // This will be enhanced in the next phases for proper VS Code behavior
+    await openFile(filePath);
+  }, [openFile]);
+
+  // Expose methods via ref for external control
+  useImperativeHandle(ref, () => ({
+    openFile,
+    openFileTemporary, 
+    openFilePermanent
+  }), [openFile, openFileTemporary, openFilePermanent]);
 
   // Theme detection (following ICUITerminal pattern with all themes)
   useEffect(() => {
@@ -438,19 +490,10 @@ const ICUIEditor: React.FC<ICUIEditorProps> = ({
       console.error('Failed to load files:', error);
       EditorNotificationService.show(`Failed to load files: ${error}`, 'error');
       
-      // Fallback to demo files if workspace loading fails
-      const demoFiles: EditorFile[] = [
-        {
-          id: 'demo-welcome',
-          name: 'welcome.js',
-          language: 'javascript',
-          content: '// Welcome to the JavaScript Code Editor!\n// Built with React, CodeMirror 6, and the ICUI Framework\n\nfunction welcome() {\n  console.log("Welcome to your code editor!");\n  console.log("Start coding and see the magic happen!");\n  return "Happy coding!";\n}\n\nwelcome();',
-          modified: false,
-          path: `${effectiveWorkspaceRoot}/welcome.js`
-        }
-      ];
-      setFiles(demoFiles);
-      setActiveFileId(demoFiles[0].id);
+      // Start with empty editor instead of demo files
+      // This follows VS Code behavior where editor starts empty until files are opened
+      setFiles([]);
+      setActiveFileId('');
     } finally {
       setIsLoading(false);
     }
@@ -463,19 +506,20 @@ const ICUIEditor: React.FC<ICUIEditorProps> = ({
     return () => clearInterval(interval);
   }, [checkBackendConnection]);
 
-  // Load files when connected
-  useEffect(() => {
-    console.log('Load files effect triggered:', {
-      connected: connectionStatus.connected,
-      propFilesLength: propFiles.length,
-      loadFilesAvailable: !!loadFiles
-    });
-    
-    if (connectionStatus.connected && propFiles.length === 0) {
-      console.log('Triggering loadFiles...');
-      loadFiles(); // Only auto-load if no propFiles provided
-    }
-  }, [connectionStatus.connected, loadFiles, propFiles.length]);
+  // Auto-load files disabled to start with empty editor
+  // Files are now loaded only when explicitly requested through explorer interaction
+  // useEffect(() => {
+  //   console.log('Load files effect triggered:', {
+  //     connected: connectionStatus.connected,
+  //     propFilesLength: propFiles.length,
+  //     loadFilesAvailable: !!loadFiles
+  //   });
+  //   
+  //   if (connectionStatus.connected && propFiles.length === 0) {
+  //     console.log('Triggering loadFiles...');
+  //     loadFiles(); // Only auto-load if no propFiles provided
+  //   }
+  // }, [connectionStatus.connected, loadFiles, propFiles.length]);
 
   // Update files when propFiles change
   useEffect(() => {
@@ -980,6 +1024,10 @@ const ICUIEditor: React.FC<ICUIEditorProps> = ({
       </div>
     </div>
   );
-};
+});
+
+// Set display name for debugging
+ICUIEditor.displayName = 'ICUIEditor';
 
 export default ICUIEditor;
+export type { ICUIEditorRef };
