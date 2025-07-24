@@ -143,41 +143,58 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
     { id: 'debug', name: 'Debug Console', icon: '🐛', description: 'Debug console and variables' },
   ];
 
+  // Stable panel instances to prevent recreation on layout changes
+  const explorerInstance = useMemo(() => (
+    <ICUIExplorer 
+      className="h-full"
+    />
+  ), []);
+
+  const editorInstance = useMemo(() => (
+    <ICUIEditor
+      autoSave={true}
+      autoSaveDelay={1500}
+      workspaceRoot={workspaceRoot}
+      onConnectionStatusChange={handleConnectionStatusChange}
+      className="h-full"
+    />
+  ), [workspaceRoot, handleConnectionStatusChange]);
+
+  const terminalInstance = useMemo(() => (
+    <ICUITerminal 
+      className="h-full"
+    />
+  ), []);
+
+  const chatInstance = useMemo(() => (
+    <ICUIChatPanel className="h-full" />
+  ), []);
+
+  // Memoized panel content creators to prevent recreation on layout changes
+  const createExplorerContent = useCallback(() => explorerInstance, [explorerInstance]);
+  const createEditorContent = useCallback(() => editorInstance, [editorInstance]);
+  const createTerminalContent = useCallback(() => terminalInstance, [terminalInstance]);
+  const createChatContent = useCallback(() => chatInstance, [chatInstance]);
+
   // Handle panel addition
   const handlePanelAdd = useCallback((panelType: ICUIPanelType, areaId: string) => {
     // Generate unique ID for the new panel
     const newPanelId = `${panelType.id}-${Date.now()}`;
     
-    // Create panel content based on type
+    // Create panel content based on type using memoized creators
     let content: React.ReactNode;
     switch (panelType.id) {
       case 'explorer':
-        content = (
-          <ICUIExplorer 
-            className="h-full"
-          />
-        );
+        content = createExplorerContent();
         break;
       case 'editor':
-        content = (
-          <ICUIEditor
-            autoSave={true}
-            autoSaveDelay={1500}
-            workspaceRoot={workspaceRoot}
-            onConnectionStatusChange={handleConnectionStatusChange}
-            className="h-full"
-          />
-        );
+        content = createEditorContent();
         break;
       case 'terminal':
-        content = (
-          <ICUITerminal 
-            className="h-full"
-          />
-        );
+        content = createTerminalContent();
         break;
       case 'chat':
-        content = <ICUIChatPanel className="h-full" />;
+        content = createChatContent();
         break;
       case 'output':
         content = <div className="h-full p-4" style={{ backgroundColor: 'var(--icui-bg-primary)', color: 'var(--icui-text-primary)' }}>Output Panel - Build and execution output will appear here</div>;
@@ -214,7 +231,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
         }
       }
     }));
-  }, []);
+  }, [createExplorerContent, createEditorContent, createTerminalContent, createChatContent]);
 
   // Initialize panels on mount
   useEffect(() => {
@@ -225,11 +242,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
         title: 'Explorer',
         icon: '📁',
         closable: true,
-        content: (
-          <ICUIExplorer 
-            className="h-full"
-          />
-        )
+        content: createExplorerContent()
       },
       {
         id: 'editor',
@@ -237,15 +250,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
         title: 'Code Editor',
         icon: '📝',
         closable: true,
-        content: (
-          <ICUIEditor
-            autoSave={true}
-            autoSaveDelay={1500}
-            workspaceRoot={workspaceRoot}
-            onConnectionStatusChange={handleConnectionStatusChange}
-            className="h-full"
-          />
-        )
+        content: createEditorContent()
       },
       {
         id: 'terminal',
@@ -253,11 +258,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
         title: 'Terminal',
         icon: '💻',
         closable: true,
-        content: (
-          <ICUITerminal 
-            className="h-full"
-          />
-        )
+        content: createTerminalContent()
       },
       {
         id: 'chat',
@@ -265,11 +266,11 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
         title: 'AI Assistant',
         icon: '🤖',
         closable: true,
-        content: <ICUIChatPanel className="h-full" />
+        content: createChatContent()
       },
     ];
     setPanels(initialPanels);
-  }, []);
+  }, [createExplorerContent, createEditorContent, createTerminalContent, createChatContent]);
 
   // Remove editor panel update effect since ICUIEditor manages its own files
 
@@ -349,8 +350,8 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
   const currentThemeInfo = THEME_OPTIONS.find(t => t.id === currentTheme) || THEME_OPTIONS[0];
 
   // Debug logging for connection status
-  console.log('Home render - editorConnectionStatus:', editorConnectionStatus);
-  console.log('Home render - connectionStatus:', connectionStatus);
+  // console.log('Home render - editorConnectionStatus:', editorConnectionStatus);
+  // console.log('Home render - connectionStatus:', connectionStatus);
 
   return (
     <Layout

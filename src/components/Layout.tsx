@@ -106,8 +106,8 @@ export const Layout: React.FC<LayoutProps> = ({
   } = appState;
 
   // Debug logging
-  console.log('Layout received appState:', appState);
-  console.log('Layout connectionStatus:', connectionStatus);
+  // console.log('Layout received appState:', appState);
+  // console.log('Layout connectionStatus:', connectionStatus);
 
   // Handle enhanced menu item clicks
   const handleMenuItemClick = useCallback((menuId: string, itemId: string) => {
@@ -220,8 +220,8 @@ export const Layout: React.FC<LayoutProps> = ({
   };
 
   // Debug logging
-  console.log('Layout footer configuration:', footerConfiguration);
-  console.log('Layout showConnectionStatus:', showConnectionStatus);
+  // console.log('Layout footer configuration:', footerConfiguration);
+  // console.log('Layout showConnectionStatus:', showConnectionStatus);
 
   return (
     <div 

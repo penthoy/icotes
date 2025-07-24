@@ -16,7 +16,7 @@
  * - Clean error handling and connection status display
  */
 
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   ICUIEnhancedLayout,
   ICUIChatPanel
@@ -118,6 +118,32 @@ const IntegratedHome: React.FC<IntegratedHomeProps> = ({ className = '' }) => {
   // Remove local file management handlers - let BackendConnectedEditor handle its own files
   // These are kept for potential future use but do nothing now
 
+  // Stable panel instances to prevent recreation on layout changes
+  const explorerInstance = useMemo(() => (
+    <BackendConnectedExplorer 
+      className="h-full"
+    />
+  ), []);
+
+  const editorInstance = useMemo(() => (
+    <BackendConnectedEditor
+      autoSave={true}
+      autoSaveDelay={1500}
+      workspaceRoot={workspaceRoot}
+      className="h-full"
+    />
+  ), [workspaceRoot]);
+
+  const terminalInstance = useMemo(() => (
+    <BackendConnectedTerminal 
+      className="h-full"
+    />
+  ), []);
+
+  const chatInstance = useMemo(() => (
+    <ICUIChatPanel className="h-full" />
+  ), []);
+
   // Available panel types for the selector
   const availablePanelTypes: ICUIPanelType[] = [
     { id: 'explorer', name: 'Explorer', icon: '📁', description: 'File and folder browser' },
@@ -133,35 +159,20 @@ const IntegratedHome: React.FC<IntegratedHomeProps> = ({ className = '' }) => {
     // Generate unique ID for the new panel
     const newPanelId = `${panelType.id}-${Date.now()}`;
     
-    // Create panel content based on type
+    // Create panel content based on type using stable instances
     let content: React.ReactNode;
     switch (panelType.id) {
       case 'explorer':
-        content = (
-          <BackendConnectedExplorer 
-            className="h-full"
-          />
-        );
+        content = explorerInstance;
         break;
       case 'editor':
-        content = (
-          <BackendConnectedEditor
-            autoSave={true}
-            autoSaveDelay={1500}
-            workspaceRoot={workspaceRoot}
-            className="h-full"
-          />
-        );
+        content = editorInstance;
         break;
       case 'terminal':
-        content = (
-          <BackendConnectedTerminal 
-            className="h-full"
-          />
-        );
+        content = terminalInstance;
         break;
       case 'chat':
-        content = <ICUIChatPanel className="h-full" />;
+        content = chatInstance;
         break;
       case 'output':
         content = <div className="h-full p-4" style={{ backgroundColor: 'var(--icui-bg-primary)', color: 'var(--icui-text-primary)' }}>Output Panel - Build and execution output will appear here</div>;
@@ -198,7 +209,7 @@ const IntegratedHome: React.FC<IntegratedHomeProps> = ({ className = '' }) => {
         }
       }
     }));
-  }, []);
+  }, [explorerInstance, editorInstance, terminalInstance, chatInstance]);
 
   // Initialize panels on mount
   useEffect(() => {
@@ -209,11 +220,7 @@ const IntegratedHome: React.FC<IntegratedHomeProps> = ({ className = '' }) => {
         title: 'Explorer',
         icon: '📁',
         closable: true,
-        content: (
-          <BackendConnectedExplorer 
-            className="h-full"
-          />
-        )
+        content: explorerInstance
       },
       {
         id: 'editor',
@@ -221,14 +228,7 @@ const IntegratedHome: React.FC<IntegratedHomeProps> = ({ className = '' }) => {
         title: 'Code Editor',
         icon: '📝',
         closable: true,
-        content: (
-          <BackendConnectedEditor
-            autoSave={true}
-            autoSaveDelay={1500}
-            workspaceRoot={workspaceRoot}
-            className="h-full"
-          />
-        )
+        content: editorInstance
       },
       {
         id: 'terminal',
@@ -236,11 +236,7 @@ const IntegratedHome: React.FC<IntegratedHomeProps> = ({ className = '' }) => {
         title: 'Terminal',
         icon: '💻',
         closable: true,
-        content: (
-          <BackendConnectedTerminal 
-            className="h-full"
-          />
-        )
+        content: terminalInstance
       },
       {
         id: 'chat',
@@ -248,11 +244,11 @@ const IntegratedHome: React.FC<IntegratedHomeProps> = ({ className = '' }) => {
         title: 'AI Assistant',
         icon: '🤖',
         closable: true,
-        content: <ICUIChatPanel className="h-full" />
+        content: chatInstance
       },
     ];
     setPanels(initialPanels);
-  }, []);
+  }, [explorerInstance, editorInstance, terminalInstance, chatInstance]);
 
   // Remove editor panel update effect since BackendConnectedEditor manages its own files
 

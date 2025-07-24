@@ -19,6 +19,7 @@ Date: July 16, 2025
 """
 
 import asyncio
+import fnmatch
 import json
 import logging
 import time
@@ -349,6 +350,8 @@ class WebSocketAPI:
                 await self._handle_subscribe(connection_id, data)
             elif message_type == 'unsubscribe':
                 await self._handle_unsubscribe(connection_id, data)
+            elif message_type == 'json-rpc':
+                await self._handle_jsonrpc_message(connection_id, data)
             elif message_type == 'jsonrpc':
                 await self._handle_jsonrpc(connection_id, data)
             elif message_type == 'authenticate':
@@ -542,6 +545,26 @@ class WebSocketAPI:
             'timestamp': time.time()
         })
 
+    async def _handle_jsonrpc_message(self, connection_id: str, data: Dict[str, Any]):
+        """Handle JSON-RPC message from frontend WebSocket service."""
+        try:
+            payload = data.get('payload', {})
+            method = payload.get('method')
+            params = payload.get('params', {})
+            
+            # Handle JSON-RPC notifications
+            if method == 'subscribe':
+                await self._handle_subscribe(connection_id, params)
+            elif method == 'unsubscribe':
+                await self._handle_unsubscribe(connection_id, params)
+            else:
+                # For other JSON-RPC methods, use the existing handler
+                await self._handle_jsonrpc(connection_id, data)
+                
+        except Exception as e:
+            logger.error(f"Error handling JSON-RPC message from {connection_id}: {e}")
+            await self.send_error(connection_id, f"Invalid JSON-RPC message: {str(e)}")
+
     async def _handle_jsonrpc(self, connection_id: str, data: Dict[str, Any]):
         """Handle JSON-RPC message."""
         try:
@@ -709,7 +732,9 @@ class WebSocketAPI:
     def _matches_pattern(self, subscription: str, pattern: str) -> bool:
         """Check if subscription matches pattern."""
         import fnmatch
-        return fnmatch.fnmatch(pattern, subscription)
+        # Check if the pattern matches the subscription
+        # For example: pattern='fs.*' should match subscription='fs.file_created'
+        return fnmatch.fnmatch(subscription, pattern)
 
     async def _cleanup_connections_task(self):
         """Background task to cleanup inactive connections."""

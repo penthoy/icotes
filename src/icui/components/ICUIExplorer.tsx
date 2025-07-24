@@ -5,7 +5,8 @@
  * This provides reliable backend connectivity without complex state management
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { useWebSocketService } from '../../contexts/BackendContext';
 
 interface FileNode {
   id: string;
@@ -62,7 +63,7 @@ class ExplorerBackendClient {
       const fileList = result.data || [];
       
       // Convert backend response to FileNode format
-      return fileList.map((item: any) => ({
+      const nodes = fileList.map((item: any) => ({
         id: item.path,
         name: item.name,
         type: item.is_directory ? 'folder' : 'file',
@@ -72,6 +73,16 @@ class ExplorerBackendClient {
         isExpanded: false,
         children: item.is_directory ? [] : undefined
       }));
+
+      // Sort: folders first, then files, both alphabetically
+      return nodes.sort((a, b) => {
+        // First sort by type (folders before files)
+        if (a.type !== b.type) {
+          return a.type === 'folder' ? -1 : 1;
+        }
+        // Then sort alphabetically by name (case-insensitive)
+        return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+      });
     } catch (error) {
       console.error('Failed to get directory contents:', error);
       throw error;
@@ -147,9 +158,12 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [currentPath, setCurrentPath] = useState<string>((import.meta as any).env?.VITE_WORKSPACE_ROOT || '/home/penthoy/ilaborcode/workspace');
-  const [lastLoadTime, setLastLoadTime] = useState(0);
+  const lastLoadTimeRef = useRef(0);
+  const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const loadDirectoryRef = useRef<(path?: string) => Promise<void>>();
 
   const backendClient = new ExplorerBackendClient();
+  const webSocketService = useWebSocketService();
 
   // Check connection status
   const checkConnection = useCallback(async () => {
@@ -162,13 +176,13 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
   const loadDirectory = useCallback(async (path: string = (import.meta as any).env?.VITE_WORKSPACE_ROOT || '/home/penthoy/ilaborcode/workspace') => {
     // Prevent rapid successive calls (debounce)
     const now = Date.now();
-    if (now - lastLoadTime < 100) {
+    if (now - lastLoadTimeRef.current < 100) {
       return;
     }
     
     setLoading(true);
     setError(null);
-    setLastLoadTime(now);
+    lastLoadTimeRef.current = now;
     
     try {
       const connected = await checkConnection();
@@ -176,33 +190,216 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
         throw new Error('Backend not connected');
       }
 
-      console.log('Loading directory:', path);
       const directoryContents = await backendClient.getDirectoryContents(path);
-      console.log('Directory contents received:', directoryContents);
       setFiles(directoryContents);
       setCurrentPath(path);
     } catch (err) {
-      console.error('Failed to load directory:', err);
+      console.error('[ICUIExplorer] Failed to load directory:', err);
       setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [checkConnection, lastLoadTime]);
+  }, [checkConnection]); // Remove lastLoadTime from dependencies to prevent infinite loop
+
+  // Store loadDirectory in ref to avoid dependency issues
+  useEffect(() => {
+    loadDirectoryRef.current = loadDirectory;
+  }, [loadDirectory]);
 
   // Initial load
   useEffect(() => {
     loadDirectory();
+  }, []); // Remove loadDirectory from dependencies to prevent infinite loop
+
+  // Real-time file system updates via WebSocket
+  useEffect(() => {
+    if (!webSocketService) {
+      return;
+    }
+
+    const handleFileSystemEvent = (eventData: any) => {
+      if (!eventData?.data) {
+        return;
+      }
+
+      const { event, data } = eventData;
+      const filePath = data.file_path || data.path;
+      
+      // Only react to changes in the current workspace
+      if (!filePath || !filePath.startsWith(currentPath)) {
+        return;
+      }
+
+      console.log('[ICUIExplorer] File system event:', event, 'for', filePath);
+
+      switch (event) {
+        case 'fs.file_created':
+        case 'fs.file_deleted':
+        case 'fs.file_moved':
+          // Cancel any existing refresh timeout
+          if (refreshTimeoutRef.current) {
+            clearTimeout(refreshTimeoutRef.current);
+          }
+          // For these events, refresh the directory to ensure consistency
+          // We debounce to avoid excessive refreshes
+          refreshTimeoutRef.current = setTimeout(() => {
+            if (loadDirectoryRef.current) {
+              loadDirectoryRef.current(currentPath);
+            }
+            refreshTimeoutRef.current = null;
+          }, 300);
+          break;
+        
+        case 'fs.file_modified':
+          // For file modifications, we don't need to refresh the explorer
+          // since the structure hasn't changed
+          break;
+        
+        default:
+          console.debug('[ICUIExplorer] Unknown event type:', event);
+      }
+    };
+
+    // Subscribe to filesystem events
+    webSocketService.on('filesystem_event', handleFileSystemEvent);
+
+    // Subscribe to filesystem events - only if connected
+    const subscribeToEvents = () => {
+      if (!webSocketService.isConnected()) {
+        console.log('[ICUIExplorer] WebSocket not connected, waiting for connection...');
+        return;
+      }
+
+      try {
+        // Use the proper notification format for filesystem events
+        webSocketService.notify('subscribe', { 
+          topics: ['fs.file_created', 'fs.file_deleted', 'fs.file_moved'] 
+        });
+        console.log('[ICUIExplorer] Subscribed to filesystem events');
+      } catch (error) {
+        console.warn('[ICUIExplorer] Failed to subscribe to filesystem events:', error);
+      }
+    };
+
+    // If already connected, subscribe immediately
+    if (webSocketService.isConnected()) {
+      subscribeToEvents();
+    } else {
+      // Wait for connection and then subscribe
+      const handleConnected = () => {
+        console.log('[ICUIExplorer] WebSocket connected, subscribing to events...');
+        subscribeToEvents();
+        webSocketService.off('connected', handleConnected);
+      };
+      webSocketService.on('connected', handleConnected);
+    }
+
+    return () => {
+      // Clear any pending refresh timeout
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current);
+        refreshTimeoutRef.current = null;
+      }
+      // Remove event listener
+      webSocketService.off('filesystem_event', handleFileSystemEvent);
+      
+      // Unsubscribe from filesystem events
+      if (webSocketService.isConnected()) {
+        try {
+          webSocketService.notify('unsubscribe', { 
+            topics: ['fs.file_created', 'fs.file_deleted', 'fs.file_moved'] 
+          });
+        } catch (error) {
+          console.warn('[ICUIExplorer] Failed to unsubscribe from filesystem events:', error);
+        }
+      }
+    };
+  }, [webSocketService, currentPath]); // Include currentPath to re-subscribe when directory changes
+
+  // Helper function to find a node in the tree
+  const findNodeInTree = useCallback((nodes: FileNode[], nodeId: string): FileNode | null => {
+    for (const node of nodes) {
+      if (node.id === nodeId) {
+        return node;
+      }
+      if (node.children) {
+        const found = findNodeInTree(node.children, nodeId);
+        if (found) return found;
+      }
+    }
+    return null;
   }, []);
 
+  // Toggle folder expansion (VS Code-like behavior)
+  const toggleFolderExpansion = useCallback(async (folder: FileNode) => {
+    if (!isConnected) return;
+
+    setFiles(currentFiles => {
+      const updateFileTree = (nodes: FileNode[]): FileNode[] => {
+        return nodes.map(node => {
+          if (node.id === folder.id && node.type === 'folder') {
+            if (node.isExpanded) {
+              // Collapse folder
+              return { ...node, isExpanded: false };
+            } else {
+              // Expand folder - we'll load children if not already loaded
+              return { ...node, isExpanded: true };
+            }
+          }
+          // Recursively update children if they exist
+          if (node.children && node.children.length > 0) {
+            return { ...node, children: updateFileTree(node.children) };
+          }
+          return node;
+        });
+      };
+
+      const updatedFiles = updateFileTree(currentFiles);
+      
+      // Load children if folder is being expanded and doesn't have children yet
+      const targetFolder = findNodeInTree(updatedFiles, folder.id);
+      if (targetFolder && targetFolder.isExpanded && (!targetFolder.children || targetFolder.children.length === 0)) {
+        // Load children asynchronously without affecting current state update
+        (async () => {
+          try {
+            const children = await backendClient.getDirectoryContents(folder.path);
+            
+            // Update the specific folder with its children
+            setFiles(prevFiles => {
+              const updateWithChildren = (nodes: FileNode[]): FileNode[] => {
+                return nodes.map(node => {
+                  if (node.id === folder.id) {
+                    return { ...node, children };
+                  }
+                  if (node.children && node.children.length > 0) {
+                    return { ...node, children: updateWithChildren(node.children) };
+                  }
+                  return node;
+                });
+              };
+              return updateWithChildren(prevFiles);
+            });
+          } catch (err) {
+            console.error('Failed to load folder contents:', err);
+            setError(err instanceof Error ? err.message : 'Failed to load folder contents');
+          }
+        })();
+      }
+      
+      return updatedFiles;
+    });
+  }, [isConnected, findNodeInTree]);
+
   // Handle file/folder selection
-  const handleItemClick = useCallback((item: FileNode) => {
+  const handleItemClick = useCallback(async (item: FileNode) => {
     setSelectedFile(item.id);
     onFileSelect?.(item);
     
     if (item.type === 'folder') {
-      loadDirectory(item.path);
+      // VS Code-like behavior: expand/collapse folder instead of navigating
+      await toggleFolderExpansion(item);
     }
-  }, [loadDirectory, onFileSelect]);
+  }, [onFileSelect, toggleFolderExpansion]);
 
   // Handle creating new files/folders
   const handleCreateFile = useCallback(async () => {
@@ -270,17 +467,18 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
     loadDirectory(currentPath);
   }, [currentPath, loadDirectory]);
 
-  // Render file tree
-  const renderFileTree = (nodes: FileNode[]) => {
+  // Render file tree with proper nesting and VS Code-like expand/collapse
+  const renderFileTree = (nodes: FileNode[], level: number = 0) => {
     return nodes.map(node => (
       <div key={node.id}>
         <div
-          className={`flex items-center py-1 px-2 cursor-pointer hover:opacity-80 transition-opacity group ${
+          className={`flex items-center py-1 cursor-pointer hover:opacity-80 transition-opacity group ${
             selectedFile === node.id ? 'opacity-100' : ''
           }`}
           style={{ 
             backgroundColor: selectedFile === node.id ? 'var(--icui-accent)' : 'transparent',
-            color: 'var(--icui-text-primary)'
+            color: 'var(--icui-text-primary)',
+            paddingLeft: `${8 + level * 16}px`  // Indentation based on nesting level
           }}
           onClick={() => handleItemClick(node)}
           onContextMenu={(e) => {
@@ -290,15 +488,29 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
             }
           }}
         >
+          {/* Expand/collapse icon for folders */}
+          {node.type === 'folder' && (
+            <span className="mr-1 text-xs" style={{ width: '12px', textAlign: 'center' }}>
+              {node.isExpanded ? 'v' : '>'}
+            </span>
+          )}
+          {node.type === 'file' && (
+            <span className="mr-1 text-xs" style={{ width: '12px' }}></span>
+          )}
+          
+          {/* File/folder icon */}
           <span className="mr-2 text-sm">
-            {node.type === 'folder' ? '📁' : '📄'}
+            {node.type === 'folder' ? (node.isExpanded ? '📂' : '📁') : '📄'}
           </span>
+          
           <span className="text-sm flex-1">{node.name}</span>
+          
           {node.size && (
             <span className="text-xs text-gray-500 ml-2">
               {Math.round(node.size / 1024)}KB
             </span>
           )}
+          
           {node.type === 'file' && (
             <button
               onClick={(e) => {
@@ -312,6 +524,13 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
             </button>
           )}
         </div>
+        
+        {/* Render children if folder is expanded */}
+        {node.type === 'folder' && node.isExpanded && node.children && (
+          <div>
+            {renderFileTree(node.children, level + 1)}
+          </div>
+        )}
       </div>
     ));
   };

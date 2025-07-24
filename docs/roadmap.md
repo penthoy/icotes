@@ -4,14 +4,20 @@ A web-based JavaScript code editor built with ViteReact, CodeMirror 6, and moder
 ### In Progress
 
 ## Future task
-
-## Future task
-
 -- Explorer:
-clicking on folder/directories should not go inside the directory
+-- Menus:
+Use icui menus
+
+-- Editor:
+Dragable tabs
+Check state, if no state, Start blank no files are open, 
+
+-- Panels:
+Bug fix: Panel refresh issue.
 
 -- Explorer/editor interaction:
 When clicking on a text/script file in the explorer, it should temporily open in the editor
+
 -- integration 2.5:
 Now that explorer, code editor and terminal works, next is how they talk to each other.
 1. Editor:remove the Connected area, there's no need for editor to show connection independently.
@@ -89,6 +95,31 @@ A Panel installer,
 maya style code executor.
 
 ## Recently Finished
+
+-- Explorer Real-time Updates:
+- [✓] **Real-time File System Monitoring** - Implemented automatic Explorer updates when files/folders change externally:
+  1. ✓ Integrated WebSocket service with ICUIExplorer for real-time event listening
+  2. ✓ Added subscription to filesystem events (fs.file_created, fs.file_deleted, fs.file_moved)
+  3. ✓ Implemented event filtering to only respond to changes within current workspace
+  4. ✓ Added debounced refresh (300ms) to prevent excessive updates from rapid file operations
+  5. ✓ Maintained Explorer performance by only refreshing on structural changes (not content modifications)
+  6. ✓ Enhanced debugging with console logging for filesystem events
+  7. ✓ Leveraged existing backend file watching infrastructure (watchdog + message broker)
+  - Explorer now automatically reflects external file/folder changes without manual refresh
+
+-- Explorer Enhancement:
+- [✓] **VS Code-like Explorer Behavior** - Updated ICUIExplorer to use tree-like folder expansion instead of navigation:
+  1. ✓ Modified folder click behavior to expand/collapse folders in place instead of navigating into them
+  2. ✓ Implemented tree structure with proper nesting and indentation (16px per level)
+  3. ✓ Added expand/collapse icons (>/v) for folders with visual feedback
+  4. ✓ Updated folder icons to show open/closed state (📁/📂)
+  5. ✓ Implemented on-demand loading of folder contents when expanded for the first time
+  6. ✓ Added recursive tree rendering with proper parent-child relationships
+  7. ✓ Maintained file selection and context menu functionality
+  8. ✓ Preserved existing file operations (create, delete) while improving folder navigation
+  9. ✓ **Added intelligent sorting**: Folders always appear first, followed by files (both sorted alphabetically)
+  10. ✓ Fixed infinite loop issues with proper functional state updates
+  - The explorer now behaves like VS Code's file explorer with hierarchical folder structure and proper sorting
 
 -- Home Route Migration:
 - [✓] **IntHome to Home Migration** - Successfully migrated inthome.tsx to replace the current home.tsx:

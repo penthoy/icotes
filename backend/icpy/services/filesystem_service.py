@@ -1201,7 +1201,15 @@ async def get_filesystem_service() -> FileSystemService:
     """
     global _filesystem_service
     if _filesystem_service is None:
-        _filesystem_service = FileSystemService()
+        # Use WORKSPACE_ROOT environment variable or default to parent directory of backend
+        import os
+        workspace_root = os.environ.get('WORKSPACE_ROOT')
+        if not workspace_root:
+            # Default to workspace directory relative to backend
+            backend_dir = os.path.dirname(os.path.abspath(__file__))
+            workspace_root = os.path.join(os.path.dirname(os.path.dirname(backend_dir)), 'workspace')
+        
+        _filesystem_service = FileSystemService(root_path=workspace_root)
         await _filesystem_service.initialize()
     return _filesystem_service
 
