@@ -16,7 +16,7 @@
  * - Clean error handling and connection status display
  */
 
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { 
   ICUIEnhancedLayout,
   ICUIChatPanel
@@ -24,7 +24,7 @@ import {
 import Layout from './Layout';
 import ICUIExplorer from '../icui/components/ICUIExplorer';
 import ICUITerminal from '../icui/components/ICUITerminal';
-import ICUIEditor from '../icui/components/ICUIEditor';
+import ICUIEditor, { ICUIEditorRef } from '../icui/components/ICUIEditor';
 
 import type { ICUILayoutConfig } from '../icui/components/ICUIEnhancedLayout';
 import type { ICUIEnhancedPanel } from '../icui/components/ICUIEnhancedPanelArea';
@@ -87,6 +87,25 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
     editorConnectionStatus.connected ? 'connected' : 
     editorConnectionStatus.error ? 'error' : 'disconnected';
 
+  // Editor ref for imperative control (e.g., opening files from Explorer)
+  const editorRef = useRef<ICUIEditorRef>(null);
+
+  // Handle file selection from Explorer - VS Code-like temporary file opening
+  const handleFileSelect = useCallback((file: any) => {
+    if (file.type === 'file' && editorRef.current) {
+      // Single click opens file temporarily (will be replaced by next single click)
+      editorRef.current.openFileTemporary(file.path);
+    }
+  }, []);
+
+  // Handle file double-click from Explorer - VS Code-like permanent file opening
+  const handleFileDoubleClick = useCallback((file: any) => {
+    if (file.type === 'file' && editorRef.current) {
+      // Double click opens file permanently (will not be replaced by single clicks)
+      editorRef.current.openFilePermanent(file.path);
+    }
+  }, []);
+
   // Apply theme classes to document element for proper theme detection
   useEffect(() => {
     const htmlElement = document.documentElement;
@@ -147,11 +166,14 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
   const explorerInstance = useMemo(() => (
     <ICUIExplorer 
       className="h-full"
+      onFileSelect={handleFileSelect}
+      onFileDoubleClick={handleFileDoubleClick}
     />
-  ), []);
+  ), [handleFileSelect, handleFileDoubleClick]);
 
   const editorInstance = useMemo(() => (
     <ICUIEditor
+      ref={editorRef}
       autoSave={true}
       autoSaveDelay={1500}
       workspaceRoot={workspaceRoot}

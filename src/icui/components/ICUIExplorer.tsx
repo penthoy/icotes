@@ -22,6 +22,7 @@ interface FileNode {
 interface ICUIExplorerProps {
   className?: string;
   onFileSelect?: (file: FileNode) => void;
+  onFileDoubleClick?: (file: FileNode) => void;
   onFileCreate?: (path: string) => void;
   onFolderCreate?: (path: string) => void;
   onFileDelete?: (path: string) => void;
@@ -147,6 +148,7 @@ class ExplorerBackendClient {
 const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
   className = '',
   onFileSelect,
+  onFileDoubleClick,
   onFileCreate,
   onFolderCreate,
   onFileDelete,
@@ -401,6 +403,13 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
     }
   }, [onFileSelect, toggleFolderExpansion]);
 
+  // Handle file double-click for permanent opening
+  const handleItemDoubleClick = useCallback((item: FileNode) => {
+    if (item.type === 'file') {
+      onFileDoubleClick?.(item);
+    }
+  }, [onFileDoubleClick]);
+
   // Handle creating new files/folders
   const handleCreateFile = useCallback(async () => {
     if (!isConnected) return;
@@ -481,6 +490,7 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
             paddingLeft: `${8 + level * 16}px`  // Indentation based on nesting level
           }}
           onClick={() => handleItemClick(node)}
+          onDoubleClick={() => handleItemDoubleClick(node)}
           onContextMenu={(e) => {
             e.preventDefault();
             if (node.type === 'file') {

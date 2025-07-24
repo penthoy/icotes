@@ -4,10 +4,10 @@ A web-based JavaScript code editor built with ViteReact, CodeMirror 6, and moder
 ### In Progress
 -- Explorer/editor interaction:
 Lets now attempt to replicate a modern editor behavior such as vs code:
-1. when the page first loaded code editor should be empty.
-2. When clicking on a text/script file in the explorer, it should temporily open in the editor and the name should be italic. if click on another text file immediate, the other file will replace that temporarilly opened file.
+1. ✓ when the page first loaded code editor should be empty.
+2. ✓ When clicking on a text/script file in the explorer, it should temporily open in the editor and the name should be italic. if click on another text file immediate, the other file will replace that temporarilly opened file.
 3. When double clicked on a text/script file it should open the file in "permenent" state, so when clicking on another file it will not be replaced, and the text on it will not be italic. this behavior is exactly the same as vs code.
-
+4. save state: file that's opened previously should have their states saved this save 
 please stop for my review for each of these points as it could be pretty complexe, and wait for my feedback before proceed for the next point, lets now start with 1.
 
 

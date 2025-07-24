@@ -57,6 +57,7 @@ interface EditorFile {
   content: string;
   modified: boolean;
   path?: string;
+  isTemporary?: boolean; // VS Code-like temporary file state
 }
 
 // Connection status interface (following simpleeditor pattern)
@@ -342,12 +343,16 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
       // Check if file is already open
       const existingFileIndex = files.findIndex(f => f.path === filePath);
       if (existingFileIndex >= 0) {
-        // File is already open, just activate it
+        // File is already open, just activate it and mark as permanent
+        setFiles(prev => prev.map((f, index) => 
+          index === existingFileIndex ? { ...f, isTemporary: false } : f
+        ));
         setActiveFileId(files[existingFileIndex].id);
       } else {
-        // Add new file to the list
-        setFiles(prev => [...prev, fileData]);
-        setActiveFileId(fileData.id);
+        // Add new file to the list as permanent
+        const permanentFile = { ...fileData, isTemporary: false };
+        setFiles(prev => [...prev, permanentFile]);
+        setActiveFileId(permanentFile.id);
       }
       
       EditorNotificationService.show(`Opened ${fileData.name}`, 'success');
@@ -360,10 +365,41 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
   }, [files]);
 
   const openFileTemporary = useCallback(async (filePath: string) => {
-    // For temporary files, we'll add them but mark them as temporary
-    // This will be enhanced in the next phases for proper VS Code behavior
-    await openFile(filePath);
-  }, [openFile]);
+    try {
+      setIsLoading(true);
+      
+      // Check if file is already open
+      const existingFileIndex = files.findIndex(f => f.path === filePath);
+      if (existingFileIndex >= 0) {
+        // File is already open, just activate it
+        const existingFile = files[existingFileIndex];
+        setActiveFileId(existingFile.id);
+        return;
+      }
+
+      // VS Code behavior: Only replace existing temporary files, not permanent ones
+      const temporaryFiles = files.filter(f => f.isTemporary);
+      if (temporaryFiles.length > 0) {
+        // Remove all temporary files since we're opening a new temporary file
+        setFiles(prev => prev.filter(f => !f.isTemporary));
+      }
+
+      // Load the new file and mark it as temporary
+      const fileData = await backendClient.current.getFile(filePath);
+      const temporaryFile = { ...fileData, isTemporary: true };
+      
+      // Add new temporary file to the list (keeping all permanent files)
+      setFiles(prev => [...prev.filter(f => !f.isTemporary), temporaryFile]);
+      setActiveFileId(temporaryFile.id);
+      
+      EditorNotificationService.show(`Opened ${fileData.name} (temporary)`, 'info');
+    } catch (error) {
+      console.error('Failed to open temporary file:', error);
+      EditorNotificationService.show(`Failed to open ${filePath}: ${error}`, 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [files]);
 
   const openFilePermanent = useCallback(async (filePath: string) => {
     // For permanent files, same as openFile for now
@@ -848,6 +884,15 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
       }
     }
     
+    // If clicking on a temporary file tab, make it permanent (VS Code behavior)
+    const targetFile = files.find(f => f.id === fileId);
+    if (targetFile?.isTemporary) {
+      setFiles(prev => prev.map(f => 
+        f.id === fileId ? { ...f, isTemporary: false } : f
+      ));
+      EditorNotificationService.show(`${targetFile.name} is now permanent`, 'info');
+    }
+    
     // Load file content if it's not already loaded BEFORE setting as active
     const file = files.find(f => f.id === fileId);
     console.log('Found file for activation:', file);
@@ -928,7 +973,7 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
               }
             }}
           >
-            <span className="truncate text-sm">
+            <span className="truncate text-sm" style={{ fontStyle: file.isTemporary ? 'italic' : 'normal' }}>
               {file.name}
               {file.modified && <span style={{ color: 'var(--icui-warning)' }} className="ml-1">•</span>}
             </span>
