@@ -2,10 +2,15 @@
 A web-based JavaScript code editor built with ViteReact, CodeMirror 6, and modern web technologies. The goal is to create the world's most powerful notebook for developers and hackers, it includes 3 core parts: 1. rich text editor, similar to evernote/notion hybrid, 2. code editor + terminal(similar to replit), 3. AI agent that can be customized with agentic frameworks such as crew ai, or openai agent sdk, or any other agentic framework. This tool is designed to be infinitely hackable and flexible to empower the nextgeneration of AI powered developers.
 
 ### In Progress
-- [] can you check which step we are on in icpy_plan.md? I believe we are on 4.1 or 4.2, when you're sure which point we are on, continue progress on it.
-
+- [] Start icpy_plan.md step 6.1 (Service Discovery and Registry)
 
 ## Future task
+
+-- 
+-- Add backend services
+Add icpy_plan.md 5.3 LSP to the Editor
+Add icpy_plan.md 5.4 to Agent.
+
 -- Panels:
 Bug fix: Panel refresh issue.
 

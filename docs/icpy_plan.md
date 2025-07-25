@@ -412,22 +412,43 @@ Create a backend that acts as a **single source of truth** for the frontend, is 
 - **Files Created**: `backend/icpy/services/lsp_service.py`, `backend/tests/icpy/test_lsp_service_basic.py`
 - **Status**: Complete and fully tested (100% test success rate)
 
-#### Step 5.4: AI Agent Integration Service
-- Create `backend/services/ai_agent_service.py`
-- Provide high-level API for AI tools to interact with workspace
-- Support real-time file editing with immediate UI updates
-- Enable AI tools to control terminal, file browser, and editor
-- Add context management for AI agents (current active file, selection, etc.)
-- Integrate with LSP service to provide code intelligence context to AI
-- **Integration Test**: `tests/backend/test_ai_agent_service.py`
-  - AI tool integration scenarios
-  - Real-time editing and UI updates
-  - Context management with LSP integration
+#### Step 5.4: AI Agent Integration Service ✅ COMPLETED
+- ✅ Created `backend/icpy/services/ai_agent_service.py`
+- ✅ Implemented high-level API for AI tools to interact with workspace
+- ✅ Added comprehensive agent registration and context management
+- ✅ Integrated with all existing services (FileSystem, CodeExecution, LSP, Terminal, Workspace, Clipboard)
+- ✅ Implemented action execution system with 22 different action types
+- ✅ Added real-time event subscription and forwarding system
+- ✅ Created workspace intelligence gathering and code execution with context
+- ✅ **Integration Test**: `tests/backend/icpy/test_ai_agent_service_basic.py` - 25/25 tests passing (100%)
+  - ✅ Agent registration, unregistration, and context management
+  - ✅ Action execution for all supported action types
+  - ✅ Event subscription and notification system
+  - ✅ Service integration and error handling
+  - ✅ Activity tracking and action history
 
-### Phase 6: Extension Points for Future Features
+**Implementation Details**:
+- Created comprehensive AIAgentService with full workspace integration
+- Supports 8 core agent capabilities (file operations, code execution, terminal control, LSP intelligence, workspace navigation, clipboard access, real-time editing, context awareness)
+- Implements 22 different action types covering all workspace operations
+- Provides agent context management with active file, cursor position, selection tracking
+- Includes real-time event subscription system for workspace changes
+- Integrates with all backend services through lazy initialization pattern
+- Supports workspace intelligence gathering combining LSP diagnostics and symbols
+- Enables code execution with contextual file information
+- Full integration with message broker for event-driven agent communication
+- **Tests**: All 25 integration tests pass including registration, actions, events, service integration, and error handling
+- **Files Created**: `backend/icpy/services/ai_agent_service.py`, `backend/tests/icpy/test_ai_agent_service_basic.py`
+- **Status**: Complete and fully tested (100% test success rate)
+
+### Phase 6: Agentic foundation
+**Goal**: Foundational Agentic services
+Prepare architecture for Agentic frameworks and provide services to these frame works.
+
+### Phase 7: Extension Points for Future Features
 **Goal**: Prepare architecture for planned rich text editor and advanced features
 
-#### Step 6.1: Service Discovery and Registry
+#### Step 7.1: Service Discovery and Registry
 - Create `backend/core/service_registry.py`
 - Implement service registration and discovery system
 - Support service health monitoring and lifecycle management
@@ -438,7 +459,7 @@ Create a backend that acts as a **single source of truth** for the frontend, is 
   - Health monitoring and dependency management
   - Dynamic service lifecycle
 
-#### Step 6.2: Plugin System Foundation
+#### Step 7.2: Plugin System Foundation
 - Create `backend/core/plugin_system.py`
 - Define plugin interfaces and lifecycle management
 - Support dynamic plugin loading and unloading
@@ -449,7 +470,7 @@ Create a backend that acts as a **single source of truth** for the frontend, is 
   - Dynamic loading and configuration
   - Service integration
 
-#### Step 6.3: Authentication and Security Service
+#### Step 7.3: Authentication and Security Service
 - Create `backend/services/auth_service.py`
 - Implement authentication and authorization system
 - Support multiple authentication methods (API keys, tokens, etc.)
@@ -460,7 +481,7 @@ Create a backend that acts as a **single source of truth** for the frontend, is 
   - Permission-based access control
   - Security middleware functionality
 
-#### Step 6.4: Content Management Service (Foundation)
+#### Step 7.4: Content Management Service (Foundation)
 - Create `backend/services/content_service.py`
 - Provide abstract interface for different content types
 - Support versioning and collaboration features
@@ -576,180 +597,3 @@ Create a backend that acts as a **single source of truth** for the frontend, is 
 This plan provides a comprehensive roadmap for creating a modern, modular backend architecture that maintains compatibility with the existing system while providing a solid foundation for future enhancements. The phased approach ensures incremental progress with thorough testing at each stage, while the event-driven architecture enables the real-time collaboration and AI integration features that are core to the project's vision.
 
 The architecture is designed to support the three core components of the planned system: rich text editor, code editor + terminal, and AI agent integration, while maintaining the flexibility to adapt to future requirements without significant rewrites.
-
----
-
-## Critical Backend Issues
-
-### 🚨 URGENT: Pydantic Version Incompatibility
-
-**Issue**: The ICPY modules cannot be imported due to Pydantic version mismatch:
-- **System Pydantic**: v1.10.14
-- **ICPY Requirements**: v2.x (uses `field_validator` which doesn't exist in v1.x)
-
-**Impact**: 
-- Complete ICPY architecture is non-functional
-- File management endpoints are inaccessible  
-- Frontend receives HTML instead of JSON from `/api/files`
-- Forces fallback to monolithic `main.py` implementation
-
-**Root Cause**: ICPY modules use Pydantic v2 features (`field_validator`) but system has v1.10.14 installed
-
-**Evidence from Logs**:
-```
-WARNING:main:icpy modules not available: cannot import name 'field_validator' from 'pydantic'
-```
-
-**Current Workaround**: 
-Temporary file endpoints added directly to `backend/main.py` (lines 521-647):
-```python
-# Basic File API endpoints (fallback when ICPY not available)
-@app.get("/api/files")
-@app.get("/api/files/content") 
-@app.post("/api/files")
-@app.put("/api/files")
-@app.delete("/api/files")
-```
-
-**Proper Solution Required**:
-1. **Immediate Fix**: Upgrade system Pydantic to v2.x
-2. **Alternative**: Make ICPY compatible with Pydantic v1.x
-3. **Long-term**: Complete dependency audit and environment standardization
-
-### 🚨 URGENT: ICPY Module Loading Failure
-
-**Issue**: All ICPY services are unavailable due to import failures
-
-**Services Affected**:
-- ✅ Filesystem Service: Implemented but inaccessible
-- ✅ REST API: Complete implementation but not mounted
-- ✅ WebSocket API: Enhanced but not loaded  
-- ✅ Terminal Service: Refactored but not integrated
-- ✅ Workspace Service: Complete but not active
-
-**Current State**: Backend falls back to basic functionality in `main.py`
-
-**Required Actions**:
-1. Fix Pydantic compatibility immediately
-2. Remove temporary workarounds from `main.py`
-3. Ensure proper ICPY service initialization
-4. Validate all endpoints are accessible
-5. Test frontend integration with proper ICPY services
-
-### � URGENT: Module Import Path Issues
-
-**Issue**: Backend cannot find ICPY modules due to incorrect Python path setup
-
-**Evidence from Logs**:
-```
-WARNING:backend.main:icpy modules not available: No module named 'icpy'
-WARNING:backend.main:Terminal module not available: No module named 'terminal'
-```
-
-**Root Cause**: Backend is being run from root directory (`/home/penthoy/ilaborcode`) instead of backend directory, causing import path issues
-
-**Current Incorrect Setup**:
-```bash
-cd /home/penthoy/ilaborcode
-python3 -m uvicorn backend.main:app  # Wrong - can't find icpy modules
-```
-
-**Correct Setup Should Be**:
-```bash
-cd /home/penthoy/ilaborcode/backend  
-python3 -m uvicorn main:app          # Correct - icpy modules in same directory
-```
-
-**Required Actions**:
-1. Fix Python module discovery paths
-2. Ensure backend runs from correct working directory  
-3. Update startup scripts and documentation
-4. Test ICPY module imports work correctly
-
-### �🔧 Backend Architecture Violations
-
-**Issue**: Temporary code added to `main.py` violates ICPY architecture
-
-**Violations Identified**:
-1. **File endpoints in main.py**: Should use `icpy.api.rest_api`
-2. **Direct file operations**: Should use `icpy.services.filesystem_service`
-3. **No event broadcasting**: Missing real-time updates
-4. **No proper error handling**: Basic error responses vs ICPY standards
-5. **No integration with message broker**: Isolated operations
-
-**Code Added to main.py** (requires removal after ICPY fix):
-- Lines 521-647: Basic file API endpoints
-- Missing: Integration with filesystem service
-- Missing: Event-driven architecture
-- Missing: Proper error handling and responses
-
-### 🔍 Environment and Dependency Issues
-
-**Issues Identified**:
-1. **Pydantic Version**: System v1.10.14 vs Required v2.x
-2. **Missing ICPY Module Discovery**: Import paths may be incorrect
-3. **Virtual Environment**: May not be using proper venv with correct dependencies
-4. **Requirements Synchronization**: requirements.txt may not match actual needs
-
-**Investigation Required**:
-1. Audit all Python dependencies in current environment
-2. Check if virtual environment is properly activated
-3. Verify ICPY module paths and imports
-4. Test dependency resolution with fresh environment
-
-### 📋 Immediate Action Items
-
-**Priority 1 - Critical (Blocks all ICPY functionality)**:
-1. [ ] **Fix Python module import paths**
-   - Run backend from correct directory (`/backend/` not root)
-   - Update startup commands and scripts
-   - Test: Backend logs show ICPY modules available
-2. [ ] **Fix Pydantic incompatibility**
-   - Upgrade system Pydantic to v2.x OR
-   - Modify ICPY to use Pydantic v1.x compatible syntax
-3. [ ] **Verify ICPY module loading**
-   - Test `from icpy.api import get_rest_api` 
-   - Ensure all imports work correctly
-4. [ ] **Remove temporary main.py endpoints**
-   - Delete lines 521-647 in `backend/main.py`
-   - Restore proper ICPY integration
-
-**Priority 2 - High (Architecture integrity)**:
-4. [ ] **Test full ICPY initialization**
-   - Verify all services load correctly
-   - Test REST API endpoints accessibility
-   - Validate WebSocket functionality
-5. [ ] **Frontend integration validation**
-   - Test `/api/files` returns proper JSON
-   - Verify real-time file operations work
-   - Test editor loads files from workspace
-
-**Priority 3 - Medium (Stability and performance)**:
-6. [ ] **Environment audit**
-   - Document all dependencies and versions
-   - Create clean virtual environment setup
-   - Update requirements.txt if needed
-7. [ ] **Add monitoring**
-   - Service health checks
-   - Error logging and alerting
-   - Performance monitoring
-
-### 🧪 Testing Requirements Post-Fix
-
-**Integration Tests Required**:
-1. **ICPY Module Loading**: Verify all imports work
-2. **REST API Accessibility**: Test all `/api/*` endpoints  
-3. **File Operations**: CRUD operations through proper services
-4. **Event Broadcasting**: Real-time updates work correctly
-5. **Frontend Integration**: Simple editor connects to ICPY backend
-6. **Error Handling**: Proper error responses and recovery
-
-**Validation Criteria**:
-- [ ] All ICPY services load without errors
-- [ ] File endpoints return JSON (not HTML) 
-- [ ] Frontend shows "Connected" with ICPY available
-- [ ] File operations trigger real-time events
-- [ ] CLI interface works with backend services
-- [ ] No fallback code remains in main.py
-
-This issue represents a fundamental blocking problem that prevents the entire ICPY architecture from functioning. Resolving the Pydantic incompatibility should be the absolute highest priority as it blocks all other development and testing of the modular backend system.
