@@ -19,7 +19,7 @@ from pathlib import Path
 # Internal imports
 from ..core.message_broker import MessageBroker, get_message_broker, Message, MessageType as BrokerMessageType
 from ..core.connection_manager import ConnectionManager, get_connection_manager
-from ..services.agent_service import AgentService, get_agent_service
+from ..services.agent_service import AgentService, get_agent_service, AgentSessionStatus
 
 logger = logging.getLogger(__name__)
 
@@ -216,16 +216,30 @@ class ChatService:
         
         self.active_connections.discard(websocket_id)
     
-    async def _send_websocket_message(self, websocket_id: str, message_data: Dict[str, Any]):
-        """Send a message directly to a WebSocket connection"""
-        try:
-            if websocket_id in self.websocket_connections:
-                websocket = self.websocket_connections[websocket_id]
-                await websocket.send_json(message_data)
-            else:
-                logger.warning(f"WebSocket {websocket_id} not found in connections")
-        except Exception as e:
-            logger.error(f"Failed to send message to WebSocket {websocket_id}: {e}")
+    async def _send_websocket_message(self, websocket_id: str, message_data: dict):
+        """Send a message to a specific WebSocket connection"""
+        msg_type = message_data.get('type', 'unknown')
+        msg_id = message_data.get('id', 'no-id')
+        if msg_type == 'message_stream':
+            stream_flags = {
+                'start': message_data.get('stream_start', False),
+                'chunk': message_data.get('stream_chunk', False), 
+                'end': message_data.get('stream_end', False)
+            }
+            logger.info(f"🔄 Sending WebSocket {msg_type}: {msg_id} - flags: {stream_flags}")
+        else:
+            logger.info(f"🔄 Sending WebSocket message: {msg_type} - {msg_id}")
+        websocket = self.websocket_connections.get(websocket_id)
+        if websocket:
+            try:
+                await websocket.send_text(json.dumps(message_data))
+            except Exception as e:
+                logger.error(f"Failed to send WebSocket message to {websocket_id}: {e}")
+                # Remove the failed connection
+                if websocket_id in self.websocket_connections:
+                    del self.websocket_connections[websocket_id]
+                if websocket_id in self.chat_sessions:
+                    del self.chat_sessions[websocket_id]
     
     async def handle_user_message(self, websocket_id: str, content: str, metadata: Dict[str, Any] = None) -> ChatMessage:
         """Handle a message from the user"""
@@ -310,8 +324,8 @@ class ChatService:
                 await self._send_typing_indicator(user_message.session_id, False)
                 return
             
-            # Execute agent task
-            logger.info(f"🚀 Executing agent task for session: {agent_session.session_id}")
+            # Execute agent task with streaming
+            logger.info(f"🚀 Executing streaming agent task for session: {agent_session.session_id}")
             task_description = user_message.content  # Use the user's message as the task
             task_context = {
                 'type': 'chat_response',
@@ -322,50 +336,19 @@ class ChatService:
             logger.info(f"📝 Task description: {task_description}")
             logger.info(f"📝 Task context: {task_context}")
             
-            result = await self.agent_service.execute_agent_task(
+            # Stream the response using the new streaming method
+            await self._execute_streaming_agent_task(
                 agent_session.session_id,
                 task_description,
-                task_context
+                task_context,
+                user_message.session_id,
+                user_message.id
             )
-            logger.info(f"📤 Agent execution result: {result}")
-            
-            # Handle both dict and string results
-            if isinstance(result, dict):
-                # Send agent response
-                if result.get('success') and result.get('result'):
-                    logger.info(f"✅ Sending successful agent response: {result['result'][:100]}...")
-                    await self._send_ai_response(
-                        user_message.session_id,
-                        result['result'],
-                        user_message.id
-                    )
-                else:
-                    logger.error(f"❌ Agent execution failed. Result: {result}")
-                    await self._send_ai_response(
-                        user_message.session_id,
-                        f"I'm sorry, I encountered an error processing your message. Error details: {result}",
-                        user_message.id
-                    )
-            elif isinstance(result, str):
-                # Result is a string - this is the actual AI response content!
-                logger.info(f"✅ Sending successful agent response (string): {result[:100]}...")
-                await self._send_ai_response(
-                    user_message.session_id,
-                    result,
-                    user_message.id
-                )
-            else:
-                logger.error(f"❌ Unexpected result type: {type(result)}")
-                await self._send_ai_response(
-                    user_message.session_id,
-                    f"I'm sorry, I encountered an unexpected error. Result type: {type(result)}",
-                    user_message.id
-                )
             
             await self._send_typing_indicator(user_message.session_id, False)
             
         except Exception as e:
-            logger.error(f"💥 Error processing message with agent: {e}")
+            logger.error(f"� Error processing message with agent: {e}")
             logger.exception("Full traceback:")
             await self._send_ai_response(
                 user_message.session_id,
@@ -374,6 +357,284 @@ class ChatService:
             )
             await self._send_typing_indicator(user_message.session_id, False)
     
+    async def _execute_streaming_agent_task(self, agent_session_id: str, task: str, 
+                                           context: dict, chat_session_id: str, reply_to_id: str):
+        """Execute agent task with streaming response to chat"""
+        try:
+            # Get the agent instance
+            agent = self.agent_service.active_agents.get(agent_session_id)
+            if not agent:
+                raise ValueError(f"Agent instance for session {agent_session_id} not found")
+            
+            # Update session status
+            self.agent_service.agent_sessions[agent_session_id].status = AgentSessionStatus.RUNNING
+            self.agent_service.agent_sessions[agent_session_id].last_activity = time.time()
+            
+            # Prepare streaming response
+            full_content = ""
+            message_id = str(uuid.uuid4())
+            is_first_chunk = True
+            
+            # Execute task and stream results
+            async for message in agent.execute(task, context):
+                if message.message_type == "text":
+                    # Send stream start for first chunk
+                    if is_first_chunk:
+                        await self._send_streaming_start(
+                            chat_session_id, 
+                            message_id,
+                            reply_to_id
+                        )
+                        is_first_chunk = False
+                    
+                    # Send incremental update
+                    await self._send_streaming_chunk(
+                        chat_session_id,
+                        message_id,
+                        message.content,  # Send only the new chunk
+                        reply_to_id
+                    )
+                    full_content += message.content
+                elif message.message_type == "error":
+                    logger.error(f"Agent error during streaming: {message.content}")
+                    # Send error as part of streaming instead of separate message
+                    error_content = f"I'm sorry, I encountered an error: {message.content}"
+                    
+                    # If no content streamed yet, start the stream
+                    if is_first_chunk:
+                        await self._send_streaming_start(
+                            chat_session_id, 
+                            message_id,
+                            reply_to_id
+                        )
+                        is_first_chunk = False
+                    
+                    # Send error as streaming chunk
+                    await self._send_streaming_chunk(
+                        chat_session_id,
+                        message_id,
+                        error_content,
+                        reply_to_id
+                    )
+                    full_content += error_content
+                    
+                    # End the stream and store the message
+                    await self._send_streaming_end(
+                        chat_session_id,
+                        message_id,
+                        reply_to_id
+                    )
+                    
+                    # Store the final error message for persistence
+                    final_message = ChatMessage(
+                        id=message_id,
+                        content=full_content,
+                        sender=MessageSender.AI,
+                        timestamp=datetime.now(timezone.utc).isoformat(),
+                        agent_id=self.config.agent_id,
+                        session_id=chat_session_id,
+                        metadata={'reply_to': reply_to_id, 'streaming_complete': True, 'has_error': True}
+                    )
+                    await self._store_message(final_message)
+                    return
+            
+            # Send stream end
+            await self._send_streaming_end(
+                chat_session_id,
+                message_id,
+                reply_to_id
+            )
+            
+            # Store the final complete message for persistence (do not broadcast)
+            # The frontend already has the complete message from streaming
+            final_message = ChatMessage(
+                id=message_id,
+                content=full_content,
+                sender=MessageSender.AI,
+                timestamp=datetime.now(timezone.utc).isoformat(),
+                agent_id=self.config.agent_id,
+                session_id=chat_session_id,
+                metadata={'reply_to': reply_to_id, 'streaming_complete': True}
+            )
+            await self._store_message(final_message)
+            # Note: We don't broadcast this final message since frontend already has it from streaming
+            
+            # Update session status back to ready
+            self.agent_service.agent_sessions[agent_session_id].status = AgentSessionStatus.READY
+            self.agent_service.agent_sessions[agent_session_id].last_activity = time.time()
+            
+        except Exception as e:
+            logger.error(f"Streaming agent task failed: {e}")
+            # Handle exception during streaming by sending error as stream instead of separate message
+            error_content = f"I'm sorry, I encountered an error during streaming. Error: {str(e)}"
+            
+            # Try to send error as streaming if possible
+            try:
+                # If no content has been streamed yet, start the stream
+                if is_first_chunk:
+                    await self._send_streaming_start(
+                        chat_session_id, 
+                        message_id,
+                        reply_to_id
+                    )
+                
+                # Send error as streaming chunk
+                await self._send_streaming_chunk(
+                    chat_session_id,
+                    message_id,
+                    error_content,
+                    reply_to_id
+                )
+                
+                # End the stream
+                await self._send_streaming_end(
+                    chat_session_id,
+                    message_id,
+                    reply_to_id
+                )
+                
+                # Store the error message for persistence
+                final_message = ChatMessage(
+                    id=message_id,
+                    content=error_content,
+                    sender=MessageSender.AI,
+                    timestamp=datetime.now(timezone.utc).isoformat(),
+                    agent_id=self.config.agent_id,
+                    session_id=chat_session_id,
+                    metadata={'reply_to': reply_to_id, 'streaming_complete': True, 'has_error': True}
+                )
+                await self._store_message(final_message)
+                
+            except Exception as stream_error:
+                # If streaming fails too, fall back to regular error response
+                logger.error(f"Failed to send streaming error response: {stream_error}")
+                await self._send_ai_response(
+                    chat_session_id,
+                    error_content,
+                    reply_to_id
+                )
+    
+    async def _send_streaming_start(self, session_id: str, message_id: str, reply_to_id: str = None):
+        """Send streaming start message"""
+        try:
+            streaming_message = {
+                'type': 'message_stream',
+                'id': message_id,
+                'sender': MessageSender.AI.value,
+                'timestamp': datetime.now(timezone.utc).isoformat(),
+                'agentId': self.config.agent_id,
+                'agentName': self.config.agent_name,
+                'agentType': 'openai',
+                'session_id': session_id,
+                'stream_start': True,
+                'stream_chunk': False,
+                'stream_end': False,
+                'metadata': {
+                    'reply_to': reply_to_id,
+                    'streaming': True
+                }
+            }
+            
+            # Send to all connections in this session
+            for websocket_id, ws_session_id in self.chat_sessions.items():
+                if ws_session_id == session_id:
+                    await self._send_websocket_message(websocket_id, streaming_message)
+                    
+        except Exception as e:
+            logger.error(f"Failed to send streaming start: {e}")
+
+    async def _send_streaming_chunk(self, session_id: str, message_id: str, content: str, reply_to_id: str = None):
+        """Send streaming chunk message"""
+        try:
+            streaming_message = {
+                'type': 'message_stream',
+                'id': message_id,
+                'chunk': content,
+                'sender': MessageSender.AI.value,
+                'timestamp': datetime.now(timezone.utc).isoformat(),
+                'agentId': self.config.agent_id,
+                'agentName': self.config.agent_name,
+                'agentType': 'openai',
+                'session_id': session_id,
+                'stream_start': False,
+                'stream_chunk': True,
+                'stream_end': False,
+                'metadata': {
+                    'reply_to': reply_to_id,
+                    'streaming': True
+                }
+            }
+            
+            # Send to all connections in this session
+            for websocket_id, ws_session_id in self.chat_sessions.items():
+                if ws_session_id == session_id:
+                    await self._send_websocket_message(websocket_id, streaming_message)
+                    
+        except Exception as e:
+            logger.error(f"Failed to send streaming chunk: {e}")
+
+    async def _send_streaming_end(self, session_id: str, message_id: str, reply_to_id: str = None):
+        """Send streaming end message"""
+        try:
+            streaming_message = {
+                'type': 'message_stream',
+                'id': message_id,
+                'sender': MessageSender.AI.value,
+                'timestamp': datetime.now(timezone.utc).isoformat(),
+                'agentId': self.config.agent_id,
+                'agentName': self.config.agent_name,
+                'agentType': 'openai',
+                'session_id': session_id,
+                'stream_start': False,
+                'stream_chunk': False,
+                'stream_end': True,
+                'metadata': {
+                    'reply_to': reply_to_id,
+                    'streaming': False
+                }
+            }
+            
+            # Send to all connections in this session
+            for websocket_id, ws_session_id in self.chat_sessions.items():
+                if ws_session_id == session_id:
+                    await self._send_websocket_message(websocket_id, streaming_message)
+                    
+        except Exception as e:
+            logger.error(f"Failed to send streaming end: {e}")
+
+    async def _send_streaming_message(self, session_id: str, message_id: str, content: str, 
+                                     reply_to_id: str = None, is_complete: bool = False):
+        """Send a streaming message update (legacy method - use specific methods above)"""
+        try:
+            # Use frontend-compatible format
+            streaming_message = {
+                'type': 'message_stream',
+                'id': message_id,
+                'chunk': content,  # Frontend expects 'chunk' field
+                'sender': MessageSender.AI.value,
+                'timestamp': datetime.now(timezone.utc).isoformat(),
+                'agentId': self.config.agent_id,  # Frontend expects camelCase
+                'agentName': self.config.agent_name,
+                'agentType': 'openai',  # Default agent type
+                'session_id': session_id,
+                'stream_chunk': True,  # Frontend expects this field
+                'stream_start': False,  # Will be set to True for first chunk
+                'stream_end': is_complete,  # Frontend expects this field
+                'metadata': {
+                    'reply_to': reply_to_id,
+                    'is_complete': is_complete,
+                    'streaming': True
+                }
+            }
+            
+            # Send to all connections in this session
+            for websocket_id, ws_session_id in self.chat_sessions.items():
+                if ws_session_id == session_id:
+                    await self._send_websocket_message(websocket_id, streaming_message)
+                    
+        except Exception as e:
+            logger.error(f"Failed to send streaming message: {e}")
+
     async def _send_ai_response(self, session_id: str, content: str, reply_to_id: str = None):
         """Send an AI response message"""
         message = ChatMessage(

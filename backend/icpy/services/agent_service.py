@@ -567,19 +567,23 @@ class AgentService:
         """Stream agent message to connected clients"""
         try:
             if self.connection_manager:
-                await self.connection_manager.broadcast_to_topic(
-                    f"agent.{session_id}.stream",
-                    {
-                        "type": "agent_message",
-                        "session_id": session_id,
-                        "message": {
-                            "agent_id": message.agent_id,
-                            "content": message.content,
-                            "message_type": message.message_type,
-                            "timestamp": message.timestamp,
-                            "metadata": message.metadata
-                        }
+                # Use broadcast_message instead of broadcast_to_topic
+                message_data = {
+                    "type": "agent_stream",
+                    "session_id": session_id,
+                    "message": {
+                        "agent_id": message.agent_id,
+                        "content": message.content,
+                        "message_type": message.message_type,
+                        "timestamp": message.timestamp.isoformat() if hasattr(message.timestamp, 'isoformat') else str(message.timestamp),
+                        "metadata": message.metadata
                     }
+                }
+                
+                # Broadcast to all WebSocket connections
+                await self.connection_manager.broadcast_message(
+                    json.dumps(message_data),
+                    connection_type=None  # Send to all connections
                 )
         except Exception as e:
             logger.warning(f"Failed to stream agent message: {e}")

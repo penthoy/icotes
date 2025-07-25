@@ -318,8 +318,18 @@ class ChatBackendClient {
 
   // Handle streaming messages - Phase 6 feature
   private handleStreamingMessage(data: any): void {
+    console.log('🔄 Frontend handleStreamingMessage:', {
+      stream_start: data.stream_start,
+      stream_chunk: data.stream_chunk, 
+      stream_end: data.stream_end,
+      id: data.id,
+      chunk: data.chunk,
+      currentStreamingMessage: this.streamingMessage?.id
+    });
+    
     if (data.stream_start) {
       // Start new streaming message
+      console.log('🚀 Starting new streaming message');
       this.streamingMessage = {
         id: data.id || Date.now().toString(),
         content: '',
@@ -336,15 +346,33 @@ class ChatBackendClient {
       };
       this.notifyMessage(this.streamingMessage);
     } else if (data.stream_chunk && this.streamingMessage) {
-      // Append chunk to streaming message
+      // Append chunk to streaming message - only update content, don't create new message
+      console.log('📝 Adding chunk:', data.chunk);
       this.streamingMessage.content += data.chunk;
-      this.notifyMessage({ ...this.streamingMessage });
+      // Update the existing message object and notify about the change
+      this.notifyMessage({ 
+        ...this.streamingMessage,
+        metadata: {
+          ...this.streamingMessage.metadata!,
+          isStreaming: true  // Ensure it's still marked as streaming
+        }
+      });
     } else if (data.stream_end && this.streamingMessage) {
-      // Complete streaming message
-      this.streamingMessage.metadata!.isStreaming = false;
+      // Complete streaming message - set isStreaming: false to stop the "streaming..." indicator
+      console.log('✅ Ending streaming message');
       this.streamingMessage.metadata!.streamComplete = true;
-      this.notifyMessage({ ...this.streamingMessage });
+      this.streamingMessage.metadata!.isStreaming = false;
+      this.notifyMessage({ 
+        ...this.streamingMessage,
+        metadata: {
+          ...this.streamingMessage.metadata!,
+          isStreaming: false,
+          streamComplete: true
+        }
+      });
       this.streamingMessage = null;
+    } else {
+      console.warn('⚠️ Unhandled streaming message:', data);
     }
   }
 
@@ -749,7 +777,7 @@ const SimpleChat: React.FC<SimpleChatProps> = ({ className = '' }) => {
       backendClient.current.onMessage((message: ChatMessage) => {
         console.log('Phase 6 message received:', message);
         
-        if (message.metadata?.isStreaming) {
+        if (message.metadata?.isStreaming || message.metadata?.streamComplete) {
           // Handle streaming messages - update existing or add new
           setMessages(prev => {
             const existingIndex = prev.findIndex(m => m.id === message.id);
@@ -762,8 +790,17 @@ const SimpleChat: React.FC<SimpleChatProps> = ({ className = '' }) => {
             }
           });
         } else {
-          // Handle complete messages
-          setMessages(prev => [...prev, message]);
+          // Handle complete messages - only add if not already exists
+          setMessages(prev => {
+            const existingIndex = prev.findIndex(m => m.id === message.id);
+            if (existingIndex >= 0) {
+              // Message already exists, don't add duplicate
+              console.log('Skipping duplicate message:', message.id);
+              return prev;
+            } else {
+              return [...prev, message];
+            }
+          });
         }
         
         // Update typing status
