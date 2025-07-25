@@ -1,9 +1,6 @@
 ## Instructions: 
 When I said "continue progress(#)" in the prompt, check ##In Progress section in the roadmap.md file, and proceed to work on just In progress section, after finished, move it to Recently finished section, If there's a # after continue progress, only work on the number assigned, as other agent or person will be working on the other in progress items asynchronusly, if you work on it you'll clash with another person/agent; always keep the codebase clean, before attempt another approach, make sure you explain what you tried and anything you need the user to help make it work.
 
-
-Please read Agent_dev_workflow.md to learn how to iterate.
-
 Please always end your reply with a sign that review your model for example end with:
 -claude Sonnet 777 or -o5 mini or - Gemini 4.5 pro, make sure you're certain what you are, if you're unsure do -unknown
 
@@ -36,7 +33,7 @@ if you see potential issue in the code or design tell me bluntly and truthfully.
 
 When asked to "continue progress" please don't work on anything else other than the In progress section of the roadmap.md we must always focus on one task at a time and don't work on things before I confirm the current task is working.
 
-## Codeing standards:
+## Coding standards:
 Always use clean code that's human readable and easy to understand. so that its possible for human and AI to work on the same code base
 
 Try to keep code files under a thousand lines, ideally it should be around 100-500 lines long, using this as a guide and try to break up logical code into its own individual files.

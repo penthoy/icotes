@@ -2,20 +2,14 @@
 A web-based JavaScript code editor built with ViteReact, CodeMirror 6, and modern web technologies. The goal is to create the world's most powerful notebook for developers and hackers, it includes 3 core parts: 1. rich text editor, similar to evernote/notion hybrid, 2. code editor + terminal(similar to replit), 3. AI agent that can be customized with agentic frameworks such as crew ai, or openai agent sdk, or any other agentic framework. This tool is designed to be infinitely hackable and flexible to empower the nextgeneration of AI powered developers.
 
 ### In Progress
-- [] No current tasks in progress.
+- [] can you check which step we are on in icpy_plan.md? I believe we are on 4.1 or 4.2, when you're sure which point we are on, continue progress on it.
 
 
 ## Future task
--- Explorer/editor interaction:
-Lets now attempt to replicate a modern editor behavior such as vs code:
-1. ✓ when the page first loaded code editor should be empty.
-2. ✓ When clicking on a text/script file in the explorer, it should temporily open in the editor and the name should be italic. if click on another text file immediate, the other file will replace that temporarilly opened file.
-3. ✓ When double clicked on a text/script file it should open the file in "permenent" state, so when clicking on another file it will not be replaced, and the text on it will not be italic. this behavior is exactly the same as vs code.
-4. save state: file that's opened previously should have their states saved this save 
+-- Panels:
+Bug fix: Panel refresh issue.
 
-please stop for my review for each of these points as it could be pretty complexe, and wait for my feedback before proceed for the next point, lets now start with 1.
-
-
+-- 
 -- Explorer:
 Real time update subscribe not working yet.
 
@@ -26,15 +20,6 @@ Use icui menus
 Dragable tabs
 Check state, if no state, Start blank no files are open, 
 
--- Panels:
-Bug fix: Panel refresh issue.
-
--- integration 2.5:
-Now that explorer, code editor and terminal works, next is how they talk to each other.
-1. Editor:remove the Connected area, there's no need for editor to show connection independently.
-2. Remove the top 2 bars and add bottom bar, the auto save popup is too intrusive, it should be very subtle but it on the bottom bar that should say something like saving...
-- [] Update integration details: explorer is empty by defaul, but populates 
-3. use src/icui/menus on inthome.tsx
 
 -- backend cli:
 Able to open file in the editor.
@@ -54,6 +39,15 @@ same function as what copilot window has
 - [] work on integration_plan.md 2.3: Editor Integration
 - [] work on icpy_plan.md 
 - [] work on icui_plan.md 4.10 clipboard, need to update 5 and beyond
+
+-- Explorer/editor interaction:
+Lets now attempt to replicate a modern editor behavior such as vs code:
+1. ✓ when the page first loaded code editor should be empty.
+2. ✓ When clicking on a text/script file in the explorer, it should temporily open in the editor and the name should be italic. if click on another text file immediate, the other file will replace that temporarilly opened file.
+3. ✓ When double clicked on a text/script file it should open the file in "permenent" state, so when clicking on another file it will not be replaced, and the text on it will not be italic. this behavior is exactly the same as vs code.
+4. save state: file that's opened previously should have their states saved this save 
+
+please stop for my review for each of these points as it could be pretty complexe, and wait for my feedback before proceed for the next point, lets now start with 1.
 
 -- Milestone 1:
 Complete icui-icpy connection and integration plan so that the old home route is using icpy backend.
