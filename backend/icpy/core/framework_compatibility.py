@@ -137,27 +137,41 @@ class OpenAIAgentWrapper(BaseAgentWrapper):
             else:
                 messages.append({"role": "user", "content": prompt})
             
-            # Make API call (simulate for now without real API key)
-            # In real implementation, uncomment the following:
-            # response = await self._agent.chat.completions.create(
-            #     model=self.config.model,
-            #     messages=messages,
-            #     temperature=self.config.temperature,
-            #     max_tokens=self.config.max_tokens
-            # )
-            
-            # Simulated response for testing
-            response_content = f"OpenAI Agent '{self.config.name}' processed: {prompt[:50]}..."
-            
-            self.status = AgentStatus.COMPLETED
-            return AgentResponse(
-                content=response_content,
-                status=AgentStatus.COMPLETED,
-                metadata={"model": self.config.model, "framework": "openai"}
-            )
+            # Check if we have a real API key
+            api_key = self.config.api_key or os.getenv("OPENAI_API_KEY")
+            if api_key and api_key != "placeholder-key" and api_key.startswith("sk-"):
+                # Make real API call
+                response = await self._agent.chat.completions.create(
+                    model=self.config.model,
+                    messages=messages,
+                    temperature=self.config.temperature,
+                    max_tokens=self.config.max_tokens
+                )
+                
+                response_content = response.choices[0].message.content
+                usage_info = response.usage.model_dump() if response.usage else None
+                
+                self.status = AgentStatus.COMPLETED
+                return AgentResponse(
+                    content=response_content,
+                    status=AgentStatus.COMPLETED,
+                    metadata={"model": self.config.model, "framework": "openai"},
+                    usage=usage_info
+                )
+            else:
+                # Fallback to simulated response for testing
+                response_content = f"[SIMULATED] OpenAI Agent '{self.config.name}' processed: {prompt[:50]}..."
+                
+                self.status = AgentStatus.COMPLETED
+                return AgentResponse(
+                    content=response_content,
+                    status=AgentStatus.COMPLETED,
+                    metadata={"model": self.config.model, "framework": "openai", "simulated": True}
+                )
             
         except Exception as e:
             self.status = AgentStatus.FAILED
+            logger.error(f"OpenAI execution failed: {e}")
             return AgentResponse(
                 content="",
                 status=AgentStatus.FAILED,
@@ -166,13 +180,50 @@ class OpenAIAgentWrapper(BaseAgentWrapper):
     
     async def execute_streaming(self, prompt: str, context: Optional[Dict[str, Any]] = None) -> AsyncGenerator[str, None]:
         """Execute with streaming response"""
-        response = await self.execute(prompt, context)
-        # Simulate streaming by yielding chunks
-        content = response.content
-        chunk_size = 10
-        for i in range(0, len(content), chunk_size):
-            yield content[i:i+chunk_size]
-            await asyncio.sleep(0.1)  # Simulate delay
+        if not self._agent:
+            yield "Error: Agent not initialized"
+            return
+        
+        try:
+            # Build messages
+            messages = []
+            if self.config.system_prompt:
+                messages.append({"role": "system", "content": self.config.system_prompt})
+            
+            # Add context if provided
+            if context:
+                context_str = f"Context: {context}\n\n{prompt}"
+                messages.append({"role": "user", "content": context_str})
+            else:
+                messages.append({"role": "user", "content": prompt})
+            
+            # Check if we have a real API key
+            api_key = self.config.api_key or os.getenv("OPENAI_API_KEY")
+            if api_key and api_key != "placeholder-key" and api_key.startswith("sk-"):
+                # Make real streaming API call
+                stream = await self._agent.chat.completions.create(
+                    model=self.config.model,
+                    messages=messages,
+                    temperature=self.config.temperature,
+                    max_tokens=self.config.max_tokens,
+                    stream=True
+                )
+                
+                async for chunk in stream:
+                    if chunk.choices[0].delta.content:
+                        yield chunk.choices[0].delta.content
+            else:
+                # Fallback to simulated streaming
+                response = await self.execute(prompt, context)
+                content = response.content
+                chunk_size = 10
+                for i in range(0, len(content), chunk_size):
+                    yield content[i:i+chunk_size]
+                    await asyncio.sleep(0.1)  # Simulate delay
+                    
+        except Exception as e:
+            logger.error(f"OpenAI streaming failed: {e}")
+            yield f"Error: {str(e)}"
     
     async def stop(self) -> bool:
         """Stop OpenAI agent execution"""
@@ -193,13 +244,21 @@ class CrewAIAgentWrapper(BaseAgentWrapper):
         """Initialize CrewAI agent"""
         try:
             from crewai import Agent, Task, Crew
+            import os
+            
+            # Set up environment variables for CrewAI to use OpenAI
+            if not os.getenv("OPENAI_API_KEY"):
+                openai_key = os.getenv("OPENAI_API_KEY")
+                if openai_key:
+                    os.environ["OPENAI_API_KEY"] = openai_key
             
             self._agent = Agent(
                 role=self.config.role or "Assistant",
                 goal=self.config.goal or "Help the user with their request",
                 backstory=self.config.backstory or "I am a helpful AI assistant",
                 verbose=False,
-                allow_delegation=False
+                allow_delegation=False,
+                llm_model=self.config.model  # Use the specified model
             )
             
             logger.info(f"CrewAI agent '{self.config.name}' initialized")
@@ -223,6 +282,7 @@ class CrewAIAgentWrapper(BaseAgentWrapper):
             
             # Create task for the agent
             from crewai import Task, Crew
+            import os
             
             task_description = prompt
             if context:
@@ -240,8 +300,19 @@ class CrewAIAgentWrapper(BaseAgentWrapper):
                 verbose=False
             )
             
-            # Simulate execution (real execution would require LLM setup)
-            response_content = f"CrewAI Agent '{self.config.name}' ({self._agent.role}) processed: {prompt[:50]}..."
+            # Check if we have real API keys to execute
+            openai_key = os.getenv("OPENAI_API_KEY")
+            if openai_key and openai_key.startswith("sk-"):
+                # Execute with real API
+                try:
+                    result = crew.kickoff()
+                    response_content = str(result)
+                except Exception as e:
+                    logger.warning(f"CrewAI real execution failed, falling back to simulation: {e}")
+                    response_content = f"[SIMULATED] CrewAI Agent '{self.config.name}' ({self._agent.role}) processed: {prompt[:50]}..."
+            else:
+                # Simulate execution
+                response_content = f"[SIMULATED] CrewAI Agent '{self.config.name}' ({self._agent.role}) processed: {prompt[:50]}..."
             
             self.status = AgentStatus.COMPLETED
             return AgentResponse(
@@ -252,6 +323,7 @@ class CrewAIAgentWrapper(BaseAgentWrapper):
             
         except Exception as e:
             self.status = AgentStatus.FAILED
+            logger.error(f"CrewAI execution failed: {e}")
             return AgentResponse(
                 content="",
                 status=AgentStatus.FAILED,

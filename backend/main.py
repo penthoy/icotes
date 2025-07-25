@@ -15,6 +15,7 @@ import json
 import os
 import io
 import sys
+import time
 import argparse
 import contextlib
 from typing import List, Dict, Any, Optional
@@ -35,7 +36,7 @@ logger = logging.getLogger(__name__)
 try:
     from icpy.api import get_websocket_api, shutdown_websocket_api, get_rest_api, shutdown_rest_api
     from icpy.core.connection_manager import get_connection_manager
-    from icpy.services import get_workspace_service, get_filesystem_service, get_terminal_service
+    from icpy.services import get_workspace_service, get_filesystem_service, get_terminal_service, get_agent_service, get_chat_service
     from icpy.services.clipboard_service import clipboard_service
     ICPY_AVAILABLE = True
     logger.info("icpy modules loaded successfully")
@@ -978,6 +979,267 @@ async def legacy_websocket_endpoint(websocket: WebSocket):
     except Exception as e:
         logger.error(f"Legacy WebSocket error: {e}")
         manager.disconnect(websocket)
+
+# Agent WebSocket endpoints
+@app.websocket("/ws/agents/{session_id}/stream")
+async def agent_stream_websocket(websocket: WebSocket, session_id: str):
+    """WebSocket endpoint for real-time agent output streaming."""
+    if not ICPY_AVAILABLE:
+        await websocket.close(code=1011, reason="icpy services not available")
+        return
+    
+    try:
+        await websocket.accept()
+        
+        # Get agent service
+        agent_service = await get_agent_service()
+        
+        # Verify agent session exists
+        session = agent_service.get_agent_session(session_id)
+        if not session:
+            await websocket.close(code=1008, reason="Agent session not found")
+            return
+        
+        # Connect to message broker for agent stream events
+        websocket_api = await get_websocket_api()
+        connection_id = await websocket_api.connect_websocket(websocket)
+        
+        # Subscribe to agent stream topic
+        message_broker = await get_message_broker()
+        await message_broker.subscribe(f"agent.{session_id}.stream", 
+                                     lambda msg: websocket_api.send_to_connection(connection_id, msg.payload))
+        
+        # Send initial session info
+        await websocket.send_json({
+            "type": "agent_session_info",
+            "session": session.to_dict()
+        })
+        
+        # Keep connection alive
+        while True:
+            try:
+                # Wait for ping/pong or other control messages
+                message = await websocket.receive_text()
+                data = json.loads(message)
+                
+                if data.get("type") == "ping":
+                    await websocket.send_json({"type": "pong"})
+                elif data.get("type") == "get_status":
+                    # Send current session status
+                    updated_session = agent_service.get_agent_session(session_id)
+                    if updated_session:
+                        await websocket.send_json({
+                            "type": "agent_status",
+                            "session": updated_session.to_dict()
+                        })
+                    
+            except WebSocketDisconnect:
+                break
+            except Exception as e:
+                logger.error(f"Agent stream WebSocket error: {e}")
+                break
+        
+        # Cleanup
+        await websocket_api.disconnect_websocket(connection_id)
+        
+    except Exception as e:
+        logger.error(f"Agent stream WebSocket initialization error: {e}")
+        await websocket.close(code=1011, reason="Internal server error")
+
+
+@app.websocket("/ws/workflows/{session_id}/monitor")
+async def workflow_monitor_websocket(websocket: WebSocket, session_id: str):
+    """WebSocket endpoint for real-time workflow monitoring."""
+    if not ICPY_AVAILABLE:
+        await websocket.close(code=1011, reason="icpy services not available")
+        return
+    
+    try:
+        await websocket.accept()
+        
+        # Get agent service
+        agent_service = await get_agent_service()
+        
+        # Verify workflow session exists
+        session = agent_service.get_workflow_session(session_id)
+        if not session:
+            await websocket.close(code=1008, reason="Workflow session not found")
+            return
+        
+        # Connect to message broker for workflow events
+        websocket_api = await get_websocket_api()
+        connection_id = await websocket_api.connect_websocket(websocket)
+        
+        # Subscribe to workflow events
+        message_broker = await get_message_broker()
+        await message_broker.subscribe(f"workflow.{session_id}.*", 
+                                     lambda msg: websocket_api.send_to_connection(connection_id, msg.payload))
+        
+        # Send initial session info
+        await websocket.send_json({
+            "type": "workflow_session_info",
+            "session": session.to_dict()
+        })
+        
+        # Keep connection alive and handle control messages
+        while True:
+            try:
+                message = await websocket.receive_text()
+                data = json.loads(message)
+                
+                if data.get("type") == "ping":
+                    await websocket.send_json({"type": "pong"})
+                elif data.get("type") == "get_status":
+                    # Send current workflow status
+                    updated_session = agent_service.get_workflow_session(session_id)
+                    if updated_session:
+                        await websocket.send_json({
+                            "type": "workflow_status",
+                            "session": updated_session.to_dict()
+                        })
+                elif data.get("type") == "control":
+                    # Handle workflow control commands
+                    action = data.get("action")
+                    if action == "pause":
+                        await agent_service.pause_workflow(session_id)
+                    elif action == "resume":
+                        await agent_service.resume_workflow(session_id)
+                    elif action == "cancel":
+                        await agent_service.cancel_workflow(session_id)
+                    
+                    # Send updated status
+                    updated_session = agent_service.get_workflow_session(session_id)
+                    if updated_session:
+                        await websocket.send_json({
+                            "type": "workflow_status",
+                            "session": updated_session.to_dict()
+                        })
+                    
+            except WebSocketDisconnect:
+                break
+            except Exception as e:
+                logger.error(f"Workflow monitor WebSocket error: {e}")
+                break
+        
+        # Cleanup
+        await websocket_api.disconnect_websocket(connection_id)
+        
+    except Exception as e:
+        logger.error(f"Workflow monitor WebSocket initialization error: {e}")
+        await websocket.close(code=1011, reason="Internal server error")
+
+
+# Chat WebSocket endpoint
+@app.websocket("/ws/chat")
+async def chat_websocket(websocket: WebSocket):
+    """WebSocket endpoint for real-time chat with AI agents."""
+    if not ICPY_AVAILABLE:
+        await websocket.close(code=1011, reason="icpy services not available")
+        return
+    
+    try:
+        await websocket.accept()
+        
+        # Get chat service
+        chat_service = get_chat_service()
+        
+        # Connect to websocket API for connection management
+        websocket_api = await get_websocket_api()
+        connection_id = await websocket_api.connect_websocket(websocket)
+        
+        # Connect to chat service
+        session_id = await chat_service.connect_websocket(connection_id)
+        
+        # Send initial connection confirmation
+        await websocket.send_json({
+            "type": "connected",
+            "session_id": session_id,
+            "timestamp": time.time()
+        })
+        
+        # Handle incoming messages
+        while True:
+            try:
+                message = await websocket.receive_text()
+                data = json.loads(message)
+                
+                message_type = data.get("type")
+                
+                if message_type == "message":
+                    # Handle user message
+                    content = data.get("content", "")
+                    metadata = data.get("metadata", {})
+                    
+                    if content.strip():
+                        await chat_service.handle_user_message(
+                            connection_id, 
+                            content, 
+                            metadata
+                        )
+                
+                elif message_type == "ping":
+                    # Respond to ping
+                    await websocket.send_json({
+                        "type": "pong",
+                        "timestamp": time.time()
+                    })
+                
+                elif message_type == "get_status":
+                    # Send current agent status
+                    status = await chat_service.get_agent_status()
+                    await websocket.send_json({
+                        "type": "status",
+                        "agent": status.to_dict(),
+                        "timestamp": time.time()
+                    })
+                
+                elif message_type == "get_config":
+                    # Send current chat configuration
+                    await websocket.send_json({
+                        "type": "config",
+                        "config": chat_service.config.to_dict(),
+                        "timestamp": time.time()
+                    })
+                
+                elif message_type == "update_config":
+                    # Update chat configuration
+                    config_updates = data.get("config", {})
+                    await chat_service.update_config(config_updates)
+                    
+                    await websocket.send_json({
+                        "type": "config_updated",
+                        "config": chat_service.config.to_dict(),
+                        "timestamp": time.time()
+                    })
+                
+                else:
+                    logger.warning(f"Unknown chat message type: {message_type}")
+                    
+            except WebSocketDisconnect:
+                break
+            except json.JSONDecodeError:
+                logger.error("Invalid JSON received in chat WebSocket")
+                await websocket.send_json({
+                    "type": "error",
+                    "message": "Invalid JSON format",
+                    "timestamp": time.time()
+                })
+            except Exception as e:
+                logger.error(f"Chat WebSocket message error: {e}")
+                await websocket.send_json({
+                    "type": "error",
+                    "message": "Internal server error",
+                    "timestamp": time.time()
+                })
+        
+        # Cleanup
+        await chat_service.disconnect_websocket(connection_id)
+        await websocket_api.disconnect_websocket(connection_id)
+        
+    except Exception as e:
+        logger.error(f"Chat WebSocket initialization error: {e}")
+        await websocket.close(code=1011, reason="Internal server error")
+
 
 # Serve React app for production
 @app.get("/")

@@ -38,7 +38,7 @@ import uvicorn
 from ..core.message_broker import get_message_broker
 from ..core.connection_manager import get_connection_manager
 from ..core.protocol import JsonRpcRequest, JsonRpcResponse, ProtocolError, ErrorCode
-from ..services import get_workspace_service, get_filesystem_service, get_terminal_service
+from ..services import get_workspace_service, get_filesystem_service, get_terminal_service, get_agent_service, get_chat_service, get_chat_service
 
 logger = logging.getLogger(__name__)
 
@@ -127,6 +127,52 @@ class TerminalResizeRequest(BaseModel):
     cols: int = Field(..., description="Terminal columns")
 
 
+class AgentCreateRequest(BaseModel):
+    """Request model for agent creation."""
+    name: str = Field(..., description="Agent name")
+    framework: str = Field("openai", description="AI framework to use")
+    role: Optional[str] = Field(None, description="Agent role")
+    goal: Optional[str] = Field(None, description="Agent goal")
+    backstory: Optional[str] = Field(None, description="Agent backstory")
+    capabilities: Optional[List[str]] = Field(default_factory=list, description="Agent capabilities")
+    memory_enabled: Optional[bool] = Field(True, description="Enable memory")
+    context_window: Optional[int] = Field(4000, description="Context window size")
+    temperature: Optional[float] = Field(0.7, description="Temperature setting")
+    model: Optional[str] = Field("gpt-4", description="Model to use")
+    max_tokens: Optional[int] = Field(None, description="Maximum tokens")
+    custom_config: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Custom configuration")
+    session_metadata: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Session metadata")
+
+
+class AgentFromTemplateRequest(BaseModel):
+    """Request model for creating agent from template."""
+    template_name: str = Field(..., description="Template name")
+    agent_name: str = Field(..., description="Agent name")
+    custom_config: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Custom configuration")
+    session_metadata: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Session metadata")
+
+
+class AgentTaskRequest(BaseModel):
+    """Request model for agent task execution."""
+    task: str = Field(..., description="Task to execute")
+    context: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Task context")
+
+
+class WorkflowCreateRequest(BaseModel):
+    """Request model for workflow creation."""
+    name: str = Field(..., description="Workflow name")
+    description: Optional[str] = Field(None, description="Workflow description")
+    tasks: List[Dict[str, Any]] = Field(..., description="Workflow tasks")
+    session_metadata: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Session metadata")
+
+
+class WorkflowFromTemplateRequest(BaseModel):
+    """Request model for creating workflow from template."""
+    template_name: str = Field(..., description="Template name")
+    workflow_name: str = Field(..., description="Workflow name")
+    session_metadata: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Session metadata")
+
+
 class RestAPI:
     """HTTP REST API for icpy Backend.
     
@@ -149,6 +195,8 @@ class RestAPI:
         self.workspace_service = None
         self.filesystem_service = None
         self.terminal_service = None
+        self.agent_service = None
+        self.chat_service = None
         
         # Statistics
         self.stats = {
@@ -182,6 +230,8 @@ class RestAPI:
         self.workspace_service = await get_workspace_service()
         self.filesystem_service = await get_filesystem_service()
         self.terminal_service = await get_terminal_service()
+        self.agent_service = await get_agent_service()
+        self.chat_service = get_chat_service()
         
         # Publish initialization event
         await self.message_broker.publish('rest_api.service_initialized', {
@@ -257,7 +307,9 @@ class RestAPI:
                         "connection_manager": self.connection_manager is not None,
                         "workspace_service": self.workspace_service is not None,
                         "filesystem_service": self.filesystem_service is not None,
-                        "terminal_service": self.terminal_service is not None
+                        "terminal_service": self.terminal_service is not None,
+                        "agent_service": self.agent_service is not None,
+                        "chat_service": self.chat_service is not None
                     },
                     "stats": self.stats
                 }
@@ -301,6 +353,12 @@ class RestAPI:
         
         # Terminal endpoints
         self._register_terminal_routes()
+        
+        # Agent endpoints
+        self._register_agent_routes()
+        
+        # Chat endpoints
+        self._register_chat_routes()
         
         # Documentation endpoints
         self._register_documentation_routes()
@@ -594,6 +652,451 @@ class RestAPI:
                 return SuccessResponse(message="Terminal deleted successfully")
             except Exception as e:
                 logger.error(f"Error deleting terminal: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+
+    def _register_agent_routes(self):
+        """Register agent-related routes."""
+        
+        # List all agent sessions
+        @self.app.get("/api/agents")
+        async def list_agent_sessions():
+            """List all agent sessions."""
+            try:
+                sessions = self.agent_service.get_agent_sessions()
+                return SuccessResponse(
+                    data=[session.to_dict() for session in sessions],
+                    message=f"Found {len(sessions)} agent sessions"
+                )
+            except Exception as e:
+                logger.error(f"Failed to list agent sessions: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+        
+        # Get specific agent session
+        @self.app.get("/api/agents/{session_id}")
+        async def get_agent_session(session_id: str):
+            """Get specific agent session."""
+            try:
+                session = self.agent_service.get_agent_session(session_id)
+                if not session:
+                    raise HTTPException(status_code=404, detail="Agent session not found")
+                
+                return SuccessResponse(
+                    data=session.to_dict(),
+                    message="Agent session retrieved"
+                )
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error(f"Failed to get agent session {session_id}: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+        
+        # Create agent
+        @self.app.post("/api/agents")
+        async def create_agent(request: AgentCreateRequest):
+            """Create a new agent."""
+            try:
+                from ..agent.base_agent import AgentConfig
+                
+                config = AgentConfig(
+                    name=request.name,
+                    framework=request.framework,
+                    role=request.role,
+                    goal=request.goal,
+                    backstory=request.backstory,
+                    capabilities=request.capabilities,
+                    memory_enabled=request.memory_enabled,
+                    context_window=request.context_window,
+                    temperature=request.temperature,
+                    model=request.model,
+                    max_tokens=request.max_tokens,
+                    custom_config=request.custom_config
+                )
+                
+                session_id = await self.agent_service.create_agent(config, request.session_metadata)
+                session = self.agent_service.get_agent_session(session_id)
+                
+                return SuccessResponse(
+                    data=session.to_dict(),
+                    message="Agent created successfully"
+                )
+            except Exception as e:
+                logger.error(f"Failed to create agent: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+        
+        # Create agent from template
+        @self.app.post("/api/agents/from-template")
+        async def create_agent_from_template(request: AgentFromTemplateRequest):
+            """Create agent from template."""
+            try:
+                session_id = await self.agent_service.create_agent_from_template(
+                    request.template_name,
+                    request.agent_name,
+                    request.custom_config,
+                    request.session_metadata
+                )
+                session = self.agent_service.get_agent_session(session_id)
+                
+                return SuccessResponse(
+                    data=session.to_dict(),
+                    message=f"Agent created from template '{request.template_name}'"
+                )
+            except Exception as e:
+                logger.error(f"Failed to create agent from template: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+        
+        # Start agent
+        @self.app.post("/api/agents/{session_id}/start")
+        async def start_agent(session_id: str):
+            """Start an agent."""
+            try:
+                success = await self.agent_service.start_agent(session_id)
+                if not success:
+                    raise HTTPException(status_code=400, detail="Failed to start agent")
+                
+                session = self.agent_service.get_agent_session(session_id)
+                return SuccessResponse(
+                    data=session.to_dict(),
+                    message="Agent started successfully"
+                )
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error(f"Failed to start agent {session_id}: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+        
+        # Stop agent
+        @self.app.post("/api/agents/{session_id}/stop")
+        async def stop_agent(session_id: str):
+            """Stop an agent."""
+            try:
+                success = await self.agent_service.stop_agent(session_id)
+                if not success:
+                    raise HTTPException(status_code=400, detail="Failed to stop agent")
+                
+                session = self.agent_service.get_agent_session(session_id)
+                return SuccessResponse(
+                    data=session.to_dict(),
+                    message="Agent stopped successfully"
+                )
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error(f"Failed to stop agent {session_id}: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+        
+        # Execute agent task
+        @self.app.post("/api/agents/{session_id}/execute")
+        async def execute_agent_task(session_id: str, request: AgentTaskRequest):
+            """Execute a task with an agent."""
+            try:
+                result = await self.agent_service.execute_agent_task(
+                    session_id, request.task, request.context
+                )
+                
+                return SuccessResponse(
+                    data={"result": result},
+                    message="Task executed successfully"
+                )
+            except Exception as e:
+                logger.error(f"Failed to execute task for agent {session_id}: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+        
+        # Destroy agent
+        @self.app.delete("/api/agents/{session_id}")
+        async def destroy_agent(session_id: str):
+            """Destroy an agent session."""
+            try:
+                success = await self.agent_service.destroy_agent(session_id)
+                if not success:
+                    raise HTTPException(status_code=400, detail="Failed to destroy agent")
+                
+                return SuccessResponse(message="Agent destroyed successfully")
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error(f"Failed to destroy agent {session_id}: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+        
+        # List all workflow sessions
+        @self.app.get("/api/workflows")
+        async def list_workflow_sessions():
+            """List all workflow sessions."""
+            try:
+                sessions = self.agent_service.get_workflow_sessions()
+                return SuccessResponse(
+                    data=[session.to_dict() for session in sessions],
+                    message=f"Found {len(sessions)} workflow sessions"
+                )
+            except Exception as e:
+                logger.error(f"Failed to list workflow sessions: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+        
+        # Get specific workflow session
+        @self.app.get("/api/workflows/{session_id}")
+        async def get_workflow_session(session_id: str):
+            """Get specific workflow session."""
+            try:
+                session = self.agent_service.get_workflow_session(session_id)
+                if not session:
+                    raise HTTPException(status_code=404, detail="Workflow session not found")
+                
+                return SuccessResponse(
+                    data=session.to_dict(),
+                    message="Workflow session retrieved"
+                )
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error(f"Failed to get workflow session {session_id}: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+        
+        # Create workflow
+        @self.app.post("/api/workflows")
+        async def create_workflow(request: WorkflowCreateRequest):
+            """Create a new workflow."""
+            try:
+                from ..agent.workflows.workflow_engine import WorkflowConfig, WorkflowTask
+                
+                # Convert task definitions to WorkflowTask objects
+                tasks = []
+                for task_def in request.tasks:
+                    task = WorkflowTask(
+                        name=task_def.get('name', ''),
+                        task_content=task_def.get('content', ''),
+                        dependencies=task_def.get('dependencies', []),
+                        # Add other task properties as needed
+                    )
+                    tasks.append(task)
+                
+                config = WorkflowConfig(
+                    name=request.name,
+                    description=request.description or f"Workflow: {request.name}",
+                    tasks=tasks
+                )
+                
+                session_id = await self.agent_service.create_workflow(config, request.session_metadata)
+                session = self.agent_service.get_workflow_session(session_id)
+                
+                return SuccessResponse(
+                    data=session.to_dict(),
+                    message="Workflow created successfully"
+                )
+            except Exception as e:
+                logger.error(f"Failed to create workflow: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+        
+        # Create workflow from template
+        @self.app.post("/api/workflows/from-template")
+        async def create_workflow_from_template(request: WorkflowFromTemplateRequest):
+            """Create workflow from template."""
+            try:
+                session_id = await self.agent_service.create_workflow_from_template(
+                    request.template_name,
+                    request.workflow_name,
+                    request.session_metadata
+                )
+                session = self.agent_service.get_workflow_session(session_id)
+                
+                return SuccessResponse(
+                    data=session.to_dict(),
+                    message=f"Workflow created from template '{request.template_name}'"
+                )
+            except Exception as e:
+                logger.error(f"Failed to create workflow from template: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+        
+        # Execute workflow
+        @self.app.post("/api/workflows/{session_id}/execute")
+        async def execute_workflow(session_id: str):
+            """Execute a workflow."""
+            try:
+                success = await self.agent_service.execute_workflow(session_id)
+                if not success:
+                    raise HTTPException(status_code=400, detail="Failed to execute workflow")
+                
+                session = self.agent_service.get_workflow_session(session_id)
+                return SuccessResponse(
+                    data=session.to_dict(),
+                    message="Workflow executed successfully"
+                )
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error(f"Failed to execute workflow {session_id}: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+        
+        # Pause workflow
+        @self.app.post("/api/workflows/{session_id}/pause")
+        async def pause_workflow(session_id: str):
+            """Pause a workflow."""
+            try:
+                success = await self.agent_service.pause_workflow(session_id)
+                if not success:
+                    raise HTTPException(status_code=400, detail="Failed to pause workflow")
+                
+                session = self.agent_service.get_workflow_session(session_id)
+                return SuccessResponse(
+                    data=session.to_dict(),
+                    message="Workflow paused successfully"
+                )
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error(f"Failed to pause workflow {session_id}: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+        
+        # Resume workflow
+        @self.app.post("/api/workflows/{session_id}/resume")
+        async def resume_workflow(session_id: str):
+            """Resume a workflow."""
+            try:
+                success = await self.agent_service.resume_workflow(session_id)
+                if not success:
+                    raise HTTPException(status_code=400, detail="Failed to resume workflow")
+                
+                session = self.agent_service.get_workflow_session(session_id)
+                return SuccessResponse(
+                    data=session.to_dict(),
+                    message="Workflow resumed successfully"
+                )
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error(f"Failed to resume workflow {session_id}: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+        
+        # Cancel workflow
+        @self.app.post("/api/workflows/{session_id}/cancel")
+        async def cancel_workflow(session_id: str):
+            """Cancel a workflow."""
+            try:
+                success = await self.agent_service.cancel_workflow(session_id)
+                if not success:
+                    raise HTTPException(status_code=400, detail="Failed to cancel workflow")
+                
+                return SuccessResponse(message="Workflow cancelled successfully")
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error(f"Failed to cancel workflow {session_id}: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+        
+        # Get available templates
+        @self.app.get("/api/templates")
+        async def get_available_templates():
+            """Get available agent and workflow templates."""
+            try:
+                templates = self.agent_service.get_available_templates()
+                return SuccessResponse(
+                    data=templates,
+                    message="Templates retrieved successfully"
+                )
+            except Exception as e:
+                logger.error(f"Failed to get templates: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+        
+        # Get resource usage
+        @self.app.get("/api/agents/stats")
+        async def get_agent_service_stats():
+            """Get agent service resource usage and statistics."""
+            try:
+                stats = self.agent_service.get_resource_usage()
+                return SuccessResponse(
+                    data=stats,
+                    message="Agent service statistics retrieved"
+                )
+            except Exception as e:
+                logger.error(f"Failed to get agent service stats: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+
+    def _register_chat_routes(self):
+        """Register chat-related routes."""
+        
+        # Get message history
+        @self.app.get("/api/chat/messages")
+        async def get_chat_messages(session_id: Optional[str] = None, limit: int = 50, offset: int = 0):
+            """Get chat message history with pagination."""
+            try:
+                messages = await self.chat_service.get_message_history(session_id, limit, offset)
+                return SuccessResponse(
+                    data=[message.to_dict() for message in messages],
+                    message=f"Retrieved {len(messages)} messages"
+                )
+            except Exception as e:
+                logger.error(f"Failed to get chat messages: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+        
+        # Get chat configuration
+        @self.app.get("/api/chat/config")
+        async def get_chat_config():
+            """Get current chat configuration."""
+            try:
+                return SuccessResponse(
+                    data=self.chat_service.config.to_dict(),
+                    message="Chat configuration retrieved"
+                )
+            except Exception as e:
+                logger.error(f"Failed to get chat config: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+        
+        # Update chat configuration
+        @self.app.post("/api/chat/config")
+        async def update_chat_config(config_updates: Dict[str, Any]):
+            """Update chat configuration."""
+            try:
+                await self.chat_service.update_config(config_updates)
+                return SuccessResponse(
+                    data=self.chat_service.config.to_dict(),
+                    message="Chat configuration updated"
+                )
+            except Exception as e:
+                logger.error(f"Failed to update chat config: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+        
+        # Get agent status for chat
+        @self.app.get("/api/agents/status")
+        async def get_agent_status():
+            """Get current agent status for chat."""
+            try:
+                status = await self.chat_service.get_agent_status()
+                return SuccessResponse(
+                    data=status.to_dict(),
+                    message="Agent status retrieved"
+                )
+            except Exception as e:
+                logger.error(f"Failed to get agent status: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+        
+        # Clear message history
+        @self.app.post("/api/chat/clear")
+        async def clear_chat_history(session_id: Optional[str] = None):
+            """Clear chat message history."""
+            try:
+                success = await self.chat_service.clear_message_history(session_id)
+                if success:
+                    return SuccessResponse(
+                        message=f"Chat history cleared for session: {session_id or 'all'}"
+                    )
+                else:
+                    raise HTTPException(status_code=500, detail="Failed to clear chat history")
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error(f"Failed to clear chat history: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+        
+        # Get chat service statistics
+        @self.app.get("/api/chat/stats")
+        async def get_chat_stats():
+            """Get chat service statistics."""
+            try:
+                stats = self.chat_service.get_stats()
+                return SuccessResponse(
+                    data=stats,
+                    message="Chat service statistics retrieved"
+                )
+            except Exception as e:
+                logger.error(f"Failed to get chat stats: {e}")
                 raise HTTPException(status_code=500, detail=str(e))
 
     def _register_documentation_routes(self):
