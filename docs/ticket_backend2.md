@@ -295,14 +295,17 @@ async def create_file(request: FileOperationRequest):
 
 ### Test Commands Used:
 ```bash
-# All tests run in virtual environment
-cd backend && source venv/bin/activate
+### Test Commands Used:
+```bash
+# All tests use UV environment
+cd backend
 
 # Reproduce original issue
-python test_directory_issue.py
+uv run python test_directory_issue.py
 
 # Comprehensive functionality tests  
-python test_comprehensive.py
+uv run python test_comprehensive.py
+```
 
 # Ticket acceptance criteria validation
 python test_ticket_requirements.py

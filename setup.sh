@@ -70,7 +70,7 @@ install_python() {
     fi
     
     sudo apt-get update
-    sudo apt-get install -y python3 python3-pip python3-venv python3-full
+    sudo apt-get install -y python3 python3-pip python3-full
     
     # Verify installation
     if command_exists python3 && command_exists pip3; then
@@ -84,22 +84,40 @@ install_python() {
 
 # Function to setup backend
 setup_backend() {
-    print_status "Setting up backend..."
+    print_status "Setting up backend with UV package manager..."
     
     cd backend
     
-    # Create virtual environment
-    if [ ! -d "venv" ]; then
-        print_status "Creating Python virtual environment..."
-        python3 -m venv venv
+    # Install UV if not available
+    if ! command_exists uv; then
+        print_status "Installing UV package manager..."
+        curl -LsSf https://astral.sh/uv/install.sh | sh
+        export PATH="$HOME/.local/bin:$PATH"
+        
+        if ! command_exists uv; then
+            print_warning "UV installation failed, falling back to traditional pip..."
+            python3 -m pip install -r requirements.txt
+        else
+            print_success "UV installed successfully"
+            # Initialize UV project if needed
+            if [ ! -f "pyproject.toml" ]; then
+                uv init --no-readme --no-pin-python
+            fi
+            # Install dependencies with UV
+            uv sync --frozen --no-dev || uv pip install -r requirements.txt
+        fi
+    else
+        print_status "UV already installed, using for dependency management..."
+        # Initialize UV project if needed
+        if [ ! -f "pyproject.toml" ]; then
+            uv init --no-readme --no-pin-python
+        fi
+        # Install dependencies with UV
+        print_status "Installing Python dependencies with UV..."
+        uv sync --frozen --no-dev || uv pip install -r requirements.txt
     fi
     
-    # Activate virtual environment and install dependencies
-    print_status "Installing Python dependencies..."
-    source venv/bin/activate
-    pip install -r requirements.txt
-    
-    print_success "Backend setup completed"
+    print_success "Backend setup completed with modern dependency management"
     cd ..
 }
 

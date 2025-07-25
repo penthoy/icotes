@@ -36,17 +36,14 @@ A FastAPI backend for icotes that provides code execution capabilities and WebSo
 2. Set up project environment:
    ```bash
    cd backend
-   uv venv
-   uv pip install -r requirements.txt
+   uv sync --frozen --no-dev  # Install from requirements.txt
    ```
 
-**Alternative legacy approach:**
+**Alternative manual approach (if uv is not available):**
 
-1. Install Python 3.8+ and create virtual environment manually:
+1. Install Python 3.11+ and pip:
    ```bash
    cd backend
-   python3 -m venv venv
-   source venv/bin/activate  # Linux/Mac
    pip install -r requirements.txt
    ```
 
@@ -70,11 +67,10 @@ uv run pytest tests/icpy/test_agentic_frameworks.py -v
 uv run python validate_step_6_1.py
 ```
 
-**Legacy approach:**
+**Alternative approach (without uv):**
 
 ```bash
 cd backend
-source venv/bin/activate
 
 # Then run any Python commands:
 python main.py

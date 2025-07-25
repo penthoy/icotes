@@ -1,10 +1,11 @@
 #!/bin/bash
 set -e
 
-# icotes Production Startup Script
+# icotes Production Startup Script (Modern UV Edition)
 # This script can be used for VM deployment or local production setup
+# Modernized to use uv package manager for faster Python dependency management
 
-echo "🚀 Starting icotes in production mode..."
+echo "🚀 Starting icotes in production mode (with UV support)..."
 
 # Function to check if running as root
 check_root() {
@@ -202,6 +203,22 @@ if [[ $PYTHON_MAJOR -lt 3 ]] || [[ $PYTHON_MAJOR -eq 3 && $PYTHON_MINOR -lt 11 ]
     echo "⚠️  Warning: Python version $PYTHON_VERSION detected. Python 3.11+ is recommended."
 fi
 
+# Check if uv is installed (modern Python package manager)
+if ! command -v uv &> /dev/null; then
+    echo "📦 Installing uv package manager (modern Python dependency management)..."
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    export PATH="$HOME/.local/bin:$PATH"
+    
+    # Check if uv is now available
+    if ! command -v uv &> /dev/null; then
+        echo "❌ Error: Failed to install uv. Please install manually or use traditional pip."
+        echo "   Fallback: python3 -m pip install --user uv"
+        exit 1
+    fi
+    
+    echo "✅ uv installed successfully"
+fi
+
 # Install Node.js dependencies if node_modules doesn't exist
 if [ ! -d "node_modules" ]; then
     echo "📦 Installing Node.js dependencies..."
@@ -214,33 +231,29 @@ if [ ! -d "dist" ]; then
     npm run build
 fi
 
-# Setup Python environment
-echo "🐍 Setting up Python environment..."
+# Setup Python environment with uv
+echo "🐍 Setting up Python environment with uv..."
 cd backend
 
-# Create virtual environment if it doesn't exist
-if [ ! -d "venv" ]; then
-    echo "🏗️  Creating Python virtual environment..."
-    python3 -m venv venv
+# Initialize uv project if pyproject.toml doesn't exist
+if [ ! -f "pyproject.toml" ]; then
+    echo "🏗️  Initializing uv project..."
+    uv init --no-readme --no-pin-python
 fi
 
-# Activate virtual environment
-echo "⚡ Activating virtual environment..."
-source venv/bin/activate
-
-# Install/update Python dependencies
-echo "📦 Installing Python dependencies..."
-if command -v pip &> /dev/null; then
-    pip install --upgrade pip
-    pip install -r requirements.txt
+# Sync dependencies using uv (much faster than pip)
+echo "📦 Installing Python dependencies with uv..."
+if [ -f "requirements.txt" ]; then
+    echo "   Using requirements.txt for dependency installation"
+    uv sync --frozen --no-dev || uv pip install -r requirements.txt
 else
-    echo "❌ Error: pip not available in virtual environment"
+    echo "❌ Error: requirements.txt not found"
     exit 1
 fi
 
 # Check if all dependencies are installed
 echo "✅ Verifying Python dependencies..."
-python3 -c "
+uv run python3 -c "
 import sys
 required_packages = ['fastapi', 'uvicorn', 'websockets', 'pydantic']
 missing_packages = []
@@ -256,7 +269,7 @@ if missing_packages:
     print(f'❌ Missing packages: {missing_packages}')
     sys.exit(1)
 else:
-    print('✅ All required packages are installed')
+    print('✅ All required packages are installed (via uv)')
 "
 
 # Start the application
@@ -275,7 +288,7 @@ if [[ "$DAEMON_MODE" == "true" ]]; then
     echo ""
     
     # Start in background and save PID
-    nohup python3 -m uvicorn main:app \
+    nohup uv run python3 -m uvicorn main:app \
         --host "$BACKEND_HOST" \
         --port "$BACKEND_PORT" \
         --workers "$WORKERS" \
@@ -331,8 +344,8 @@ else
     echo "=============================================="
     echo ""
     
-    # Start in foreground
-    python3 -m uvicorn main:app \
+    # Start in foreground with uv
+    uv run python3 -m uvicorn main:app \
         --host "$BACKEND_HOST" \
         --port "$BACKEND_PORT" \
         --workers "$WORKERS" \

@@ -31,16 +31,17 @@ cd ilaborcode
 ```bash
 # Install dependencies
 sudo apt update
-sudo apt install -y nodejs npm python3 python3-pip python3-venv
+sudo apt install -y nodejs npm python3 python3-pip
+
+# Install UV package manager (recommended)
+curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Install frontend dependencies
 npm install
 
-# Setup backend
+# Setup backend (UV automatically handles Python dependencies)
 cd backend
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
+uv sync
 cd ..
 
 # Start development servers

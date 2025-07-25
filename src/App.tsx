@@ -44,7 +44,7 @@ function App() {
           <Route path="/simple-terminal" element={<SimpleTerminal />} />
           <Route path="/simple-editor" element={<SimpleEditor />} />
           <Route path="/simple-explorer" element={<SimpleExplorer />} />
-          <Route path="/simple-chat" element={<SimpleChat />} />
+          <Route path="/simple-chat" element={<div className="h-screen w-screen"><SimpleChat /></div>} />
           <Route path="/icui-test" element={<ICUITest />} />
           <Route path="/icui-test2" element={<ICUITest2 />} />
           <Route path="/icui-test3" element={<ICUITest3 />} />

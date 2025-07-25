@@ -145,6 +145,7 @@ class ChatService:
         # Chat sessions and configuration
         self.chat_sessions: Dict[str, str] = {}  # connection_id -> session_id
         self.active_connections: Set[str] = set()
+        self.websocket_connections: Dict[str, Any] = {}  # connection_id -> websocket
         self.config = ChatConfig()
         
         # Initialize database (only if event loop is running)
@@ -198,10 +199,9 @@ class ChatService:
         self.chat_sessions[websocket_id] = session_id
         self.active_connections.add(websocket_id)
         
-        # Send initial status (only if connection manager is available and properly initialized)
+        # Send initial status
         try:
-            if hasattr(self.connection_manager, 'send_to_connection') and callable(self.connection_manager.send_to_connection):
-                await self._send_agent_status(websocket_id)
+            await self._send_agent_status(websocket_id)
         except Exception as e:
             logger.warning(f"Could not send initial agent status: {e}")
         
@@ -215,6 +215,17 @@ class ChatService:
             logger.info(f"Chat WebSocket disconnected: {websocket_id} from session {session_id}")
         
         self.active_connections.discard(websocket_id)
+    
+    async def _send_websocket_message(self, websocket_id: str, message_data: Dict[str, Any]):
+        """Send a message directly to a WebSocket connection"""
+        try:
+            if websocket_id in self.websocket_connections:
+                websocket = self.websocket_connections[websocket_id]
+                await websocket.send_json(message_data)
+            else:
+                logger.warning(f"WebSocket {websocket_id} not found in connections")
+        except Exception as e:
+            logger.error(f"Failed to send message to WebSocket {websocket_id}: {e}")
     
     async def handle_user_message(self, websocket_id: str, content: str, metadata: Dict[str, Any] = None) -> ChatMessage:
         """Handle a message from the user"""
@@ -245,31 +256,52 @@ class ChatService:
     
     async def _process_with_agent(self, user_message: ChatMessage):
         """Process user message with the configured agent"""
+        logger.info(f"🔄 Processing message with agent. Agent ID: {self.config.agent_id}")
         try:
             if not self.agent_service:
-                self.agent_service = get_agent_service()
+                logger.info("🔧 Getting agent service...")
+                self.agent_service = await get_agent_service()
+                logger.info(f"✅ Agent service obtained: {type(self.agent_service)}")
             
             if not self.config.agent_id:
-                # Send default response if no agent configured
+                logger.warning("⚠️ No agent ID configured, sending demo response")
+                # Send default response if no agent configured - simple echo/demo response
                 await self._send_ai_response(
                     user_message.session_id,
-                    "I'm sorry, no AI agent is currently configured. Please check your settings.",
+                    f"Echo: {user_message.content}\n\n(This is a demo response. To use AI agents, configure an agent in the system.)",
                     user_message.id
                 )
                 return
             
             # Send typing indicator
+            logger.info("📝 Sending typing indicator...")
             await self._send_typing_indicator(user_message.session_id, True)
             
             # Get agent session
-            agent_sessions = self.agent_service.list_agent_sessions()
+            logger.info("🔍 Getting agent sessions...")
+            agent_sessions = self.agent_service.get_agent_sessions()
+            logger.info(f"📋 Found {len(agent_sessions)} agent sessions")
+            
             agent_session = None
             for session in agent_sessions:
+                logger.info(f"🤖 Checking session - Agent ID: {session.agent_id}, Status: {session.status}, Name: {session.agent_name}")
                 if session.agent_id == self.config.agent_id:
                     agent_session = session
+                    logger.info(f"✅ Found matching agent session: {session.agent_name}")
                     break
             
-            if not agent_session or agent_session.status.value not in ['ready', 'running']:
+            if not agent_session:
+                logger.error(f"❌ No agent session found for agent_id: {self.config.agent_id}")
+                await self._send_ai_response(
+                    user_message.session_id,
+                    "I'm sorry, the AI agent is currently unavailable. Please try again later.",
+                    user_message.id
+                )
+                await self._send_typing_indicator(user_message.session_id, False)
+                return
+                
+            if agent_session.status.value not in ['ready', 'running']:
+                logger.error(f"❌ Agent session not ready. Status: {agent_session.status.value}")
                 await self._send_ai_response(
                     user_message.session_id,
                     "I'm sorry, the AI agent is currently unavailable. Please try again later.",
@@ -279,39 +311,65 @@ class ChatService:
                 return
             
             # Execute agent task
-            task_config = {
+            logger.info(f"🚀 Executing agent task for session: {agent_session.session_id}")
+            task_description = user_message.content  # Use the user's message as the task
+            task_context = {
                 'type': 'chat_response',
-                'user_message': user_message.content,
                 'session_id': user_message.session_id,
-                'system_prompt': self.config.system_prompt
+                'system_prompt': self.config.system_prompt,
+                'user_message': user_message.content
             }
+            logger.info(f"📝 Task description: {task_description}")
+            logger.info(f"📝 Task context: {task_context}")
             
             result = await self.agent_service.execute_agent_task(
                 agent_session.session_id,
-                task_config
+                task_description,
+                task_context
             )
+            logger.info(f"📤 Agent execution result: {result}")
             
-            # Send agent response
-            if result.get('success') and result.get('result'):
+            # Handle both dict and string results
+            if isinstance(result, dict):
+                # Send agent response
+                if result.get('success') and result.get('result'):
+                    logger.info(f"✅ Sending successful agent response: {result['result'][:100]}...")
+                    await self._send_ai_response(
+                        user_message.session_id,
+                        result['result'],
+                        user_message.id
+                    )
+                else:
+                    logger.error(f"❌ Agent execution failed. Result: {result}")
+                    await self._send_ai_response(
+                        user_message.session_id,
+                        f"I'm sorry, I encountered an error processing your message. Error details: {result}",
+                        user_message.id
+                    )
+            elif isinstance(result, str):
+                # Result is a string - this is the actual AI response content!
+                logger.info(f"✅ Sending successful agent response (string): {result[:100]}...")
                 await self._send_ai_response(
                     user_message.session_id,
-                    result['result'],
+                    result,
                     user_message.id
                 )
             else:
+                logger.error(f"❌ Unexpected result type: {type(result)}")
                 await self._send_ai_response(
                     user_message.session_id,
-                    "I'm sorry, I encountered an error processing your message.",
+                    f"I'm sorry, I encountered an unexpected error. Result type: {type(result)}",
                     user_message.id
                 )
             
             await self._send_typing_indicator(user_message.session_id, False)
             
         except Exception as e:
-            logger.error(f"Error processing message with agent: {e}")
+            logger.error(f"💥 Error processing message with agent: {e}")
+            logger.exception("Full traceback:")
             await self._send_ai_response(
                 user_message.session_id,
-                "I'm sorry, I encountered an error. Please try again.",
+                f"I'm sorry, I encountered an error. Please try again. Error: {str(e)}",
                 user_message.id
             )
             await self._send_typing_indicator(user_message.session_id, False)
@@ -344,14 +402,10 @@ class ChatService:
                 'timestamp': datetime.now(timezone.utc).isoformat()
             }
             
-            if hasattr(self.connection_manager, 'send_to_connection') and callable(self.connection_manager.send_to_connection):
-                # Send to all connections in this session
-                for websocket_id, ws_session_id in self.chat_sessions.items():
-                    if ws_session_id == session_id:
-                        await self.connection_manager.send_to_connection(
-                            websocket_id,
-                            json.dumps(typing_message)
-                        )
+            # Send to all connections in this session
+            for websocket_id, ws_session_id in self.chat_sessions.items():
+                if ws_session_id == session_id:
+                    await self._send_websocket_message(websocket_id, typing_message)
         except Exception as e:
             logger.warning(f"Could not send typing indicator: {e}")
     
@@ -360,31 +414,26 @@ class ChatService:
         try:
             agent_status = await self.get_agent_status()
             status_message = {
-                'type': 'status',
+                'type': 'agent_status',
                 'agent': agent_status.to_dict(),
                 'timestamp': datetime.now(timezone.utc).isoformat()
             }
             
-            if hasattr(self.connection_manager, 'send_to_connection') and callable(self.connection_manager.send_to_connection):
-                await self.connection_manager.send_to_connection(
-                    websocket_id,
-                    json.dumps(status_message)
-                )
+            await self._send_websocket_message(websocket_id, status_message)
         except Exception as e:
             logger.warning(f"Could not send agent status to {websocket_id}: {e}")
     
     async def _broadcast_message(self, message: ChatMessage):
         """Broadcast a message to all connected WebSocket clients in the same session"""
         try:
-            message_data = json.dumps(message.to_dict())
+            message_dict = message.to_dict()
             
-            if hasattr(self.connection_manager, 'send_to_connection') and callable(self.connection_manager.send_to_connection):
-                for websocket_id, session_id in self.chat_sessions.items():
-                    if session_id == message.session_id:
-                        await self.connection_manager.send_to_connection(
-                            websocket_id,
-                            message_data
-                        )
+            for websocket_id, session_id in self.chat_sessions.items():
+                if hasattr(message, 'session_id') and session_id == message.session_id:
+                    await self._send_websocket_message(websocket_id, message_dict)
+                elif not hasattr(message, 'session_id'):
+                    # Broadcast to all if no session_id specified
+                    await self._send_websocket_message(websocket_id, message_dict)
         except Exception as e:
             logger.warning(f"Could not broadcast message: {e}")
     
@@ -481,7 +530,7 @@ class ChatService:
         """Get current agent status"""
         try:
             if not self.agent_service:
-                self.agent_service = get_agent_service()
+                self.agent_service = await get_agent_service()
             
             if not self.config.agent_id:
                 return AgentStatus(
@@ -492,7 +541,7 @@ class ChatService:
                 )
             
             # Get agent sessions
-            agent_sessions = self.agent_service.list_agent_sessions()
+            agent_sessions = self.agent_service.get_agent_sessions()
             for session in agent_sessions:
                 if session.agent_id == self.config.agent_id:
                     return AgentStatus(
@@ -539,13 +588,8 @@ class ChatService:
                 'timestamp': datetime.now(timezone.utc).isoformat()
             }
             
-            if hasattr(self.connection_manager, 'send_to_connection') and callable(self.connection_manager.send_to_connection):
-                message_data = json.dumps(config_message)
-                for websocket_id in self.active_connections:
-                    await self.connection_manager.send_to_connection(
-                        websocket_id,
-                        message_data
-                    )
+            for websocket_id in self.active_connections:
+                await self._send_websocket_message(websocket_id, config_message)
         except Exception as e:
             logger.warning(f"Could not broadcast config update: {e}")
     

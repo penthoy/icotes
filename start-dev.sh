@@ -1,10 +1,11 @@
 #!/bin/bash
 
-# icotes Development Startup Script
+# icotes Development Startup Script (Modern UV Edition)
 # This script builds the frontend and runs the backend in development mode with auto-reload
 # Uses SINGLE PORT setup - frontend served from backend (same as production)
+# Modernized to use uv package manager for faster Python dependency management
 
-echo "🚀 Starting icotes in development mode..."
+echo "🚀 Starting icotes in development mode (with UV support)..."
 
 # Load environment variables from .env if it exists
 if [ -f ".env" ]; then
@@ -59,28 +60,43 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# Setup Python environment
-echo "🐍 Setting up Python environment..."
+# Setup Python environment with uv
+echo "🐍 Setting up Python environment with uv..."
 cd backend
 
-# Create virtual environment if it doesn't exist
-if [ ! -d "venv" ]; then
-    echo "🏗️  Creating Python virtual environment..."
-    python3 -m venv venv
-fi
-
-# Activate virtual environment
-echo "⚡ Activating virtual environment..."
-source venv/bin/activate
-
-# Install/update Python dependencies
-echo "📦 Installing Python dependencies..."
-if command -v pip &> /dev/null; then
-    pip install --upgrade pip
-    pip install -r requirements.txt
+# Check if uv is installed
+if ! command -v uv &> /dev/null; then
+    echo "📦 Installing uv package manager..."
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    export PATH="$HOME/.local/bin:$PATH"
+    
+    if ! command -v uv &> /dev/null; then
+        echo "❌ Error: Failed to install uv. Falling back to traditional pip."
+        # Fallback to traditional approach
+        if [ ! -d "venv" ]; then
+            echo "🏗️  Creating Python virtual environment..."
+            python3 -m venv venv
+        fi
+        source venv/bin/activate
+        pip install --upgrade pip
+        pip install -r requirements.txt
+    else
+        echo "✅ uv installed successfully"
+        # Initialize uv project if needed
+        if [ ! -f "pyproject.toml" ]; then
+            uv init --no-readme --no-pin-python
+        fi
+        uv sync --frozen --no-dev || uv pip install -r requirements.txt
+    fi
 else
-    echo "❌ Error: pip not available in virtual environment"
-    exit 1
+    echo "✅ uv already installed"
+    # Initialize uv project if needed
+    if [ ! -f "pyproject.toml" ]; then
+        uv init --no-readme --no-pin-python
+    fi
+    # Install dependencies with uv
+    echo "📦 Installing Python dependencies with uv..."
+    uv sync --frozen --no-dev || uv pip install -r requirements.txt
 fi
 
 # Start the backend server with development settings
@@ -126,27 +142,46 @@ echo "=============================================="
 echo ""
 
 # Start the backend server in foreground with development features
-echo "🔧 Activating virtual environment..."
+echo "🔧 Starting with uv (if available) or fallback to venv..."
 cd backend
-source venv/bin/activate || {
-    echo "❌ Error: Virtual environment not found or not activated."
-    echo "   Please ensure venv exists and contains a proper Python virtual environment."
-    exit 1
-}
 
-echo "✅ Virtual environment activated: $(which python)"
-echo "🔧 Using Python: $(python --version)"
-
-# Use the venv's uvicorn instead of system uvicorn
-uvicorn main:app \
-    --host "$BACKEND_HOST" \
-    --port "$BACKEND_PORT" \
-    --reload \
-    --reload-dir . \
-    --reload-exclude "*.pyc" \
-    --reload-exclude "__pycache__" \
-    --log-level debug \
-    --access-log &
+# Check if we're using uv or traditional venv
+if command -v uv &> /dev/null && [ -f "pyproject.toml" ]; then
+    echo "✅ Using uv for execution"
+    echo "🔧 Python: $(uv run python --version)"
+    
+    # Use uv run for execution
+    uv run uvicorn main:app \
+        --host "$BACKEND_HOST" \
+        --port "$BACKEND_PORT" \
+        --reload \
+        --reload-dir . \
+        --reload-exclude "*.pyc" \
+        --reload-exclude "__pycache__" \
+        --log-level debug \
+        --access-log &
+else
+    echo "🔧 Falling back to virtual environment..."
+    source venv/bin/activate || {
+        echo "❌ Error: Virtual environment not found or not activated."
+        echo "   Please ensure venv exists and contains a proper Python virtual environment."
+        exit 1
+    }
+    
+    echo "✅ Virtual environment activated: $(which python)"
+    echo "🔧 Using Python: $(python --version)"
+    
+    # Use the venv's uvicorn instead of system uvicorn
+    uvicorn main:app \
+        --host "$BACKEND_HOST" \
+        --port "$BACKEND_PORT" \
+        --reload \
+        --reload-dir . \
+        --reload-exclude "*.pyc" \
+        --reload-exclude "__pycache__" \
+        --log-level debug \
+        --access-log &
+fi
 
 BACKEND_PID=$!
 

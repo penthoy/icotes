@@ -15,13 +15,13 @@ curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
 sudo apt-get install -y nodejs
 ```
 
-### 3. Python Virtual Environment Issues
+### 3. Python Dependency Issues
 ```bash
-# Recreate virtual environment
-rm -rf backend/venv
+# Using UV (recommended)
 cd backend
-python3 -m venv venv
-source venv/bin/activate
+uv sync
+
+# Alternative: Traditional method
 pip install -r requirements.txt
 ```
 
@@ -59,7 +59,7 @@ If you encounter persistent issues, try a fresh installation:
 
 ```bash
 # Clean previous installation
-rm -rf node_modules backend/venv .env
+rm -rf node_modules .env
 
 # Run setup again
 ./setup.sh

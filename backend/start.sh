@@ -1,5 +1,5 @@
 #!/bin/bash
-# Start the FastAPI backend server
+# Start the FastAPI backend server (Modern UV Version)
 
 # Load environment variables
 if [ -f "../.env" ]; then
@@ -16,14 +16,35 @@ if ! command -v python3 &> /dev/null; then
     exit 1
 fi
 
-# Check if pip is available
-if ! command -v pip3 &> /dev/null; then
-    echo "pip3 is not installed. Please install pip3 to run the backend."
-    exit 1
+# Check if uv is available, install if not
+if ! command -v uv &> /dev/null; then
+    echo "🚀 Installing uv package manager for better performance..."
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    export PATH="$HOME/.local/bin:$PATH"
+    
+    if ! command -v uv &> /dev/null; then
+        echo "❌ Failed to install uv. Falling back to traditional approach..."
+        echo "Activating virtual environment..."
+        source venv/bin/activate
+        echo "Starting FastAPI backend server..."
+        python3 main.py
+        exit 0
+    fi
 fi
 
-echo "Activating virtual environment..."
-source venv/bin/activate
+echo "✅ Using uv for dependency management and execution"
 
-echo "Starting FastAPI backend server..."
-python3 main.py
+# Initialize uv project if needed
+if [ ! -f "pyproject.toml" ]; then
+    echo "🏗️  Initializing uv project..."
+    uv init --no-readme --no-pin-python
+fi
+
+# Install dependencies if needed
+if [ -f "requirements.txt" ]; then
+    echo "📦 Ensuring dependencies are installed..."
+    uv sync --frozen --no-dev || uv pip install -r requirements.txt
+fi
+
+echo "🚀 Starting FastAPI backend server with uv..."
+uv run python3 main.py

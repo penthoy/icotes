@@ -13,8 +13,7 @@ This guide covers how to run tests using modern `uv` package manager commands.
 2. Set up the project environment:
    ```bash
    cd backend
-   uv venv
-   uv pip install -r requirements.txt
+   uv sync --frozen --no-dev  # Install from requirements.txt
    ```
 
 ## Running Tests
@@ -121,8 +120,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Set up and test
 cd backend
-uv venv
-uv pip install -r requirements.txt
+uv sync --frozen --no-dev  # Install from requirements.txt
 uv run pytest --junitxml=test-results.xml
 ```
 
@@ -166,8 +164,7 @@ uv run pytest -n 4     # Use 4 cores
 If you need to use the legacy virtual environment approach:
 ```bash
 cd backend
-source venv/bin/activate
-python -m pytest
+python -m pytest  # Run directly with system Python
 ```
 
 However, the `uv` approach is recommended for better performance and dependency management.

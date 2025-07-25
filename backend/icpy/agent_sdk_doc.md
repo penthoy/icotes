@@ -765,10 +765,13 @@ ws.addEventListener('error', (error) => {
 ```bash
 git clone <repository>
 cd <repository>/backend
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# or
-venv\Scripts\activate  # Windows
+
+# Modern approach with UV (recommended)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+export PATH="$HOME/.local/bin:$PATH"
+uv sync --frozen --no-dev
+
+# Alternative: Direct pip installation
 pip install -r requirements.txt
 ```
 

@@ -671,6 +671,42 @@ class RestAPI:
                 logger.error(f"Failed to list agent sessions: {e}")
                 raise HTTPException(status_code=500, detail=str(e))
         
+        # Get agent status for chat
+        @self.app.get("/api/agents/status")
+        async def get_agent_status():
+            """Get current agent status for chat."""
+            try:
+                # Try to get chat agent status first
+                try:
+                    status = await self.chat_service.get_agent_status()
+                    return SuccessResponse(
+                        data=status.to_dict(),
+                        message="Agent status retrieved"
+                    )
+                except Exception:
+                    # If no chat agent configured, return general agent capabilities
+                    agent_sessions = self.agent_service.list_agent_sessions() if self.agent_service else []
+                    return SuccessResponse(
+                        data={
+                            "available": len(agent_sessions) > 0,
+                            "name": "Agent Service",
+                            "type": "multi",
+                            "capabilities": ["openai", "crewai", "langchain", "langgraph"],
+                            "agent_id": None,
+                            "sessions": len(agent_sessions),
+                            "frameworks": {
+                                "openai": True,
+                                "crewai": True, 
+                                "langchain": True,
+                                "langgraph": True
+                            }
+                        },
+                        message="General agent status retrieved (no active session)"
+                    )
+            except Exception as e:
+                logger.error(f"Failed to get agent status: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+        
         # Get specific agent session
         @self.app.get("/api/agents/{session_id}")
         async def get_agent_session(session_id: str):
@@ -1051,20 +1087,6 @@ class RestAPI:
                 )
             except Exception as e:
                 logger.error(f"Failed to update chat config: {e}")
-                raise HTTPException(status_code=500, detail=str(e))
-        
-        # Get agent status for chat
-        @self.app.get("/api/agents/status")
-        async def get_agent_status():
-            """Get current agent status for chat."""
-            try:
-                status = await self.chat_service.get_agent_status()
-                return SuccessResponse(
-                    data=status.to_dict(),
-                    message="Agent status retrieved"
-                )
-            except Exception as e:
-                logger.error(f"Failed to get agent status: {e}")
                 raise HTTPException(status_code=500, detail=str(e))
         
         # Clear message history

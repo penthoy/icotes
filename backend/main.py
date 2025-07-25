@@ -28,6 +28,13 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import uvicorn
 
+# Load environment variables
+try:
+    from dotenv import load_dotenv
+    load_dotenv(dotenv_path="../.env")  # Load from parent directory
+except ImportError:
+    pass  # python-dotenv not available, skip .env loading
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -1137,15 +1144,20 @@ async def chat_websocket(websocket: WebSocket):
         await websocket.close(code=1011, reason="icpy services not available")
         return
     
+    connection_id = None
+    
     try:
         await websocket.accept()
         
         # Get chat service
         chat_service = get_chat_service()
         
-        # Connect to websocket API for connection management
-        websocket_api = await get_websocket_api()
-        connection_id = await websocket_api.connect_websocket(websocket)
+        # Generate connection ID for this chat session
+        import uuid
+        connection_id = str(uuid.uuid4())
+        
+        # Store the WebSocket in chat service for this connection
+        chat_service.websocket_connections[connection_id] = websocket
         
         # Connect to chat service
         session_id = await chat_service.connect_websocket(connection_id)
@@ -1233,11 +1245,15 @@ async def chat_websocket(websocket: WebSocket):
                 })
         
         # Cleanup
-        await chat_service.disconnect_websocket(connection_id)
-        await websocket_api.disconnect_websocket(connection_id)
+        if connection_id:
+            # Remove WebSocket from chat service
+            chat_service.websocket_connections.pop(connection_id, None)
+            await chat_service.disconnect_websocket(connection_id)
         
     except Exception as e:
         logger.error(f"Chat WebSocket initialization error: {e}")
+        if connection_id:
+            chat_service.websocket_connections.pop(connection_id, None)
         await websocket.close(code=1011, reason="Internal server error")
 
 

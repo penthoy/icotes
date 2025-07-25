@@ -42,17 +42,23 @@ check_command "pip3"
 
 echo ""
 
-# Check if backend venv exists
-echo "🐍 Checking Python virtual environment..."
-if [ -d "backend/venv" ]; then
-    echo "✅ backend/venv directory exists"
-    if [ -f "backend/venv/bin/activate" ]; then
-        echo "✅ Virtual environment is properly configured"
+# Check if UV is available and backend dependencies are installed
+echo "🐍 Checking Python dependency management..."
+if command -v uv >/dev/null 2>&1; then
+    echo "✅ UV package manager available"
+    cd backend
+    if [ -f "pyproject.toml" ] || [ -f "requirements.txt" ]; then
+        if uv run python -c "import fastapi" 2>/dev/null; then
+            echo "✅ Python dependencies properly installed"
+        else
+            echo "❌ Python dependencies not installed - run 'uv sync' in backend/"
+        fi
     else
-        echo "❌ Virtual environment incomplete"
+        echo "❌ No pyproject.toml or requirements.txt found"
     fi
+    cd ..
 else
-    echo "❌ backend/venv directory missing"
+    echo "❌ UV package manager not available - install UV or use traditional pip"
 fi
 
 echo ""
