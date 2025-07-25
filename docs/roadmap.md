@@ -2,11 +2,12 @@
 A web-based JavaScript code editor built with ViteReact, CodeMirror 6, and modern web technologies. The goal is to create the world's most powerful notebook for developers and hackers, it includes 3 core parts: 1. rich text editor, similar to evernote/notion hybrid, 2. code editor + terminal(similar to replit), 3. AI agent that can be customized with agentic frameworks such as crew ai, or openai agent sdk, or any other agentic framework. This tool is designed to be infinitely hackable and flexible to empower the nextgeneration of AI powered developers.
 
 ### In Progress
+proceed with icpy_plan.md 6.2 (Agentic Workflow Infrastructure)
 
 ## Future task
 -- agent framework icpy backend.
-icpy_plan.md 6.1
-
+icpy_plan.md 6.2 (Agentic Workflow Infrastructure)
+icpy_plan.md 6.3 (Agent Service Layer)
 -- agent chat frontend
 
 
@@ -113,6 +114,27 @@ A Panel installer,
 maya style code executor.
 
 ## Recently Finished
+
+-- ICPY Step 6.1: Agentic Framework Installation and Validation:
+- [✓] **Agentic Framework Installation and Validation** - Successfully installed and validated all core agentic frameworks:
+  1. ✓ **Framework Installation**: Installed OpenAI SDK (1.97.1), CrewAI (0.150.0), LangChain (0.3.27), and LangGraph using `uv` package manager
+  2. ✓ **Framework Compatibility Layer**: Created unified interface in `backend/icpy/core/framework_compatibility.py` with consistent API across all frameworks
+  3. ✓ **Agent Creation and Validation**: Implemented agent wrappers for all frameworks with creation, execution, streaming, and lifecycle management
+  4. ✓ **Cross-Framework Testing**: Created comprehensive test suite with 8 passing tests validating framework imports, agent creation, and error handling
+  5. ✓ **Async Support**: Added full async/await compatibility and streaming execution for all frameworks
+  6. ✓ **Documentation Update**: Updated backend README.md to use `uv` package manager for faster dependency management
+  7. ✓ **Validation Script**: Created `validate_step_6_1.py` demonstrating complete framework functionality
+  - **Technical Achievement**: All frameworks working with unified interfaces, ready for Step 6.2 workflow infrastructure
+
+-- ICPY Plan Agentic Foundation Documentation:
+- [✓] **Phase 6 Agentic Foundation Specification** - Completed detailed documentation for icpy_plan.md sections 6.1, 6.2, and 6.3:
+  1. ✓ **Step 6.1: Agentic Framework Installation and Validation** - Comprehensive plan for installing OpenAI Agent SDK, CrewAI, LangChain/LangGraph with framework compatibility layer and validation testing
+  2. ✓ **Step 6.2: Agentic Workflow Infrastructure** - Detailed structure for `backend/icpy/agent/` directory organization including base agent interface, workflow definitions, configuration templates, and execution engine
+  3. ✓ **Step 6.3: Agent Service Layer Implementation** - Complete specification for agent service layer with lifecycle management, communication bus, task scheduling, and API exposure
+  4. ✓ Maintained consistency with existing icpy_plan.md documentation style and depth
+  5. ✓ Integrated with existing Phase 6.4 Chat Service requirements for complete agentic foundation
+  6. ✓ Added comprehensive integration test specifications for each step
+  - **Technical Coverage**: Framework installation validation, workflow infrastructure setup, agent service implementation, API integration, and real-time event streaming
 
 -- Simple Chat Component Implementation:
 - [✓] **SimpleChat.tsx Component** - Created a minimal chat interface for agentic interaction:

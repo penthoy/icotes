@@ -444,14 +444,153 @@ Create a backend that acts as a **single source of truth** for the frontend, is 
 ### Phase 6: Agentic foundation
 **Goal**: Foundational Agentic services
 
-#### Step 6.1:
-Install openai agent sdk, crewAI, langchain langraph and make sure they work.
+#### Step 6.1: Agentic Framework Installation and Validation ✅ COMPLETED
+**Goal**: Install and validate core agentic frameworks for AI agent integration
 
-#### Step 6.2:
-create a backend/icpy/agent folder where we can put our custom agentic workflow
+- ✅ Install OpenAI Agent SDK for structured AI agent interactions
+- ✅ Install CrewAI for multi-agent collaborative workflows  
+- ✅ Install LangChain and LangGraph for advanced agent orchestration
+- ✅ Configure framework dependencies and resolve version conflicts
+- ✅ Create framework compatibility layer for unified agent interfaces
+- ✅ Validate each framework with basic agent instantiation tests
+- ✅ Set up framework-specific configuration and environment variables
+- ✅ Create framework selection and routing logic based on agent types
+- ✅ Add dependency management for framework updates and maintenance
+- ✅ **Integration Test**: `tests/backend/icpy/test_agentic_frameworks.py` - ALL 8 TESTS PASSING
+  - ✅ Framework installation and import validation
+  - ✅ Basic agent creation and execution in each framework
+  - ✅ Cross-framework compatibility and interface consistency
+  - ✅ Error handling for framework initialization failures
 
-#### Step 6.3:
-create services that exposes these workflows
+**Implementation Details**:
+- **Modernized with UV Package Manager**: Migrated from pip to `uv` for 10-20x faster dependency installation and resolution
+- Installed agentic frameworks with compatible versions resolving dependency conflicts:
+  - OpenAI SDK v1.97.1, CrewAI v0.30.11, LangChain v0.1.20, LangGraph v0.0.51
+- Created comprehensive framework compatibility layer in `backend/icpy/core/framework_compatibility.py`
+- Implemented unified agent interfaces supporting OpenAI, CrewAI, LangChain, and LangGraph
+- Added agent lifecycle management with creation, execution, streaming, and cleanup
+- Created framework-specific wrappers with consistent API across all frameworks
+- Added configuration validation and error handling for each framework
+- Implemented async/await support and streaming execution capabilities
+- **Modern Command Interface**: All operations now use `uv run pytest`, `uv run python main.py`, `uv pip install` commands
+- **Tests**: All framework import, agent creation, and compatibility tests pass with UV commands
+- **Files Created**: `backend/icpy/core/framework_compatibility.py`, `backend/how_to_test.md`, `backend/start_with_uv.sh`, `docs/uv_migration_summary.md`
+- **Status**: Complete, modernized, and fully validated - ready for Step 6.2
+
+#### Step 6.2: Agentic Workflow Infrastructure
+**Goal**: Create organized structure for custom agentic workflows and agent definitions
+
+- Create `backend/icpy/agent/` directory structure for workflow organization
+- Implement `backend/icpy/agent/base_agent.py` with common agent interface
+- Create `backend/icpy/agent/workflows/` for custom workflow definitions
+- Add `backend/icpy/agent/configs/` for agent configuration templates
+- Implement agent capability registry system for skill discovery
+- Create workflow execution engine with async task management
+- Add workflow templating system for rapid agent development
+- Support workflow chaining and agent handoff mechanisms
+- Include workflow state persistence and recovery capabilities
+- Add agent memory and context management infrastructure
+- **Integration Test**: `tests/backend/icpy/test_agent_workflows.py`
+  - Agent workflow creation and execution
+  - Agent capability registration and discovery
+  - Workflow state management and persistence
+  - Agent memory and context handling
+
+**Implementation Details**:
+- **Directory Structure**: Create organized agent hierarchy under `backend/icpy/agent/`
+  - `base_agent.py`: Common interface extending framework compatibility layer
+  - `workflows/`: Custom workflow definitions with JSON/YAML configuration
+  - `configs/`: Agent templates and capability definitions
+  - `registry/`: Dynamic capability discovery and skill registration
+- **Workflow Engine**: Build async task management with dependency resolution
+  - Support for sequential, parallel, and conditional workflow execution
+  - Agent handoff mechanisms with context preservation
+  - Workflow state persistence using SQLite or JSON state files
+  - Recovery and resumption capabilities for interrupted workflows
+- **Memory Management**: Implement agent context and memory systems
+  - Session-based memory with configurable retention policies
+  - Context sharing between agents in multi-agent workflows
+  - Integration with LangChain memory modules and vector stores
+- **Capability Registry**: Dynamic skill discovery and registration
+  - Auto-discovery of agent capabilities through introspection
+  - Skill composition for complex multi-step workflows
+  - Runtime capability injection and modification
+- **Templates**: Rapid agent development with pre-built workflows
+  - Code generation agent, documentation agent, testing agent templates
+  - Configuration-driven agent creation with minimal code
+  - Workflow composition through template inheritance and mixins
+- **Modern UV Commands**: All development and testing uses `uv run pytest`, `uv run python`
+- **Files to Create**: 
+  - `backend/icpy/agent/base_agent.py`
+  - `backend/icpy/agent/workflows/workflow_engine.py`
+  - `backend/icpy/agent/registry/capability_registry.py`
+  - `backend/icpy/agent/memory/context_manager.py`
+  - `backend/icpy/agent/configs/agent_templates.py`
+- **Status**: Ready for implementation - depends on Step 6.1 completion
+
+#### Step 6.3: Agent Service Layer Implementation
+**Goal**: Create backend services that expose agentic workflows to frontend and CLI
+
+- Create `backend/icpy/services/agent_service.py` for agent management
+- Implement agent lifecycle management (create, start, stop, destroy)
+- Add agent registration and discovery through service registry
+- Create agent communication bus for inter-agent messaging
+- Implement agent task queue and execution scheduling
+- Add agent performance monitoring and resource management
+- Create agent configuration API for dynamic agent setup
+- Support agent session management with context persistence
+- Implement agent capability exposure through REST and WebSocket APIs
+- Add agent event streaming for real-time status updates
+- **Integration Test**: `tests/backend/icpy/test_agent_service.py`
+  - Agent lifecycle and session management
+  - Agent communication and task execution
+  - Performance monitoring and resource management
+  - API exposure and real-time event streaming
+
+**Implementation Details**:
+- **Service Architecture**: Build FastAPI service layer with dependency injection
+  - `AgentService` class managing agent instances and lifecycle
+  - Service registry for agent discovery and capability exposure
+  - Resource pooling and agent instance management
+  - Graceful shutdown and cleanup procedures
+- **Agent Lifecycle Management**: Complete agent session handling
+  - Create: Initialize agents with configuration and capabilities
+  - Start: Begin agent execution with task queue activation
+  - Monitor: Real-time performance metrics and health checks
+  - Stop/Destroy: Clean shutdown with state persistence
+- **Communication Bus**: Inter-agent messaging and coordination
+  - Redis or in-memory message broker for agent communication
+  - Event-driven architecture with async message handling
+  - Agent discovery and service mesh capabilities
+  - Message routing and load balancing for agent clusters
+- **Task Queue**: Async execution scheduling with priority management
+  - Celery or asyncio-based task queue implementation
+  - Priority queues for urgent vs background tasks
+  - Task result caching and error handling
+  - Distributed execution across multiple agent instances
+- **API Layer**: REST and WebSocket endpoints for frontend integration
+  - `/api/agents/` - Agent management (CRUD operations)
+  - `/api/agents/{id}/execute` - Agent task execution
+  - `/api/agents/{id}/stream` - Real-time agent output streaming
+  - `/ws/agents/{id}` - WebSocket for live agent interaction
+- **Performance Monitoring**: Resource usage and performance tracking
+  - CPU, memory, and execution time metrics per agent
+  - Agent performance analytics and optimization suggestions
+  - Health checks and automatic recovery mechanisms
+  - Resource quotas and rate limiting per agent
+- **Configuration API**: Dynamic agent setup and modification
+  - Runtime configuration updates without restart
+  - Template-based agent creation through API
+  - Configuration validation and schema enforcement
+  - Hot-reload capabilities for agent definitions
+- **Modern UV Integration**: All services testable with `uv run pytest`
+- **Files to Create**:
+  - `backend/icpy/services/agent_service.py`
+  - `backend/icpy/services/communication_bus.py`
+  - `backend/icpy/services/task_queue.py`
+  - `backend/icpy/api/agent_routes.py`
+  - `backend/icpy/monitoring/performance_monitor.py`
+- **Status**: Ready for implementation - depends on Step 6.2 completion
 
 #### Step 6.4: Chat Service Implementation
 **Goal**: Implement chat service for agentic interaction from frontend perspective

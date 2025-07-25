@@ -24,23 +24,55 @@ A FastAPI backend for icotes that provides code execution capabilities and WebSo
 
 ## Setup
 
-**CRITICAL: Always use the virtual environment for any Python operations!**
+**Modern approach using uv package manager (recommended):**
 
-1. Install Python 3.8+ and pip
-2. Set up virtual environment and install dependencies:
+1. Install uv package manager:
+   ```bash
+   # Install uv (fast Python package manager)
+   curl -LsSf https://astral.sh/uv/install.sh | sh
+   export PATH="$HOME/.local/bin:$PATH"
+   ```
+
+2. Set up project environment:
+   ```bash
+   cd backend
+   uv venv
+   uv pip install -r requirements.txt
+   ```
+
+**Alternative legacy approach:**
+
+1. Install Python 3.8+ and create virtual environment manually:
    ```bash
    cd backend
    python3 -m venv venv
-   source venv/bin/activate  # ALWAYS DO THIS FIRST!
+   source venv/bin/activate  # Linux/Mac
    pip install -r requirements.txt
    ```
 
-**Common mistake:** Running `python3` or `python` directly without `source venv/bin/activate` first will cause pydantic version conflicts and import errors.
-
 ## Development
 
+**Using uv (recommended):**
+
 ```bash
-# ALWAYS start with this:
+cd backend
+
+# Run the server
+uv run python main.py
+
+# Run tests
+uv run pytest
+
+# Run specific test
+uv run pytest tests/icpy/test_agentic_frameworks.py -v
+
+# Execute any Python script
+uv run python validate_step_6_1.py
+```
+
+**Legacy approach:**
+
+```bash
 cd backend
 source venv/bin/activate
 
