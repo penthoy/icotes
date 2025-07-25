@@ -453,6 +453,45 @@ create a backend/icpy/agent folder where we can put our custom agentic workflow
 #### Step 6.3:
 create services that exposes these workflows
 
+#### Step 6.4: Chat Service Implementation
+**Goal**: Implement chat service for agentic interaction from frontend perspective
+
+**Frontend Requirements for Backend Implementation:**
+
+- **WebSocket Endpoint**: `/ws/chat`
+  - Real-time bidirectional messaging between frontend and AI agents
+  - Message format: `{type: 'message', content: string, sender: 'user'|'ai', timestamp: ISO string, metadata?: object}`
+  - Status updates: `{type: 'status', agent: {available: boolean, name: string, type: string, capabilities: string[]}}`
+  - Connection lifecycle management with proper error handling
+
+- **HTTP REST Endpoints**:
+  - `GET /api/chat/messages?limit=50` - Retrieve message history with pagination
+  - `GET /api/chat/config` - Get chat configuration (agentId, agentName, systemPrompt, maxMessages, autoScroll)
+  - `GET /api/agents/status` - Check agent availability and capabilities
+  - `POST /api/chat/clear` - Clear message history (optional)
+
+- **Message Persistence**: 
+  - Store chat messages with proper indexing for retrieval
+  - Support message metadata for agent context and message types
+  - Handle message threading and conversation context
+
+- **Agent Integration**:
+  - Connect chat service to agentic frameworks (Step 6.1-6.3)
+  - Support multiple agent types with different capabilities
+  - Handle agent availability and status reporting
+  - Enable agent-to-agent communication routing
+
+- **Error Handling**:
+  - Graceful WebSocket reconnection on connection loss
+  - Fallback mechanisms when agents are unavailable
+  - Proper error message formatting for frontend display
+
+**Integration Test Requirements**: `tests/backend/icpy/test_chat_service.py`
+- WebSocket connection and messaging flow
+- Message persistence and retrieval
+- Agent status reporting and availability
+- Error handling and recovery scenarios
+
 Prepare architecture for Agentic frameworks and provide services to these frame works.
 
 ### Phase 7: Extension Points for Future Features

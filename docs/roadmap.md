@@ -2,11 +2,6 @@
 A web-based JavaScript code editor built with ViteReact, CodeMirror 6, and modern web technologies. The goal is to create the world's most powerful notebook for developers and hackers, it includes 3 core parts: 1. rich text editor, similar to evernote/notion hybrid, 2. code editor + terminal(similar to replit), 3. AI agent that can be customized with agentic frameworks such as crew ai, or openai agent sdk, or any other agentic framework. This tool is designed to be infinitely hackable and flexible to empower the nextgeneration of AI powered developers.
 
 ### In Progress
-- [] please create a simplechat.tsx 
-1. it should be a rewrite of the ICUIChatPanel.tsx.
-2. same pattern as simpleeditor explorer and terminal a basic implementation that showcase all the services both icui and icpy works.
-3. the goal of this is to eventually provide the same function as modern agentic coder like copilot.
-4. as a frontend perspective, please complete plan for icpy_plan.md 6.4 in the same style and pattern as other plans, don't make it overly verbose, and only capture what needs to be done. don't give any implementation details but just the kind of service/endpoint required from your perspective of writing the frontend for this tool, you're writing a request to the backend devs to fullfil what you need. we also have a 
 
 ## Future task
 -- agent framework icpy backend.
@@ -118,6 +113,19 @@ A Panel installer,
 maya style code executor.
 
 ## Recently Finished
+
+-- Simple Chat Component Implementation:
+- [✓] **SimpleChat.tsx Component** - Created a minimal chat interface for agentic interaction:
+  1. ✓ Implemented simplechat.tsx following the same pattern as simpleeditor, simpleexplorer, and simpleterminal
+  2. ✓ Added WebSocket connection to `/ws/chat` for real-time bidirectional messaging
+  3. ✓ Integrated HTTP REST endpoints for message history, chat config, and agent status
+  4. ✓ Added support for message persistence with proper metadata handling
+  5. ✓ Implemented connection status monitoring with visual feedback
+  6. ✓ Added theme-aware styling with automatic dark/light mode detection
+  7. ✓ Created notification system for user feedback on connection status
+  8. ✓ Added route `/simple-chat` to App.tsx for easy access
+  9. ✓ **Backend Requirements Specification**: Completed icpy_plan.md section 6.4 defining chat service requirements from frontend perspective including WebSocket endpoints, HTTP APIs, message persistence, agent integration, and error handling specifications for backend implementation
+  - **Technical Features**: Auto-scroll, typing indicators, message threading, error recovery, agent capability reporting, clipboard integration compatibility
 
 -- Cloudflare Tunnel Compatibility:
 - [✓] **Smart Domain Detection for Backend Connections** - Fixed Code Editor connectivity issues with Cloudflare tunnels:
