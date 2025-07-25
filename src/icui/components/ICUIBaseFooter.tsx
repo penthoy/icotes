@@ -10,7 +10,37 @@ class FooterBackendClient {
   private backendUrl: string;
 
   constructor() {
-    this.backendUrl = (import.meta as any).env?.VITE_BACKEND_URL || (import.meta as any).env?.VITE_API_URL || '';
+    // Smart URL construction for Cloudflare tunnel compatibility
+    const envBackendUrl = (import.meta as any).env?.VITE_BACKEND_URL as string | undefined;
+    const envApiUrl = (import.meta as any).env?.VITE_API_URL as string | undefined;
+    
+    // Check if we're accessing through a different domain than configured
+    const currentHost = window.location.host;
+    const primaryUrl = envBackendUrl || envApiUrl;
+    let envHost = '';
+    
+    // Safely extract host from environment URL
+    if (primaryUrl && primaryUrl.trim() !== '') {
+      try {
+        envHost = new URL(primaryUrl).host;
+      } catch (error) {
+        console.warn('Invalid backend URL format:', primaryUrl);
+        envHost = '';
+      }
+    }
+    
+    if (primaryUrl && primaryUrl.trim() !== '' && currentHost === envHost) {
+      // Use configured URL from .env when domains match
+      this.backendUrl = primaryUrl;
+    } else {
+      // Use dynamic URL construction when domains don't match (e.g., Cloudflare tunnels)
+      const protocol = window.location.protocol;
+      const host = window.location.host;
+      this.backendUrl = `${protocol}//${host}`;
+    }
+    
+    console.log('FooterBackendClient initialized with URL:', this.backendUrl);
+    console.log('Current host:', currentHost, 'Env host:', envHost);
   }
 
   async checkConnection(): Promise<boolean> {

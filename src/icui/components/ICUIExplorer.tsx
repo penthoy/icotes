@@ -34,7 +34,35 @@ class ExplorerBackendClient {
   private baseUrl: string;
 
   constructor() {
-    this.baseUrl = (import.meta as any).env?.VITE_API_URL || '';
+    // Smart URL construction for Cloudflare tunnel compatibility
+    const envApiUrl = (import.meta as any).env?.VITE_API_URL as string | undefined;
+    
+    // Check if we're accessing through a different domain than configured
+    const currentHost = window.location.host;
+    let envHost = '';
+    
+    // Safely extract host from environment URL
+    if (envApiUrl && envApiUrl.trim() !== '') {
+      try {
+        envHost = new URL(envApiUrl).host;
+      } catch (error) {
+        console.warn('Invalid VITE_API_URL format:', envApiUrl);
+        envHost = '';
+      }
+    }
+    
+    if (envApiUrl && envApiUrl.trim() !== '' && currentHost === envHost) {
+      // Use configured API URL from .env when domains match
+      this.baseUrl = envApiUrl;
+    } else {
+      // Use dynamic URL construction when domains don't match (e.g., Cloudflare tunnels)
+      const protocol = window.location.protocol;
+      const host = window.location.host;
+      this.baseUrl = `${protocol}//${host}/api`;
+    }
+    
+    console.log('ICUIExplorerBackendClient initialized with URL:', this.baseUrl);
+    console.log('Current host:', currentHost, 'Env host:', envHost);
   }
 
   async checkConnection(): Promise<boolean> {

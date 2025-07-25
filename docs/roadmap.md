@@ -2,16 +2,19 @@
 A web-based JavaScript code editor built with ViteReact, CodeMirror 6, and modern web technologies. The goal is to create the world's most powerful notebook for developers and hackers, it includes 3 core parts: 1. rich text editor, similar to evernote/notion hybrid, 2. code editor + terminal(similar to replit), 3. AI agent that can be customized with agentic frameworks such as crew ai, or openai agent sdk, or any other agentic framework. This tool is designed to be infinitely hackable and flexible to empower the nextgeneration of AI powered developers.
 
 ### In Progress
+- [] No current tasks in progress.
+
+
+## Future task
 -- Explorer/editor interaction:
 Lets now attempt to replicate a modern editor behavior such as vs code:
 1. ✓ when the page first loaded code editor should be empty.
 2. ✓ When clicking on a text/script file in the explorer, it should temporily open in the editor and the name should be italic. if click on another text file immediate, the other file will replace that temporarilly opened file.
-3. When double clicked on a text/script file it should open the file in "permenent" state, so when clicking on another file it will not be replaced, and the text on it will not be italic. this behavior is exactly the same as vs code.
+3. ✓ When double clicked on a text/script file it should open the file in "permenent" state, so when clicking on another file it will not be replaced, and the text on it will not be italic. this behavior is exactly the same as vs code.
 4. save state: file that's opened previously should have their states saved this save 
+
 please stop for my review for each of these points as it could be pretty complexe, and wait for my feedback before proceed for the next point, lets now start with 1.
 
-
-## Future task
 
 -- Explorer:
 Real time update subscribe not working yet.
@@ -103,6 +106,17 @@ A Panel installer,
 maya style code executor.
 
 ## Recently Finished
+
+-- Cloudflare Tunnel Compatibility:
+- [✓] **Smart Domain Detection for Backend Connections** - Fixed Code Editor connectivity issues with Cloudflare tunnels:
+  1. ✓ Analyzed connection patterns across Terminal, Explorer, and Editor components
+  2. ✓ Identified that Terminal and Explorer worked due to fallback mechanisms, while Editor used hardcoded IP addresses
+  3. ✓ Implemented smart domain detection logic in all backend client classes
+  4. ✓ Added automatic fallback to dynamic URL construction when accessing through different domains (e.g., Cloudflare tunnels)
+  5. ✓ Updated ICUIEditor, BackendConnectedEditor, BackendConnectedExplorer, ICUIExplorer, BackendConnectedTerminal, ICUIBaseFooter, simpleeditor, and backendClient components
+  6. ✓ Enhanced logging for debugging domain detection and URL construction
+  7. ✓ Verified build compatibility - all components now work with both direct IP access and Cloudflare tunnel domains
+  - **Technical Implementation**: Components now compare `window.location.host` with configured .env URLs and automatically switch to dynamic construction when domains don't match, ensuring seamless operation across different access methods
 
 -- Explorer Real-time Updates:
 - [✓] **Real-time File System Monitoring** - Implemented automatic Explorer updates when files/folders change externally:

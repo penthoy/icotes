@@ -56,13 +56,39 @@ class EditorBackendClient {
   public baseUrl: string;
 
   constructor() {
-    const backendUrl = import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL;
-    if (!backendUrl || backendUrl.startsWith('/')) {
-      throw new Error('Backend URL must be a full URL (http://...), not a relative path. Check VITE_BACKEND_URL in .env');
+    // Smart URL construction for Cloudflare tunnel compatibility
+    const envBackendUrl = import.meta.env.VITE_BACKEND_URL as string | undefined;
+    const envApiUrl = import.meta.env.VITE_API_URL as string | undefined;
+    const primaryUrl = envBackendUrl || envApiUrl;
+    
+    // Check if we're accessing through a different domain than configured
+    const currentHost = window.location.host;
+    let envHost = '';
+    
+    // Safely extract host from environment URL
+    if (primaryUrl && primaryUrl.trim() !== '') {
+      try {
+        envHost = new URL(primaryUrl).host;
+      } catch (error) {
+        console.warn('Invalid backend URL format:', primaryUrl);
+        envHost = '';
+      }
     }
-    this.backendUrl = backendUrl;
-    this.baseUrl = backendUrl;
-    console.log('EditorBackendClient initialized with URL:', this.baseUrl); // Debug log
+    
+    if (primaryUrl && primaryUrl.trim() !== '' && currentHost === envHost) {
+      // Use configured URL from .env when domains match
+      this.backendUrl = primaryUrl;
+      this.baseUrl = primaryUrl;
+    } else {
+      // Use dynamic URL construction when domains don't match (e.g., Cloudflare tunnels)
+      const protocol = window.location.protocol;
+      const host = window.location.host;
+      this.backendUrl = `${protocol}//${host}`;
+      this.baseUrl = `${protocol}//${host}`;
+    }
+    
+    console.log('SimpleEditor initialized with URL:', this.baseUrl);
+    console.log('Current host:', currentHost, 'Env host:', envHost);
   }
 
   async listFiles(): Promise<SimpleFile[]> {

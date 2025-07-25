@@ -292,18 +292,36 @@ const BackendConnectedTerminal = forwardRef<BackendConnectedTerminalRef, Backend
       }
     });
 
-    // Connect to backend via WebSocket using .env configuration (same as SimpleTerminal)
+    // Connect to backend via WebSocket with smart domain detection for Cloudflare tunnels
     const envWsUrl = (import.meta as any).env?.VITE_WS_URL as string | undefined;
     let wsUrl: string;
+    
+    // Check if we're accessing through a different domain than configured
+    const currentHost = window.location.host;
+    let envHost = '';
+    
+    // Safely extract host from environment URL
     if (envWsUrl && envWsUrl.trim() !== '') {
-      // Use configured WebSocket URL from .env
+      try {
+        envHost = new URL(envWsUrl).host;
+      } catch (error) {
+        console.warn('Invalid VITE_WS_URL format:', envWsUrl);
+        envHost = '';
+      }
+    }
+    
+    if (envWsUrl && envWsUrl.trim() !== '' && currentHost === envHost) {
+      // Use configured WebSocket URL from .env when domains match
       wsUrl = `${envWsUrl}/terminal/${terminalId.current}`;
     } else {
-      // Fallback to dynamic URL construction
+      // Use dynamic URL construction when domains don't match (e.g., Cloudflare tunnels)
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const host = window.location.host;
       wsUrl = `${protocol}//${host}/ws/terminal/${terminalId.current}`;
     }
+    
+    console.log('Terminal WebSocket URL:', wsUrl);
+    console.log('Current host:', currentHost, 'Env host:', envHost);
     
     websocket.current = new WebSocket(wsUrl);
     

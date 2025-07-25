@@ -100,9 +100,35 @@ class EditorBackendClient {
   private backendUrl: string;
 
   constructor() {
-    // Use the single port configuration from .env
-    this.backendUrl = (import.meta as any).env?.VITE_BACKEND_URL || 'http://localhost:8000';
+    // Smart URL construction for Cloudflare tunnel compatibility
+    const envBackendUrl = (import.meta as any).env?.VITE_BACKEND_URL as string | undefined;
+    
+    // Check if we're accessing through a different domain than configured
+    const currentHost = window.location.host;
+    let envHost = '';
+    
+    // Safely extract host from environment URL
+    if (envBackendUrl && envBackendUrl.trim() !== '') {
+      try {
+        envHost = new URL(envBackendUrl).host;
+      } catch (error) {
+        console.warn('Invalid VITE_BACKEND_URL format:', envBackendUrl);
+        envHost = '';
+      }
+    }
+    
+    if (envBackendUrl && envBackendUrl.trim() !== '' && currentHost === envHost) {
+      // Use configured backend URL from .env when domains match
+      this.backendUrl = envBackendUrl;
+    } else {
+      // Use dynamic URL construction when domains don't match (e.g., Cloudflare tunnels)
+      const protocol = window.location.protocol;
+      const host = window.location.host;
+      this.backendUrl = `${protocol}//${host}`;
+    }
+    
     console.log('EditorBackendClient initialized with URL:', this.backendUrl);
+    console.log('Current host:', currentHost, 'Env host:', envHost);
   }
 
   async checkConnection(): Promise<boolean> {

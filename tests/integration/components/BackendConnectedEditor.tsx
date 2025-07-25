@@ -100,8 +100,55 @@ class EditorBackendClient {
   private backendUrl: string;
 
   constructor() {
-    this.baseUrl = (import.meta as any).env?.VITE_API_URL || '';
-    this.backendUrl = (import.meta as any).env?.VITE_BACKEND_URL || (import.meta as any).env?.VITE_API_URL || '';
+    // Smart URL construction for Cloudflare tunnel compatibility
+    const envApiUrl = (import.meta as any).env?.VITE_API_URL as string | undefined;
+    const envBackendUrl = (import.meta as any).env?.VITE_BACKEND_URL as string | undefined;
+    
+    // Check if we're accessing through a different domain than configured
+    const currentHost = window.location.host;
+    const primaryApiUrl = envApiUrl;
+    const primaryBackendUrl = envBackendUrl || envApiUrl;
+    
+    let apiHost = '';
+    let backendHost = '';
+    
+    // Safely extract hosts from environment URLs
+    if (primaryApiUrl && primaryApiUrl.trim() !== '') {
+      try {
+        apiHost = new URL(primaryApiUrl).host;
+      } catch (error) {
+        console.warn('Invalid VITE_API_URL format:', primaryApiUrl);
+        apiHost = '';
+      }
+    }
+    
+    if (primaryBackendUrl && primaryBackendUrl.trim() !== '') {
+      try {
+        backendHost = new URL(primaryBackendUrl).host;
+      } catch (error) {
+        console.warn('Invalid VITE_BACKEND_URL format:', primaryBackendUrl);
+        backendHost = '';
+      }
+    }
+    
+    if (primaryApiUrl && primaryApiUrl.trim() !== '' && currentHost === apiHost) {
+      this.baseUrl = primaryApiUrl;
+    } else {
+      const protocol = window.location.protocol;
+      const host = window.location.host;
+      this.baseUrl = `${protocol}//${host}/api`;
+    }
+    
+    if (primaryBackendUrl && primaryBackendUrl.trim() !== '' && currentHost === backendHost) {
+      this.backendUrl = primaryBackendUrl;
+    } else {
+      const protocol = window.location.protocol;
+      const host = window.location.host;
+      this.backendUrl = `${protocol}//${host}`;
+    }
+    
+    console.log('BackendConnectedEditor initialized - API URL:', this.baseUrl, 'Backend URL:', this.backendUrl);
+    console.log('Current host:', currentHost, 'API host:', apiHost, 'Backend host:', backendHost);
   }
 
   async checkConnection(): Promise<boolean> {
