@@ -1,23 +1,16 @@
 /**
  * ICUI Explorer Panel
  * 
- * Updated to use direct backend API calls like simpleexplorer.tsx
- * This provides reliable backend connectivity without complex state management
+ * Updated to use centralized backend service and workspace utilities.
+ * This eliminates code duplication and provides consistent behavior.
  */
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useWebSocketService } from '../../contexts/BackendContext';
+import { backendService, ICUIFileNode, useTheme } from '../services';
+import { getWorkspaceRoot } from '../lib';
 
-interface FileNode {
-  id: string;
-  name: string;
-  type: 'file' | 'folder';
-  path: string;
-  children?: FileNode[];
-  isExpanded?: boolean; 
-  size?: number;
-  modified?: string;
-}
+interface FileNode extends ICUIFileNode {} // For backward compatibility
 
 interface ICUIExplorerProps {
   className?: string;
@@ -27,150 +20,6 @@ interface ICUIExplorerProps {
   onFolderCreate?: (path: string) => void;
   onFileDelete?: (path: string) => void;
   onFileRename?: (oldPath: string, newPath: string) => void;
-}
-
-// Backend client for file operations (following simpleexplorer.tsx pattern)
-class ExplorerBackendClient {
-  private baseUrl: string;
-
-  constructor() {
-    // Smart URL construction for Cloudflare tunnel compatibility
-    const envApiUrl = (import.meta as any).env?.VITE_API_URL as string | undefined;
-    
-    // Check if we're accessing through a different domain than configured
-    const currentHost = window.location.host;
-    let envHost = '';
-    
-    // Safely extract host from environment URL
-    if (envApiUrl && envApiUrl.trim() !== '') {
-      try {
-        envHost = new URL(envApiUrl).host;
-      } catch (error) {
-        console.warn('Invalid VITE_API_URL format:', envApiUrl);
-        envHost = '';
-      }
-    }
-    
-    if (envApiUrl && envApiUrl.trim() !== '' && currentHost === envHost) {
-      // Use configured API URL from .env when domains match
-      this.baseUrl = envApiUrl;
-    } else {
-      // Use dynamic URL construction when domains don't match (e.g., Cloudflare tunnels)
-      const protocol = window.location.protocol;
-      const host = window.location.host;
-      this.baseUrl = `${protocol}//${host}/api`;
-    }
-    
-    console.log('ICUIExplorerBackendClient initialized with URL:', this.baseUrl);
-    console.log('Current host:', currentHost, 'Env host:', envHost);
-  }
-
-  async checkConnection(): Promise<boolean> {
-    try {
-      const response = await fetch(`${this.baseUrl}/health`);
-      return response.ok;
-    } catch (error) {
-      return false;
-    }
-  }
-
-  async getDirectoryContents(path: string = '/'): Promise<FileNode[]> {
-    try {
-      const encodedPath = encodeURIComponent(path);
-      const response = await fetch(`${this.baseUrl}/files?path=${encodedPath}`);
-      
-      if (!response.ok) {
-        throw new Error(`Failed to get directory contents: ${response.status} ${response.statusText}`);
-      }
-      
-      const result = await response.json();
-      
-      if (!result.success) {
-        throw new Error(result.message || 'API request failed');
-      }
-      
-      const fileList = result.data || [];
-      
-      // Convert backend response to FileNode format
-      const nodes = fileList.map((item: any) => ({
-        id: item.path,
-        name: item.name,
-        type: item.is_directory ? 'folder' : 'file',
-        path: item.path,
-        size: item.size,
-        modified: item.modified_at ? new Date(item.modified_at * 1000).toISOString() : undefined,
-        isExpanded: false,
-        children: item.is_directory ? [] : undefined
-      }));
-
-      // Sort: folders first, then files, both alphabetically
-      return nodes.sort((a, b) => {
-        // First sort by type (folders before files)
-        if (a.type !== b.type) {
-          return a.type === 'folder' ? -1 : 1;
-        }
-        // Then sort alphabetically by name (case-insensitive)
-        return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
-      });
-    } catch (error) {
-      console.error('Failed to get directory contents:', error);
-      throw error;
-    }
-  }
-
-  async createFile(path: string, content: string = ''): Promise<void> {
-    try {
-      const response = await fetch(`${this.baseUrl}/files`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ path, content }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to create file: ${response.status} ${response.statusText}`);
-      }
-    } catch (error) {
-      console.error('Failed to create file:', error);
-      throw error;
-    }
-  }
-
-  async createDirectory(path: string): Promise<void> {
-    try {
-      const response = await fetch(`${this.baseUrl}/files`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ path, type: 'directory' }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to create directory: ${response.status} ${response.statusText}`);
-      }
-    } catch (error) {
-      console.error('Failed to create directory:', error);
-      throw error;
-    }
-  }
-
-  async deleteFile(path: string): Promise<void> {
-    try {
-      const encodedPath = encodeURIComponent(path);
-      const response = await fetch(`${this.baseUrl}/files?path=${encodedPath}`, {
-        method: 'DELETE',
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to delete file: ${response.status} ${response.statusText}`);
-      }
-    } catch (error) {
-      console.error('Failed to delete file:', error);
-      throw error;
-    }
-  }
 }
 
 const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
@@ -187,23 +36,30 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isConnected, setIsConnected] = useState(false);
-  const [currentPath, setCurrentPath] = useState<string>((import.meta as any).env?.VITE_WORKSPACE_ROOT || '/home/penthoy/ilaborcode/workspace');
+  const [currentPath, setCurrentPath] = useState<string>(getWorkspaceRoot());
   const lastLoadTimeRef = useRef(0);
   const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const loadDirectoryRef = useRef<(path?: string) => Promise<void>>();
 
-  const backendClient = new ExplorerBackendClient();
   const webSocketService = useWebSocketService();
+  const { theme } = useTheme();
 
-  // Check connection status
+  // Check connection status using centralized service
   const checkConnection = useCallback(async () => {
-    const connected = await backendClient.checkConnection();
-    setIsConnected(connected);
-    return connected;
+    try {
+      const status = await backendService.getConnectionStatus();
+      const connected = status.connected;
+      setIsConnected(connected);
+      return connected;
+    } catch (error) {
+      console.error('Connection check failed:', error);
+      setIsConnected(false);
+      return false;
+    }
   }, []);
 
-  // Load directory contents
-  const loadDirectory = useCallback(async (path: string = (import.meta as any).env?.VITE_WORKSPACE_ROOT || '/home/penthoy/ilaborcode/workspace') => {
+  // Load directory contents using centralized service
+  const loadDirectory = useCallback(async (path: string = getWorkspaceRoot()) => {
     // Prevent rapid successive calls (debounce)
     const now = Date.now();
     if (now - lastLoadTimeRef.current < 100) {
@@ -220,7 +76,7 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
         throw new Error('Backend not connected');
       }
 
-      const directoryContents = await backendClient.getDirectoryContents(path);
+      const directoryContents = await backendService.getDirectoryContents(path);
       setFiles(directoryContents);
       setCurrentPath(path);
     } catch (err) {
@@ -392,7 +248,7 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
         // Load children asynchronously without affecting current state update
         (async () => {
           try {
-            const children = await backendClient.getDirectoryContents(folder.path);
+            const children = await backendService.getDirectoryContents(folder.path);
             
             // Update the specific folder with its children
             setFiles(prevFiles => {
@@ -448,7 +304,7 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
     const newPath = `${currentPath}/${fileName.trim()}`.replace(/\/+/g, '/');
 
     try {
-      await backendClient.createFile(newPath);
+      await backendService.createFile(newPath);
       await loadDirectory(currentPath);
       onFileCreate?.(newPath);
     } catch (err) {
@@ -466,7 +322,7 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
     const newPath = `${currentPath}/${folderName.trim()}`.replace(/\/+/g, '/');
 
     try {
-      await backendClient.createDirectory(newPath);
+      await backendService.createDirectory(newPath);
       await loadDirectory(currentPath);
       onFolderCreate?.(newPath);
     } catch (err) {
@@ -484,7 +340,7 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
     }
 
     try {
-      await backendClient.deleteFile(item.path);
+      await backendService.deleteFile(item.path);
       await loadDirectory(currentPath);
       onFileDelete?.(item.path);
     } catch (err) {

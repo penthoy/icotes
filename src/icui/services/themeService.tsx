@@ -48,6 +48,22 @@ class ThemeService {
       ...config
     };
 
+    // Set a default theme immediately to prevent undefined errors
+    this.currentTheme = { type: 'light', name: 'Light', cssClass: 'light' };
+
+    // Only initialize DOM-dependent functionality when document is ready
+    if (typeof document !== 'undefined' && document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => this.initializeDOMFeatures());
+    } else if (typeof document !== 'undefined') {
+      // Document is already ready
+      this.initializeDOMFeatures();
+    }
+  }
+
+  /**
+   * Initialize DOM-dependent features
+   */
+  private initializeDOMFeatures(): void {
     if (this.config.autoDetect) {
       this.startAutoDetection();
     }
@@ -59,9 +75,22 @@ class ThemeService {
   }
 
   /**
+   * Check if theme service is ready for DOM operations
+   */
+  isReady(): boolean {
+    return typeof document !== 'undefined' && document.documentElement !== null;
+  }
+
+  /**
    * Start automatic theme detection
    */
   startAutoDetection(): void {
+    // Ensure document is available
+    if (typeof document === 'undefined') {
+      console.warn('Document not available, skipping theme auto-detection');
+      return;
+    }
+
     if (this.observer) {
       this.stopAutoDetection();
     }
@@ -74,10 +103,12 @@ class ThemeService {
       this.detectCurrentTheme();
     });
 
-    this.observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['class']
-    });
+    if (document.documentElement) {
+      this.observer.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['class']
+      });
+    }
   }
 
   /**
@@ -91,9 +122,16 @@ class ThemeService {
   }
 
   /**
-   * Detect current theme from DOM
+   * Detect current theme from document
    */
   detectCurrentTheme(): void {
+    // Ensure document is available (SSR safety)
+    if (typeof document === 'undefined' || !document.documentElement) {
+      console.warn('Document not available for theme detection, using default theme');
+      this.setCurrentTheme({ type: 'light', name: 'Light', cssClass: 'light' });
+      return;
+    }
+
     const htmlElement = document.documentElement;
     const classList = Array.from(htmlElement.classList);
     
@@ -118,14 +156,17 @@ class ThemeService {
     };
 
     this.setCurrentTheme(fallbackTheme);
-  }
-
-  /**
+  }  /**
    * Get current theme
    */
   getCurrentTheme(): ThemeInfo {
     if (!this.currentTheme) {
-      this.detectCurrentTheme();
+      try {
+        this.detectCurrentTheme();
+      } catch (error) {
+        console.warn('Failed to detect current theme, using fallback:', error);
+        this.currentTheme = { type: 'light', name: 'Light', cssClass: 'light' };
+      }
     }
     return this.currentTheme || { type: 'light', name: 'Light', cssClass: 'light' };
   }
@@ -327,11 +368,57 @@ export const themeService = new ThemeService();
  * React hook for theme management
  */
 export const useTheme = () => {
-  const [theme, setTheme] = useState<ThemeInfo>(themeService.getCurrentTheme);
+  // Initialize with a fallback theme to prevent undefined errors
+  const [theme, setTheme] = useState<ThemeInfo>(() => {
+    try {
+      if (themeService && themeService.isReady()) {
+        return themeService.getCurrentTheme();
+      } else {
+        return { type: 'light', name: 'Light', cssClass: 'light' };
+      }
+    } catch (error) {
+      console.warn('Theme service not ready during hook initialization, using fallback theme:', error);
+      return { type: 'light', name: 'Light', cssClass: 'light' };
+    }
+  });
 
   useEffect(() => {
-    const unsubscribe = themeService.subscribe(setTheme);
-    return unsubscribe;
+    // Ensure theme service is properly initialized
+    try {
+      let unsubscribe: (() => void) | undefined;
+      
+      if (themeService && themeService.isReady()) {
+        const currentTheme = themeService.getCurrentTheme();
+        setTheme(currentTheme);
+        unsubscribe = themeService.subscribe(setTheme);
+      } else {
+        // If not ready yet, wait for DOM to be ready
+        const checkReady = () => {
+          if (themeService && themeService.isReady()) {
+            const currentTheme = themeService.getCurrentTheme();
+            setTheme(currentTheme);
+            unsubscribe = themeService.subscribe(setTheme);
+          }
+        };
+        
+        if (typeof document !== 'undefined') {
+          if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', checkReady);
+          } else {
+            checkReady();
+          }
+        }
+      }
+      
+      return () => {
+        if (unsubscribe) {
+          unsubscribe();
+        }
+      };
+    } catch (error) {
+      console.error('Failed to initialize theme hook:', error);
+      return () => {}; // No-op cleanup
+    }
   }, []);
 
   return {

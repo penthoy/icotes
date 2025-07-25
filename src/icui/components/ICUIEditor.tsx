@@ -1,12 +1,11 @@
 /**
  * ICUI Editor Component
  * 
- * Complete rewrite following the simpleeditor.tsx and direct backend API pattern.
- * This component provides reliable backend connectivity without complex state management,
- * similar to ICUIExplorer and ICUITerminal.
+ * Updated to use centralized backend service and workspace utilities.
+ * This eliminates code duplication and provides consistent behavior.
  * 
  * Key Features:
- * - Direct backend API calls for file operations
+ * - Centralized backend service for file operations
  * - Multi-file tabs with backend synchronization
  * - Auto-save with debouncing
  * - Real-time file loading from backend
@@ -32,6 +31,8 @@ import {
   indentWithTab,
 } from "@codemirror/commands";
 import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
+import { backendService, ICUIFile, useTheme, ConnectionStatus } from '../services';
+import { getWorkspaceRoot } from '../lib';
 import {
   autocompletion,
   completionKeymap,
@@ -49,24 +50,12 @@ import { python } from '@codemirror/lang-python';
 import { javascript } from '@codemirror/lang-javascript';
 import { createICUISyntaxHighlighting, createICUIEnhancedEditorTheme } from '../utils/syntaxHighlighting';
 
-// File interface (following ICUIEnhancedEditorPanel pattern)
-interface EditorFile {
-  id: string;
-  name: string;
-  language: string;
-  content: string;
-  modified: boolean;
-  path?: string;
+// File interface (using centralized ICUIFile type)
+interface EditorFile extends ICUIFile {
   isTemporary?: boolean; // VS Code-like temporary file state
 }
 
-// Connection status interface (following simpleeditor pattern)
-interface ConnectionStatus {
-  connected: boolean;
-  services?: any;
-  timestamp?: number;
-  error?: string;
-}
+
 
 // Notification system (following simpleeditor pattern)
 class EditorNotificationService {
@@ -92,213 +81,6 @@ class EditorNotificationService {
         }
       }, 300);
     }, 3000);
-  }
-}
-
-// Backend client for editor operations (following simpleeditor pattern)
-class EditorBackendClient {
-  private backendUrl: string;
-
-  constructor() {
-    // Smart URL construction for Cloudflare tunnel compatibility
-    const envBackendUrl = (import.meta as any).env?.VITE_BACKEND_URL as string | undefined;
-    
-    // Check if we're accessing through a different domain than configured
-    const currentHost = window.location.host;
-    let envHost = '';
-    
-    // Safely extract host from environment URL
-    if (envBackendUrl && envBackendUrl.trim() !== '') {
-      try {
-        envHost = new URL(envBackendUrl).host;
-      } catch (error) {
-        console.warn('Invalid VITE_BACKEND_URL format:', envBackendUrl);
-        envHost = '';
-      }
-    }
-    
-    if (envBackendUrl && envBackendUrl.trim() !== '' && currentHost === envHost) {
-      // Use configured backend URL from .env when domains match
-      this.backendUrl = envBackendUrl;
-    } else {
-      // Use dynamic URL construction when domains don't match (e.g., Cloudflare tunnels)
-      const protocol = window.location.protocol;
-      const host = window.location.host;
-      this.backendUrl = `${protocol}//${host}`;
-    }
-    
-    console.log('EditorBackendClient initialized with URL:', this.backendUrl);
-    console.log('Current host:', currentHost, 'Env host:', envHost);
-  }
-
-  async checkConnection(): Promise<boolean> {
-    try {
-      // Default to localhost:8000 if no backend URL is configured
-      const url = this.backendUrl || 'http://localhost:8000';
-      console.log('Checking backend connection at:', `${url}/health`);
-      const response = await fetch(`${url}/health`);
-      const isOk = response.ok;
-      console.log('Backend connection check result:', isOk);
-      return isOk;
-    } catch (error) {
-      console.error('Backend connection check failed:', error);
-      return false;
-    }
-  }
-
-  async listFiles(workspacePath: string): Promise<EditorFile[]> {
-    try {
-      const encodedPath = encodeURIComponent(workspacePath);
-      // Use the correct API endpoint with /api prefix
-      const url = `${this.backendUrl}/api/files?path=${encodedPath}`;
-      console.log('Calling API:', url);
-      const response = await fetch(url);
-      
-      if (!response.ok) {
-        throw new Error(`Failed to list files: ${response.status} ${response.statusText}`);
-      }
-      
-      const result = await response.json();
-      
-      if (!result.success) {
-        throw new Error(result.message || 'API request failed');
-      }
-      
-      const fileList = result.data || [];
-      
-      // Convert backend response to EditorFile format, filter out directories
-      return fileList
-        .filter((item: any) => !item.is_directory)
-        .map((item: any, index: number) => ({
-          id: item.path || `file_${index}`,
-          name: item.name,
-          language: this.getLanguageFromExtension(item.name),
-          content: '', // Content will be loaded separately
-          modified: false,
-          path: item.path
-        }));
-    } catch (error) {
-      console.error('Failed to list files:', error);
-      throw error;
-    }
-  }
-
-  async readFile(path: string): Promise<string> {
-    try {
-      const encodedPath = encodeURIComponent(path);
-      // Use the correct API endpoint with /api prefix
-      const url = `${this.backendUrl}/api/files/content?path=${encodedPath}`;
-      console.log('Reading file from API:', url);
-      const response = await fetch(url);
-      
-      if (!response.ok) {
-        throw new Error(`Failed to read file: ${response.status} ${response.statusText}`);
-      }
-      
-      const result = await response.json();
-      
-      if (!result.success) {
-        throw new Error(result.message || 'Failed to read file');
-      }
-      
-      return result.data.content || '';
-    } catch (error) {
-      console.error('Failed to read file:', error);
-      throw error;
-    }
-  }
-
-  async getFile(filePath: string): Promise<EditorFile> {
-    try {
-      const content = await this.readFile(filePath);
-      const filename = filePath.split('/').pop() || 'untitled';
-      
-      return {
-        id: filePath,
-        name: filename,
-        language: this.getLanguageFromExtension(filename),
-        content: content,
-        modified: false,
-        path: filePath
-      };
-    } catch (error) {
-      console.error('Failed to get file:', error);
-      throw error;
-    }
-  }
-
-  private getLanguageFromExtension(filename: string): string {
-    const ext = filename.split('.').pop()?.toLowerCase();
-    switch (ext) {
-      case 'js':
-        return 'javascript';
-      case 'ts':
-        return 'typescript';
-      case 'py':
-        return 'python';
-      case 'html':
-        return 'html';
-      case 'css':
-        return 'css';
-      case 'json':
-        return 'json';
-      case 'md':
-        return 'markdown';
-      default:
-        return 'text';
-    }
-  }
-
-  async writeFile(path: string, content: string): Promise<void> {
-    try {
-      // Use the correct API endpoint with /api prefix
-      const url = `${this.backendUrl}/api/files`;
-      console.log('Writing file to API:', url);
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ path, content }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to write file: ${response.status} ${response.statusText}`);
-      }
-
-      const result = await response.json();
-      if (!result.success) {
-        throw new Error(result.message || 'Failed to write file');
-      }
-    } catch (error) {
-      console.error('Failed to write file:', error);
-      throw error;
-    }
-  }
-
-  async executeCode(code: string, language: string, filePath?: string): Promise<any> {
-    try {
-      const response = await fetch(`${this.backendUrl}/execute`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ 
-          code, 
-          language,
-          file_path: filePath || 'untitled'
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to execute code: ${response.status} ${response.statusText}`);
-      }
-
-      return await response.json();
-    } catch (error) {
-      console.error('Failed to execute code:', error);
-      throw error;
-    }
   }
 }
 
@@ -352,19 +134,20 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
   // Refs (following ICUIEnhancedEditorPanel pattern)
   const editorRef = useRef<HTMLDivElement>(null);
   const editorViewRef = useRef<EditorView | null>(null);
-  const backendClient = useRef(new EditorBackendClient());
+  // Use centralized theme service instead of manual theme detection
+  const { theme } = useTheme();
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const currentContentRef = useRef<string>(''); // Track current content to prevent loops
   const contentChangeHandlerRef = useRef<((content: string) => void) | null>(null); // Stable ref for content changes
 
   // Get workspace root from environment (following ICUIExplorer pattern)
-  const effectiveWorkspaceRoot = workspaceRoot || (import.meta as any).env?.VITE_WORKSPACE_ROOT || '/home/penthoy/ilaborcode/workspace';
+  const effectiveWorkspaceRoot = workspaceRoot || getWorkspaceRoot();
 
   // File opening methods for external control (e.g., from Explorer)
   const openFile = useCallback(async (filePath: string) => {
     try {
       setIsLoading(true);
-      const fileData = await backendClient.current.getFile(filePath);
+      const fileData = await backendService.getFile(filePath);
       
       // Check if file is already open
       const existingFileIndex = files.findIndex(f => f.path === filePath);
@@ -411,7 +194,7 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
       }
 
       // Load the new file and mark it as temporary
-      const fileData = await backendClient.current.getFile(filePath);
+      const fileData = await backendService.getFile(filePath);
       const temporaryFile = { ...fileData, isTemporary: true };
       
       // Add new temporary file to the list (keeping all permanent files)
@@ -474,12 +257,12 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
     };
   }, []);
 
-  // Backend connection check (following simpleeditor pattern)
+  // Backend connection check using centralized service
   const checkBackendConnection = useCallback(async () => {
     try {
-      const isConnected = await backendClient.current.checkConnection();
+      const status = await backendService.getConnectionStatus();
       const newStatus = {
-        connected: isConnected,
+        connected: status.connected,
         timestamp: Date.now()
       };
       console.log('Backend connection status updated:', newStatus);
@@ -491,7 +274,7 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
       } else {
         console.log('No onConnectionStatusChange callback available');
       }
-      return isConnected;
+      return status.connected;
     } catch (error) {
       const newStatus = {
         connected: false,
@@ -519,14 +302,14 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
     try {
       console.log('Loading files from workspace:', effectiveWorkspaceRoot);
       // First, get the list of files without content
-      const loadedFiles = await backendClient.current.listFiles(effectiveWorkspaceRoot);
+      const loadedFiles = await backendService.getWorkspaceFiles(effectiveWorkspaceRoot);
       console.log('Loaded file list:', loadedFiles);
       
       if (loadedFiles.length > 0) {
         // Load content for the first file immediately before setting files
         try {
           console.log('Loading content for first file:', loadedFiles[0].path);
-          const fileWithContent = await backendClient.current.getFile(loadedFiles[0].path!);
+          const fileWithContent = await backendService.getFile(loadedFiles[0].path!);
           console.log('Loaded content for first file, length:', fileWithContent.content.length);
           
           // Update the first file with content
@@ -622,9 +405,9 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
         autoSaveTimerRef.current = setTimeout(async () => {
           try {
             // Check connection at time of save, not when setting up the callback
-            const isConnected = await backendClient.current.checkConnection();
-            if (isConnected) {
-              await backendClient.current.writeFile(fileToSave.path!, newContent);
+            const status = await backendService.getConnectionStatus();
+            if (status.connected) {
+              await backendService.saveFile(fileToSave.path!, newContent);
               
               setFiles(prevFiles =>
                 prevFiles.map(f =>
@@ -807,7 +590,7 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
 
     setIsLoading(true);
     try {
-      await backendClient.current.writeFile(file.path, file.content);
+      await backendService.saveFile(file.path, file.content);
       
       // Mark file as saved
       setFiles(prevFiles => 
@@ -834,7 +617,7 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
 
     setIsLoading(true);
     try {
-      const result = await backendClient.current.executeCode(file.content, file.language, file.path);
+      const result = await backendService.executeCode(file.content, file.language, file.path);
       EditorNotificationService.show(`Executed ${file.name}`, 'success');
       onFileRun?.(fileId, file.content, file.language);
     } catch (error) {
@@ -932,7 +715,7 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
       if (needsContent) {
         try {
           console.log('Loading content for file:', file.path);
-          const fileWithContent = await backendClient.current.getFile(file.path);
+          const fileWithContent = await backendService.getFile(file.path);
           console.log('Loaded content, length:', fileWithContent.content.length);
           
           // Update the file content first

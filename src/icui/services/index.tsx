@@ -25,6 +25,13 @@ export {
 } from './backendClient';
 
 export { 
+  ICUIBackendService as BackendService,
+  icuiBackendService as backendService,
+  type ICUIFile,
+  type ICUIFileNode
+} from './backendService';
+
+export { 
   FileService, 
   fileService,
   type FileServiceConfig,

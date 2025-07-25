@@ -4,56 +4,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-
-// Backend client for direct connection checking (from ICUIEditor)
-class FooterBackendClient {
-  private backendUrl: string;
-
-  constructor() {
-    // Smart URL construction for Cloudflare tunnel compatibility
-    const envBackendUrl = (import.meta as any).env?.VITE_BACKEND_URL as string | undefined;
-    const envApiUrl = (import.meta as any).env?.VITE_API_URL as string | undefined;
-    
-    // Check if we're accessing through a different domain than configured
-    const currentHost = window.location.host;
-    const primaryUrl = envBackendUrl || envApiUrl;
-    let envHost = '';
-    
-    // Safely extract host from environment URL
-    if (primaryUrl && primaryUrl.trim() !== '') {
-      try {
-        envHost = new URL(primaryUrl).host;
-      } catch (error) {
-        console.warn('Invalid backend URL format:', primaryUrl);
-        envHost = '';
-      }
-    }
-    
-    if (primaryUrl && primaryUrl.trim() !== '' && currentHost === envHost) {
-      // Use configured URL from .env when domains match
-      this.backendUrl = primaryUrl;
-    } else {
-      // Use dynamic URL construction when domains don't match (e.g., Cloudflare tunnels)
-      const protocol = window.location.protocol;
-      const host = window.location.host;
-      this.backendUrl = `${protocol}//${host}`;
-    }
-    
-    console.log('FooterBackendClient initialized with URL:', this.backendUrl);
-    console.log('Current host:', currentHost, 'Env host:', envHost);
-  }
-
-  async checkConnection(): Promise<boolean> {
-    try {
-      // Default to localhost:8000 if no backend URL is configured
-      const url = this.backendUrl || 'http://localhost:8000';
-      const response = await fetch(`${url}/health`);
-      return response.ok;
-    } catch (error) {
-      return false;
-    }
-  }
-}
+import { backendService, useTheme } from '../services';
 
 export interface ICUIBaseFooterProps {
   className?: string;
@@ -78,27 +29,35 @@ export interface ICUIBaseFooterProps {
  * Base Footer Component
  * Provides common footer functionality with status bar, connection status, and custom content
  */
-export const ICUIBaseFooter: React.FC<ICUIBaseFooterProps> = ({
-  className = '',
-  style,
+export const ICUIBaseFooter: React.FC<ICUIBaseFooterProps> = ({ 
+  className = '', 
+  style = {},
   children,
   statusItems = [],
-  connectionStatus = 'connected', // This prop is now ignored - we check directly
-  statusText = 'Ready',
+  statusText = '',
+  connectionStatus
 }) => {
-  // Direct backend connection state (independent of props)
-  const [realConnectionStatus, setRealConnectionStatus] = useState<'connected' | 'disconnected' | 'connecting' | 'error'>('disconnected');
-  const backendClient = useRef(new FooterBackendClient());
+  const [realConnectionStatus, setRealConnectionStatus] = useState<'connected' | 'disconnected' | 'connecting' | 'error'>('connecting');
+  const [lastChecked, setLastChecked] = useState<Date | null>(null);
+  
+  // Use centralized theme service instead of manual theme detection
+  const { theme } = useTheme();
 
-  // Direct backend connection check (same logic as ICUIEditor)
+  // Check backend connection status using centralized service
   const checkBackendConnection = useCallback(async () => {
     try {
-      const isConnected = await backendClient.current.checkConnection();
-      setRealConnectionStatus(isConnected ? 'connected' : 'disconnected');
-      return isConnected;
+      setRealConnectionStatus('connecting');
+      const status = await backendService.getConnectionStatus();
+      if (status.connected) {
+        setRealConnectionStatus('connected');
+      } else {
+        setRealConnectionStatus('disconnected');
+      }
+      setLastChecked(new Date());
     } catch (error) {
+      console.error('Backend connection failed:', error);
       setRealConnectionStatus('error');
-      return false;
+      setLastChecked(new Date());
     }
   }, []);
 
@@ -109,8 +68,8 @@ export const ICUIBaseFooter: React.FC<ICUIBaseFooterProps> = ({
     return () => clearInterval(interval);
   }, [checkBackendConnection]);
 
-  // Use real connection status instead of prop
-  const effectiveConnectionStatus = realConnectionStatus;
+  // Use provided connection status or fall back to real status
+  const effectiveConnectionStatus = connectionStatus || realConnectionStatus;
 
   // Get connection status color
   const getConnectionStatusColor = () => {
