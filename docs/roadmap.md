@@ -2,11 +2,24 @@
 A web-based JavaScript code editor built with ViteReact, CodeMirror 6, and modern web technologies. The goal is to create the world's most powerful notebook for developers and hackers, it includes 3 core parts: 1. rich text editor, similar to evernote/notion hybrid, 2. code editor + terminal(similar to replit), 3. AI agent that can be customized with agentic frameworks such as crew ai, or openai agent sdk, or any other agentic framework. This tool is designed to be infinitely hackable and flexible to empower the nextgeneration of AI powered developers.
 
 ### In Progress
-- [] Start icpy_plan.md step 6.1 (Service Discovery and Registry)
+- [] please create a simplechat.tsx 
+1. it should be a rewrite of the ICUIChatPanel.tsx.
+2. same pattern as simpleeditor explorer and terminal a basic implementation that showcase all the services both icui and icpy works.
+3. the goal of this is to eventually provide the same function as modern agentic coder like copilot.
+4. as a frontend perspective, please complete plan for icpy_plan.md 6.4 in the same style and pattern as other plans, don't make it overly verbose, and only capture what needs to be done. don't give any implementation details but just the kind of service/endpoint required from your perspective of writing the frontend for this tool, you're writing a request to the backend devs to fullfil what you need. we also have a 
 
 ## Future task
+-- agent framework icpy backend.
+icpy_plan.md 6.1
 
--- 
+-- agent chat frontend
+
+
+-- consolditate:
+look into backend/main.py and further abstract this code base.
+update documentation to use docu library
+remove anything not being used under src/components/ui and src/components/archived
+
 -- Add backend services
 Add icpy_plan.md 5.3 LSP to the Editor
 Add icpy_plan.md 5.4 to Agent.

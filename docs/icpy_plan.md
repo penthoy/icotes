@@ -443,6 +443,16 @@ Create a backend that acts as a **single source of truth** for the frontend, is 
 
 ### Phase 6: Agentic foundation
 **Goal**: Foundational Agentic services
+
+#### Step 6.1:
+Install openai agent sdk, crewAI, langchain langraph and make sure they work.
+
+#### Step 6.2:
+create a backend/icpy/agent folder where we can put our custom agentic workflow
+
+#### Step 6.3:
+create services that exposes these workflows
+
 Prepare architecture for Agentic frameworks and provide services to these frame works.
 
 ### Phase 7: Extension Points for Future Features
