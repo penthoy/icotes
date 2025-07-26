@@ -15,6 +15,17 @@ export { ICUIPanelArea } from './components/ICUIPanelArea';
 export { default as ICUITabContainer } from './components/ICUITabContainer';
 export { ICUIEnhancedLayout } from './components/ICUIEnhancedLayout';
 
+// Core Components (Main ICUI interface components)
+export { default as ICUIChat } from './components/ICUIChat';
+export { default as ICUITerminal } from './components/ICUITerminal';
+export { default as ICUIEditor } from './components/ICUIEditor';
+export { default as ICUIExplorer } from './components/ICUIExplorer';
+
+// Core Component Types
+export type { ICUIChatRef } from './components/ICUIChat';
+export type { ICUITerminalRef } from './components/ICUITerminal';
+export type { ICUIEditorRef } from './components/ICUIEditor';
+
 // Base Layout Components
 export { ICUIBaseHeader } from './components/ICUIBaseHeader';
 export { ICUIBaseFooter } from './components/ICUIBaseFooter';

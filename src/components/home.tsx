@@ -19,7 +19,7 @@
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { 
   ICUIEnhancedLayout,
-  ICUIChatPanel
+  ICUIChat
 } from '../icui';
 import Layout from './Layout';
 import ICUIExplorer from '../icui/components/ICUIExplorer';
@@ -189,7 +189,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
   ), []);
 
   const chatInstance = useMemo(() => (
-    <ICUIChatPanel className="h-full" />
+    <ICUIChat className="h-full" />
   ), []);
 
   // Memoized panel content creators to prevent recreation on layout changes
