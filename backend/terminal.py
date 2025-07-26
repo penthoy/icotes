@@ -49,32 +49,18 @@ class TerminalManager:
             # Set terminal attributes for maximum responsiveness and low latency
             try:
                 attrs = termios.tcgetattr(slave_fd)
-                # FIXED: Use raw mode for proper terminal emulator behavior (like xterm.js expects)
-                # Disable canonical mode for character-by-character processing
-                attrs[3] &= ~termios.ICANON  # Disable canonical mode - process char by char
-                attrs[3] &= ~termios.ECHO    # Disable local echo - let shell handle it
-                attrs[3] &= ~termios.ECHOE   # Disable erase echo
-                attrs[3] &= ~termios.ECHOK   # Disable kill echo  
-                attrs[3] &= ~termios.ECHONL  # Disable newline echo
-                attrs[3] |= termios.ISIG     # Enable signal processing (Ctrl+C, etc.)
-                attrs[3] |= termios.IEXTEN   # Enable extended input processing
-                
-                # Input processing for raw terminal behavior
-                attrs[0] &= ~termios.ICRNL   # Don't map CR to NL on input
-                attrs[0] &= ~termios.BRKINT  # Don't break on interrupt
-                attrs[0] &= ~termios.IGNPAR  # Don't ignore parity errors
-                attrs[0] &= ~termios.ISTRIP  # Don't strip 8th bit
-                attrs[0] &= ~termios.IXON    # Disable XON/XOFF flow control
-                
-                # Output processing for raw terminal
-                attrs[1] &= ~termios.OPOST   # Disable output processing
-                
-                # For raw mode, set immediate response
-                attrs[6][termios.VMIN] = 1   # Minimum characters to read
-                attrs[6][termios.VTIME] = 0  # No timeout - immediate response
-                
+                # Disable canonical mode for character-by-character input
+                attrs[3] &= ~termios.ICANON  # Disable canonical mode
+                attrs[3] |= termios.ISIG  # Enable signal processing (keep Ctrl+C, etc.)
+                # Removed line disabling kernel echo; we will now rely on the backend PTY to echo characters
+                # attrs[3] &= ~termios.ECHO
+                # Set input/output processing for low latency
+                attrs[0] |= termios.ICRNL  # Map CR to NL on input
+                attrs[1] |= termios.ONLCR  # Map NL to CR-NL on output
+                # Configure for immediate response with zero latency
+                attrs[6][termios.VMIN] = 1  # Minimum characters (1 for immediate processing)
+                attrs[6][termios.VTIME] = 0  # Timeout (0 for immediate return)
                 termios.tcsetattr(slave_fd, termios.TCSANOW, attrs)
-                logger.info("Terminal attributes set for raw mode (proper terminal emulator behavior)")
             except Exception as e:
                 logger.warning(f"Could not set terminal attributes: {e}")
             
@@ -102,15 +88,6 @@ class TerminalManager:
                 'ICOTES_CLIPBOARD_PATH': clipboard_path,
                 # Set startup script for terminal initialization
                 'ICOTES_STARTUP_SCRIPT': startup_script,
-                # FIXED: Additional environment variables for proper readline support
-                'HISTSIZE': '10000',
-                'HISTFILESIZE': '20000',
-                'HISTCONTROL': 'ignoredups:ignorespace',
-                'INPUTRC': '/etc/inputrc',  # Ensure system inputrc is used
-                # Force readline to be enabled
-                'READLINE_LINE': '',
-                'COLUMNS': '80',
-                'LINES': '24',
             })
             
             # Find bash executable
@@ -142,14 +119,12 @@ class TerminalManager:
             # or invalid string (e.g. "--") could be interpreted by bash as a CLI argument and cause it to exit with the
             # "--: invalid option" error that was reported from the frontend terminal.
             if os.path.isfile(startup_script):
-                # FIXED: Use --rcfile for custom startup and force interactive mode with readline
-                bash_args = [bash_path, "--rcfile", startup_script, "-i", "-l"]
-                logger.info(f"Using custom startup script: {startup_script}")
+                bash_args = [bash_path, "--rcfile", startup_script, "-i"]
             else:
                 # Fallback to a plain interactive shell – we still pass -l so that the user's normal
                 # startup files ( /etc/profile, ~/.bash_profile, ~/.bashrc ) are loaded.
                 logger.warning(f"Startup script '{startup_script}' not found – launching bash without --rcfile")
-                bash_args = [bash_path, "-i", "-l"]  # -i interactive, -l login
+                bash_args = [bash_path, "-il"]  # -i interactive, -l login
 
             logger.info(f"Starting bash with args: {bash_args}")
 

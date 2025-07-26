@@ -235,7 +235,7 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
     const computedStyle = getComputedStyle(document.documentElement);
     const getThemeVar = (varName: string) => computedStyle.getPropertyValue(varName).trim();
     
-        // Create terminal with proper theme-aware colors (simplified to match working SimpleTerminal)
+    // Create terminal with theme-aware colors using ICUI CSS variables
     terminal.current = new Terminal({
       scrollback: 1000,
       fontSize: 14,
@@ -297,7 +297,7 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
     let wsUrl: string;
     if (envWsUrl && envWsUrl.trim() !== '') {
       // Use configured WebSocket URL from .env
-      wsUrl = `${envWsUrl}/ws/terminal/${terminalId.current}`;
+      wsUrl = `${envWsUrl}/terminal/${terminalId.current}`;
     } else {
       // Fallback to dynamic URL construction
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -454,10 +454,16 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
 
   // Apply critical CSS for viewport scrolling (same as SimpleTerminal)
   useEffect(() => {
+    // Get theme colors from CSS variables for viewport styling
+    const computedStyle = getComputedStyle(document.documentElement);
+    const bgColor = computedStyle.getPropertyValue('--icui-bg-primary').trim() || 
+                   (isDarkTheme ? '#1e1e1e' : '#ffffff');
+    
     const styleElement = document.createElement('style');
+    styleElement.id = 'icui-terminal-styles'; // Add ID for easier cleanup
     styleElement.textContent = `
       .icui-terminal-container .xterm .xterm-viewport {
-        background-color: ${isDarkTheme ? '#1e1e1e' : '#ffffff'} !important;
+        background-color: ${bgColor} !important;
         overflow-y: scroll !important;
         position: absolute !important;
         top: 0 !important;
@@ -476,14 +482,42 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
         top: 0 !important;
       }
     `;
-    document.head.appendChild(styleElement);
     
+    // Remove any existing styles with the same ID first
+    const existingStyle = document.getElementById('icui-terminal-styles');
+    if (existingStyle) {
+      existingStyle.remove();
+    }
+    
+    document.head.appendChild(styleElement);
+
     return () => {
-      if (document.head.contains(styleElement)) {
-        document.head.removeChild(styleElement);
+      // Clean up the style element
+      const elementToRemove = document.getElementById('backend-connected-terminal-styles');
+      if (elementToRemove) {
+        elementToRemove.remove();
       }
     };
-  }, [isDarkTheme]);
+  }, [isDarkTheme]); // Add isDarkTheme dependency to update when theme changes
+
+  // Additional effect to force update terminal viewport background when theme changes
+  useEffect(() => {
+    if (!terminalRef.current || !terminal.current) return;
+
+    // Add a small delay to ensure CSS variables have propagated
+    const updateTimeout = setTimeout(() => {
+      // Force update viewport background directly
+      const terminalViewport = terminalRef.current?.querySelector('.xterm-viewport');
+      if (terminalViewport) {
+        const computedStyle = getComputedStyle(document.documentElement);
+        const bgColor = computedStyle.getPropertyValue('--icui-bg-primary').trim() || 
+                       (isDarkTheme ? '#1e1e1e' : '#ffffff');
+        (terminalViewport as HTMLElement).style.backgroundColor = bgColor;
+      }
+    }, 100); // 100ms delay to ensure CSS variables are updated
+
+    return () => clearTimeout(updateTimeout);
+  }, [isDarkTheme]); // Update viewport background when theme changes
 
   // Expose terminal methods via ref (matching SimpleTerminal pattern)
   useImperativeHandle(ref, () => ({
@@ -515,16 +549,9 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
   }));
 
   return (
-    <div className={`icui-terminal ${className} h-full w-full flex flex-col`}>
-      <div 
-        className="icui-terminal-container flex-grow"
-        style={{ position: 'relative', overflow: 'hidden' }}
-      >
-        <div 
-          ref={terminalRef} 
-          className="h-full w-full"
-          style={{ position: 'relative' }}
-        />
+    <div className={`icui-terminal ${className}`}>
+      <div className="icui-terminal-container h-full w-full">
+        <div ref={terminalRef} className="h-full w-full" />
       </div>
     </div>
   );
