@@ -33,6 +33,7 @@ A web-based JavaScript code editor built with ViteReact, CodeMirror 6, and moder
 
 
 -- consolditate:
+Consolidate simplechat into reusable 
 backend/main.py is bootstraping a auto_initialize_chat_agent() This should be abstracted
 look into backend/main.py and further abstract this code base.
 update documentation to use docu library

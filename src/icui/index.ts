@@ -38,6 +38,13 @@ export { default as ICUIChatPanel } from './components/panels/ICUIChatPanel';
 export { useICUIResponsive } from './hooks/icui-use-responsive';
 export { useICUILayoutState, useCurrentLayout, useLayoutPresets } from './hooks/icui-use-layout-state';
 export { useICUIPanels, createPanel, PanelUtils } from './hooks/icui-use-panels';
+export { useChatMessages } from './hooks/useChatMessages';
+export type { 
+  UseChatMessagesOptions, 
+  UseChatMessagesReturn 
+} from './hooks/useChatMessages';
+export { useTheme } from './hooks/useTheme';
+export type { ThemeState } from './hooks/useTheme';
 
 // Types
 export type {
@@ -51,6 +58,21 @@ export type {
   ICUIBreakpoint,
   ICUIResponsiveConfig,
 } from './types/icui-layout';
+
+// Chat Types
+export * from './types/chatTypes';
+
+// Services
+export { ChatBackendClient } from './services/chatBackendClient';
+export { notificationService, useNotifications } from './services/notificationService';
+export type { 
+  NotificationType, 
+  NotificationOptions, 
+  Notification 
+} from './services/notificationService';
+
+// Utilities
+export * from './utils/urlHelpers';
 
 export type {
   ICUISplitDirection,
