@@ -2,12 +2,13 @@
 A web-based JavaScript code editor built with ViteReact, CodeMirror 6, and modern web technologies. The goal is to create the world's most powerful notebook for developers and hackers, it includes 3 core parts: 1. rich text editor, similar to evernote/notion hybrid, 2. code editor + terminal(similar to replit), 3. AI agent that can be customized with agentic frameworks such as crew ai, or openai agent sdk, or any other agentic framework. This tool is designed to be infinitely hackable and flexible to empower the nextgeneration of AI powered developers.
 
 ### In Progress
-
+- []
 ## Future task
 -- Chat at home route
 
 -- Chat window:
 same function as what copilot window has
+Proper history and new chat + button.
 
 -- consolditate:
 backend/main.py is bootstraping a auto_initialize_chat_agent() This should be abstracted
@@ -125,6 +126,10 @@ maya style code executor.
 - **Home Integration**: Successfully replaced `ICUIChatPanel.tsx` with the new component in `home.tsx`
 - **Export Setup**: Added proper exports to ICUI framework index for seamless integration
 - **Build Validation**: Confirmed successful compilation and build process
+- **UI Improvements**: 
+  - Enhanced chat bubble styling with dimmer user message colors using subtle gray themes instead of bright accent colors
+  - Maximized screen real estate by increasing chat bubble width from 80% to 95% for better coding assistant experience
+  - Added subtle border styling to distinguish user messages while maintaining theme consistency
 
 **Phase 6 COMPLETE**: All agentic backend infrastructure is production-ready with real API integration, comprehensive testing, full chat service support, and fully functional frontend integration at `/simple-chat`.
 

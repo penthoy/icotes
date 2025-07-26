@@ -341,16 +341,19 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
                 }`}
               >
                 <div
-                  className={`max-w-[80%] p-3 rounded-lg text-sm ${
+                  className={`max-w-[95%] p-3 rounded-lg text-sm ${
                     message.sender === 'user' 
                       ? 'rounded-br-sm' 
                       : 'rounded-bl-sm'
                   }`}
                   style={{
                     backgroundColor: message.sender === 'user' 
-                      ? 'var(--icui-accent)' 
+                      ? 'var(--icui-bg-tertiary)' 
                       : 'var(--icui-bg-tertiary)',
-                    color: 'var(--icui-text-primary)'
+                    color: 'var(--icui-text-primary)',
+                    border: message.sender === 'user' 
+                      ? '1px solid var(--icui-border-subtle)' 
+                      : 'none'
                   }}
                 >
                   {/* Message Content */}
