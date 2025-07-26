@@ -2,16 +2,26 @@
 A web-based JavaScript code editor built with ViteReact, CodeMirror 6, and modern web technologies. The goal is to create the world's most powerful notebook for developers and hackers, it includes 3 core parts: 1. rich text editor, similar to evernote/notion hybrid, 2. code editor + terminal(similar to replit), 3. AI agent that can be customized with agentic frameworks such as crew ai, or openai agent sdk, or any other agentic framework. This tool is designed to be infinitely hackable and flexible to empower the nextgeneration of AI powered developers.
 
 ### In Progress
-- []
+- [] backend/main.py is bootstraping a auto_initialize_chat_agent() This should be abstracted instead of a function in main.py
+1. I created custom_agent.py the idea is to be able to architect a way to write my own custom agents as a function or class, you decide base on the following requirements: 1. the abstraction is such that it can take a chat input and produce a chat output. 2. within this abstraction it have the capability to do tool/function calling that have all advanced capabilities that can take full use of AI frameworks like openAI sdk, crew and langchain/langgraph.
+2. based on these requirements please abstract away auto_initialize_chat_agent from main.py the function name itself can remain the same but the content should be in custom_agent.py 
+
+3. the CUSTOM_AGENTS list is designed to be a menu item in the frontend chat window similar to the screenshot of copilot where it'll detect this list, of which each item on this list is the name of the custom agent class/function that user can define.
+
+4. after you finish this task, we can just have this one demo custom agent that works as before, and its the only item in the list named OpenAIDemoAgent, we can add more later.
+
 ## Future task
--- Chat at home route
+
+-- bug:
+Bug: Terminal press up and down or down and up, the cursor will go up and remove the previous line
 
 -- Chat window:
-same function as what copilot window has
 Proper history and new chat + button.
+custom agent picker dropdown.
+
 
 -- consolditate:
-backend/main.py is bootstraping a auto_initialize_chat_agent() This should be abstracted
+
 look into backend/main.py and further abstract this code base.
 update documentation to use docu library
 remove anything not being used under src/components/ui and src/components/archived
