@@ -5,6 +5,7 @@ import {
   ChatMessage, 
   notificationService 
 } from '../../src/icui';
+import { CustomAgentDropdown } from '../../src/icui/components/menus/CustomAgentDropdown';
 
 interface SimpleChatProps {
   className?: string;
@@ -30,6 +31,7 @@ const SimpleChat: React.FC<SimpleChatProps> = ({ className = '' }) => {
   });
 
   const [inputValue, setInputValue] = React.useState('');
+  const [selectedAgent, setSelectedAgent] = React.useState('OpenAIDemoAgent'); // Default to the first available agent
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when new messages arrive
@@ -43,7 +45,14 @@ const SimpleChat: React.FC<SimpleChatProps> = ({ className = '' }) => {
     if (!inputValue.trim()) return;
     
     try {
-      await sendMessage(inputValue);
+      // Include the selected agent in the message options
+      await sendMessage(inputValue, {
+        agentType: selectedAgent as any, // Cast to AgentType
+        streaming: true,
+        context: {
+          timestamp: new Date().toISOString()
+        }
+      });
       setInputValue('');
     } catch (error) {
       notificationService.error('Failed to send message');
@@ -157,6 +166,16 @@ const SimpleChat: React.FC<SimpleChatProps> = ({ className = '' }) => {
           >
             Send
           </button>
+        </div>
+        
+        {/* Agent Selection - Below Input */}
+        <div className="mt-3">
+          <CustomAgentDropdown
+            selectedAgent={selectedAgent}
+            onAgentChange={setSelectedAgent}
+            disabled={!isConnected}
+            className="w-full"
+          />
         </div>
       </div>
     </div>

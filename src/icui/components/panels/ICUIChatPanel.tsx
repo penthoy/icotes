@@ -151,9 +151,6 @@ const ICUIChatPanel: React.FC<ICUIChatPanelProps> = ({ className = '' }) => {
             Send
           </button>
         </div>
-        <div className="text-xs mt-1" style={{ color: 'var(--icui-text-muted)' }}>
-          Press Enter to send • Shift+Enter for new line
-        </div>
       </div>
     </div>
   );

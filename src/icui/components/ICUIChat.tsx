@@ -26,6 +26,7 @@ import {
   MessageOptions,
   notificationService 
 } from '../index';
+import { CustomAgentDropdown } from './menus/CustomAgentDropdown';
 
 interface ICUIChatProps {
   className?: string;
@@ -64,6 +65,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [inputValue, setInputValue] = useState('');
+  const [selectedAgent, setSelectedAgent] = useState('OpenAIDemoAgent'); // Default agent selection
   const [isDarkTheme, setIsDarkTheme] = useState(false);
   const [isComposing, setIsComposing] = useState(false);
 
@@ -140,7 +142,14 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
     if (!messageContent) return;
 
     try {
-      await sendMessage(messageContent, options);
+      // Include selected agent in message options
+      const messageOptions: MessageOptions = {
+        agentType: selectedAgent as any, // Cast to AgentType
+        streaming: true,
+        ...options // Merge with any provided options
+      };
+      
+      await sendMessage(messageContent, messageOptions);
       
       // Clear input only if using the input field
       if (!content) {
@@ -164,7 +173,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
       console.error('Failed to send message:', error);
       notificationService.error('Failed to send message');
     }
-  }, [inputValue, sendMessage, onMessageSent]);
+  }, [inputValue, selectedAgent, sendMessage, onMessageSent]);
 
   // Handle clearing messages
   const handleClearMessages = useCallback(async () => {
@@ -387,7 +396,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
           borderTopColor: 'var(--icui-border-subtle)' 
         }}
       >
-        <div className="flex space-x-3">
+        <div className="space-y-3">
           {/* Message Input */}
           <textarea
             ref={inputRef}
@@ -397,7 +406,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
             onCompositionStart={handleCompositionStart}
             onCompositionEnd={handleCompositionEnd}
             placeholder="Type your message..."
-            className="flex-1 resize-none rounded-md border px-3 py-2 text-sm min-h-[38px] max-h-[120px] focus:outline-none transition-colors"
+            className="w-full resize-none rounded-md border px-3 py-2 text-sm min-h-[38px] max-h-[120px] focus:outline-none transition-colors"
             style={{ 
               backgroundColor: 'var(--icui-bg-primary)', 
               color: 'var(--icui-text-primary)',
@@ -407,30 +416,27 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
             disabled={!isConnected}
           />
           
-          {/* Send Button */}
-          <button
-            onClick={() => handleSendMessage()}
-            disabled={!inputValue.trim() || !isConnected || isLoading}
-            className="px-4 py-2 rounded-md text-sm font-medium hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity focus:outline-none focus:ring-2 focus:ring-offset-2"
-            style={{ 
-              backgroundColor: 'var(--icui-accent)', 
-              color: 'var(--icui-text-primary)'
-            }}
-            title="Send message (Enter)"
-          >
-            Send
-          </button>
-        </div>
-        
-        {/* Helper Text */}
-        <div className="text-xs mt-2 flex items-center justify-between" 
-             style={{ color: 'var(--icui-text-muted)' }}>
-          <span>Press Enter to send • Shift+Enter for new line</span>
-          {connectionStatus.agent?.capabilities && (
-            <span>
-              {connectionStatus.agent.capabilities.join(', ')}
-            </span>
-          )}
+          {/* Dropdown and Send Button Row */}
+          <div className="flex items-center justify-between gap-3">
+            <CustomAgentDropdown
+              selectedAgent={selectedAgent}
+              onAgentChange={setSelectedAgent}
+              disabled={false}
+              className="flex-shrink-0"
+            />
+            <button
+              onClick={() => handleSendMessage()}
+              disabled={!inputValue.trim() || !isConnected || isLoading}
+              className="px-4 py-2 rounded-md text-sm font-medium hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity focus:outline-none focus:ring-2 focus:ring-offset-2 flex-shrink-0"
+              style={{ 
+                backgroundColor: 'var(--icui-accent)', 
+                color: 'var(--icui-text-primary)'
+              }}
+              title="Send message (Enter)"
+            >
+              Send
+            </button>
+          </div>
         </div>
       </div>
     </div>

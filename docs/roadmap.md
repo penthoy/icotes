@@ -2,13 +2,6 @@
 A web-based JavaScript code editor built with ViteReact, CodeMirror 6, and modern web technologies. The goal is to create the world's most powerful notebook for developers and hackers, it includes 3 core parts: 1. rich text editor, similar to evernote/notion hybrid, 2. code editor + terminal(similar to replit), 3. AI agent that can be customized with agentic frameworks such as crew ai, or openai agent sdk, or any other agentic framework. This tool is designed to be infinitely hackable and flexible to empower the nextgeneration of AI powered developers.
 
 ### In Progress
-- [] backend/main.py is bootstraping a auto_initialize_chat_agent() This should be abstracted instead of a function in main.py
-1. I created custom_agent.py the idea is to be able to architect a way to write my own custom agents as a function or class, you decide base on the following requirements: 1. the abstraction is such that it can take a chat input and produce a chat output. 2. within this abstraction it have the capability to do tool/function calling that have all advanced capabilities that can take full use of AI frameworks like openAI sdk, crew and langchain/langgraph.
-2. based on these requirements please abstract away auto_initialize_chat_agent from main.py the function name itself can remain the same but the content should be in custom_agent.py 
-
-3. the CUSTOM_AGENTS list is designed to be a menu item in the frontend chat window similar to the screenshot of copilot where it'll detect this list, of which each item on this list is the name of the custom agent class/function that user can define.
-
-4. after you finish this task, we can just have this one demo custom agent that works as before, and its the only item in the list named OpenAIDemoAgent, we can add more later.
 
 ## Future task
 
@@ -125,6 +118,33 @@ A Panel installer,
 maya style code executor.
 
 ## Recently Completed ✅
+
+✅ **Custom Agent Dropdown Implementation**
+- **Frontend Dropdown Component**: Created `CustomAgentDropdown.tsx` component following GitHub Copilot's agent selector design pattern
+- **Agent API Integration**: Implemented `useCustomAgents.ts` hook to fetch available custom agents from `/api/agents/custom` endpoint
+- **ICUIChat Integration**: Added custom agent selection dropdown to main `ICUIChat.tsx` component below message input with GitHub Copilot-style design
+- **SimpleChat Integration**: Added custom agent selection dropdown to SimpleChat interface with real-time agent switching
+- **UI/UX Features**: 
+  1. Loading states with spinner animation
+  2. Error handling with visual feedback
+  3. GitHub Copilot-style design with gradient icons and consistent styling
+  4. Agent selection persistence during chat sessions
+  5. Disabled state when disconnected from backend
+  6. ICUI CSS variable integration for theme consistency
+- **Agent Message Routing**: Updated message sending to include selected agent type in MessageOptions for proper backend routing
+- **Theme Support**: Full dark/light theme compatibility using existing ICUI CSS variables
+
+✅ **Custom Agent Architecture Abstraction**
+- **Backend Abstraction**: Successfully abstracted `auto_initialize_chat_agent()` function from `main.py` to `backend/icpy/agent/custom_agent.py`
+- **Agent Base Class**: Created `CustomAgentBase` abstract class with standardized chat input/output interface (`process_chat_input`, `process_chat_stream`)
+- **OpenAI Demo Agent**: Implemented `OpenAIDemoAgent` class demonstrating the custom agent framework with support for:
+  1. Chat input processing with context support
+  2. Streaming response capabilities 
+  3. Tool/function calling framework integration ready
+  4. Support for OpenAI SDK, CrewAI, and LangChain/LangGraph (foundation laid)
+- **Frontend Integration**: Added `/api/agents/custom` endpoint to expose available custom agents for frontend dropdown menu
+- **Agent Registry**: Implemented `CUSTOM_AGENTS` list and factory functions (`get_available_custom_agents`, `create_custom_agent`)
+- **Architecture**: Clean separation of concerns with custom agents having standardized interface for chat input → chat output workflow
 
 ✅ **ICUIChat.tsx Component Implementation**
 - Created new `ICUIChat.tsx` component following the established ICUI framework patterns
