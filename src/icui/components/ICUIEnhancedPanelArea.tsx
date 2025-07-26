@@ -89,20 +89,23 @@ export const ICUIEnhancedPanelArea: React.FC<ICUIEnhancedPanelAreaProps> = ({
     onPanelReorder?.(fromIndex, toIndex);
   }, [onPanelReorder]);
 
-  // Drag and drop handlers for external panels
+  // Drag and drop handlers for external panels - FIXED: Add throttling to prevent excessive events
   const handleDragEnter = useCallback((e: React.DragEvent) => {
     if (!allowDrop) return;
     
     e.preventDefault();
     dragCounter.current++;
-    setDragOver(true);
-  }, [allowDrop]);
+    if (!dragOver) {
+      setDragOver(true);
+    }
+  }, [allowDrop, dragOver]);
 
   const handleDragLeave = useCallback((e: React.DragEvent) => {
     if (!allowDrop) return;
     
     dragCounter.current--;
-    if (dragCounter.current === 0) {
+    if (dragCounter.current <= 0) {
+      dragCounter.current = 0; // Ensure it doesn't go negative
       setDragOver(false);
     }
   }, [allowDrop]);
@@ -124,10 +127,21 @@ export const ICUIEnhancedPanelArea: React.FC<ICUIEnhancedPanelAreaProps> = ({
     const panelId = e.dataTransfer.getData('application/icui-panel');
     const sourceAreaId = e.dataTransfer.getData('application/icui-source-area');
     
+    // FIXED: Add defensive checks to prevent infinite loops
     if (panelId && sourceAreaId && sourceAreaId !== id) {
+      // Additional check: ensure we don't already have this panel
+      const panelExists = panels.some(panel => panel.id === panelId);
+      if (panelExists) {
+        console.warn('Panel already exists in target area, ignoring drop:', { panelId, sourceAreaId, targetAreaId: id });
+        return;
+      }
+      
+      console.log('Dropping panel:', { panelId, sourceAreaId, targetAreaId: id });
       onPanelDrop?.(panelId, sourceAreaId);
+    } else if (sourceAreaId === id) {
+      console.log('Ignoring drop in same area:', { panelId, sourceAreaId, targetAreaId: id });
     }
-  }, [allowDrop, id, onPanelDrop]);
+  }, [allowDrop, id, onPanelDrop, panels]);
 
   // Render empty state
   if (panels.length === 0) {

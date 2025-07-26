@@ -198,11 +198,35 @@ export const ICUIEnhancedLayout: React.FC<ICUIEnhancedLayoutProps> = ({
     });
   }, []);
 
-  // Handle panel drop between areas
+  // Handle panel drop between areas - FIXED: Add defensive checks to prevent infinite loops
   const handlePanelDrop = useCallback((targetAreaId: string, panelId: string, sourceAreaId: string) => {
+    // Prevent drop if source and target are the same or if panel doesn't exist in source
+    if (sourceAreaId === targetAreaId) {
+      console.warn('Attempted to drop panel in the same area, ignoring:', { panelId, sourceAreaId, targetAreaId });
+      return;
+    }
+
     setCurrentLayout(prev => {
       const sourceArea = prev.areas[sourceAreaId];
       const targetArea = prev.areas[targetAreaId];
+
+      // Validate areas exist
+      if (!sourceArea || !targetArea) {
+        console.warn('Invalid source or target area:', { sourceArea: !!sourceArea, targetArea: !!targetArea, sourceAreaId, targetAreaId });
+        return prev; // Return unchanged if areas don't exist
+      }
+
+      // Validate panel exists in source area
+      if (!sourceArea.panelIds.includes(panelId)) {
+        console.warn('Panel not found in source area:', { panelId, sourceAreaId, panelIds: sourceArea.panelIds });
+        return prev; // Return unchanged if panel not in source
+      }
+
+      // Prevent duplicate panel in target area
+      if (targetArea.panelIds.includes(panelId)) {
+        console.warn('Panel already exists in target area:', { panelId, targetAreaId, panelIds: targetArea.panelIds });
+        return prev; // Return unchanged if panel already in target
+      }
 
       return {
         ...prev,
@@ -211,6 +235,10 @@ export const ICUIEnhancedLayout: React.FC<ICUIEnhancedLayoutProps> = ({
           [sourceAreaId]: {
             ...sourceArea,
             panelIds: sourceArea.panelIds.filter(id => id !== panelId),
+            // Update active panel if we're removing the active one
+            activePanelId: sourceArea.activePanelId === panelId 
+              ? sourceArea.panelIds.filter(id => id !== panelId)[0] || undefined
+              : sourceArea.activePanelId,
           },
           [targetAreaId]: {
             ...targetArea,

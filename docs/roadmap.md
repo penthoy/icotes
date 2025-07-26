@@ -7,6 +7,9 @@ A web-based JavaScript code editor built with ViteReact, CodeMirror 6, and moder
 
 -- bug:
 Bug: Terminal press up and down or down and up, the cursor will go up and remove the previous line
+-- Panels:
+Bug fix: tab shouldn't reload after switched
+Bug fix: tab 
 
 -- Chat window:
 Proper history and new chat + button.
@@ -20,10 +23,7 @@ update documentation to use docu library
 remove anything not being used under src/components/ui and src/components/archived
 remove anything not being used under src/stories
 
--- Panels:
-Bug fix: Panel refresh issue.
-Bug fix: tab shouldn't reload after switched
-Bug fix: tab 
+
 -- Rich text editor integration (Phase 7)
 -- Phase 7: Extension Points for Future Features
   - Service Discovery and Registry (7.1)
@@ -118,6 +118,19 @@ A Panel installer,
 maya style code executor.
 
 ## Recently Completed ✅
+
+✅ **ICUI Panel Tab and Drag/Drop Bug Fixes**
+- **Panel Tab Persistence Bug**: Fixed issue where tab content would reload/unload when switching between tabs in ICUITabContainer.tsx - tabs now properly persist their content state like VS Code tabs
+- **Panel Drag/Drop Infinite Loop**: Fixed infinite loop in panel drag/drop operations by adding defensive checks in ICUIEnhancedLayout.tsx and ICUIEnhancedPanelArea.tsx to prevent drag enter/leave events from cascading between containers
+- **Build Verification**: Confirmed all changes compile successfully with TypeScript and Vite build process
+- **Technical Achievement**: Panel tabs now persist their state (like Editor tabs), and drag operations are stable without causing infinite loops between panel containers
+
+✅ **Terminal Arrow Key Navigation Bug Fix** 
+- **Root Cause**: WebSocket URL mismatch - ICUITerminal was using `/terminal/` endpoint when environment variable was set, but backend expects `/ws/terminal/` path
+- **Fix Applied**: Updated ICUITerminal.tsx WebSocket URL construction to use `/ws/terminal/` path consistently, matching the working SimpleTerminal implementation
+- **Terminal Configuration**: Simplified terminal options to match working SimpleTerminal configuration, removing potentially interfering options like `altClickMovesCursor`, `convertEol`, etc.
+- **Build Verification**: Confirmed successful compilation and build process
+- **Technical Achievement**: ICUITerminal arrow key navigation should now work correctly for command history, matching VS Code terminal behavior
 
 ✅ **Custom Agent Dropdown Implementation**
 - **Frontend Dropdown Component**: Created `CustomAgentDropdown.tsx` component following GitHub Copilot's agent selector design pattern

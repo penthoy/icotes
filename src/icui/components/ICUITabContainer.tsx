@@ -197,9 +197,21 @@ export const ICUITabContainer: React.FC<ICUITabContainerProps> = ({
         )}
       </div>
 
-      {/* Tab Content */}
+      {/* Tab Content - FIXED: Persist all tab contents to prevent reload on tab switch */}
       <div className="flex-1 min-h-0 overflow-hidden" style={{ backgroundColor: 'var(--icui-bg-primary)' }}>
-        {activeTab ? activeTab.content : (
+        {tabs.length > 0 ? (
+          tabs.map((tab) => (
+            <div
+              key={tab.id}
+              className="h-full w-full"
+              style={{
+                display: tab.id === activeTabId ? 'block' : 'none'
+              }}
+            >
+              {tab.content}
+            </div>
+          ))
+        ) : (
           <div className="h-full flex items-center justify-center" style={{ color: 'var(--icui-text-muted)' }}>
             No content available
           </div>
