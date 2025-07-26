@@ -71,6 +71,8 @@ class TerminalManager:
             current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             clipboard_path = os.path.join(current_dir, 'icotes-clipboard')
             startup_script = os.path.join(current_dir, 'backend', 'terminal_startup.sh')
+            # CRITICAL FIX: Use custom inputrc for proper arrow key handling
+            inputrc_path = os.path.join(current_dir, 'backend', '.inputrc')
             
             env.update({
                 'TERM': 'xterm-256color',  # Critical for colors and many commands
@@ -88,6 +90,8 @@ class TerminalManager:
                 'ICOTES_CLIPBOARD_PATH': clipboard_path,
                 # Set startup script for terminal initialization
                 'ICOTES_STARTUP_SCRIPT': startup_script,
+                # CRITICAL FIX: Use custom inputrc with arrow key bindings
+                'INPUTRC': inputrc_path,
             })
             
             # Find bash executable
