@@ -279,6 +279,9 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
     // Fit after opening
     fitAddon.current.fit();
 
+    // Focus the terminal to ensure it can receive keyboard input
+    terminal.current.focus();
+
     // Write initial messages
     terminal.current.write('ICUITerminal initialized!\r\n');
     terminal.current.write('Terminal ID: ' + terminalId.current + '\r\n');
@@ -323,13 +326,27 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
         terminal.current?.write(`Changing to workspace: ${workspaceRoot}\r\n`);
       }
       
+      // Focus the terminal after connection is established
+      terminal.current?.focus();
+      
       onTerminalReady?.(terminal.current);
     };
     
     websocket.current.onmessage = (event) => {
       if (terminal.current) {
-        terminal.current.write(event.data);
-        onTerminalOutput?.(event.data);
+        // Ensure terminal can handle the data properly
+        try {
+          terminal.current.write(event.data);
+          onTerminalOutput?.(event.data);
+        } catch (error) {
+          console.warn('Terminal write error:', error);
+          // Fallback: try to write data in smaller chunks
+          const data = event.data;
+          for (let i = 0; i < data.length; i += 1024) {
+            const chunk = data.slice(i, i + 1024);
+            terminal.current.write(chunk);
+          }
+        }
       }
     };
     
