@@ -16,10 +16,22 @@ from ..services import get_agent_service, get_chat_service
 # Configure logging
 logger = logging.getLogger(__name__)
 
+# Try to import demo agent for demonstration purposes
+try:
+    from demo_agent import DemoAgent
+    DEMO_AGENT_AVAILABLE = True
+except ImportError:
+    logger.warning("demo_agent module not available")
+    DEMO_AGENT_AVAILABLE = False
+    DemoAgent = None
+
 # List of available custom agents - this will be used by the frontend for the dropdown menu
 CUSTOM_AGENTS = [
     "OpenAIDemoAgent",
 ]
+
+if DEMO_AGENT_AVAILABLE:
+    CUSTOM_AGENTS.append("DemoAgent")
 
 
 class CustomAgentBase(ABC):

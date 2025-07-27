@@ -3,26 +3,53 @@ A web-based JavaScript code editor built with ViteReact, CodeMirror 6, and moder
 
 ### In Progress
 
+
+## Recently Finished
+- ✓ **main.py refactoring completed (Phase 2)**:
+1. ✓ Removed all legacy endpoints: legacy_websocket_endpoint, ConnectionManager, duplicate terminal endpoints (6 endpoints: POST /api/terminals, GET /api/terminals, GET /api/terminals/{id}, POST /api/terminals/{id}/start, DELETE /api/terminals/{id}, POST /api/terminals/{id}/input)
+2. ✓ Organized configuration code into functions: initialize_rest_api(), configure_cors_origins(), mount_static_files()  
+3. ✓ Removed endpoint duplication - icpy REST API already provides comprehensive terminal endpoints, making main.py duplicates redundant
+4. ✓ All remaining endpoints verified as actively used by frontend: /clipboard (POST/GET), /clipboard/history, /clipboard/status, /clipboard/clear, /execute, /api/custom-agents, /health, WebSocket endpoints
+5. ✓ Maintained clean separation: configuration in functions, core endpoints preserved, icpy integration intact
+6. ✓ Build and syntax validation passed - reduced main.py from 1135 to 958 lines (177 lines removed)
+- ✓ Refactored main.py in backend:
+1. Reduced file size from 1441 lines to 1204 lines (237 lines removed)
+2. Removed duplicate ServerClipboard class and consolidated with icpy clipboard service
+3. Moved all imports to the top of the file with proper error handling
+4. Maintained try-except for imports where necessary for graceful fallbacks
+5. Fixed demo_agent import to be conditional to prevent import errors
+6. All functionality preserved and tested working
+
 ## Future task
+-- refactor enhanced ws endpoint in main.py
 
--- bug:
-Bug: Terminal press up and down or down and up, the cursor will go up and remove the previous line
--- Panels:
-Bug fix: tab shouldn't reload after switched
-Bug fix: tab 
-
+-- clipboard:
+there's only clipboard_service.write_clipboard but no read?
+I can ctrl + c to system memory but not from system memory to terminal
 -- Chat window:
 Proper history and new chat + button.
-custom agent picker dropdown.
+✓ custom agent picker dropdown.
 
+-- Milestone 2:
+✓ home route refined and first mvp complete, can be showned.
+critical features: you can start using your own APIs to create simple software.
+Agents can edit files.
+1. AI can use tools 
+2. Custom agents that can self define agents in the agentic course.
 
 -- consolditate:
-
-look into backend/main.py and further abstract this code base.
+clean up docs folder, clean up tests
+There seems to be multiple ws endpoints clean up endpoints.
+clean up the enhanced keyword.
+clean up old icuiPanels
 update documentation to use docu library
 remove anything not being used under src/components/ui and src/components/archived
 remove anything not being used under src/stories
+look into backend/main.py and further abstract this code base.
 
+--Features:
+Explorer able to unlock Root path and go up and down different paths
+json config for layouts
 
 -- Rich text editor integration (Phase 7)
 -- Phase 7: Extension Points for Future Features
@@ -41,12 +68,9 @@ Use icui menus
 Dragable tabs
 Check state, if no state, Start blank no files are open, 
 
-
 -- backend cli:
 Able to open file in the editor.
-when clicking on files in the explorer, under the hood it should also just do this.
-This CLI should work similar to maya's, which later this will be fore the nodes, similar to how nuke nodes would work.
-
+This CLI should work similar to maya's, which later this will be for the nodes, similar to how nuke nodes would work.
 
 
 -- Progressing on icui and icpy, need context right click menu
@@ -67,17 +91,14 @@ Lets now attempt to replicate a modern editor behavior such as vs code:
 
 please stop for my review for each of these points as it could be pretty complexe, and wait for my feedback before proceed for the next point, lets now start with 1.
 
--- Milestone 1:
-Complete icui-icpy connection and integration plan so that the old home route is using icpy backend.
+-- bug:
+✓ Bug: Terminal press up and down or down and up, the cursor will go up and remove the previous line
 
--- Milestone 2:
-home route refined and first mvp complete, can be showned.
-critical features:
-you can start using your own APIs to create simple software.
+-- Milestone 1:
+✓ Complete icui-icpy connection and integration plan so that the old home route is using icpy backend.
 
 -- Milestone 3:
-Agent integration:
-Agents can edit files.
+Refined Agent integration:
 features: history, context
 
 -- Milestone 4:
@@ -118,6 +139,7 @@ A Panel installer,
 maya style code executor.
 
 ## Recently Completed ✅
+✅ Bug fix: tab shouldn't reload after switched
 
 ✅ **ICUI Panel Tab and Drag/Drop Bug Fixes**
 - **Panel Tab Persistence Bug**: Fixed issue where tab content would reload/unload when switching between tabs in ICUITabContainer.tsx - tabs now properly persist their content state like VS Code tabs
