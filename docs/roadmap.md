@@ -2,9 +2,25 @@
 A web-based JavaScript code editor built with ViteReact, CodeMirror 6, and modern web technologies. The goal is to create the world's most powerful notebook for developers and hackers, it includes 3 core parts: 1. rich text editor, similar to evernote/notion hybrid, 2. code editor + terminal(similar to replit), 3. AI agent that can be customized with agentic frameworks such as crew ai, or openai agent sdk, or any other agentic framework. This tool is designed to be infinitely hackable and flexible to empower the nextgeneration of AI powered developers.
 
 ### In Progress
+- [] Verify both agents are working correctly in frontend and continue testing custom agent system
 
 
 ## Recently Finished
+- ✅ **Custom Agent System Bug Fixes**:
+  1. ✅ Fixed OpenAIDemoAgent giving demo responses - removed blank line at beginning of file that prevented proper import
+  2. ✅ OpenAIDemoAgent now makes real OpenAI API calls and provides intelligent responses
+  3. ✅ Integrated custom agents with chat service database for message history persistence
+  4. ✅ Modified both HTTP and WebSocket endpoints to save user messages and agent responses to chat.db
+  5. ✅ Added session management for custom agent conversations
+  6. ✅ Both PersonalAgent and OpenAIDemoAgent now have full history support with database persistence
+  7. ✅ Messages from custom agents are now properly saved and can be retrieved on page refresh
+- ✅ **Custom Agent System Fixes**:
+  1. ✅ Fixed tool calls in chat_stream in personal_agent.py - now properly handles tool execution during streaming
+  2. ✅ Fixed history handling in custom agents - chat history is now correctly passed and processed
+  3. ✅ Rewrote OpenAIDemoAgent to match personal_agent.py format with both chat() and chat_stream() functions
+  4. ✅ Added OpenAIDemoAgent to custom_agent.py registry - now appears in frontend dropdown
+  5. ✅ Both PersonalAgent and OpenAIDemoAgent now fully functional with streaming support
+  6. ✅ Backend successfully loads both agents and handles API calls correctly
 - ✅ **Custom Agent System Implementation**:
   1. ✅ Rewrote custom_agent.py to be simple (under 50 lines) - now acts as an entry point and registry for custom agents
   2. ✅ Updated main.py to use the new custom_agent.py structure with new `/api/custom-agents/chat` endpoint 

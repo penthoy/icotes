@@ -232,40 +232,164 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
         content: msg.content
       }));
 
-      // Call custom agent API
-      const response = await fetch('/api/custom-agents/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          agent_name: agentName,
-          message: content,
-          history: chatHistory
-        }),
-      });
-
-      const data = await response.json();
+      // Try WebSocket streaming first, fallback to HTTP
+      const useStreaming = true; // You can make this configurable
       
-      if (data.success) {
-        // Add agent response to UI
-        const agentMessage: ChatMessage = {
-          id: `agent_${Date.now()}_${Math.random().toString(36).substring(2)}`,
-          content: data.response,
-          sender: 'ai',
-          timestamp: new Date(),
-          metadata: {
-            messageType: 'text',
-            agentType: agentName as any
+      if (useStreaming) {
+        // Use WebSocket for streaming
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${wsProtocol}//${window.location.host}/ws/custom-agents/${agentName}/stream`;
+        
+        const ws = new WebSocket(wsUrl);
+        let streamingMessageId = `agent_${Date.now()}_${Math.random().toString(36).substring(2)}`;
+        let accumulatedContent = '';
+        
+        ws.onopen = () => {
+          // Send the message
+          ws.send(JSON.stringify({
+            type: "message",
+            content: content,
+            history: chatHistory
+          }));
+        };
+        
+        ws.onmessage = (event) => {
+          const data = JSON.parse(event.data);
+          
+          if (data.type === "stream_chunk") {
+            accumulatedContent += data.content;
+            
+            // Update or create the streaming message
+            setMessages(prev => {
+              const existingIndex = prev.findIndex(m => m.id === streamingMessageId);
+              
+              const streamingMessage: ChatMessage = {
+                id: streamingMessageId,
+                content: accumulatedContent,
+                sender: 'ai',
+                timestamp: new Date(),
+                metadata: {
+                  messageType: 'text',
+                  agentType: agentName as any,
+                  isStreaming: true
+                }
+              };
+              
+              if (existingIndex >= 0) {
+                // Update existing message
+                const newMessages = [...prev];
+                newMessages[existingIndex] = streamingMessage;
+                return newMessages.length > maxMessages ? newMessages.slice(-maxMessages) : newMessages;
+              } else {
+                // Add new message
+                const newMessages = [...prev, streamingMessage];
+                return newMessages.length > maxMessages ? newMessages.slice(-maxMessages) : newMessages;
+              }
+            });
+          } else if (data.type === "stream_complete") {
+            // Mark streaming as complete
+            setMessages(prev => {
+              const existingIndex = prev.findIndex(m => m.id === streamingMessageId);
+              if (existingIndex >= 0) {
+                const newMessages = [...prev];
+                const completedMessage = { ...newMessages[existingIndex] };
+                if (completedMessage.metadata) {
+                  completedMessage.metadata.isStreaming = false;
+                  completedMessage.metadata.streamComplete = true;
+                }
+                newMessages[existingIndex] = completedMessage;
+                return newMessages;
+              }
+              return prev;
+            });
+            ws.close();
+          } else if (data.type === "error") {
+            throw new Error(data.message);
           }
         };
         
-        setMessages(prev => {
-          const newMessages = [...prev, agentMessage];
-          return newMessages.length > maxMessages ? newMessages.slice(-maxMessages) : newMessages;
-        });
+        ws.onerror = () => {
+          // Fallback to HTTP API
+          fallbackToHttp();
+        };
+        
+        const fallbackToHttp = async () => {
+          try {
+            const response = await fetch('/api/custom-agents/chat', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                agent_name: agentName,
+                message: content,
+                history: chatHistory
+              }),
+            });
+
+            const data = await response.json();
+            
+            if (data.success) {
+              // Add agent response to UI
+              const agentMessage: ChatMessage = {
+                id: `agent_${Date.now()}_${Math.random().toString(36).substring(2)}`,
+                content: data.response,
+                sender: 'ai',
+                timestamp: new Date(),
+                metadata: {
+                  messageType: 'text',
+                  agentType: agentName as any
+                }
+              };
+              
+              setMessages(prev => {
+                const newMessages = [...prev, agentMessage];
+                return newMessages.length > maxMessages ? newMessages.slice(-maxMessages) : newMessages;
+              });
+            } else {
+              throw new Error(data.error || 'Custom agent call failed');
+            }
+          } catch (httpError) {
+            console.error('HTTP fallback also failed:', httpError);
+            throw httpError;
+          }
+        };
       } else {
-        throw new Error(data.error || 'Custom agent call failed');
+        // Use HTTP API directly (non-streaming)
+        const response = await fetch('/api/custom-agents/chat', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            agent_name: agentName,
+            message: content,
+            history: chatHistory
+          }),
+        });
+
+        const data = await response.json();
+        
+        if (data.success) {
+          // Add agent response to UI
+          const agentMessage: ChatMessage = {
+            id: `agent_${Date.now()}_${Math.random().toString(36).substring(2)}`,
+            content: data.response,
+            sender: 'ai',
+            timestamp: new Date(),
+            metadata: {
+              messageType: 'text',
+              agentType: agentName as any
+            }
+          };
+          
+          setMessages(prev => {
+            const newMessages = [...prev, agentMessage];
+            return newMessages.length > maxMessages ? newMessages.slice(-maxMessages) : newMessages;
+          });
+        } else {
+          throw new Error(data.error || 'Custom agent call failed');
+        }
       }
       
     } catch (error) {

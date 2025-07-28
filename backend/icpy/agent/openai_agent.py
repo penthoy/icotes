@@ -1,106 +1,115 @@
+"""
+OpenAI Demo Agent for ICUI Framework
 
-class CustomAgentBase(ABC):
+This module provides OpenAI-based chat functions that match the personal_agent.py format
+for integration with the custom agent system.
+"""
+
+import json
+import logging
+from typing import Dict, Any, List
+
+# Configure logging
+logger = logging.getLogger(__name__)
+
+# Import OpenAI client
+try:
+    from .clients import get_openai_client
+    OPENAI_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"OpenAI client not available: {e}")
+    OPENAI_AVAILABLE = False
+
+
+def chat(message, history):
     """
-    Base class for custom agents with chat input/output capabilities
-    """
+    OpenAI Demo Agent chat function matching personal_agent.py format
     
-    def __init__(self, name: str, description: str = ""):
-        self.name = name
-        self.description = description
-    
-    @abstractmethod
-    async def process_chat_input(self, input_message: str, context: Optional[Dict[str, Any]] = None) -> str:
-        """
-        Process chat input and return chat output
+    Args:
+        message: User message string
+        history: List of message dicts with 'role' and 'content' keys
         
-        Args:
-            input_message: The user's chat message
-            context: Optional context information
-            
-        Returns:
-            The agent's response message
-        """
-        pass
+    Returns:
+        String response from OpenAI
+    """
+    if not OPENAI_AVAILABLE:
+        return "OpenAI client not available. Please check configuration."
     
-    @abstractmethod
-    async def process_chat_stream(self, input_message: str, context: Optional[Dict[str, Any]] = None) -> AsyncGenerator[str, None]:
-        """
-        Process chat input and return streaming chat output
+    try:
+        if isinstance(history, str):
+            history = json.loads(history)
         
-        Args:
-            input_message: The user's chat message
-            context: Optional context information
-            
-        Yields:
-            Chunks of the agent's response message
-        """
-        pass
-
-
-class OpenAIDemoAgent(CustomAgentBase):
-    """
-    OpenAI Demo Agent for ICUI Framework
-    
-    This agent demonstrates OpenAI capabilities within the ICUI framework
-    with support for tool/function calling and streaming responses.
-    """
-    
-    def __init__(self):
-        super().__init__(
-            name="OpenAI Demo Agent",
-            description="An agent that demonstrates OpenAI capabilities within the ICUI framework with tool calling support."
+        # Build conversation messages
+        system_message = {
+            "role": "system", 
+            "content": "You are a helpful AI assistant. You are part of the ICUI framework, a powerful code editor and development environment. Help users with coding, development tasks, and general questions."
+        }
+        
+        messages = [system_message] + history + [{"role": "user", "content": message}]
+        
+        # Call OpenAI API
+        client = get_openai_client()
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=messages,
+            temperature=0.7,
+            max_tokens=2000
         )
-        self.capabilities = ["chat", "reasoning", "code_generation", "tool_calling"]
-        self.model = "gpt-4o-mini"
-        self.temperature = 0.7
-        self.max_tokens = 2000
+        
+        return response.choices[0].message.content
+        
+    except Exception as e:
+        logger.error(f"Error in OpenAI Demo Agent: {e}")
+        return f"Error processing request: {str(e)}"
+
+
+def chat_stream(message, history):
+    """
+    OpenAI Demo Agent streaming chat function matching personal_agent.py format
     
-    async def process_chat_input(self, input_message: str, context: Optional[Dict[str, Any]] = None) -> str:
-        """
-        Process chat input using OpenAI API with tool calling capabilities
-        """
-        try:
-            # For now, return a simple response - this will be enhanced with actual OpenAI API calls
-            # and tool calling in future iterations
-            response = f"OpenAI Demo Agent received: {input_message}\n\n"
-            response += "This is a demonstration response. In a full implementation, this would:\n"
-            response += "1. Use OpenAI API for intelligent responses\n"
-            response += "2. Support tool/function calling\n"
-            response += "3. Maintain conversation context\n"
-            response += "4. Handle code generation and reasoning tasks"
-            
-            logger.info(f"OpenAI Demo Agent processed input: {input_message[:50]}...")
-            return response
-            
-        except Exception as e:
-            logger.error(f"Error in OpenAI Demo Agent: {e}")
-            return f"Error processing request: {str(e)}"
+    Args:
+        message: User message string
+        history: List of message dicts with 'role' and 'content' keys
+        
+    Yields:
+        String chunks of the streaming response
+    """
+    if not OPENAI_AVAILABLE:
+        yield "OpenAI client not available. Please check configuration."
+        return
     
-    async def process_chat_stream(self, input_message: str, context: Optional[Dict[str, Any]] = None) -> AsyncGenerator[str, None]:
-        """
-        Process chat input and return streaming response
-        """
-        try:
-            # Simulate streaming response - in a full implementation this would use OpenAI's streaming API
-            response_parts = [
-                "OpenAI Demo Agent is processing your request...\n\n",
-                f"Input received: {input_message}\n\n",
-                "This is a streaming demonstration. ",
-                "Each chunk would come from the OpenAI API. ",
-                "The agent supports:\n",
-                "• Tool and function calling\n",
-                "• Code generation and analysis\n",
-                "• Reasoning and problem solving\n",
-                "• Context-aware responses\n\n",
-                "Ready for full implementation with actual AI capabilities!"
-            ]
-            
-            for part in response_parts:
-                yield part
-                # Small delay to simulate streaming
-                import asyncio
-                await asyncio.sleep(0.1)
+    try:
+        if isinstance(history, str):
+            history = json.loads(history)
+        
+        # Build conversation messages
+        system_message = {
+            "role": "system", 
+            "content": "You are a helpful AI assistant. You are part of the ICUI framework, a powerful code editor and development environment. Help users with coding, development tasks, and general questions."
+        }
+        
+        messages = [system_message] + history + [{"role": "user", "content": message}]
+        
+        # Call OpenAI streaming API
+        client = get_openai_client()
+        stream = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=messages,
+            temperature=0.7,
+            max_tokens=2000,
+            stream=True
+        )
+        
+        for chunk in stream:
+            if chunk.choices[0].delta.content is not None:
+                yield chunk.choices[0].delta.content
                 
-        except Exception as e:
-            logger.error(f"Error in OpenAI Demo Agent streaming: {e}")
-            yield f"Error processing streaming request: {str(e)}"
+    except Exception as e:
+        logger.error(f"Error in OpenAI Demo Agent streaming: {e}")
+        yield f"Error processing streaming request: {str(e)}"
+
+
+if __name__ == "__main__":
+    # Test the chat function
+    result = chat("Hello, what can you help me with?", [])
+    print(result)

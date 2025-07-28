@@ -24,6 +24,7 @@ import time
 import uuid
 from contextlib import asynccontextmanager
 from typing import List, Dict, Any, Optional
+from datetime import datetime
 
 # Third-party imports
 import uvicorn
@@ -51,7 +52,7 @@ try:
     from icpy.core.connection_manager import get_connection_manager
     from icpy.services import get_workspace_service, get_filesystem_service, get_terminal_service, get_agent_service, get_chat_service
     from icpy.services.clipboard_service import clipboard_service
-    from icpy.agent.custom_agent import get_available_custom_agents, call_custom_agent
+    from icpy.agent.custom_agent import get_available_custom_agents, call_custom_agent, call_custom_agent_stream
     ICPY_AVAILABLE = True
     logger.info("icpy modules loaded successfully")
 except ImportError as e:
@@ -60,6 +61,7 @@ except ImportError as e:
     clipboard_service = None
     get_available_custom_agents = lambda: ["TestAgent", "DefaultAgent"]  # Fallback
     call_custom_agent = lambda agent, msg, hist: f"Custom agent {agent} not available"
+    call_custom_agent_stream = lambda agent, msg, hist: iter([f"Custom agent {agent} not available"])
 
 try:
     from terminal import terminal_manager
@@ -149,7 +151,7 @@ async def lifespan(app: FastAPI):
             logger.info("icpy services initialized successfully")
             
             # Auto-initialize chat agent after services are ready
-            await auto_initialize_chat_agent()
+            # await auto_initialize_chat_agent()  # Function not yet implemented
             
         except Exception as e:
             logger.error(f"Failed to initialize icpy services: {e}")
@@ -527,16 +529,153 @@ class CustomAgentChatRequest(BaseModel):
 @app.post("/api/custom-agents/chat")
 async def custom_agent_chat(request: CustomAgentChatRequest):
     """Call a custom agent with a message and chat history."""
+    if not ICPY_AVAILABLE:
+        return {"success": False, "error": "ICPY services not available"}
+    
     try:
         logger.info(f"Custom agent chat called for agent: {request.agent_name}")
+        
+        # Get chat service to save messages
+        chat_service = get_chat_service()
+        
+        # Generate a session ID for this conversation if not provided
+        session_id = str(uuid.uuid4())
+        
+        # Save user message to database
+        from icpy.services.chat_service import ChatMessage, MessageSender, ChatMessageType
+        user_message = ChatMessage(
+            id=str(uuid.uuid4()),
+            content=request.message,
+            sender=MessageSender.USER,
+            timestamp=datetime.now().isoformat(),
+            type=ChatMessageType.MESSAGE,
+            metadata={"agent_name": request.agent_name},
+            agent_id=request.agent_name,
+            session_id=session_id
+        )
+        await chat_service._store_message(user_message)
+        
+        # Call the custom agent
         response = call_custom_agent(request.agent_name, request.message, request.history)
-        return {"success": True, "response": response}
+        
+        # Save agent response to database
+        agent_message = ChatMessage(
+            id=str(uuid.uuid4()),
+            content=response,
+            sender=MessageSender.AI,
+            timestamp=datetime.now().isoformat(),
+            type=ChatMessageType.MESSAGE,
+            metadata={"agent_name": request.agent_name},
+            agent_id=request.agent_name,
+            session_id=session_id
+        )
+        await chat_service._store_message(agent_message)
+        
+        return {"success": True, "response": response, "session_id": session_id}
     except ValueError as e:
         logger.error(f"Custom agent error: {e}")
         return {"success": False, "error": str(e)}
     except Exception as e:
         logger.error(f"Error calling custom agent: {e}")
         return {"success": False, "error": str(e)}
+
+@app.websocket("/ws/custom-agents/{agent_name}/stream")
+async def custom_agent_stream_websocket(websocket: WebSocket, agent_name: str):
+    """WebSocket endpoint for streaming custom agent responses."""
+    if not ICPY_AVAILABLE:
+        await websocket.close(code=1011, reason="ICPY services not available")
+        return
+        
+    try:
+        await websocket.accept()
+        logger.info(f"Custom agent stream connected for agent: {agent_name}")
+        
+        # Get chat service for message persistence
+        chat_service = get_chat_service()
+        
+        while True:
+            try:
+                # Receive message from frontend
+                message = await websocket.receive_text()
+                data = json.loads(message)
+                
+                if data.get("type") == "message":
+                    content = data.get("content", "")
+                    history = data.get("history", [])
+                    session_id = data.get("session_id") or str(uuid.uuid4())
+                    
+                    if content.strip():
+                        # Save user message to database
+                        from icpy.services.chat_service import ChatMessage, MessageSender, ChatMessageType
+                        user_message = ChatMessage(
+                            id=str(uuid.uuid4()),
+                            content=content,
+                            sender=MessageSender.USER,
+                            timestamp=datetime.now().isoformat(),
+                            type=ChatMessageType.MESSAGE,
+                            metadata={"agent_name": agent_name},
+                            agent_id=agent_name,
+                            session_id=session_id
+                        )
+                        await chat_service._store_message(user_message)
+                        
+                        # Stream the response
+                        accumulated_response = ""
+                        try:
+                            async for chunk in call_custom_agent_stream(agent_name, content, history):
+                                accumulated_response += chunk
+                                await websocket.send_json({
+                                    "type": "stream_chunk",
+                                    "content": chunk,
+                                    "timestamp": time.time()
+                                })
+                            
+                            # Save agent response to database
+                            agent_message = ChatMessage(
+                                id=str(uuid.uuid4()),
+                                content=accumulated_response,
+                                sender=MessageSender.AI,
+                                timestamp=datetime.now().isoformat(),
+                                type=ChatMessageType.MESSAGE,
+                                metadata={"agent_name": agent_name},
+                                agent_id=agent_name,
+                                session_id=session_id
+                            )
+                            await chat_service._store_message(agent_message)
+                            
+                            # Send completion signal
+                            await websocket.send_json({
+                                "type": "stream_complete",
+                                "timestamp": time.time(),
+                                "session_id": session_id
+                            })
+                            
+                        except Exception as e:
+                            logger.error(f"Error in custom agent streaming: {e}")
+                            await websocket.send_json({
+                                "type": "error",
+                                "message": str(e),
+                                "timestamp": time.time()
+                            })
+                
+                elif data.get("type") == "ping":
+                    await websocket.send_json({"type": "pong", "timestamp": time.time()})
+                    
+            except WebSocketDisconnect:
+                break
+            except json.JSONDecodeError:
+                await websocket.send_json({
+                    "type": "error",
+                    "message": "Invalid JSON format",
+                    "timestamp": time.time()
+                })
+            except Exception as e:
+                logger.error(f"Custom agent stream error: {e}")
+                break
+                
+    except Exception as e:
+        logger.error(f"Custom agent stream initialization error: {e}")
+        await websocket.close(code=1011, reason="Internal server error")
 
 # Agent WebSocket endpoints
 @app.websocket("/ws/agents/{session_id}/stream")

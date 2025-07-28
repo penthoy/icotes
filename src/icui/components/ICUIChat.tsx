@@ -26,6 +26,7 @@ import {
   MessageOptions,
   notificationService 
 } from '../index';
+import { useCustomAgents } from '../../hooks/useCustomAgents';
 import { CustomAgentDropdown } from './menus/CustomAgentDropdown';
 
 interface ICUIChatProps {
@@ -89,6 +90,9 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
     autoScroll
   });
 
+  // Get available custom agents
+  const { agents: customAgents } = useCustomAgents();
+
   // Use theme detection (following ICUITerminal pattern)
   const { isDark } = useTheme();
 
@@ -144,8 +148,8 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
 
     try {
       // Check if selected agent is a custom agent (from custom_agent.py registry)
-      // Custom agents include: PersonalAgent, etc.
-      const isCustomAgent = selectedAgent === 'PersonalAgent'; // Add more as they're registered
+      // Dynamic check based on available custom agents from the API
+      const isCustomAgent = customAgents.includes(selectedAgent);
       
       if (isCustomAgent) {
         // Use custom agent API

@@ -139,6 +139,89 @@ def chat(message, history):
 
     return response.choices[0].message.content
 
+def chat_stream(message, history):
+    """Streaming version of chat function for real-time responses"""
+    if isinstance(history, str):
+        history = json.loads(history)
+    messages = [{"role": "system", "content": get_system_prompt()}] + history + [{"role": "user", "content": message}]
+
+    done = False
+    while not done:
+        client = get_openai_client()
+        
+        # Use streaming for the main response
+        stream = client.chat.completions.create(
+            model="gpt-4o-mini", 
+            messages=messages, 
+            tools=get_tools(),
+            stream=True
+        )
+        
+        collected_chunks = []
+        collected_tool_calls = []
+        current_tool_call = None
+        
+        for chunk in stream:
+            # Handle content streaming
+            if chunk.choices[0].delta.content is not None:
+                content = chunk.choices[0].delta.content
+                collected_chunks.append(content)
+                yield content
+            
+            # Handle tool calls
+            if chunk.choices[0].delta.tool_calls:
+                for tool_call_delta in chunk.choices[0].delta.tool_calls:
+                    # Initialize new tool call if needed
+                    if tool_call_delta.index >= len(collected_tool_calls):
+                        collected_tool_calls.append({
+                            "id": "",
+                            "function": {"name": "", "arguments": ""}
+                        })
+                    
+                    # Update tool call data
+                    if tool_call_delta.id:
+                        collected_tool_calls[tool_call_delta.index]["id"] = tool_call_delta.id
+                    if tool_call_delta.function.name:
+                        collected_tool_calls[tool_call_delta.index]["function"]["name"] = tool_call_delta.function.name
+                    if tool_call_delta.function.arguments:
+                        collected_tool_calls[tool_call_delta.index]["function"]["arguments"] += tool_call_delta.function.arguments
+        
+        # Check finish reason
+        finish_reason = None
+        for chunk in stream:
+            if chunk.choices[0].finish_reason:
+                finish_reason = chunk.choices[0].finish_reason
+                break
+        
+        # If tool calls were made, execute them
+        if collected_tool_calls and finish_reason == "tool_calls":
+            yield f"\n[Processing tools...]"
+            
+            # Create a proper message object for tool calls
+            class ToolCall:
+                def __init__(self, id, function_name, arguments):
+                    self.id = id
+                    self.function = type('Function', (), {'name': function_name, 'arguments': arguments})()
+            
+            tool_calls = [ToolCall(tc["id"], tc["function"]["name"], tc["function"]["arguments"]) 
+                         for tc in collected_tool_calls]
+            
+            # Handle the tool calls
+            results = handle_tool_calls(tool_calls)
+            
+            # Add assistant message with tool calls to conversation
+            assistant_message = {
+                "role": "assistant", 
+                "content": ''.join(collected_chunks),
+                "tool_calls": collected_tool_calls
+            }
+            messages.append(assistant_message)
+            messages.extend(results)
+            
+            yield f"\n[Tools processed, generating response...]"
+        else:
+            done = True
+
 if __name__ == "__main__":
     result = chat("what is your name?", "[]")
     print(result)
