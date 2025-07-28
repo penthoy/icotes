@@ -89,3 +89,6 @@ celerybeat.pid
 
 # Ignore Python test environment
 backend/test_env/
+
+# Database files
+backend/chat.db
