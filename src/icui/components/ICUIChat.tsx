@@ -75,6 +75,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
     connectionStatus,
     isLoading,
     sendMessage,
+    sendCustomAgentMessage,
     clearMessages,
     connect,
     disconnect,
@@ -142,14 +143,23 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
     if (!messageContent) return;
 
     try {
-      // Include selected agent in message options
-      const messageOptions: MessageOptions = {
-        agentType: selectedAgent as any, // Cast to AgentType
-        streaming: true,
-        ...options // Merge with any provided options
-      };
+      // Check if selected agent is a custom agent (from custom_agent.py registry)
+      // Custom agents include: PersonalAgent, etc.
+      const isCustomAgent = selectedAgent === 'PersonalAgent'; // Add more as they're registered
       
-      await sendMessage(messageContent, messageOptions);
+      if (isCustomAgent) {
+        // Use custom agent API
+        await sendCustomAgentMessage(messageContent, selectedAgent);
+      } else {
+        // Use regular chat API with agent options
+        const messageOptions: MessageOptions = {
+          agentType: selectedAgent as any, // Cast to AgentType
+          streaming: true,
+          ...options // Merge with any provided options
+        };
+        
+        await sendMessage(messageContent, messageOptions);
+      }
       
       // Clear input only if using the input field
       if (!content) {
@@ -173,7 +183,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
       console.error('Failed to send message:', error);
       notificationService.error('Failed to send message');
     }
-  }, [inputValue, selectedAgent, sendMessage, onMessageSent]);
+  }, [inputValue, selectedAgent, sendMessage, sendCustomAgentMessage, onMessageSent]);
 
   // Handle clearing messages
   const handleClearMessages = useCallback(async () => {

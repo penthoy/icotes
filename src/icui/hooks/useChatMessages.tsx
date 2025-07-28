@@ -30,6 +30,7 @@ export interface UseChatMessagesReturn {
   
   // Actions
   sendMessage: (content: string, options?: MessageOptions) => Promise<void>;
+  sendCustomAgentMessage: (content: string, agentName: string) => Promise<void>;
   clearMessages: () => Promise<void>;
   updateConfig: (config: Partial<ChatConfig>) => Promise<void>;
   connect: () => Promise<boolean>;
@@ -203,6 +204,78 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
     }
   }, [getClient, config, maxMessages]);
 
+  // Send message to custom agent
+  const sendCustomAgentMessage = useCallback(async (content: string, agentName: string) => {
+    try {
+      setIsLoading(true);
+      
+      // Add user message immediately to UI
+      const userMessage: ChatMessage = {
+        id: `user_${Date.now()}_${Math.random().toString(36).substring(2)}`,
+        content,
+        sender: 'user',
+        timestamp: new Date(),
+        metadata: {
+          messageType: 'text',
+          agentType: agentName as any
+        }
+      };
+      
+      setMessages(prev => {
+        const newMessages = [...prev, userMessage];
+        return newMessages.length > maxMessages ? newMessages.slice(-maxMessages) : newMessages;
+      });
+
+      // Prepare chat history for the API call
+      const chatHistory = messages.map(msg => ({
+        role: msg.sender === 'user' ? 'user' : 'assistant',
+        content: msg.content
+      }));
+
+      // Call custom agent API
+      const response = await fetch('/api/custom-agents/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          agent_name: agentName,
+          message: content,
+          history: chatHistory
+        }),
+      });
+
+      const data = await response.json();
+      
+      if (data.success) {
+        // Add agent response to UI
+        const agentMessage: ChatMessage = {
+          id: `agent_${Date.now()}_${Math.random().toString(36).substring(2)}`,
+          content: data.response,
+          sender: 'ai',
+          timestamp: new Date(),
+          metadata: {
+            messageType: 'text',
+            agentType: agentName as any
+          }
+        };
+        
+        setMessages(prev => {
+          const newMessages = [...prev, agentMessage];
+          return newMessages.length > maxMessages ? newMessages.slice(-maxMessages) : newMessages;
+        });
+      } else {
+        throw new Error(data.error || 'Custom agent call failed');
+      }
+      
+    } catch (error) {
+      console.error('Failed to send message to custom agent:', error);
+      notificationService.error(`Failed to send message to ${agentName}`);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [messages, maxMessages]);
+
   // Clear messages
   const clearMessages = useCallback(async () => {
     try {
@@ -291,6 +364,7 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
     
     // Actions
     sendMessage,
+    sendCustomAgentMessage,
     clearMessages,
     updateConfig,
     connect,

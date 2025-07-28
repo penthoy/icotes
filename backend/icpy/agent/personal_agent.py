@@ -5,9 +5,9 @@
 import json
 import os
 
-from clients import get_openai_client
-from tools.pdfreader_tools import get_pdf_reader
-from tools.pushover_tools import push
+from .clients import get_openai_client
+from .tools.pdfreader_tools import get_pdf_reader
+from .tools.pushover_tools import push
 
 
 def record_user_details(email, name="Name not provided", notes="not provided"):

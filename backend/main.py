@@ -51,7 +51,7 @@ try:
     from icpy.core.connection_manager import get_connection_manager
     from icpy.services import get_workspace_service, get_filesystem_service, get_terminal_service, get_agent_service, get_chat_service
     from icpy.services.clipboard_service import clipboard_service
-    from icpy.agent.custom_agent import auto_initialize_chat_agent, get_available_custom_agents
+    from icpy.agent.custom_agent import get_available_custom_agents, call_custom_agent
     ICPY_AVAILABLE = True
     logger.info("icpy modules loaded successfully")
 except ImportError as e:
@@ -59,6 +59,7 @@ except ImportError as e:
     ICPY_AVAILABLE = False
     clipboard_service = None
     get_available_custom_agents = lambda: ["TestAgent", "DefaultAgent"]  # Fallback
+    call_custom_agent = lambda agent, msg, hist: f"Custom agent {agent} not available"
 
 try:
     from terminal import terminal_manager
@@ -516,6 +517,26 @@ async def get_custom_agents():
     except Exception as e:
         logger.error(f"Error getting custom agents: {e}")
         return {"success": False, "error": str(e), "agents": []}
+
+# Pydantic models for custom agent chat
+class CustomAgentChatRequest(BaseModel):
+    agent_name: str
+    message: str
+    history: List[Dict[str, Any]] = []
+
+@app.post("/api/custom-agents/chat")
+async def custom_agent_chat(request: CustomAgentChatRequest):
+    """Call a custom agent with a message and chat history."""
+    try:
+        logger.info(f"Custom agent chat called for agent: {request.agent_name}")
+        response = call_custom_agent(request.agent_name, request.message, request.history)
+        return {"success": True, "response": response}
+    except ValueError as e:
+        logger.error(f"Custom agent error: {e}")
+        return {"success": False, "error": str(e)}
+    except Exception as e:
+        logger.error(f"Error calling custom agent: {e}")
+        return {"success": False, "error": str(e)}
 
 # Agent WebSocket endpoints
 @app.websocket("/ws/agents/{session_id}/stream")
