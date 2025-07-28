@@ -1,13 +1,13 @@
-from dotenv import load_dotenv
-from openai import OpenAI
 from pypdf import PdfReader
 
-load_dotenv(override=True)
-openai = OpenAI()
-
-reader = PdfReader("tazhang_linkedIn.pdf")
-linkedin = ""
-for page in reader.pages:
-    text = page.extract_text()
-    if text:
-        linkedin += text
+def get_pdf_reader(pdf_path):
+    """
+    Returns a PDF reader for the LinkedIn profile PDF.
+    """
+    reader = PdfReader(pdf_path)
+    pdfcontent = ""
+    for page in reader.pages:
+        text = page.extract_text()
+        if text:
+            pdfcontent += text
+    return pdfcontent

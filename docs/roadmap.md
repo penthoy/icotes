@@ -2,7 +2,7 @@
 A web-based JavaScript code editor built with ViteReact, CodeMirror 6, and modern web technologies. The goal is to create the world's most powerful notebook for developers and hackers, it includes 3 core parts: 1. rich text editor, similar to evernote/notion hybrid, 2. code editor + terminal(similar to replit), 3. AI agent that can be customized with agentic frameworks such as crew ai, or openai agent sdk, or any other agentic framework. This tool is designed to be infinitely hackable and flexible to empower the nextgeneration of AI powered developers.
 
 ### In Progress
-
+- [] can you help me rewrite custom_agent.py, and how main.py is using it, as well as the frontend ICUIChat.tsx so that it can include the chat function from personal_agent.py
 
 ## Recently Finished
 
