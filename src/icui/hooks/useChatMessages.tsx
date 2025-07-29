@@ -13,7 +13,6 @@ import { notificationService } from '../services/notificationService';sages Hook
  */
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { flushSync } from 'react-dom';
 import { 
   ChatMessage, 
   ConnectionStatus, 
@@ -215,12 +214,10 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
   }, [getClient, config, maxMessages]);
 
   // Send message to custom agent
+  // Send message to custom agent - using main branch pattern
   const sendCustomAgentMessage = useCallback(async (content: string, agentName: string) => {
-    console.log('🚀🚀🚀 CUSTOM AGENT MESSAGE FUNCTION CALLED 🚀🚀🚀', { content, agentName });
-    console.log('🔥 This should appear in console when you send a message!');
-    
     try {
-      setIsLoading(true);
+      const client = getClient();
       
       // Add user message immediately to UI
       const userMessage: ChatMessage = {
@@ -238,266 +235,17 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
         const newMessages = [...prev, userMessage];
         return newMessages.length > maxMessages ? newMessages.slice(-maxMessages) : newMessages;
       });
-
-      // Prepare chat history for the API call
-      const chatHistory = messages.map(msg => ({
-        role: msg.sender === 'user' ? 'user' : 'assistant',
-        content: msg.content
-      }));
-
-      // Try WebSocket streaming first, fallback to HTTP
-      const useStreaming = true; // You can make this configurable
       
-      if (useStreaming) {
-        // Use WebSocket for streaming
-        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${wsProtocol}//${window.location.host}/ws/custom-agents/${agentName}/stream`;
-        
-        const timestamp = new Date().toISOString().split('T')[1];
-        console.log(`🚀 [${timestamp}] Initiating WebSocket streaming for agent:`, agentName);
-        console.log(`📡 [${timestamp}] WebSocket URL:`, wsUrl);
-        
-        const ws = new WebSocket(wsUrl);
-        let streamingMessageId = `agent_${Date.now()}_${Math.random().toString(36).substring(2)}`;
-        let accumulatedContent = '';
-        
-        // Timing measurements
-        const sendButtonClickTime = performance.now();
-        let firstChunkReceivedTime: number | null = null;
-        let streamCompleteTime: number | null = null;
-        
-        console.log(`🔗 [${timestamp}] Created WebSocket connection, message ID:`, streamingMessageId);
-        console.log(`⏱️ [${timestamp}] Send button clicked at:`, sendButtonClickTime);
-        
-        // Add a placeholder message to the UI immediately
-        const placeholderMessage: ChatMessage = {
-          id: streamingMessageId,
-          content: '...',
-          sender: 'ai',
-          timestamp: new Date(),
-          metadata: {
-            messageType: 'text',
-            agentType: agentName as any,
-            isStreaming: true,
-          },
-        };
-        setMessages(prev => [...prev, placeholderMessage]);
-        console.log(`[DEBUG] Placeholder message added with ID: ${streamingMessageId}`);
-        
-        ws.onopen = () => {
-          const wsConnectedTime = performance.now();
-          console.log('✅ Custom Agent WebSocket connected for agent:', agentName);
-          console.log(`⏱️ WebSocket connected after: ${(wsConnectedTime - sendButtonClickTime).toFixed(2)}ms`);
-          
-          // Send the message
-          const messageToSend = {
-            type: "message",
-            content: content,
-            history: chatHistory
-          };
-          console.log('📤 Sending message to WebSocket:', messageToSend);
-          const messageSentTime = performance.now();
-          ws.send(JSON.stringify(messageToSend));
-          console.log(`⏱️ Message sent after: ${(messageSentTime - sendButtonClickTime).toFixed(2)}ms`);
-        };
-
-        ws.onmessage = (event) => {
-          const data = JSON.parse(event.data);
-          const timestamp = new Date().toISOString().split('T')[1];
-          const currentTime = performance.now();
-          
-          // Record first chunk timing
-          if (data.type === "stream_chunk" && firstChunkReceivedTime === null) {
-            firstChunkReceivedTime = currentTime;
-            console.log(`🎯 [${timestamp}] FIRST CHUNK RECEIVED!`);
-            console.log(`⏱️ Time from send button to first chunk: ${(firstChunkReceivedTime - sendButtonClickTime).toFixed(2)}ms`);
-          }
-          
-          console.log(`🔄 [${timestamp}] Frontend WebSocket message:`, {
-            type: data.type,
-            contentLength: data.content?.length,
-            chunk: data.content?.substring(0, 50) + (data.content?.length > 50 ? '...' : ''),
-            accumulatedLength: accumulatedContent.length,
-            timeSinceSend: `${(currentTime - sendButtonClickTime).toFixed(2)}ms`
-          });
-          console.log('[DEBUG] ws.onmessage triggered. Data type:', data.type);
-          
-          if (data.type === "stream_chunk") {
-            accumulatedContent += data.content;
-            
-            // Direct, immediate update for real-time streaming (no throttling)
-            flushSync(() => {
-              setMessages(prev => {
-                const existingIndex = prev.findIndex(m => m.id === streamingMessageId);
-                
-                const streamingMessage: ChatMessage = {
-                  id: streamingMessageId,
-                  content: accumulatedContent,
-                  sender: 'ai',
-                  timestamp: new Date(),
-                  metadata: {
-                    messageType: 'text',
-                    agentType: agentName as any,
-                    isStreaming: true
-                  }
-                };
-                
-                if (existingIndex >= 0) {
-                  // Update existing message
-                  const newMessages = [...prev];
-                  newMessages[existingIndex] = streamingMessage;
-                  return newMessages.length > maxMessages ? newMessages.slice(-maxMessages) : newMessages;
-                } else {
-                  // Add new message
-                  const newMessages = [...prev, streamingMessage];
-                  return newMessages.length > maxMessages ? newMessages.slice(-maxMessages) : newMessages;
-                }
-              });
-            });
-          } else if (data.type === "stream_complete") {
-            streamCompleteTime = performance.now();
-            const timestamp = new Date().toISOString().split('T')[1];
-            
-            console.log(`🏁 [${timestamp}] STREAM COMPLETE for agent:`, agentName);
-            console.log(`⏱️ TIMING SUMMARY:`);
-            console.log(`   📤 Send button to first chunk: ${firstChunkReceivedTime ? (firstChunkReceivedTime - sendButtonClickTime).toFixed(2) : 'N/A'}ms`);
-            console.log(`   🔄 First chunk to completion: ${firstChunkReceivedTime ? (streamCompleteTime - firstChunkReceivedTime).toFixed(2) : 'N/A'}ms`);
-            console.log(`   🎯 Total send to completion: ${(streamCompleteTime - sendButtonClickTime).toFixed(2)}ms`);
-            console.log(`   📝 Final content length: ${accumulatedContent.length} characters`);
-            
-            // Force final update to ensure complete message is shown
-            flushSync(() => {
-              setMessages(prev => {
-                const existingIndex = prev.findIndex(m => m.id === streamingMessageId);
-                if (existingIndex >= 0) {
-                  const newMessages = [...prev];
-                  const completedMessage = { ...newMessages[existingIndex] };
-                  completedMessage.content = accumulatedContent; // Ensure final content
-                  if (completedMessage.metadata) {
-                    completedMessage.metadata.isStreaming = false;
-                    completedMessage.metadata.streamComplete = true;
-                  }
-                  newMessages[existingIndex] = completedMessage;
-                  console.log(`✅ [${timestamp}] Marked message as complete:`, completedMessage.id);
-                  return newMessages;
-                }
-                return prev;
-              });
-            });
-            ws.close();
-          } else if (data.type === "error") {
-            const timestamp = new Date().toISOString().split('T')[1];
-            console.error(`❌ [${timestamp}] WebSocket error from backend:`, data.message);
-            throw new Error(data.message);
-          } else {
-            const timestamp = new Date().toISOString().split('T')[1];
-            console.log(`📦 [${timestamp}] Unknown message type:`, data);
-          }
-        };
-        
-        ws.onerror = (error) => {
-          const timestamp = new Date().toISOString().split('T')[1];
-          console.error(`❌ [${timestamp}] WebSocket connection error for agent ${agentName}:`, error);
-          // Fallback to HTTP API
-          fallbackToHttp();
-        };
-        
-        ws.onclose = (event) => {
-          const timestamp = new Date().toISOString().split('T')[1];
-          console.log(`🔌 [${timestamp}] WebSocket closed for agent ${agentName}:`, {
-            code: event.code,
-            reason: event.reason,
-            wasClean: event.wasClean
-          });
-          console.log('[DEBUG] WebSocket connection closed.');
-        };
-        
-        const fallbackToHttp = async () => {
-          try {
-            const response = await fetch('/api/custom-agents/chat', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                agent_name: agentName,
-                message: content,
-                history: chatHistory
-              }),
-            });
-
-            const data = await response.json();
-            
-            if (data.success) {
-              // Add agent response to UI
-              const agentMessage: ChatMessage = {
-                id: `agent_${Date.now()}_${Math.random().toString(36).substring(2)}`,
-                content: data.response,
-                sender: 'ai',
-                timestamp: new Date(),
-                metadata: {
-                  messageType: 'text',
-                  agentType: agentName as any
-                }
-              };
-              
-              setMessages(prev => {
-                const newMessages = [...prev, agentMessage];
-                return newMessages.length > maxMessages ? newMessages.slice(-maxMessages) : newMessages;
-              });
-            } else {
-              throw new Error(data.error || 'Custom agent call failed');
-            }
-          } catch (httpError) {
-            console.error('HTTP fallback also failed:', httpError);
-            throw httpError;
-          }
-        };
-      } else {
-        // Use HTTP API directly (non-streaming)
-        const response = await fetch('/api/custom-agents/chat', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            agent_name: agentName,
-            message: content,
-            history: chatHistory
-          }),
-        });
-
-        const data = await response.json();
-        
-        if (data.success) {
-          // Add agent response to UI
-          const agentMessage: ChatMessage = {
-            id: `agent_${Date.now()}_${Math.random().toString(36).substring(2)}`,
-            content: data.response,
-            sender: 'ai',
-            timestamp: new Date(),
-            metadata: {
-              messageType: 'text',
-              agentType: agentName as any
-            }
-          };
-          
-          setMessages(prev => {
-            const newMessages = [...prev, agentMessage];
-            return newMessages.length > maxMessages ? newMessages.slice(-maxMessages) : newMessages;
-          });
-        } else {
-          throw new Error(data.error || 'Custom agent call failed');
-        }
-      }
+      // Send via existing chat client with custom agent type
+      await client.sendMessage(content, {
+        agentType: agentName as any
+      });
       
     } catch (error) {
       console.error('Failed to send message to custom agent:', error);
       notificationService.error(`Failed to send message to ${agentName}`);
-    } finally {
-      setIsLoading(false);
     }
-  }, [messages, maxMessages]);
+  }, [getClient, maxMessages]);
 
   // Clear messages
   const clearMessages = useCallback(async () => {
@@ -551,10 +299,9 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
   // Scroll to bottom
   const scrollToBottom = useCallback(() => {
     if (messagesEndRef.current && autoScroll) {
-      const isStreaming = messages.length > 0 && messages[messages.length - 1].metadata?.isStreaming;
-      messagesEndRef.current.scrollIntoView({ behavior: isStreaming ? 'auto' : 'smooth' });
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [autoScroll, messages]);
+  }, [autoScroll]);
 
   // Auto-scroll when messages change
   useEffect(() => {
