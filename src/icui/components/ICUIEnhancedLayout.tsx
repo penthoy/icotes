@@ -111,21 +111,27 @@ export const ICUIEnhancedLayout: React.FC<ICUIEnhancedLayoutProps> = ({
     }
   }, [persistLayout, layoutKey]);
 
-  // Update layout when prop changes
+  // Update layout when prop changes (only if it's actually different)
   useEffect(() => {
-    if (layout) {
+    if (layout && JSON.stringify(layout) !== JSON.stringify(currentLayout)) {
       setCurrentLayout(layout);
     }
   }, [layout]);
 
-  // Save layout changes and call onLayoutChange
+  // Save layout changes and call onLayoutChange (only when user makes changes, not prop updates)
+  const [isInitialized, setIsInitialized] = useState(false);
   useEffect(() => {
+    if (!isInitialized) {
+      setIsInitialized(true);
+      return; // Don't call onLayoutChange during initialization
+    }
+    
     if (persistLayout && layoutKey) {
       localStorage.setItem(layoutKey, JSON.stringify(currentLayout));
     }
-    // Call onLayoutChange without including it in dependencies to prevent infinite loops
+    // Call onLayoutChange only for user-initiated changes
     onLayoutChange?.(currentLayout);
-  }, [currentLayout, persistLayout, layoutKey]);
+  }, [currentLayout, persistLayout, layoutKey, isInitialized]);
 
   // Get panels for a specific area
   const getPanelsForArea = useCallback((areaId: string): ICUIEnhancedPanel[] => {

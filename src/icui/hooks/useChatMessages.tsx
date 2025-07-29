@@ -13,6 +13,7 @@ import { notificationService } from '../services/notificationService';sages Hook
  */
 
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { flushSync } from 'react-dom';
 import { 
   ChatMessage, 
   ConnectionStatus, 
@@ -259,8 +260,6 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
         const ws = new WebSocket(wsUrl);
         let streamingMessageId = `agent_${Date.now()}_${Math.random().toString(36).substring(2)}`;
         let accumulatedContent = '';
-        let lastUpdateTime = 0;
-        const UPDATE_THROTTLE_MS = 50; // Update every 50ms for smooth streaming
         
         // Timing measurements
         const sendButtonClickTime = performance.now();
@@ -269,6 +268,21 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
         
         console.log(`🔗 [${timestamp}] Created WebSocket connection, message ID:`, streamingMessageId);
         console.log(`⏱️ [${timestamp}] Send button clicked at:`, sendButtonClickTime);
+        
+        // Add a placeholder message to the UI immediately
+        const placeholderMessage: ChatMessage = {
+          id: streamingMessageId,
+          content: '...',
+          sender: 'ai',
+          timestamp: new Date(),
+          metadata: {
+            messageType: 'text',
+            agentType: agentName as any,
+            isStreaming: true,
+          },
+        };
+        setMessages(prev => [...prev, placeholderMessage]);
+        console.log(`[DEBUG] Placeholder message added with ID: ${streamingMessageId}`);
         
         ws.onopen = () => {
           const wsConnectedTime = performance.now();
@@ -306,53 +320,40 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
             accumulatedLength: accumulatedContent.length,
             timeSinceSend: `${(currentTime - sendButtonClickTime).toFixed(2)}ms`
           });
+          console.log('[DEBUG] ws.onmessage triggered. Data type:', data.type);
           
           if (data.type === "stream_chunk") {
             accumulatedContent += data.content;
-            console.log(`📝 [${timestamp}] Adding chunk:`, {
-              chunkLength: data.content.length,
-              newAccumulatedLength: accumulatedContent.length,
-              chunkContent: data.content
-            });
             
-            // Smart throttled updates for smooth streaming
-            const updateUI = (forceUpdate = false) => {
-              const now = Date.now();
-              if (forceUpdate || now - lastUpdateTime >= UPDATE_THROTTLE_MS) {
-                lastUpdateTime = now;
+            // Direct, immediate update for real-time streaming (no throttling)
+            flushSync(() => {
+              setMessages(prev => {
+                const existingIndex = prev.findIndex(m => m.id === streamingMessageId);
                 
-                setMessages(prev => {
-                  const existingIndex = prev.findIndex(m => m.id === streamingMessageId);
-                  
-                  const streamingMessage: ChatMessage = {
-                    id: streamingMessageId,
-                    content: accumulatedContent,
-                    sender: 'ai',
-                    timestamp: new Date(),
-                    metadata: {
-                      messageType: 'text',
-                      agentType: agentName as any,
-                      isStreaming: true
-                    }
-                  };
-                  
-                  console.log(`⚡ [${timestamp}] SMOOTH React update - chunk ${data.content.length} chars, total: ${accumulatedContent.length}`);
-                  
-                  if (existingIndex >= 0) {
-                    // Update existing message
-                    const newMessages = [...prev];
-                    newMessages[existingIndex] = streamingMessage;
-                    return newMessages.length > maxMessages ? newMessages.slice(-maxMessages) : newMessages;
-                  } else {
-                    // Add new message
-                    const newMessages = [...prev, streamingMessage];
-                    return newMessages.length > maxMessages ? newMessages.slice(-maxMessages) : newMessages;
+                const streamingMessage: ChatMessage = {
+                  id: streamingMessageId,
+                  content: accumulatedContent,
+                  sender: 'ai',
+                  timestamp: new Date(),
+                  metadata: {
+                    messageType: 'text',
+                    agentType: agentName as any,
+                    isStreaming: true
                   }
-                });
-              }
-            };
-            
-            updateUI();
+                };
+                
+                if (existingIndex >= 0) {
+                  // Update existing message
+                  const newMessages = [...prev];
+                  newMessages[existingIndex] = streamingMessage;
+                  return newMessages.length > maxMessages ? newMessages.slice(-maxMessages) : newMessages;
+                } else {
+                  // Add new message
+                  const newMessages = [...prev, streamingMessage];
+                  return newMessages.length > maxMessages ? newMessages.slice(-maxMessages) : newMessages;
+                }
+              });
+            });
           } else if (data.type === "stream_complete") {
             streamCompleteTime = performance.now();
             const timestamp = new Date().toISOString().split('T')[1];
@@ -365,21 +366,23 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
             console.log(`   📝 Final content length: ${accumulatedContent.length} characters`);
             
             // Force final update to ensure complete message is shown
-            setMessages(prev => {
-              const existingIndex = prev.findIndex(m => m.id === streamingMessageId);
-              if (existingIndex >= 0) {
-                const newMessages = [...prev];
-                const completedMessage = { ...newMessages[existingIndex] };
-                completedMessage.content = accumulatedContent; // Ensure final content
-                if (completedMessage.metadata) {
-                  completedMessage.metadata.isStreaming = false;
-                  completedMessage.metadata.streamComplete = true;
+            flushSync(() => {
+              setMessages(prev => {
+                const existingIndex = prev.findIndex(m => m.id === streamingMessageId);
+                if (existingIndex >= 0) {
+                  const newMessages = [...prev];
+                  const completedMessage = { ...newMessages[existingIndex] };
+                  completedMessage.content = accumulatedContent; // Ensure final content
+                  if (completedMessage.metadata) {
+                    completedMessage.metadata.isStreaming = false;
+                    completedMessage.metadata.streamComplete = true;
+                  }
+                  newMessages[existingIndex] = completedMessage;
+                  console.log(`✅ [${timestamp}] Marked message as complete:`, completedMessage.id);
+                  return newMessages;
                 }
-                newMessages[existingIndex] = completedMessage;
-                console.log(`✅ [${timestamp}] Marked message as complete:`, completedMessage.id);
-                return newMessages;
-              }
-              return prev;
+                return prev;
+              });
             });
             ws.close();
           } else if (data.type === "error") {
@@ -406,6 +409,7 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
             reason: event.reason,
             wasClean: event.wasClean
           });
+          console.log('[DEBUG] WebSocket connection closed.');
         };
         
         const fallbackToHttp = async () => {
@@ -547,9 +551,10 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
   // Scroll to bottom
   const scrollToBottom = useCallback(() => {
     if (messagesEndRef.current && autoScroll) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+      const isStreaming = messages.length > 0 && messages[messages.length - 1].metadata?.isStreaming;
+      messagesEndRef.current.scrollIntoView({ behavior: isStreaming ? 'auto' : 'smooth' });
     }
-  }, [autoScroll]);
+  }, [autoScroll, messages]);
 
   // Auto-scroll when messages change
   useEffect(() => {

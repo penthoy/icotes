@@ -276,8 +276,30 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
     // CRITICAL: Open terminal BEFORE fitting (code-server pattern)
     terminal.current.open(terminalRef.current);
     
-    // Fit after opening
-    fitAddon.current.fit();
+    // Wait for DOM to be ready and then fit with safety checks
+    setTimeout(() => {
+      if (fitAddon.current && terminal.current && terminalRef.current) {
+        try {
+          // Check if container has valid dimensions before fitting
+          const rect = terminalRef.current.getBoundingClientRect();
+          if (rect.width > 0 && rect.height > 0) {
+            fitAddon.current.fit();
+          }
+        } catch (error) {
+          console.warn('Terminal fit error during initialization:', error);
+          // Retry after a longer delay
+          setTimeout(() => {
+            if (fitAddon.current && terminal.current) {
+              try {
+                fitAddon.current.fit();
+              } catch (retryError) {
+                console.warn('Terminal fit retry failed:', retryError);
+              }
+            }
+          }, 500);
+        }
+      }
+    }, 100);
 
     // Focus the terminal to ensure it can receive keyboard input
     terminal.current.focus();
@@ -362,14 +384,22 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
       terminal.current?.write("\r\n\x1b[31mTerminal connection error\x1b[0m\r\n");
     };
 
-    // Resize handling with debounce (same as SimpleTerminal)
+    // Resize handling with debounce and safety checks
     const handleResize = () => {
       if (resizeTimeout.current) {
         clearTimeout(resizeTimeout.current);
       }
       resizeTimeout.current = setTimeout(() => {
-        if (fitAddon.current && terminal.current) {
-          fitAddon.current.fit();
+        if (fitAddon.current && terminal.current && terminalRef.current) {
+          try {
+            // Check if container has valid dimensions before fitting
+            const rect = terminalRef.current.getBoundingClientRect();
+            if (rect.width > 0 && rect.height > 0) {
+              fitAddon.current.fit();
+            }
+          } catch (error) {
+            console.warn('Terminal fit error during resize:', error);
+          }
         }
       }, 100);
     };

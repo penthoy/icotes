@@ -435,6 +435,67 @@ async def execute_code(request: CodeExecutionRequest):
             execution_time=0.0
         )
 
+# Basic WebSocket endpoint for backward compatibility
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    """Basic WebSocket endpoint for code execution."""
+    await websocket.accept()
+    
+    try:
+        while True:
+            message = await websocket.receive_text()
+            try:
+                data = json.loads(message)
+                
+                if data.get("type") == "execute":
+                    # Handle code execution
+                    code = data.get("code", "")
+                    language = data.get("language", "python")
+                    
+                    result = await execute_code_endpoint(
+                        CodeExecutionRequest(
+                            code=code, 
+                            language=language,
+                            timeout=30
+                        )
+                    )
+                    
+                    # Send result back
+                    await websocket.send_text(json.dumps({
+                        "type": "result",
+                        "output": result.output,
+                        "errors": result.errors,
+                        "execution_time": result.execution_time
+                    }))
+                    
+                elif data.get("type") == "ping":
+                    # Handle ping
+                    await websocket.send_text(json.dumps({"type": "pong"}))
+                    
+                else:
+                    # Echo unknown messages for debugging
+                    await websocket.send_text(json.dumps({
+                        "type": "echo",
+                        "message": f"Unknown message type: {data.get('type')}"
+                    }))
+                    
+            except json.JSONDecodeError:
+                await websocket.send_text(json.dumps({
+                    "type": "error",
+                    "message": "Invalid JSON format"
+                }))
+            except Exception as e:
+                logger.error(f"WebSocket message error: {e}")
+                await websocket.send_text(json.dumps({
+                    "type": "error", 
+                    "message": f"Internal server error: {str(e)}"
+                }))
+                
+    except WebSocketDisconnect:
+        logger.info("WebSocket disconnected")
+    except Exception as e:
+        logger.error(f"WebSocket error: {e}")
+
 # Enhanced WebSocket endpoints
 @app.websocket("/ws/enhanced")
 async def enhanced_websocket_endpoint(websocket: WebSocket):

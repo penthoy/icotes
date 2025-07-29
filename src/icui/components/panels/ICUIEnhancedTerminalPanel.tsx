@@ -167,8 +167,30 @@ export const ICUIEnhancedTerminalPanel: React.FC<ICUIEnhancedTerminalPanelProps>
     // CRITICAL: Open terminal BEFORE fitting (code-server pattern)
     terminal.current.open(terminalRef.current);
     
-    // Fit after opening
-    fitAddon.current.fit();
+    // Wait for DOM to be ready and then fit with safety checks
+    setTimeout(() => {
+      if (fitAddon.current && terminal.current && terminalRef.current) {
+        try {
+          // Check if container has valid dimensions before fitting
+          const rect = terminalRef.current.getBoundingClientRect();
+          if (rect.width > 0 && rect.height > 0) {
+            fitAddon.current.fit();
+          }
+        } catch (error) {
+          console.warn('Enhanced terminal fit error during initialization:', error);
+          // Retry after a longer delay
+          setTimeout(() => {
+            if (fitAddon.current && terminal.current) {
+              try {
+                fitAddon.current.fit();
+              } catch (retryError) {
+                console.warn('Enhanced terminal fit retry failed:', retryError);
+              }
+            }
+          }, 500);
+        }
+      }
+    }, 100);
 
     // Handle user input: send to backend. Local echo is now disabled.
     // The backend PTY will handle echoing characters back to us.
@@ -210,23 +232,31 @@ export const ICUIEnhancedTerminalPanel: React.FC<ICUIEnhancedTerminalPanelProps>
       // Handle WebSocket connection errors
     };
 
-    // Resize handling with debounce
+    // Resize handling with debounce and safety checks
     const handleResize = () => {
       if (resizeTimeout.current) {
         clearTimeout(resizeTimeout.current);
       }
       resizeTimeout.current = setTimeout(() => {
-        if (fitAddon.current && terminal.current) {
-          fitAddon.current.fit();
-          
-          // Send resize info to backend
-          const dims = fitAddon.current.proposeDimensions();
-          if (dims && websocket.current?.readyState === WebSocket.OPEN) {
-            websocket.current.send(JSON.stringify({
-              type: 'resize',
-              cols: dims.cols,
-              rows: dims.rows
-            }));
+        if (fitAddon.current && terminal.current && terminalRef.current) {
+          try {
+            // Check if container has valid dimensions before fitting
+            const rect = terminalRef.current.getBoundingClientRect();
+            if (rect.width > 0 && rect.height > 0) {
+              fitAddon.current.fit();
+              
+              // Send resize info to backend
+              const dims = fitAddon.current.proposeDimensions();
+              if (dims && websocket.current?.readyState === WebSocket.OPEN) {
+                websocket.current.send(JSON.stringify({
+                  type: 'resize',
+                  cols: dims.cols,
+                  rows: dims.rows
+                }));
+              }
+            }
+          } catch (error) {
+            console.warn('Enhanced terminal fit error during resize:', error);
           }
         }
       }, 100);

@@ -6,29 +6,6 @@ A web-based JavaScript code editor built with ViteReact, CodeMirror 6, and moder
 
 
 ## Recently Finished
-- ✅ **Custom Agent System Bug Fixes**:
-  1. ✅ Fixed OpenAIDemoAgent giving demo responses - removed blank line at beginning of file that prevented proper import
-  2. ✅ OpenAIDemoAgent now makes real OpenAI API calls and provides intelligent responses
-  3. ✅ Integrated custom agents with chat service database for message history persistence
-  4. ✅ Modified both HTTP and WebSocket endpoints to save user messages and agent responses to chat.db
-  5. ✅ Added session management for custom agent conversations
-  6. ✅ Both PersonalAgent and OpenAIDemoAgent now have full history support with database persistence
-  7. ✅ Messages from custom agents are now properly saved and can be retrieved on page refresh
-- ✅ **Custom Agent System Fixes**:
-  1. ✅ Fixed tool calls in chat_stream in personal_agent.py - now properly handles tool execution during streaming
-  2. ✅ Fixed history handling in custom agents - chat history is now correctly passed and processed
-  3. ✅ Rewrote OpenAIDemoAgent to match personal_agent.py format with both chat() and chat_stream() functions
-  4. ✅ Added OpenAIDemoAgent to custom_agent.py registry - now appears in frontend dropdown
-  5. ✅ Both PersonalAgent and OpenAIDemoAgent now fully functional with streaming support
-  6. ✅ Backend successfully loads both agents and handles API calls correctly
-- ✅ **Custom Agent System Implementation**:
-  1. ✅ Rewrote custom_agent.py to be simple (under 50 lines) - now acts as an entry point and registry for custom agents
-  2. ✅ Updated main.py to use the new custom_agent.py structure with new `/api/custom-agents/chat` endpoint 
-  3. ✅ Enhanced ICUIChat.tsx frontend to include personal_agent.py chat function as dropdown menu option
-  4. ✅ Added sendCustomAgentMessage function to useChatMessages hook to handle custom agent API calls
-  5. ✅ Implemented gradio-like chat function capability that can take user-defined chat functions
-  6. ✅ Successfully tested PersonalAgent integration - custom agent registry working correctly
-  7. ✅ Frontend build verification completed - all TypeScript compilation successful
 
 
 ## Future task
@@ -150,6 +127,30 @@ A Panel installer,
 maya style code executor.
 
 ## Recently Completed ✅
+- ✅ **Custom Agent System Bug Fixes**:
+  1. ✅ Fixed OpenAIDemoAgent giving demo responses - removed blank line at beginning of file that prevented proper import
+  2. ✅ OpenAIDemoAgent now makes real OpenAI API calls and provides intelligent responses
+  3. ✅ Integrated custom agents with chat service database for message history persistence
+  4. ✅ Modified both HTTP and WebSocket endpoints to save user messages and agent responses to chat.db
+  5. ✅ Added session management for custom agent conversations
+  6. ✅ Both PersonalAgent and OpenAIDemoAgent now have full history support with database persistence
+  7. ✅ Messages from custom agents are now properly saved and can be retrieved on page refresh
+- ✅ **Custom Agent System Fixes**:
+  1. ✅ Fixed tool calls in chat_stream in personal_agent.py - now properly handles tool execution during streaming
+  2. ✅ Fixed history handling in custom agents - chat history is now correctly passed and processed
+  3. ✅ Rewrote OpenAIDemoAgent to match personal_agent.py format with both chat() and chat_stream() functions
+  4. ✅ Added OpenAIDemoAgent to custom_agent.py registry - now appears in frontend dropdown
+  5. ✅ Both PersonalAgent and OpenAIDemoAgent now fully functional with streaming support
+  6. ✅ Backend successfully loads both agents and handles API calls correctly
+- ✅ **Custom Agent System Implementation**:
+  1. ✅ Rewrote custom_agent.py to be simple (under 50 lines) - now acts as an entry point and registry for custom agents
+  2. ✅ Updated main.py to use the new custom_agent.py structure with new `/api/custom-agents/chat` endpoint 
+  3. ✅ Enhanced ICUIChat.tsx frontend to include personal_agent.py chat function as dropdown menu option
+  4. ✅ Added sendCustomAgentMessage function to useChatMessages hook to handle custom agent API calls
+  5. ✅ Implemented gradio-like chat function capability that can take user-defined chat functions
+  6. ✅ Successfully tested PersonalAgent integration - custom agent registry working correctly
+  7. ✅ Frontend build verification completed - all TypeScript compilation successful
+
 -- Milestone 1:
 ✓ Complete icui-icpy connection and integration plan so that the old home route is using icpy backend.
 

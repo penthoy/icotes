@@ -49,6 +49,17 @@ export class ChatBackendClient {
   // WebSocket connection management
   async connectWebSocket(): Promise<boolean> {
     try {
+      // Prevent multiple connection attempts
+      if (this.websocket?.readyState === WebSocket.OPEN) {
+        console.warn('Chat WebSocket already connected');
+        return true;
+      }
+      
+      if (this.websocket?.readyState === WebSocket.CONNECTING) {
+        console.warn('Chat WebSocket connection already in progress');
+        return false;
+      }
+      
       const wsUrl = constructWebSocketUrl('/ws/chat');
       console.log('Connecting to Chat WebSocket:', wsUrl);
       
