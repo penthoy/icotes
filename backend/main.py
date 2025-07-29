@@ -600,6 +600,10 @@ async def custom_agent_stream_websocket(websocket: WebSocket, agent_name: str):
                 data = json.loads(message)
                 
                 if data.get("type") == "message":
+                    import time
+                    request_start_time = time.time()
+                    logger.info(f"🚀 [WEBSOCKET] Received custom agent request for {agent_name} at {time.time()}")
+                    
                     content = data.get("content", "")
                     history = data.get("history", [])
                     session_id = data.get("session_id") or str(uuid.uuid4())
@@ -619,10 +623,17 @@ async def custom_agent_stream_websocket(websocket: WebSocket, agent_name: str):
                         )
                         await chat_service._store_message(user_message)
                         
+                        logger.info(f"📤 [WEBSOCKET] Starting stream for {agent_name} after {(time.time() - request_start_time)*1000:.2f}ms")
+                        
                         # Stream the response
                         accumulated_response = ""
+                        first_chunk_sent = False
                         try:
                             async for chunk in call_custom_agent_stream(agent_name, content, history):
+                                if not first_chunk_sent:
+                                    logger.info(f"🎯 [WEBSOCKET] FIRST CHUNK from backend to frontend after {(time.time() - request_start_time)*1000:.2f}ms")
+                                    first_chunk_sent = True
+                                
                                 accumulated_response += chunk
                                 await websocket.send_json({
                                     "type": "stream_chunk",
@@ -644,6 +655,7 @@ async def custom_agent_stream_websocket(websocket: WebSocket, agent_name: str):
                             await chat_service._store_message(agent_message)
                             
                             # Send completion signal
+                            logger.info(f"✅ [WEBSOCKET] Stream complete for {agent_name} after {(time.time() - request_start_time)*1000:.2f}ms")
                             await websocket.send_json({
                                 "type": "stream_complete",
                                 "timestamp": time.time(),

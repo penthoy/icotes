@@ -146,15 +146,28 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
     const messageContent = content || inputValue.trim();
     if (!messageContent) return;
 
+    console.log('🎯🎯🎯 HANDLE SEND MESSAGE CALLED 🎯🎯🎯', { messageContent, selectedAgent });
+    console.log('🔥 This should appear EVERY TIME you send a message!');
+
     try {
       // Check if selected agent is a custom agent (from custom_agent.py registry)
       // Dynamic check based on available custom agents from the API
       const isCustomAgent = customAgents.includes(selectedAgent);
       
+      console.log('🤖 Agent Type Check:', { 
+        selectedAgent, 
+        customAgents, 
+        isCustomAgent,
+        willUseCustomAPI: isCustomAgent,
+        willUseRegularAPI: !isCustomAgent
+      });
+      
       if (isCustomAgent) {
+        console.log('📞 Using CUSTOM agent API for:', selectedAgent);
         // Use custom agent API
         await sendCustomAgentMessage(messageContent, selectedAgent);
       } else {
+        console.log('📞 Using REGULAR chat API for:', selectedAgent);
         // Use regular chat API with agent options
         const messageOptions: MessageOptions = {
           agentType: selectedAgent as any, // Cast to AgentType

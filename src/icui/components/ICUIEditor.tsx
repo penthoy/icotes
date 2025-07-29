@@ -292,7 +292,7 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
       }
       return false;
     }
-  }, [onConnectionStatusChange]);
+  }, []); // Remove onConnectionStatusChange from dependencies to prevent infinite loops
 
   // Load files from workspace (following simpleeditor pattern)
   const loadFiles = useCallback(async () => {

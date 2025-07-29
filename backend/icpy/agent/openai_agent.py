@@ -21,49 +21,49 @@ except ImportError as e:
     OPENAI_AVAILABLE = False
 
 
+# def chat_deprecate(message, history):
+#     """
+#     OpenAI Demo Agent chat function matching personal_agent.py format
+    
+#     Args:
+#         message: User message string
+#         history: List of message dicts with 'role' and 'content' keys
+        
+#     Returns:
+#         String response from OpenAI
+#     """
+#     if not OPENAI_AVAILABLE:
+#         return "OpenAI client not available. Please check configuration."
+    
+#     try:
+#         if isinstance(history, str):
+#             history = json.loads(history)
+        
+#         # Build conversation messages
+#         system_message = {
+#             "role": "system", 
+#             "content": "You are a helpful AI assistant. You are part of the ICUI framework, a powerful code editor and development environment. Help users with coding, development tasks, and general questions."
+#         }
+        
+#         messages = [system_message] + history + [{"role": "user", "content": message}]
+        
+#         # Call OpenAI API
+#         client = get_openai_client()
+#         response = client.chat.completions.create(
+#             model="gpt-4o-mini",
+#             messages=messages,
+#             temperature=0.7,
+#             max_tokens=2000
+#         )
+        
+#         return response.choices[0].message.content
+        
+#     except Exception as e:
+#         logger.error(f"Error in OpenAI Demo Agent: {e}")
+#         return f"Error processing request: {str(e)}"
+
+
 def chat(message, history):
-    """
-    OpenAI Demo Agent chat function matching personal_agent.py format
-    
-    Args:
-        message: User message string
-        history: List of message dicts with 'role' and 'content' keys
-        
-    Returns:
-        String response from OpenAI
-    """
-    if not OPENAI_AVAILABLE:
-        return "OpenAI client not available. Please check configuration."
-    
-    try:
-        if isinstance(history, str):
-            history = json.loads(history)
-        
-        # Build conversation messages
-        system_message = {
-            "role": "system", 
-            "content": "You are a helpful AI assistant. You are part of the ICUI framework, a powerful code editor and development environment. Help users with coding, development tasks, and general questions."
-        }
-        
-        messages = [system_message] + history + [{"role": "user", "content": message}]
-        
-        # Call OpenAI API
-        client = get_openai_client()
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=messages,
-            temperature=0.7,
-            max_tokens=2000
-        )
-        
-        return response.choices[0].message.content
-        
-    except Exception as e:
-        logger.error(f"Error in OpenAI Demo Agent: {e}")
-        return f"Error processing request: {str(e)}"
-
-
-def chat_stream(message, history):
     """
     OpenAI Demo Agent streaming chat function matching personal_agent.py format
     

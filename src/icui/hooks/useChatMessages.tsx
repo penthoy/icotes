@@ -1,5 +1,14 @@
 /**
- * Chat Messages Hook - ICUI Framework
+ import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { 
+  ChatMessage, 
+  ConnectionStatus, 
+  ChatConfig, 
+  MessageOptions,
+  AgentType 
+} from '../types/chatTypes';
+import { ChatBackendClient } from '../services/chatBackendClient';
+import { notificationService } from '../services/notificationService';sages Hook - ICUI Framework
  * Custom React hook for managing chat message state and operations
  */
 
@@ -206,6 +215,9 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
 
   // Send message to custom agent
   const sendCustomAgentMessage = useCallback(async (content: string, agentName: string) => {
+    console.log('🚀🚀🚀 CUSTOM AGENT MESSAGE FUNCTION CALLED 🚀🚀🚀', { content, agentName });
+    console.log('🔥 This should appear in console when you send a message!');
+    
     try {
       setIsLoading(true);
       
@@ -240,77 +252,160 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
         const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsUrl = `${wsProtocol}//${window.location.host}/ws/custom-agents/${agentName}/stream`;
         
+        const timestamp = new Date().toISOString().split('T')[1];
+        console.log(`🚀 [${timestamp}] Initiating WebSocket streaming for agent:`, agentName);
+        console.log(`📡 [${timestamp}] WebSocket URL:`, wsUrl);
+        
         const ws = new WebSocket(wsUrl);
         let streamingMessageId = `agent_${Date.now()}_${Math.random().toString(36).substring(2)}`;
         let accumulatedContent = '';
+        let lastUpdateTime = 0;
+        const UPDATE_THROTTLE_MS = 50; // Update every 50ms for smooth streaming
+        
+        // Timing measurements
+        const sendButtonClickTime = performance.now();
+        let firstChunkReceivedTime: number | null = null;
+        let streamCompleteTime: number | null = null;
+        
+        console.log(`🔗 [${timestamp}] Created WebSocket connection, message ID:`, streamingMessageId);
+        console.log(`⏱️ [${timestamp}] Send button clicked at:`, sendButtonClickTime);
         
         ws.onopen = () => {
+          const wsConnectedTime = performance.now();
+          console.log('✅ Custom Agent WebSocket connected for agent:', agentName);
+          console.log(`⏱️ WebSocket connected after: ${(wsConnectedTime - sendButtonClickTime).toFixed(2)}ms`);
+          
           // Send the message
-          ws.send(JSON.stringify({
+          const messageToSend = {
             type: "message",
             content: content,
             history: chatHistory
-          }));
+          };
+          console.log('📤 Sending message to WebSocket:', messageToSend);
+          const messageSentTime = performance.now();
+          ws.send(JSON.stringify(messageToSend));
+          console.log(`⏱️ Message sent after: ${(messageSentTime - sendButtonClickTime).toFixed(2)}ms`);
         };
-        
+
         ws.onmessage = (event) => {
           const data = JSON.parse(event.data);
+          const timestamp = new Date().toISOString().split('T')[1];
+          const currentTime = performance.now();
+          
+          // Record first chunk timing
+          if (data.type === "stream_chunk" && firstChunkReceivedTime === null) {
+            firstChunkReceivedTime = currentTime;
+            console.log(`🎯 [${timestamp}] FIRST CHUNK RECEIVED!`);
+            console.log(`⏱️ Time from send button to first chunk: ${(firstChunkReceivedTime - sendButtonClickTime).toFixed(2)}ms`);
+          }
+          
+          console.log(`🔄 [${timestamp}] Frontend WebSocket message:`, {
+            type: data.type,
+            contentLength: data.content?.length,
+            chunk: data.content?.substring(0, 50) + (data.content?.length > 50 ? '...' : ''),
+            accumulatedLength: accumulatedContent.length,
+            timeSinceSend: `${(currentTime - sendButtonClickTime).toFixed(2)}ms`
+          });
           
           if (data.type === "stream_chunk") {
             accumulatedContent += data.content;
-            
-            // Update or create the streaming message
-            setMessages(prev => {
-              const existingIndex = prev.findIndex(m => m.id === streamingMessageId);
-              
-              const streamingMessage: ChatMessage = {
-                id: streamingMessageId,
-                content: accumulatedContent,
-                sender: 'ai',
-                timestamp: new Date(),
-                metadata: {
-                  messageType: 'text',
-                  agentType: agentName as any,
-                  isStreaming: true
-                }
-              };
-              
-              if (existingIndex >= 0) {
-                // Update existing message
-                const newMessages = [...prev];
-                newMessages[existingIndex] = streamingMessage;
-                return newMessages.length > maxMessages ? newMessages.slice(-maxMessages) : newMessages;
-              } else {
-                // Add new message
-                const newMessages = [...prev, streamingMessage];
-                return newMessages.length > maxMessages ? newMessages.slice(-maxMessages) : newMessages;
-              }
+            console.log(`📝 [${timestamp}] Adding chunk:`, {
+              chunkLength: data.content.length,
+              newAccumulatedLength: accumulatedContent.length,
+              chunkContent: data.content
             });
+            
+            // Smart throttled updates for smooth streaming
+            const updateUI = (forceUpdate = false) => {
+              const now = Date.now();
+              if (forceUpdate || now - lastUpdateTime >= UPDATE_THROTTLE_MS) {
+                lastUpdateTime = now;
+                
+                setMessages(prev => {
+                  const existingIndex = prev.findIndex(m => m.id === streamingMessageId);
+                  
+                  const streamingMessage: ChatMessage = {
+                    id: streamingMessageId,
+                    content: accumulatedContent,
+                    sender: 'ai',
+                    timestamp: new Date(),
+                    metadata: {
+                      messageType: 'text',
+                      agentType: agentName as any,
+                      isStreaming: true
+                    }
+                  };
+                  
+                  console.log(`⚡ [${timestamp}] SMOOTH React update - chunk ${data.content.length} chars, total: ${accumulatedContent.length}`);
+                  
+                  if (existingIndex >= 0) {
+                    // Update existing message
+                    const newMessages = [...prev];
+                    newMessages[existingIndex] = streamingMessage;
+                    return newMessages.length > maxMessages ? newMessages.slice(-maxMessages) : newMessages;
+                  } else {
+                    // Add new message
+                    const newMessages = [...prev, streamingMessage];
+                    return newMessages.length > maxMessages ? newMessages.slice(-maxMessages) : newMessages;
+                  }
+                });
+              }
+            };
+            
+            updateUI();
           } else if (data.type === "stream_complete") {
-            // Mark streaming as complete
+            streamCompleteTime = performance.now();
+            const timestamp = new Date().toISOString().split('T')[1];
+            
+            console.log(`🏁 [${timestamp}] STREAM COMPLETE for agent:`, agentName);
+            console.log(`⏱️ TIMING SUMMARY:`);
+            console.log(`   📤 Send button to first chunk: ${firstChunkReceivedTime ? (firstChunkReceivedTime - sendButtonClickTime).toFixed(2) : 'N/A'}ms`);
+            console.log(`   🔄 First chunk to completion: ${firstChunkReceivedTime ? (streamCompleteTime - firstChunkReceivedTime).toFixed(2) : 'N/A'}ms`);
+            console.log(`   🎯 Total send to completion: ${(streamCompleteTime - sendButtonClickTime).toFixed(2)}ms`);
+            console.log(`   📝 Final content length: ${accumulatedContent.length} characters`);
+            
+            // Force final update to ensure complete message is shown
             setMessages(prev => {
               const existingIndex = prev.findIndex(m => m.id === streamingMessageId);
               if (existingIndex >= 0) {
                 const newMessages = [...prev];
                 const completedMessage = { ...newMessages[existingIndex] };
+                completedMessage.content = accumulatedContent; // Ensure final content
                 if (completedMessage.metadata) {
                   completedMessage.metadata.isStreaming = false;
                   completedMessage.metadata.streamComplete = true;
                 }
                 newMessages[existingIndex] = completedMessage;
+                console.log(`✅ [${timestamp}] Marked message as complete:`, completedMessage.id);
                 return newMessages;
               }
               return prev;
             });
             ws.close();
           } else if (data.type === "error") {
+            const timestamp = new Date().toISOString().split('T')[1];
+            console.error(`❌ [${timestamp}] WebSocket error from backend:`, data.message);
             throw new Error(data.message);
+          } else {
+            const timestamp = new Date().toISOString().split('T')[1];
+            console.log(`📦 [${timestamp}] Unknown message type:`, data);
           }
         };
         
-        ws.onerror = () => {
+        ws.onerror = (error) => {
+          const timestamp = new Date().toISOString().split('T')[1];
+          console.error(`❌ [${timestamp}] WebSocket connection error for agent ${agentName}:`, error);
           // Fallback to HTTP API
           fallbackToHttp();
+        };
+        
+        ws.onclose = (event) => {
+          const timestamp = new Date().toISOString().split('T')[1];
+          console.log(`🔌 [${timestamp}] WebSocket closed for agent ${agentName}:`, {
+            code: event.code,
+            reason: event.reason,
+            wasClean: event.wasClean
+          });
         };
         
         const fallbackToHttp = async () => {

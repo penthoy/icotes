@@ -118,13 +118,14 @@ export const ICUIEnhancedLayout: React.FC<ICUIEnhancedLayoutProps> = ({
     }
   }, [layout]);
 
-  // Save layout changes
+  // Save layout changes and call onLayoutChange
   useEffect(() => {
     if (persistLayout && layoutKey) {
       localStorage.setItem(layoutKey, JSON.stringify(currentLayout));
     }
+    // Call onLayoutChange without including it in dependencies to prevent infinite loops
     onLayoutChange?.(currentLayout);
-  }, [currentLayout, persistLayout, layoutKey, onLayoutChange]);
+  }, [currentLayout, persistLayout, layoutKey]);
 
   // Get panels for a specific area
   const getPanelsForArea = useCallback((areaId: string): ICUIEnhancedPanel[] => {

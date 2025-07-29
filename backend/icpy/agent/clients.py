@@ -59,7 +59,7 @@ def get_openrouter_client():
     
     return OpenAI(
         api_key=openrouter_api_key,
-        base_url="https://api.openrouter.ai/v1",
+        base_url="https://openrouter.ai/api/v1",
     )
 
 
