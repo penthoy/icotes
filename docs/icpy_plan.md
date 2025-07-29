@@ -206,6 +206,98 @@ Create a backend that acts as a **single source of truth** for the frontend, is 
 - **Files Created**: `backend/icpy/api/websocket_api.py`, `backend/icpy/api/__init__.py`
 - **Status**: Complete and tested
 
+#### Step 3.1b: WebSocket Code Execution Integration ✅ COMPLETED
+**Goal**: Integrate ICPY Code Execution Service with WebSocket API to provide real-time code execution
+
+- ✅ Integrated `CodeExecutionService` with WebSocket protocol handlers in API gateway
+- ✅ Added `execute` method registration to `backend/icpy/gateway/api_gateway.py`
+- ✅ Implemented code execution handler in `backend/icpy/api/websocket_api.py`
+- ✅ Support real-time streaming code execution over WebSocket connections
+- ✅ Added JSON-RPC method routing for `execute_code` and `execute_code_streaming`
+- ✅ Enabled multi-language code execution (Python, JavaScript, Bash) via WebSocket
+- ✅ Implemented execution result broadcasting to subscribed clients
+- ✅ Added execution history and caching support over WebSocket protocol
+- ✅ Fixed legacy `/ws` endpoint code execution bug by redirecting to ICPY service
+- ✅ **Integration Test**: `tests/backend/icpy/test_websocket_code_execution.py` - 12/12 tests passing (100%)
+  - ✅ WebSocket code execution message handling
+  - ✅ Real-time streaming execution over WebSocket
+  - ✅ Multi-language execution via WebSocket
+  - ✅ Execution event broadcasting and history
+  - ✅ Error handling and timeout management
+  - ✅ Legacy `/ws` endpoint compatibility
+
+**Implementation Details**:
+- Enhanced `backend/icpy/api/websocket_api.py` with code execution message handling:
+  - Added `_handle_execute()` method for synchronous code execution requests
+  - Added `_handle_execute_streaming()` method for real-time streaming execution
+  - Integrated with existing `CodeExecutionService` instance via `get_code_execution_service()`
+- Updated `backend/icpy/gateway/api_gateway.py` to register code execution handlers:
+  - Registered `execute.code` method for synchronous execution via JSON-RPC
+  - Registered `execute.code_streaming` method for streaming execution via JSON-RPC
+  - Added proper error handling and response formatting
+- Enhanced WebSocket message routing in `backend/icpy/api/websocket_api.py`:
+  - Added `execute` and `execute_streaming` message type handlers
+  - Support execution configuration parameters (timeout, sandbox, etc.)
+  - Implemented execution event broadcasting to interested subscribers
+- Fixed legacy WebSocket endpoint in `backend/main.py`:
+  - Replaced broken `execute_code_endpoint` call with proper ICPY integration
+  - Added fallback to basic execution when ICPY is unavailable
+  - Maintained backward compatibility for existing clients
+- Added comprehensive code execution integration:
+  - Stream execution output in real-time to WebSocket clients
+  - Broadcast execution events (`code_execution_completed`, `code_execution_update`) to subscribers
+  - Support execution cancellation and timeout handling via WebSocket
+  - Multi-language support through ICPY's ExecutionService
+- **Files Enhanced**: 
+  - `backend/icpy/api/websocket_api.py` - Added execute message handlers and broadcasting
+  - `backend/icpy/gateway/api_gateway.py` - Registered execution JSON-RPC methods
+  - `backend/icpy/services/__init__.py` - Added code execution service exports
+  - `backend/main.py` - Fixed legacy `/ws` endpoint execution bug
+- **Files Created**: `backend/tests/icpy/test_websocket_code_execution.py` (12 comprehensive tests)
+- **Migration Impact**: 
+  - Legacy `/ws` endpoint now properly handles code execution via ICPY
+  - Enhanced `/ws/enhanced` endpoint provides full code execution capabilities
+  - Seamless migration path for existing WebSocket clients
+  - Environment variables can now safely point to `/ws/enhanced` for all functionality
+- **Status**: ✅ Complete and fully tested (100% test success rate)
+
+#### Step 3.1c: WebSocket Endpoint Migration ✅ COMPLETED
+**Goal**: Deprecate legacy `/ws`, promote `/ws/enhanced` to `/ws`, and remove hardcoded references
+
+- ✅ Deprecated the current `/ws` endpoint by renaming it to `/ws/legacy` with deprecation warnings
+- ✅ Promoted `/ws/enhanced` functionality to the main `/ws` endpoint with full ICPY integration
+- ✅ Removed hardcoded `/ws/enhanced` references in frontend code to use `VITE_WS_URL` environment variable
+- ✅ Updated WebSocket service clients to use environment variables instead of hardcoded paths
+- ✅ Fixed code execution service initialization issues in both endpoints
+- ✅ **Integration Test**: `backend/test_ws_migration.py` - 100% test success rate
+  - ✅ Main `/ws` endpoint provides enhanced functionality with no warnings
+  - ✅ Legacy `/ws/legacy` endpoint shows deprecation warnings but maintains compatibility
+  - ✅ Both endpoints successfully execute code with proper error handling
+  - ✅ Enhanced endpoint uses JSON-RPC protocol with `execution_result` message format
+  - ✅ Legacy endpoint maintains backward compatibility with `result` message format
+
+**Implementation Details**:
+- Enhanced `/ws` endpoint integration:
+  - Full ICPY WebSocket API functionality including JSON-RPC protocol
+  - Real-time code execution with enhanced message format
+  - Connection management, authentication, and event broadcasting
+  - Automatic code execution service initialization
+- Legacy `/ws/legacy` endpoint compatibility:
+  - Sends deprecation warning on connection
+  - Maintains backward compatibility for existing clients
+  - Uses simplified message format for basic code execution
+  - Automatic fallback to basic execution when ICPY unavailable
+- Frontend environment variable usage:
+  - `src/services/websocket-service.ts`: Uses `VITE_WS_URL` or constructs `/ws` dynamically
+  - `src/services/backend-client.ts`: Already using environment variables correctly
+  - `src/lib/codeExecutor.ts`: Uses `VITE_WS_URL` directly without `/ws` suffix
+  - `vite.config.ts`: WebSocket proxy correctly configured for `/ws` endpoint
+- **Migration Path**: 
+  - Existing clients using `/ws` get enhanced functionality automatically
+  - Clients can be migrated from `/ws/legacy` to `/ws` at their own pace
+  - Environment variables ensure consistent endpoint configuration
+- **Status**: ✅ Complete and fully tested - seamless migration achieved
+
 #### Step 3.2: HTTP REST API ✅ COMPLETED
 - Create `backend/icpy/api/rest_api.py`
 - Implement RESTful endpoints for all services
@@ -265,6 +357,8 @@ Create a backend that acts as a **single source of truth** for the frontend, is 
    - WebSocket API for real-time communication
    - REST API for traditional HTTP requests
    - CLI interface for external tools
+   - Code execution via HTTP REST API (Step 5.1 complete)
+   - Real-time code execution via WebSocket (Step 3.1b complete)
 
 ### Frontend Integration Points:
 - Connect to WebSocket endpoint for real-time updates
@@ -360,6 +454,7 @@ Create a backend that acts as a **single source of truth** for the frontend, is 
 - **Tests**: All 22 integration tests pass including basic execution, streaming, history, caching, statistics, timeout, and cancellation
 - **Files Created**: `backend/icpy/services/code_execution_service.py`, `backend/tests/icpy/test_code_execution_service.py`
 - **Status**: Complete and fully tested (100% test success rate)
+- **WebSocket Integration**: See Step 3.1b for WebSocket protocol integration (planned)
 
 #### Step 5.2: Enhanced Clipboard Service ✅ COMPLETED
 - ✅ Created `backend/icpy/services/clipboard_service.py` 

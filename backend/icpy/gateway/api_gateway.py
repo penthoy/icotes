@@ -30,6 +30,7 @@ from ..core.protocol import (
     ProtocolHandler, JsonRpcRequest, JsonRpcResponse, ProtocolError, ErrorCode,
     create_error_response, get_protocol_handler
 )
+from ..services import get_code_execution_service
 
 logger = logging.getLogger(__name__)
 
@@ -169,6 +170,10 @@ class ApiGateway:
         # Messaging
         self.protocol_handler.register_method("message.send", self._handle_message_send)
         self.protocol_handler.register_method("message.broadcast", self._handle_message_broadcast)
+        
+        # Code execution
+        self.protocol_handler.register_method("execute.code", self._handle_execute_code)
+        self.protocol_handler.register_method("execute.code_streaming", self._handle_execute_code_streaming)
     
     async def handle_websocket(self, websocket: WebSocket):
         """Handle WebSocket connections"""
@@ -476,6 +481,113 @@ class ApiGateway:
             "sent_count": sent_count,
             "timestamp": time.time()
         }
+
+    async def _handle_execute_code(self, params: Any, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle code execution request"""
+        if not isinstance(params, dict):
+            raise ValueError("Invalid execution parameters")
+        
+        code = params.get('code')
+        language = params.get('language', 'python')
+        config_data = params.get('config', {})
+        
+        if not code:
+            raise ValueError("Code required for execution")
+        
+        try:
+            # Get code execution service
+            code_execution_service = get_code_execution_service()
+            
+            # Create execution config if provided
+            execution_config = None
+            if config_data:
+                from ..services.code_execution_service import ExecutionConfig
+                execution_config = ExecutionConfig(
+                    timeout=config_data.get('timeout', 30.0),
+                    max_output_size=config_data.get('max_output_size', 1024 * 1024),
+                    working_directory=config_data.get('working_directory'),
+                    environment=config_data.get('environment'),
+                    sandbox=config_data.get('sandbox', True),
+                    capture_output=config_data.get('capture_output', True),
+                    real_time=False
+                )
+            
+            # Execute code
+            result = await code_execution_service.execute_code(
+                code=code,
+                language=language,
+                config=execution_config
+            )
+            
+            return {
+                "execution_id": result.execution_id,
+                "status": result.status.value,
+                "output": result.output,
+                "errors": result.errors,
+                "execution_time": result.execution_time,
+                "exit_code": result.exit_code,
+                "language": result.language.value,
+                "timestamp": result.timestamp
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in code execution: {e}")
+            raise ValueError(f"Code execution failed: {str(e)}")
+
+    async def _handle_execute_code_streaming(self, params: Any, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle streaming code execution request"""
+        if not isinstance(params, dict):
+            raise ValueError("Invalid streaming execution parameters")
+        
+        code = params.get('code')
+        language = params.get('language', 'python')
+        config_data = params.get('config', {})
+        
+        if not code:
+            raise ValueError("Code required for execution")
+        
+        try:
+            # Get code execution service
+            code_execution_service = get_code_execution_service()
+            
+            # Create execution config for streaming
+            execution_config = None
+            if config_data:
+                from ..services.code_execution_service import ExecutionConfig
+                execution_config = ExecutionConfig(
+                    timeout=config_data.get('timeout', 30.0),
+                    max_output_size=config_data.get('max_output_size', 1024 * 1024),
+                    working_directory=config_data.get('working_directory'),
+                    environment=config_data.get('environment'),
+                    sandbox=config_data.get('sandbox', True),
+                    capture_output=config_data.get('capture_output', True),
+                    real_time=True
+                )
+            
+            # Note: This is a simplified version for JSON-RPC
+            # Real streaming would need WebSocket connection handling
+            # For now, we'll execute and return the result
+            result = await code_execution_service.execute_code(
+                code=code,
+                language=language,
+                config=execution_config
+            )
+            
+            return {
+                "execution_id": result.execution_id,
+                "status": result.status.value,
+                "output": result.output,
+                "errors": result.errors,
+                "execution_time": result.execution_time,
+                "exit_code": result.exit_code,
+                "language": result.language.value,
+                "timestamp": result.timestamp,
+                "streaming": True
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in streaming code execution: {e}")
+            raise ValueError(f"Streaming code execution failed: {str(e)}")
 
 
 # Global API Gateway instance

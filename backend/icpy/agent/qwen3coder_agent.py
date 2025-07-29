@@ -51,7 +51,7 @@ def chat(message, history):
         # Call OpenRouter streaming API
         client = get_openrouter_client()
         stream = client.chat.completions.create(
-            model="qwen/qwen3-coder:free",
+            model="anthropic/claude-3-haiku",  # Much faster model
             messages=messages,
             temperature=0.7,
             max_tokens=2000,

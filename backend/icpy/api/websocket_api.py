@@ -34,7 +34,7 @@ from fastapi.websockets import WebSocketState
 from ..core.message_broker import get_message_broker
 from ..core.connection_manager import get_connection_manager
 from ..core.protocol import JsonRpcRequest, JsonRpcResponse, ProtocolError, ErrorCode
-from ..services import get_workspace_service, get_filesystem_service, get_terminal_service
+from ..services import get_workspace_service, get_filesystem_service, get_terminal_service, get_code_execution_service
 
 logger = logging.getLogger(__name__)
 
@@ -356,6 +356,10 @@ class WebSocketAPI:
                 await self._handle_jsonrpc(connection_id, data)
             elif message_type == 'authenticate':
                 await self._handle_authenticate(connection_id, data)
+            elif message_type == 'execute':
+                await self._handle_execute(connection_id, data)
+            elif message_type == 'execute_streaming':
+                await self._handle_execute_streaming(connection_id, data)
             else:
                 # Generic message handling
                 await self._handle_generic_message(connection_id, data)
@@ -631,6 +635,149 @@ class WebSocketAPI:
             await self._replay_messages(connection_id, session_id)
         else:
             await self.send_error(connection_id, "Authentication failed: missing user_id or session_id")
+
+    async def _handle_execute(self, connection_id: str, data: Dict[str, Any]):
+        """Handle code execution message."""
+        if connection_id not in self.connections:
+            return
+        
+        try:
+            # Extract execution parameters
+            code = data.get('code', '')
+            language = data.get('language', 'python')
+            config_data = data.get('config', {})
+            execution_id = data.get('execution_id', str(uuid.uuid4()))
+            
+            if not code:
+                await self.send_error(connection_id, "No code provided for execution")
+                return
+            
+            # Get code execution service
+            code_execution_service = get_code_execution_service()
+            
+            # Ensure service is running
+            if not code_execution_service.running:
+                await code_execution_service.start()
+            
+            # Create execution config if provided
+            execution_config = None
+            if config_data:
+                from ..services.code_execution_service import ExecutionConfig
+                execution_config = ExecutionConfig(
+                    timeout=config_data.get('timeout', 30.0),
+                    max_output_size=config_data.get('max_output_size', 1024 * 1024),
+                    working_directory=config_data.get('working_directory'),
+                    environment=config_data.get('environment'),
+                    sandbox=config_data.get('sandbox', True),
+                    capture_output=config_data.get('capture_output', True),
+                    real_time=False
+                )
+            
+            # Execute code
+            result = await code_execution_service.execute_code(
+                code=code,
+                language=language,
+                config=execution_config
+            )
+            
+            # Send result back
+            await self.send_message(connection_id, {
+                'type': 'execution_result',
+                'execution_id': execution_id,
+                'status': result.status.value,
+                'output': result.output,
+                'errors': result.errors,
+                'execution_time': result.execution_time,
+                'exit_code': result.exit_code,
+                'language': result.language.value,
+                'timestamp': time.time()
+            })
+            
+            # Broadcast execution event to subscribers
+            await self._broadcast_to_subscribers('code_execution.*', {
+                'type': 'code_execution_completed',
+                'execution_id': execution_id,
+                'connection_id': connection_id,
+                'status': result.status.value,
+                'language': result.language.value,
+                'timestamp': time.time()
+            })
+            
+        except Exception as e:
+            logger.error(f"Error executing code for connection {connection_id}: {e}")
+            await self.send_error(connection_id, f"Code execution error: {str(e)}")
+
+    async def _handle_execute_streaming(self, connection_id: str, data: Dict[str, Any]):
+        """Handle streaming code execution message."""
+        if connection_id not in self.connections:
+            return
+        
+        try:
+            # Extract execution parameters
+            code = data.get('code', '')
+            language = data.get('language', 'python')
+            config_data = data.get('config', {})
+            execution_id = data.get('execution_id', str(uuid.uuid4()))
+            
+            if not code:
+                await self.send_error(connection_id, "No code provided for execution")
+                return
+            
+            # Get code execution service
+            code_execution_service = get_code_execution_service()
+            
+            # Ensure service is running
+            if not code_execution_service.running:
+                await code_execution_service.start()
+            
+            # Create execution config for streaming
+            execution_config = None
+            if config_data:
+                from ..services.code_execution_service import ExecutionConfig
+                execution_config = ExecutionConfig(
+                    timeout=config_data.get('timeout', 30.0),
+                    max_output_size=config_data.get('max_output_size', 1024 * 1024),
+                    working_directory=config_data.get('working_directory'),
+                    environment=config_data.get('environment'),
+                    sandbox=config_data.get('sandbox', True),
+                    capture_output=config_data.get('capture_output', True),
+                    real_time=True
+                )
+            
+            # Send execution started event
+            await self.send_message(connection_id, {
+                'type': 'execution_started',
+                'execution_id': execution_id,
+                'language': language,
+                'timestamp': time.time()
+            })
+            
+            # Execute code with streaming
+            async for update in code_execution_service.execute_code_streaming(
+                code=code,
+                language=language,
+                config=execution_config
+            ):
+                # Send streaming update
+                await self.send_message(connection_id, {
+                    'type': 'execution_update',
+                    'execution_id': execution_id,
+                    'update': update,
+                    'timestamp': time.time()
+                })
+                
+                # Broadcast streaming updates to subscribers
+                await self._broadcast_to_subscribers('code_execution.*', {
+                    'type': 'code_execution_update',
+                    'execution_id': execution_id,
+                    'connection_id': connection_id,
+                    'update': update,
+                    'timestamp': time.time()
+                })
+            
+        except Exception as e:
+            logger.error(f"Error in streaming execution for connection {connection_id}: {e}")
+            await self.send_error(connection_id, f"Streaming execution error: {str(e)}")
 
     async def _handle_generic_message(self, connection_id: str, data: Dict[str, Any]):
         """Handle generic message by broadcasting to message broker."""

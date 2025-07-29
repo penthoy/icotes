@@ -33,7 +33,7 @@ export class CodeExecutorWebSocket {
     } else {
       const wsUrl = import.meta.env.VITE_WS_URL;
       if (wsUrl) {
-        this.url = `${wsUrl}/ws`;
+        this.url = wsUrl;
       } else {
         // Fallback to dynamic URL construction
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';

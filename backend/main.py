@@ -50,7 +50,7 @@ try:
     from icpy.api import get_websocket_api, shutdown_websocket_api, get_rest_api, shutdown_rest_api
     from icpy.api.rest_api import create_rest_api
     from icpy.core.connection_manager import get_connection_manager
-    from icpy.services import get_workspace_service, get_filesystem_service, get_terminal_service, get_agent_service, get_chat_service
+    from icpy.services import get_workspace_service, get_filesystem_service, get_terminal_service, get_agent_service, get_chat_service, get_code_execution_service, get_code_execution_service
     from icpy.services.clipboard_service import clipboard_service
     from icpy.agent.custom_agent import get_available_custom_agents, call_custom_agent, call_custom_agent_stream
     ICPY_AVAILABLE = True
@@ -435,11 +435,50 @@ async def execute_code(request: CodeExecutionRequest):
             execution_time=0.0
         )
 
-# Basic WebSocket endpoint for backward compatibility
+# Enhanced WebSocket endpoint (now the primary /ws endpoint)
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    """Basic WebSocket endpoint for code execution."""
+    """Primary WebSocket endpoint with icpy integration."""
+    if not ICPY_AVAILABLE:
+        await websocket.close(code=1011, reason="icpy services not available")
+        return
+    
+    try:
+        websocket_api = await get_websocket_api()
+        connection_id = await websocket_api.connect_websocket(websocket)
+        
+        # Handle messages
+        while True:
+            try:
+                message = await websocket.receive_text()
+                await websocket_api.handle_websocket_message(connection_id, message)
+            except WebSocketDisconnect:
+                break
+            except Exception as e:
+                logger.error(f"Error in WebSocket: {e}")
+                break
+        
+        # Cleanup
+        await websocket_api.disconnect_websocket(connection_id)
+        
+    except Exception as e:
+        logger.error(f"WebSocket error: {e}")
+
+# Legacy WebSocket endpoint (deprecated)
+@app.websocket("/ws/legacy")
+async def legacy_websocket_endpoint(websocket: WebSocket):
+    """
+    DEPRECATED: Legacy WebSocket endpoint for backward compatibility.
+    This endpoint is deprecated and will be removed in a future version.
+    Please use the main /ws endpoint which provides enhanced functionality.
+    """
     await websocket.accept()
+    
+    # Send deprecation warning
+    await websocket.send_text(json.dumps({
+        "type": "warning",
+        "message": "This endpoint (/ws/legacy) is deprecated. Please update your client to use /ws instead."
+    }))
     
     try:
         while True:
@@ -448,25 +487,56 @@ async def websocket_endpoint(websocket: WebSocket):
                 data = json.loads(message)
                 
                 if data.get("type") == "execute":
-                    # Handle code execution
+                    # Handle code execution using ICPY service
                     code = data.get("code", "")
                     language = data.get("language", "python")
                     
-                    result = await execute_code_endpoint(
-                        CodeExecutionRequest(
-                            code=code, 
-                            language=language,
-                            timeout=30
-                        )
-                    )
-                    
-                    # Send result back
-                    await websocket.send_text(json.dumps({
-                        "type": "result",
-                        "output": result.output,
-                        "errors": result.errors,
-                        "execution_time": result.execution_time
-                    }))
+                    if ICPY_AVAILABLE:
+                        try:
+                            # Use ICPY code execution service
+                            code_execution_service = get_code_execution_service()
+                            
+                            # Ensure service is running
+                            if not code_execution_service.running:
+                                await code_execution_service.start()
+                            
+                            result = await code_execution_service.execute_code(
+                                code=code,
+                                language=language
+                            )
+                            
+                            # Send result back
+                            await websocket.send_text(json.dumps({
+                                "type": "result",
+                                "execution_id": result.execution_id,
+                                "status": result.status.value,
+                                "output": result.output,
+                                "errors": result.errors,
+                                "execution_time": result.execution_time,
+                                "language": result.language.value
+                            }))
+                        except Exception as e:
+                            logger.error(f"ICPY code execution error: {e}")
+                            await websocket.send_text(json.dumps({
+                                "type": "error",
+                                "message": f"Code execution failed: {str(e)}"
+                            }))
+                    else:
+                        # Fallback to basic execution
+                        try:
+                            output, errors, execution_time = execute_python_code(code)
+                            await websocket.send_text(json.dumps({
+                                "type": "result",
+                                "output": output,
+                                "errors": errors,
+                                "execution_time": execution_time
+                            }))
+                        except Exception as e:
+                            logger.error(f"Basic code execution error: {e}")
+                            await websocket.send_text(json.dumps({
+                                "type": "error",
+                                "message": f"Code execution failed: {str(e)}"
+                            }))
                     
                 elif data.get("type") == "ping":
                     # Handle ping
@@ -495,35 +565,6 @@ async def websocket_endpoint(websocket: WebSocket):
         logger.info("WebSocket disconnected")
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
-
-# Enhanced WebSocket endpoints
-@app.websocket("/ws/enhanced")
-async def enhanced_websocket_endpoint(websocket: WebSocket):
-    """Enhanced WebSocket endpoint with icpy integration."""
-    if not ICPY_AVAILABLE:
-        await websocket.close(code=1011, reason="icpy services not available")
-        return
-    
-    try:
-        websocket_api = await get_websocket_api()
-        connection_id = await websocket_api.connect_websocket(websocket)
-        
-        # Handle messages
-        while True:
-            try:
-                message = await websocket.receive_text()
-                await websocket_api.handle_websocket_message(connection_id, message)
-            except WebSocketDisconnect:
-                break
-            except Exception as e:
-                logger.error(f"Error in enhanced WebSocket: {e}")
-                break
-        
-        # Cleanup
-        await websocket_api.disconnect_websocket(connection_id)
-        
-    except Exception as e:
-        logger.error(f"Enhanced WebSocket error: {e}")
 
 # Terminal WebSocket endpoint
 @app.websocket("/ws/terminal/{terminal_id}")
