@@ -52,31 +52,11 @@ def call_custom_agent(agent_name: str, message: str, history: List[Dict[str, Any
 
 async def call_custom_agent_stream(agent_name: str, message: str, history: List[Dict[str, Any]]) -> AsyncGenerator[str, None]:
     """Call custom agent with streaming support"""
-    import time
-    
-    start_time = time.time()
-    logger.info(f"� [DEBUG] Custom agent {agent_name} starting stream")
-    logger.info(f"�🚀 [BACKEND] Starting agent stream for {agent_name} at {time.time()}")
-    
     chat_function = get_agent_chat_function(agent_name)
     if not chat_function:
         raise ValueError(f"Unknown custom agent: {agent_name}")
     
-    logger.info(f"📞 [BACKEND] Calling {agent_name} chat function after {(time.time() - start_time)*1000:.2f}ms")
-    
     # Handle both sync and async generators
     if hasattr(chat_function, '__call__'):
-        first_chunk = True
-        chunk_count = 0
         for chunk in chat_function(message, history):
-            chunk_count += 1
-            if first_chunk:
-                logger.info(f"🔧 [DEBUG] FIRST CHUNK from {agent_name}: '{chunk[:30]}...' (len={len(chunk)})")
-                logger.info(f"🎯 [BACKEND] FIRST CHUNK from {agent_name} after {(time.time() - start_time)*1000:.2f}ms")
-                first_chunk = False
-            else:
-                logger.info(f"🔧 [DEBUG] Chunk {chunk_count}: '{chunk[:30]}...' (len={len(chunk)})")
             yield chunk
-        
-        logger.info(f"🔧 [DEBUG] Stream complete. Total chunks: {chunk_count}")
-        logger.info(f"✅ [BACKEND] Stream complete for {agent_name} after {(time.time() - start_time)*1000:.2f}ms")

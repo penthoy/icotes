@@ -1,7 +1,10 @@
 """
 OpenAI Demo Agent for ICUI Framework
 
-This module provides OpenAI-based chat functions that match the personal_agent.py format
+This module provides OpenAI-based     logger.info("OpenAI agent chat() called")
+    
+    if not _is_openai_available():
+        logger.warning("OpenAI not available, yielding error message")t functions that match the personal_agent.py format
 for integration with the custom agent system.
 """
 
@@ -74,9 +77,7 @@ def chat(message, history):
     Yields:
         String chunks of the streaming response
     """
-    logger.info(f"🤖 [DEBUG] OpenAI agent chat() called with message: '{message[:50]}...'")
     if not OPENAI_AVAILABLE:
-        logger.warning(f"🤖 [DEBUG] OpenAI not available, yielding error message")
         yield "OpenAI client not available. Please check configuration."
         return
     
@@ -93,7 +94,7 @@ def chat(message, history):
         messages = [system_message] + history + [{"role": "user", "content": message}]
         
         # Call OpenAI streaming API
-        logger.info(f"🤖 [DEBUG] Creating OpenAI streaming call")
+        logger.info("Creating OpenAI streaming call")
         client = get_openai_client()
         stream = client.chat.completions.create(
             model="gpt-4o-mini",
@@ -103,19 +104,15 @@ def chat(message, history):
             stream=True
         )
         
-        logger.info(f"🤖 [DEBUG] Starting OpenAI stream iteration")
+        logger.info("Starting OpenAI stream iteration")
         chunk_count = 0
         for chunk in stream:
             if chunk.choices[0].delta.content is not None:
                 chunk_count += 1
                 content = chunk.choices[0].delta.content
-                if chunk_count == 1:
-                    logger.info(f"🤖 [DEBUG] OpenAI FIRST chunk: '{content[:20]}...'")
-                elif chunk_count <= 5:
-                    logger.info(f"🤖 [DEBUG] OpenAI chunk {chunk_count}: '{content[:20]}...'")
                 yield content
         
-        logger.info(f"🤖 [DEBUG] OpenAI stream complete. Total chunks: {chunk_count}")
+        logger.info(f"OpenAI stream complete. Total chunks: {chunk_count}")
                 
     except Exception as e:
         logger.error(f"Error in OpenAI Demo Agent streaming: {e}")

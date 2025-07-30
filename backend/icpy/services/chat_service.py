@@ -226,23 +226,6 @@ class ChatService:
     
     async def _send_websocket_message(self, websocket_id: str, message_data: dict):
         """Send a message to a specific WebSocket connection"""
-        logger.info(f"📡 [DEBUG] Sending WebSocket message type: {message_data.get('type')}")
-        if message_data.get('type') == 'message_stream':
-            logger.info(f"📡 [DEBUG] Stream phase: start={message_data.get('stream_start')}, chunk={message_data.get('stream_chunk')}, end={message_data.get('stream_end')}")
-            if message_data.get('chunk'):
-                logger.info(f"📡 [DEBUG] Chunk content: '{message_data.get('chunk', '')[:30]}...'")
-        
-        msg_type = message_data.get('type', 'unknown')
-        msg_id = message_data.get('id', 'no-id')
-        if msg_type == 'message_stream':
-            stream_flags = {
-                'start': message_data.get('stream_start', False),
-                'chunk': message_data.get('stream_chunk', False), 
-                'end': message_data.get('stream_end', False)
-            }
-            logger.info(f"🔄 Sending WebSocket {msg_type}: {msg_id} - flags: {stream_flags}")
-        else:
-            logger.info(f"🔄 Sending WebSocket message: {msg_type} - {msg_id}")
         websocket = self.websocket_connections.get(websocket_id)
         if websocket:
             try:
@@ -261,19 +244,10 @@ class ChatService:
         if not session_id:
             raise ValueError("WebSocket not connected to chat session")
         
-        logger.info(f"🚦 [DEBUG] Processing message with metadata: {metadata}")
-        
         # Extract agent type from metadata for routing
         agent_type = None
         if metadata and 'agentType' in metadata:
             agent_type = metadata['agentType']
-            logger.info(f"🚦 [DEBUG] CUSTOM AGENT DETECTED: {agent_type}")
-            logger.info(f"🤖 Agent type specified in metadata: {agent_type}")
-        
-        logger.info(f"🚦 [DEBUG] Routing decision tree:")
-        logger.info(f"🚦 [DEBUG] - Has metadata: {bool(metadata)}")
-        logger.info(f"🚦 [DEBUG] - Has agentType: {metadata.get('agentType') if metadata else None}")
-        logger.info(f"🚦 [DEBUG] - Available custom agents: {get_available_custom_agents()}")
         
         # Create user message
         message = ChatMessage(
@@ -294,23 +268,18 @@ class ChatService:
         # Process with appropriate agent based on type
         if agent_type and agent_type.lower() in ['personalagent', 'openaidemoagent', 'openrouteragent']:
             # Route to custom agent
-            logger.info(f"🚦 [DEBUG] Calling _process_with_custom_agent({agent_type})")
             await self._process_with_custom_agent(message, agent_type)
         else:
             # Route to default ICPY agent service
-            logger.info(f"🚦 [DEBUG] NO CUSTOM AGENT - using default processing")
             await self._process_with_agent(message)
         
         return message
     
     async def _process_with_agent(self, user_message: ChatMessage):
         """Process user message with the configured agent"""
-        logger.info(f"🔄 Processing message with agent. Agent ID: {self.config.agent_id}")
         try:
             if not self.agent_service:
-                logger.info("🔧 Getting agent service...")
                 self.agent_service = await get_agent_service()
-                logger.info(f"✅ Agent service obtained: {type(self.agent_service)}")
             
             if not self.config.agent_id:
                 logger.warning("⚠️ No agent ID configured, sending demo response")
@@ -323,20 +292,15 @@ class ChatService:
                 return
             
             # Send typing indicator
-            logger.info("📝 Sending typing indicator...")
             await self._send_typing_indicator(user_message.session_id, True)
             
             # Get agent session
-            logger.info("🔍 Getting agent sessions...")
             agent_sessions = self.agent_service.get_agent_sessions()
-            logger.info(f"📋 Found {len(agent_sessions)} agent sessions")
             
             agent_session = None
             for session in agent_sessions:
-                logger.info(f"🤖 Checking session - Agent ID: {session.agent_id}, Status: {session.status}, Name: {session.agent_name}")
                 if session.agent_id == self.config.agent_id:
                     agent_session = session
-                    logger.info(f"✅ Found matching agent session: {session.agent_name}")
                     break
             
             if not agent_session:
@@ -551,8 +515,6 @@ class ChatService:
     
     async def _process_with_custom_agent(self, user_message: ChatMessage, agent_type: str):
         """Process user message with a custom agent using three-phase streaming protocol"""
-        logger.info(f"🎯 [DEBUG] _process_with_custom_agent CALLED for {agent_type}")
-        logger.info(f"🎯 [DEBUG] Starting streaming loop for message: {user_message.content[:50]}")
         logger.info(f"🤖 Processing message with custom agent: {agent_type}")
         try:
             # Send typing indicator
@@ -573,19 +535,15 @@ class ChatService:
             is_first_chunk = True
             
             # Get custom agent stream
-            logger.info(f"🚀 Starting custom agent stream for {agent_type}")
             custom_stream = call_custom_agent_stream(agent_type, user_message.content, history_list)
             
             # Process streaming response with three-phase protocol
-            logger.info(f"🎯 [DEBUG] Starting async for loop for streaming chunks")
             chunk_count = 0
             async for chunk in custom_stream:
                 chunk_count += 1
-                logger.info(f"🎯 [DEBUG] Received chunk {chunk_count}: '{chunk[:20] if chunk else 'EMPTY'}...' (len={len(chunk) if chunk else 0})")
                 if chunk:  # Only process non-empty chunks
                     # Send stream start for first chunk
                     if is_first_chunk:
-                        logger.info(f"🎯 [DEBUG] Sending STREAM_START")
                         await self._send_streaming_start(
                             user_message.session_id,
                             message_id,
@@ -597,7 +555,6 @@ class ChatService:
                         is_first_chunk = False
                     
                     # Send chunk
-                    logger.info(f"🎯 [DEBUG] Sending STREAM_CHUNK: '{chunk[:20]}...'")
                     await self._send_streaming_chunk(
                         user_message.session_id,
                         message_id,
@@ -605,9 +562,9 @@ class ChatService:
                         user_message.id
                     )
                     full_content += chunk
-            
-            logger.info(f"🎯 [DEBUG] Async for loop complete. Total chunks: {chunk_count}")
-            logger.info(f"🎯 [DEBUG] Sending STREAM_END. Total content: {len(full_content)} chars")
+                    
+                    # Small delay to prevent WebSocket message batching and ensure real-time delivery
+                    await asyncio.sleep(0.01)  # 10ms delay between chunks
             
             # Send stream end
             await self._send_streaming_end(
@@ -695,10 +652,6 @@ class ChatService:
             final_agent_type = agent_type or 'openai'
             final_agent_id = agent_id or self.config.agent_id
             final_agent_name = agent_name or self.config.agent_name
-            
-            # Add WebSocket connection verification
-            active_connections = len([ws_id for ws_id, sess_id in self.chat_sessions.items() if sess_id == session_id])
-            logger.info(f"📡 [DEBUG] Active WebSocket connections for session {session_id}: {active_connections}")
             
             streaming_message = {
                 'type': 'message_stream',
