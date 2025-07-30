@@ -343,29 +343,59 @@ const ICUITerminalPanelFromScratch: React.FC<ICUITerminalPanelFromScratchProps> 
     // CRITICAL: Open terminal BEFORE fitting (code-server pattern)
     terminal.current.open(terminalRef.current);
     
-    // Fit after opening
-    fitAddon.current.fit();
+    // Wait for DOM to be ready and then fit with safety checks
+    setTimeout(() => {
+      if (fitAddon.current && terminal.current && terminalRef.current) {
+        try {
+          // Check if container has valid dimensions before fitting
+          const rect = terminalRef.current.getBoundingClientRect();
+          if (rect.width > 0 && rect.height > 0) {
+            fitAddon.current.fit();
+          }
+        } catch (error) {
+          console.warn('FromScratch terminal fit error during initialization:', error);
+          // Retry after a longer delay
+          setTimeout(() => {
+            if (fitAddon.current && terminal.current) {
+              try {
+                fitAddon.current.fit();
+              } catch (retryError) {
+                console.warn('FromScratch terminal fit retry failed:', retryError);
+              }
+            }
+          }, 500);
+        }
+      }
+    }, 100);
 
     // Initialize keyboard handler
     keyboardHandler.current = new TerminalKeyboardHandler(terminal.current, websocket.current);
     // keyboardHandler.current.setupKeyBindings(); // This is now handled by the new class
 
-    // Setup resize handling with debounce
+    // Setup resize handling with debounce and safety checks
     const handleResize = () => {
       if (resizeTimeout.current) {
         clearTimeout(resizeTimeout.current);
       }
       resizeTimeout.current = setTimeout(() => {
-        if (fitAddon.current && terminal.current) {
-          fitAddon.current.fit();
-          
-          // Sync with backend PTY size
-          if (websocket.current?.readyState === WebSocket.OPEN) {
-            websocket.current.send(JSON.stringify({
-              type: 'resize',
-              cols: terminal.current.cols,
-              rows: terminal.current.rows
-            }));
+        if (fitAddon.current && terminal.current && terminalRef.current) {
+          try {
+            // Check if container has valid dimensions before fitting
+            const rect = terminalRef.current.getBoundingClientRect();
+            if (rect.width > 0 && rect.height > 0) {
+              fitAddon.current.fit();
+              
+              // Sync with backend PTY size
+              if (websocket.current?.readyState === WebSocket.OPEN) {
+                websocket.current.send(JSON.stringify({
+                  type: 'resize',
+                  cols: terminal.current.cols,
+                  rows: terminal.current.rows
+                }));
+              }
+            }
+          } catch (error) {
+            console.warn('FromScratch terminal fit error during resize:', error);
           }
         }
       }, 100);

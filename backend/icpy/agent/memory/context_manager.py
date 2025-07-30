@@ -10,7 +10,7 @@ import pickle
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union, Set
 import asyncio
@@ -24,7 +24,7 @@ class MemoryEntry:
     memory_type: str = "episodic"  # episodic, semantic, procedural
     agent_id: str = ""
     session_id: str = ""
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     importance: float = 1.0
     access_count: int = 0
     last_accessed: Optional[datetime] = None
@@ -353,9 +353,9 @@ class FileBasedStore(MemoryStore):
                 embedding=data.get('embedding')
             )
             
-            memory.timestamp = datetime.fromisoformat(data['timestamp'])
+            memory.timestamp = datetime.fromisoformat(data['timestamp']).replace(tzinfo=timezone.utc)
             if data.get('last_accessed'):
-                memory.last_accessed = datetime.fromisoformat(data['last_accessed'])
+                memory.last_accessed = datetime.fromisoformat(data['last_accessed']).replace(tzinfo=timezone.utc)
             
             return memory
             
@@ -492,7 +492,7 @@ class ContextManager:
         # Update access statistics
         for memory in memories:
             memory.access_count += 1
-            memory.last_accessed = datetime.utcnow()
+            memory.last_accessed = datetime.now(timezone.utc)
         
         return memories
     
@@ -528,7 +528,7 @@ class ContextManager:
         )
         
         if expires_in:
-            shared_context.expires_at = datetime.utcnow() + expires_in
+            shared_context.expires_at = datetime.now(timezone.utc) + expires_in
         
         self.shared_contexts[shared_context.context_id] = shared_context
         return shared_context.context_id
@@ -551,7 +551,7 @@ class ContextManager:
     
     async def cleanup_expired_data(self, retention_days: int = 30) -> Dict[str, int]:
         """Clean up expired memories and contexts"""
-        cutoff_date = datetime.utcnow() - timedelta(days=retention_days)
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=retention_days)
         
         # Clean up expired memories
         expired_memories = await self.memory_store.cleanup_expired_memories(cutoff_date)
@@ -560,7 +560,7 @@ class ContextManager:
         expired_contexts = 0
         for context_id in list(self.shared_contexts.keys()):
             context = self.shared_contexts[context_id]
-            if context.expires_at and context.expires_at < datetime.utcnow():
+            if context.expires_at and context.expires_at < datetime.now(timezone.utc):
                 del self.shared_contexts[context_id]
                 expired_contexts += 1
         

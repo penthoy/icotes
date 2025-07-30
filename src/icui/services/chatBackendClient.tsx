@@ -36,7 +36,6 @@ export class ChatBackendClient {
     // Clean up old message IDs periodically to prevent memory leaks
     setInterval(() => {
       if (this.processedMessageIds.size > 1000) {
-        console.log('🧹 Cleaning up old processed message IDs');
         // Keep only the most recent 500 message IDs
         const idsArray = Array.from(this.processedMessageIds);
         this.processedMessageIds.clear();
@@ -49,6 +48,17 @@ export class ChatBackendClient {
   // WebSocket connection management
   async connectWebSocket(): Promise<boolean> {
     try {
+      // Prevent multiple connection attempts
+      if (this.websocket?.readyState === WebSocket.OPEN) {
+        console.warn('Chat WebSocket already connected');
+        return true;
+      }
+      
+      if (this.websocket?.readyState === WebSocket.CONNECTING) {
+        console.warn('Chat WebSocket connection already in progress');
+        return false;
+      }
+      
       const wsUrl = constructWebSocketUrl('/ws/chat');
       console.log('Connecting to Chat WebSocket:', wsUrl);
       
@@ -123,7 +133,6 @@ export class ChatBackendClient {
     
     // Skip if we've already processed this message ID via streaming
     if (this.processedMessageIds.has(messageId)) {
-      console.log('🚫 Skipping duplicate complete message:', messageId);
       return;
     }
     
@@ -153,18 +162,8 @@ export class ChatBackendClient {
 
   // Handle streaming messages
   private handleStreamingMessage(data: StreamingMessageData): void {
-    console.log('🔄 Frontend handleStreamingMessage:', {
-      stream_start: data.stream_start,
-      stream_chunk: data.stream_chunk, 
-      stream_end: data.stream_end,
-      id: data.id,
-      chunk: data.chunk,
-      currentStreamingMessage: this.streamingMessage?.id
-    });
-    
     if (data.stream_start) {
       // Start new streaming message
-      console.log('🚀 Starting new streaming message');
       const messageId = data.id || Date.now().toString();
       
       // Mark this message ID as processed to prevent duplicate complete messages
@@ -187,7 +186,6 @@ export class ChatBackendClient {
       this.notifyMessage(this.streamingMessage);
     } else if (data.stream_chunk && this.streamingMessage) {
       // Append chunk to streaming message
-      console.log('📝 Adding chunk:', data.chunk);
       this.streamingMessage.content += data.chunk;
       this.notifyMessage({ 
         ...this.streamingMessage,
@@ -198,7 +196,6 @@ export class ChatBackendClient {
       });
     } else if (data.stream_end && this.streamingMessage) {
       // Complete streaming message
-      console.log('✅ Ending streaming message');
       this.streamingMessage.metadata!.streamComplete = true;
       this.streamingMessage.metadata!.isStreaming = false;
       this.notifyMessage({ 
@@ -288,6 +285,7 @@ export class ChatBackendClient {
   // Send message via WebSocket
   async sendMessage(content: string, options: MessageOptions = {}): Promise<void> {
     if (!this.websocket || this.websocket.readyState !== WebSocket.OPEN) {
+      console.error('WebSocket not connected! State:', this.websocket?.readyState);
       throw new Error('WebSocket not connected to backend');
     }
     
@@ -305,8 +303,18 @@ export class ChatBackendClient {
       }
     };
     
-    console.log('Sending message:', message);
-    this.websocket.send(JSON.stringify(message));
+    // Convert to backend format with metadata
+    const backendMessage = {
+      type: 'message',
+      content,
+      sender: 'user',
+      timestamp: Date.now(),
+      metadata: {
+        agentType: options.agentType || 'openai'
+      }
+    };
+    
+    this.websocket.send(JSON.stringify(backendMessage));
   }
 
   // Get message history via HTTP

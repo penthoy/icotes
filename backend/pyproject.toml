@@ -7,7 +7,7 @@ dependencies = [
     "fastapi==0.104.1",
     "uvicorn[standard]==0.24.0",
     "websockets==12.0",
-    "pydantic==2.5.0",
+    "pydantic>=2.10.0",
     "python-multipart==0.0.6",
     "pytest==7.4.3",
     "pytest-asyncio==0.21.1",
@@ -22,5 +22,60 @@ dependencies = [
     "langchain-openai>=0.0.5",
     "langgraph>=0.0.20",
     "langsmith>=0.0.80",
-    "aiosqlite==0.19.0"
+    "aiosqlite==0.19.0",
+    "openai-agents>=0.0.6",
+    "setuptools>=80.9.0",
+    "python-dotenv>=0.21.0",
 ]
+
+[tool.pytest.ini_options]
+# Pytest configuration for cleaner test output
+minversion = "6.0"
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+# Warning filters to reduce noise in test output
+filterwarnings = [
+    # Ignore common deprecation warnings from dependencies
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+    
+    # Ignore pkg_resources warnings from CrewAI (known issue)
+    "ignore:pkg_resources is deprecated:UserWarning",
+    "ignore:Deprecated call to `pkg_resources:DeprecationWarning",
+    
+    # Ignore Pydantic v1/v2 compatibility warnings
+    "ignore:Support for class-based `config` is deprecated:DeprecationWarning",
+    "ignore:Mixing V1 models and V2 models:UserWarning",
+    "ignore:`FieldValidationInfo` is deprecated:DeprecationWarning",
+    "ignore:Importing FieldValidationInfo from `pydantic` is deprecated:DeprecationWarning",
+    
+    # Ignore AST deprecation warnings from docstring parsers
+    "ignore:ast.NameConstant is deprecated:DeprecationWarning",
+    "ignore:ast.Num is deprecated:DeprecationWarning", 
+    "ignore:ast.Str is deprecated:DeprecationWarning",
+    
+    # Ignore enum deprecation warnings
+    "ignore:FUNCTIONS is deprecated:DeprecationWarning",
+    
+    # Ignore setuptools warnings
+    "ignore:Implementing implicit namespace packages:DeprecationWarning",
+    
+    # Ignore async coroutine warnings in test cleanup
+    "ignore:coroutine .* was never awaited:RuntimeWarning",
+    "ignore:Enable tracemalloc to get the object allocation traceback:ResourceWarning",
+    
+    # Show only our own warnings
+    "default::UserWarning:icpy",
+    "default::DeprecationWarning:icpy",
+]
+
+# Asyncio configuration
+asyncio_mode = "auto"
+
+# Test output configuration  
+console_output_style = "progress"
+log_cli = false
+log_cli_level = "INFO"

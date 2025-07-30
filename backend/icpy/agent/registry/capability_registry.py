@@ -9,7 +9,7 @@ import inspect
 import json
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set, Callable, Union
 from pathlib import Path
 
@@ -162,7 +162,7 @@ class CapabilityRegistry:
         instance = CapabilityInstance(
             capability_name=capability_name,
             agent_id=agent_id,
-            instance_id=f"{agent_id}_{capability_name}_{datetime.utcnow().timestamp()}",
+            instance_id=f"{agent_id}_{capability_name}_{datetime.now(timezone.utc).timestamp()}",
             config=config or {}
         )
         
@@ -214,7 +214,7 @@ class CapabilityRegistry:
         result = await capability.execute(agent_id, parameters)
         
         # Update usage statistics
-        instance.last_used = datetime.utcnow()
+        instance.last_used = datetime.now(timezone.utc)
         instance.usage_count += 1
         
         return result

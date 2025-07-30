@@ -70,6 +70,12 @@ export class WebSocketService {
       return;
     }
 
+    // Prevent multiple simultaneous connection attempts
+    if (this.connectionStatus === 'connecting') {
+      console.warn('WebSocket connection already in progress');
+      return;
+    }
+
     this.connectionStatus = 'connecting';
     this.connectStartTime = Date.now();
     this.emit('connection_status_changed', { status: this.connectionStatus });
@@ -457,14 +463,17 @@ export class WebSocketService {
     console.log(`Scheduling reconnection attempt ${this.reconnectAttempts + 1} in ${delay}ms`);
     
     this.reconnectTimer = setTimeout(() => {
-      this.reconnectAttempts++;
-      this.statistics.reconnect_count++;
-      this.statistics.last_reconnect = new Date().toISOString();
-      
-      this.emit('reconnecting', { attempt: this.reconnectAttempts });
-      this.connect().catch(error => {
-        console.error('Reconnection failed:', error);
-      });
+      // Check if we're still disconnected before reconnecting
+      if (this.connectionStatus === 'disconnected' || this.connectionStatus === 'error') {
+        this.reconnectAttempts++;
+        this.statistics.reconnect_count++;
+        this.statistics.last_reconnect = new Date().toISOString();
+        
+        this.emit('reconnecting', { attempt: this.reconnectAttempts });
+        this.connect().catch(error => {
+          console.error('Reconnection failed:', error);
+        });
+      }
     }, delay);
   }
 
@@ -491,8 +500,8 @@ const getDefaultConfig = (): BackendConfig => {
   // Use Vite environment variables if available, otherwise construct dynamically
   const websocketUrl = import.meta.env.VITE_WS_URL || 
     (typeof window !== 'undefined' 
-      ? `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/enhanced`
-      : 'ws://localhost:8000/ws/enhanced');
+      ? `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`
+      : 'ws://localhost:8000/ws');
 
   const httpBaseUrl = import.meta.env.VITE_API_URL || 
     (typeof window !== 'undefined' 
@@ -502,8 +511,8 @@ const getDefaultConfig = (): BackendConfig => {
   return {
     websocket_url: websocketUrl,
     http_base_url: httpBaseUrl,
-    reconnect_attempts: 5,
-    reconnect_delay: 1000,
+    reconnect_attempts: 3, // Reduced from 5
+    reconnect_delay: 2000, // Increased from 1000
     request_timeout: 10000,
     heartbeat_interval: 30000
   };

@@ -10,7 +10,7 @@ import json
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional, Union, Callable, AsyncGenerator
 
@@ -76,8 +76,8 @@ class BaseAgent(ABC):
         self.capabilities = set(config.capabilities)
         self.message_handlers = []
         self.error_handlers = []
-        self.created_at = datetime.utcnow()
-        self.last_activity = datetime.utcnow()
+        self.created_at = datetime.now(timezone.utc)
+        self.last_activity = datetime.now(timezone.utc)
         
     async def initialize(self) -> bool:
         """Initialize the agent with its framework"""
@@ -143,7 +143,7 @@ class BaseAgent(ABC):
         
         try:
             self.status = AgentStatus.RUNNING
-            self.last_activity = datetime.utcnow()
+            self.last_activity = datetime.now(timezone.utc)
             
             # Add context to agent memory
             if context:
@@ -322,6 +322,6 @@ class DefaultAgent(BaseAgent):
         if self.memory:
             self.context.append({
                 'type': 'memory_state',
-                'timestamp': datetime.utcnow().isoformat(),
+                'timestamp': datetime.now(timezone.utc).isoformat(),
                 'memory': self.memory
             })

@@ -24,6 +24,7 @@ import time
 import uuid
 from contextlib import asynccontextmanager
 from typing import List, Dict, Any, Optional
+from datetime import datetime
 
 # Third-party imports
 import uvicorn
@@ -49,9 +50,9 @@ try:
     from icpy.api import get_websocket_api, shutdown_websocket_api, get_rest_api, shutdown_rest_api
     from icpy.api.rest_api import create_rest_api
     from icpy.core.connection_manager import get_connection_manager
-    from icpy.services import get_workspace_service, get_filesystem_service, get_terminal_service, get_agent_service, get_chat_service
+    from icpy.services import get_workspace_service, get_filesystem_service, get_terminal_service, get_agent_service, get_chat_service, get_code_execution_service, get_code_execution_service
     from icpy.services.clipboard_service import clipboard_service
-    from icpy.agent.custom_agent import auto_initialize_chat_agent, get_available_custom_agents
+    from icpy.agent.custom_agent import get_available_custom_agents, call_custom_agent, call_custom_agent_stream
     ICPY_AVAILABLE = True
     logger.info("icpy modules loaded successfully")
 except ImportError as e:
@@ -59,6 +60,8 @@ except ImportError as e:
     ICPY_AVAILABLE = False
     clipboard_service = None
     get_available_custom_agents = lambda: ["TestAgent", "DefaultAgent"]  # Fallback
+    call_custom_agent = lambda agent, msg, hist: f"Custom agent {agent} not available"
+    call_custom_agent_stream = lambda agent, msg, hist: iter([f"Custom agent {agent} not available"])
 
 try:
     from terminal import terminal_manager
@@ -148,7 +151,7 @@ async def lifespan(app: FastAPI):
             logger.info("icpy services initialized successfully")
             
             # Auto-initialize chat agent after services are ready
-            await auto_initialize_chat_agent()
+            # await auto_initialize_chat_agent()  # Function not yet implemented
             
         except Exception as e:
             logger.error(f"Failed to initialize icpy services: {e}")
@@ -432,10 +435,10 @@ async def execute_code(request: CodeExecutionRequest):
             execution_time=0.0
         )
 
-# Enhanced WebSocket endpoints
-@app.websocket("/ws/enhanced")
-async def enhanced_websocket_endpoint(websocket: WebSocket):
-    """Enhanced WebSocket endpoint with icpy integration."""
+# Enhanced WebSocket endpoint (now the primary /ws endpoint)
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    """Primary WebSocket endpoint with icpy integration."""
     if not ICPY_AVAILABLE:
         await websocket.close(code=1011, reason="icpy services not available")
         return
@@ -452,14 +455,116 @@ async def enhanced_websocket_endpoint(websocket: WebSocket):
             except WebSocketDisconnect:
                 break
             except Exception as e:
-                logger.error(f"Error in enhanced WebSocket: {e}")
+                logger.error(f"Error in WebSocket: {e}")
                 break
         
         # Cleanup
         await websocket_api.disconnect_websocket(connection_id)
         
     except Exception as e:
-        logger.error(f"Enhanced WebSocket error: {e}")
+        logger.error(f"WebSocket error: {e}")
+
+# Legacy WebSocket endpoint (deprecated)
+@app.websocket("/ws/legacy")
+async def legacy_websocket_endpoint(websocket: WebSocket):
+    """
+    DEPRECATED: Legacy WebSocket endpoint for backward compatibility.
+    This endpoint is deprecated and will be removed in a future version.
+    Please use the main /ws endpoint which provides enhanced functionality.
+    """
+    await websocket.accept()
+    
+    # Send deprecation warning
+    await websocket.send_text(json.dumps({
+        "type": "warning",
+        "message": "This endpoint (/ws/legacy) is deprecated. Please update your client to use /ws instead."
+    }))
+    
+    try:
+        while True:
+            message = await websocket.receive_text()
+            try:
+                data = json.loads(message)
+                
+                if data.get("type") == "execute":
+                    # Handle code execution using ICPY service
+                    code = data.get("code", "")
+                    language = data.get("language", "python")
+                    
+                    if ICPY_AVAILABLE:
+                        try:
+                            # Use ICPY code execution service
+                            code_execution_service = get_code_execution_service()
+                            
+                            # Ensure service is running
+                            if not code_execution_service.running:
+                                await code_execution_service.start()
+                            
+                            result = await code_execution_service.execute_code(
+                                code=code,
+                                language=language
+                            )
+                            
+                            # Send result back
+                            await websocket.send_text(json.dumps({
+                                "type": "result",
+                                "execution_id": result.execution_id,
+                                "status": result.status.value,
+                                "output": result.output,
+                                "errors": result.errors,
+                                "execution_time": result.execution_time,
+                                "language": result.language.value
+                            }))
+                        except Exception as e:
+                            logger.error(f"ICPY code execution error: {e}")
+                            await websocket.send_text(json.dumps({
+                                "type": "error",
+                                "message": f"Code execution failed: {str(e)}"
+                            }))
+                    else:
+                        # Fallback to basic execution
+                        try:
+                            output, errors, execution_time = execute_python_code(code)
+                            await websocket.send_text(json.dumps({
+                                "type": "result",
+                                "output": output,
+                                "errors": errors,
+                                "execution_time": execution_time
+                            }))
+                        except Exception as e:
+                            logger.error(f"Basic code execution error: {e}")
+                            await websocket.send_text(json.dumps({
+                                "type": "error",
+                                "message": f"Code execution failed: {str(e)}"
+                            }))
+                    
+                elif data.get("type") == "ping":
+                    # Handle ping
+                    await websocket.send_text(json.dumps({"type": "pong"}))
+                    
+                else:
+                    # Echo unknown messages for debugging
+                    await websocket.send_text(json.dumps({
+                        "type": "echo",
+                        "message": f"Unknown message type: {data.get('type')}"
+                    }))
+                    
+            except json.JSONDecodeError:
+                await websocket.send_text(json.dumps({
+                    "type": "error",
+                    "message": "Invalid JSON format"
+                }))
+            except Exception as e:
+                logger.error(f"WebSocket message error: {e}")
+                await websocket.send_text(json.dumps({
+                    "type": "error", 
+                    "message": f"Internal server error: {str(e)}"
+                }))
+                
+    except WebSocketDisconnect:
+        logger.info("WebSocket disconnected")
+    except Exception as e:
+        logger.error(f"WebSocket error: {e}")
 
 # Terminal WebSocket endpoint
 @app.websocket("/ws/terminal/{terminal_id}")
@@ -516,6 +621,32 @@ async def get_custom_agents():
     except Exception as e:
         logger.error(f"Error getting custom agents: {e}")
         return {"success": False, "error": str(e), "agents": []}
+
+# Health check endpoint
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for monitoring system status."""
+    try:
+        status = {
+            "status": "healthy",
+            "services": {
+                "icpy": ICPY_AVAILABLE,
+                "terminal": TERMINAL_AVAILABLE,
+            },
+            "timestamp": time.time()
+        }
+        
+        # Add clipboard service status if available
+        if clipboard_service:
+            try:
+                status["services"]["clipboard"] = clipboard_service.get_status()
+            except Exception:
+                status["services"]["clipboard"] = {"available": False}
+        
+        return status
+    except Exception as e:
+        logger.error(f"Health check error: {e}")
+        return {"status": "unhealthy", "error": str(e), "timestamp": time.time()}
 
 # Agent WebSocket endpoints
 @app.websocket("/ws/agents/{session_id}/stream")

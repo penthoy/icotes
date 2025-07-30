@@ -28,6 +28,7 @@ export const useCustomAgents = () => {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch custom agents');
       setAgents([]);
+      console.error('Exception while fetching agents:', err);
     } finally {
       setIsLoading(false);
     }

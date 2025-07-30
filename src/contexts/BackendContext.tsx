@@ -17,8 +17,8 @@ const getDefaultBackendConfig = (): BackendConfig => {
   // Use Vite environment variables if available, otherwise construct dynamically
   const websocketUrl = import.meta.env.VITE_WS_URL || 
     (typeof window !== 'undefined' 
-      ? `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/enhanced`
-      : 'ws://localhost:8000/ws/enhanced');
+      ? `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`
+      : 'ws://localhost:8000/ws');
 
   const httpBaseUrl = import.meta.env.VITE_API_URL || 
     (typeof window !== 'undefined' 

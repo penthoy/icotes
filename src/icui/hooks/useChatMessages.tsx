@@ -1,5 +1,14 @@
 /**
- * Chat Messages Hook - ICUI Framework
+ import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { 
+  ChatMessage, 
+  ConnectionStatus, 
+  ChatConfig, 
+  MessageOptions,
+  AgentType 
+} from '../types/chatTypes';
+import { ChatBackendClient } from '../services/chatBackendClient';
+import { notificationService } from '../services/notificationService';sages Hook - ICUI Framework
  * Custom React hook for managing chat message state and operations
  */
 
@@ -30,6 +39,7 @@ export interface UseChatMessagesReturn {
   
   // Actions
   sendMessage: (content: string, options?: MessageOptions) => Promise<void>;
+  sendCustomAgentMessage: (content: string, agentName: string) => Promise<void>;
   clearMessages: () => Promise<void>;
   updateConfig: (config: Partial<ChatConfig>) => Promise<void>;
   connect: () => Promise<boolean>;
@@ -203,6 +213,39 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
     }
   }, [getClient, config, maxMessages]);
 
+  // Send message to custom agent
+  // Send message to custom agent - using main branch pattern
+  const sendCustomAgentMessage = useCallback(async (content: string, agentName: string) => {
+    try {
+      const client = getClient();
+      
+      // Add user message immediately to UI
+      const userMessage: ChatMessage = {
+        id: `user_${Date.now()}_${Math.random().toString(36).substring(2)}`,
+        content,
+        sender: 'user',
+        timestamp: new Date(),
+        metadata: {
+          messageType: 'text',
+          agentType: agentName as any
+        }
+      };
+      
+      setMessages(prev => {
+        const newMessages = [...prev, userMessage];
+        return newMessages.length > maxMessages ? newMessages.slice(-maxMessages) : newMessages;
+      });
+      
+      // Send via existing chat client with custom agent type
+      await client.sendMessage(content, {
+        agentType: agentName as any
+      });
+    } catch (error) {
+      console.error('Failed to send message to custom agent:', error);
+      notificationService.error(`Failed to send message to ${agentName}`);
+    }
+  }, [getClient, maxMessages]);
+
   // Clear messages
   const clearMessages = useCallback(async () => {
     try {
@@ -291,6 +334,7 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
     
     // Actions
     sendMessage,
+    sendCustomAgentMessage,
     clearMessages,
     updateConfig,
     connect,

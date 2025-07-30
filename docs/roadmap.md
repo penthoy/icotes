@@ -2,34 +2,38 @@
 A web-based JavaScript code editor built with ViteReact, CodeMirror 6, and modern web technologies. The goal is to create the world's most powerful notebook for developers and hackers, it includes 3 core parts: 1. rich text editor, similar to evernote/notion hybrid, 2. code editor + terminal(similar to replit), 3. AI agent that can be customized with agentic frameworks such as crew ai, or openai agent sdk, or any other agentic framework. This tool is designed to be infinitely hackable and flexible to empower the nextgeneration of AI powered developers.
 
 ### In Progress
+- [] please work on debuging the issue detailed in stream_phased_debug.md from 1 through 5, if you require me to do a manual test stop and prompt for me to test.
 
-
-## Recently Finished
-- ✓ **main.py refactoring completed (Phase 2)**:
-1. ✓ Removed all legacy endpoints: legacy_websocket_endpoint, ConnectionManager, duplicate terminal endpoints (6 endpoints: POST /api/terminals, GET /api/terminals, GET /api/terminals/{id}, POST /api/terminals/{id}/start, DELETE /api/terminals/{id}, POST /api/terminals/{id}/input)
-2. ✓ Organized configuration code into functions: initialize_rest_api(), configure_cors_origins(), mount_static_files()  
-3. ✓ Removed endpoint duplication - icpy REST API already provides comprehensive terminal endpoints, making main.py duplicates redundant
-4. ✓ All remaining endpoints verified as actively used by frontend: /clipboard (POST/GET), /clipboard/history, /clipboard/status, /clipboard/clear, /execute, /api/custom-agents, /health, WebSocket endpoints
-5. ✓ Maintained clean separation: configuration in functions, core endpoints preserved, icpy integration intact
-6. ✓ Build and syntax validation passed - reduced main.py from 1135 to 958 lines (177 lines removed)
-- ✓ Refactored main.py in backend:
-1. Reduced file size from 1441 lines to 1204 lines (237 lines removed)
-2. Removed duplicate ServerClipboard class and consolidated with icpy clipboard service
-3. Moved all imports to the top of the file with proper error handling
-4. Maintained try-except for imports where necessary for graceful fallbacks
-5. Fixed demo_agent import to be conditional to prevent import errors
-6. All functionality preserved and tested working
+### Recently Completed ✅
+- [✅] icpy phase 6(including step 6.5) is all complete, can you try to integrate it so that custom agents work?
+- ✅ **ICPY Phase 6.5: Custom Agent Integration Complete**:
+  1. ✅ **Unified Chat Service Integration**: Custom agents now route through `/ws/chat` instead of separate endpoints
+  2. ✅ **Three-Phase Streaming Protocol**: PersonalAgent, OpenAIDemoAgent, and OpenRouterAgent use START→CHUNKS→END protocol
+  3. ✅ **Protocol Consistency**: Fixed async generator iteration in chat service for proper streaming
+  4. ✅ **Backend Consolidation**: Removed deprecated `/api/custom-agents/chat` and `/ws/custom-agents/*/stream` endpoints  
+  5. ✅ **Message Persistence**: All custom agent conversations saved to chat.db with session management
+  6. ✅ **Agent Routing**: `agentType` metadata correctly routes messages to appropriate custom agents
+  7. ✅ **Real-time Streaming**: Custom agents stream responses in real-time through unified chat service
+  8. ✅ **Frontend Integration**: Dropdown selection and chat interface works seamlessly with all agent types
+  9. ✅ **Step 6.5 Implementation**: Successfully integrated custom agent registry into unified chat service per icpy_plan.md
+  - **Technical Achievement**: Custom agents fully integrated into unified streaming architecture with protocol consistency
 
 ## Future task
+- [] please start on icpy_plan.md 6.4 and 6.5
+-- bug:
+✓ Bug: Terminal press up and down or down and up, the cursor will go up and remove the previous line
+
 -- refactor enhanced ws endpoint in main.py
 
 -- clipboard:
-there's only clipboard_service.write_clipboard but no read?
 I can ctrl + c to system memory but not from system memory to terminal
 -- Chat window:
 Proper history and new chat + button.
 ✓ custom agent picker dropdown.
 
+-- CLI
+pip install typer fastapi of CLI
+CLI that agents can work with
 -- Milestone 2:
 ✓ home route refined and first mvp complete, can be showned.
 critical features: you can start using your own APIs to create simple software.
@@ -50,6 +54,7 @@ look into backend/main.py and further abstract this code base.
 --Features:
 Explorer able to unlock Root path and go up and down different paths
 json config for layouts
+Drag and drop file and download file
 
 -- Rich text editor integration (Phase 7)
 -- Phase 7: Extension Points for Future Features
@@ -91,15 +96,14 @@ Lets now attempt to replicate a modern editor behavior such as vs code:
 
 please stop for my review for each of these points as it could be pretty complexe, and wait for my feedback before proceed for the next point, lets now start with 1.
 
--- bug:
-✓ Bug: Terminal press up and down or down and up, the cursor will go up and remove the previous line
-
--- Milestone 1:
-✓ Complete icui-icpy connection and integration plan so that the old home route is using icpy backend.
-
 -- Milestone 3:
 Refined Agent integration:
 features: history, context
+markdown for chat ui https://github.com/remarkjs/react-markdown
+agent_plan.md
+all tools created mirroring most agentic platform like copilot, cursor.
+tool use indicator.
+ouput copy button
 
 -- Milestone 4:
 Advanced agents
@@ -139,6 +143,72 @@ A Panel installer,
 maya style code executor.
 
 ## Recently Completed ✅
+- ✅ **Pytest Warnings Cleanup**: Reduced pytest warnings from 1599 to 33 (98% reduction) by:
+  1. ✅ Added comprehensive pytest configuration with warning filters for external dependencies (CrewAI pkg_resources, Pydantic v1/v2, AST deprecations, etc.)
+  2. ✅ Fixed all `datetime.utcnow()` deprecation warnings in codebase by updating to `datetime.now(timezone.utc)`
+  3. ✅ Updated timezone handling in MemoryEntry and context management for proper datetime comparisons
+  4. ✅ All 56 tests now pass with minimal warnings (only 33 dynamic/external warnings remain)
+  5. ✅ **Technical Achievement**: Clean test output with 98% warning reduction, all core datetime deprecations eliminated
+
+## Recently Finished
+- ✅ **ICPY Plan Steps 6.1, 6.2, & 6.3 Completion**:
+  1. ✅ **Step 6.1 Fixed**: Resolved CrewAI pkg_resources dependency issue by installing setuptools
+  2. ✅ **Step 6.1 Verified**: All 8 agentic framework tests passing (OpenAI, CrewAI, LangChain, LangGraph compatibility)
+  3. ✅ **Step 6.2 Confirmed**: All 28 agent workflow infrastructure tests passing
+     - ✅ Agent workflow creation and execution infrastructure working
+     - ✅ Capability registry system for skill discovery operational
+     - ✅ Memory and context management system functional
+     - ✅ Agent templates system for rapid development ready
+     - ✅ All required files: base_agent.py, workflow_engine.py, capability_registry.py, context_manager.py, agent_templates.py
+  4. ✅ **Step 6.3 Verified**: All 20 agent service layer tests passing
+     - ✅ Agent lifecycle management and session handling working
+     - ✅ Agent communication bus and task queue operational
+     - ✅ Performance monitoring and resource management functional
+     - ✅ API exposure through REST and WebSocket endpoints ready
+     - ✅ Agent service fully integrated with workflow infrastructure
+
+- ✅ **Custom Agent System Bug Fixes**:
+  1. ✅ Fixed OpenAIDemoAgent giving demo responses - removed blank line at beginning of file that prevented proper import
+  2. ✅ OpenAIDemoAgent now makes real OpenAI API calls and provides intelligent responses
+  3. ✅ Integrated custom agents with chat service database for message history persistence
+  4. ✅ Modified both HTTP and WebSocket endpoints to save user messages and agent responses to chat.db
+  5. ✅ Added session management for custom agent conversations
+  6. ✅ Both PersonalAgent and OpenAIDemoAgent now have full history support with database persistence
+  7. ✅ Messages from custom agents are now properly saved and can be retrieved on page refresh
+- ✅ **Custom Agent System Fixes**:
+  1. ✅ Fixed tool calls in chat_stream in personal_agent.py - now properly handles tool execution during streaming
+  2. ✅ Fixed history handling in custom agents - chat history is now correctly passed and processed
+  3. ✅ Rewrote OpenAIDemoAgent to match personal_agent.py format with both chat() and chat_stream() functions
+  4. ✅ Added OpenAIDemoAgent to custom_agent.py registry - now appears in frontend dropdown
+  5. ✅ Both PersonalAgent and OpenAIDemoAgent now fully functional with streaming support
+  6. ✅ Backend successfully loads both agents and handles API calls correctly
+- ✅ **Custom Agent System Implementation**:
+  1. ✅ Rewrote custom_agent.py to be simple (under 50 lines) - now acts as an entry point and registry for custom agents
+  2. ✅ Updated main.py to use the new custom_agent.py structure with new `/api/custom-agents/chat` endpoint 
+  3. ✅ Enhanced ICUIChat.tsx frontend to include personal_agent.py chat function as dropdown menu option
+  4. ✅ Added sendCustomAgentMessage function to useChatMessages hook to handle custom agent API calls
+  5. ✅ Implemented gradio-like chat function capability that can take user-defined chat functions
+  6. ✅ Successfully tested PersonalAgent integration - custom agent registry working correctly
+  7. ✅ Frontend build verification completed - all TypeScript compilation successful
+
+-- Milestone 1:
+✓ Complete icui-icpy connection and integration plan so that the old home route is using icpy backend.
+
+- ✓ **main.py refactoring completed (Phase 2)**:
+1. ✓ Removed all legacy endpoints: legacy_websocket_endpoint, ConnectionManager, duplicate terminal endpoints (6 endpoints: POST /api/terminals, GET /api/terminals, GET /api/terminals/{id}, POST /api/terminals/{id}/start, DELETE /api/terminals/{id}, POST /api/terminals/{id}/input)
+2. ✓ Organized configuration code into functions: initialize_rest_api(), configure_cors_origins(), mount_static_files()  
+3. ✓ Removed endpoint duplication - icpy REST API already provides comprehensive terminal endpoints, making main.py duplicates redundant
+4. ✓ All remaining endpoints verified as actively used by frontend: /clipboard (POST/GET), /clipboard/history, /clipboard/status, /clipboard/clear, /execute, /api/custom-agents, /health, WebSocket endpoints
+5. ✓ Maintained clean separation: configuration in functions, core endpoints preserved, icpy integration intact
+6. ✓ Build and syntax validation passed - reduced main.py from 1135 to 958 lines (177 lines removed)
+- ✓ Refactored main.py in backend:
+1. Reduced file size from 1441 lines to 1204 lines (237 lines removed)
+2. Removed duplicate ServerClipboard class and consolidated with icpy clipboard service
+3. Moved all imports to the top of the file with proper error handling
+4. Maintained try-except for imports where necessary for graceful fallbacks
+5. Fixed demo_agent import to be conditional to prevent import errors
+6. All functionality preserved and tested working
+
 ✅ Bug fix: tab shouldn't reload after switched
 
 ✅ **ICUI Panel Tab and Drag/Drop Bug Fixes**

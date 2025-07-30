@@ -26,6 +26,7 @@ import {
   MessageOptions,
   notificationService 
 } from '../index';
+import { useCustomAgents } from '../../hooks/useCustomAgents';
 import { CustomAgentDropdown } from './menus/CustomAgentDropdown';
 
 interface ICUIChatProps {
@@ -75,6 +76,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
     connectionStatus,
     isLoading,
     sendMessage,
+    sendCustomAgentMessage,
     clearMessages,
     connect,
     disconnect,
@@ -87,6 +89,9 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
     persistence,
     autoScroll
   });
+
+  // Get available custom agents
+  const { agents: customAgents, isLoading: agentsLoading, error: agentsError } = useCustomAgents();
 
   // Use theme detection (following ICUITerminal pattern)
   const { isDark } = useTheme();
@@ -139,17 +144,28 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
   // Handle sending a message
   const handleSendMessage = useCallback(async (content?: string, options?: MessageOptions) => {
     const messageContent = content || inputValue.trim();
-    if (!messageContent) return;
+    if (!messageContent) {
+      return;
+    }
 
     try {
-      // Include selected agent in message options
-      const messageOptions: MessageOptions = {
-        agentType: selectedAgent as any, // Cast to AgentType
-        streaming: true,
-        ...options // Merge with any provided options
-      };
+      // Check if selected agent is a custom agent (from custom_agent.py registry)
+      // Dynamic check based on available custom agents from the API
+      const isCustomAgent = customAgents.includes(selectedAgent);
       
-      await sendMessage(messageContent, messageOptions);
+      if (isCustomAgent) {
+        // Use custom agent API
+        await sendCustomAgentMessage(messageContent, selectedAgent);
+      } else {
+        // Use regular chat API with agent options
+        const messageOptions: MessageOptions = {
+          agentType: selectedAgent as any, // Cast to AgentType
+          streaming: true,
+          ...options // Merge with any provided options
+        };
+        
+        await sendMessage(messageContent, messageOptions);
+      }
       
       // Clear input only if using the input field
       if (!content) {
@@ -173,7 +189,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
       console.error('Failed to send message:', error);
       notificationService.error('Failed to send message');
     }
-  }, [inputValue, selectedAgent, sendMessage, onMessageSent]);
+  }, [inputValue, selectedAgent, sendMessage, sendCustomAgentMessage, onMessageSent]);
 
   // Handle clearing messages
   const handleClearMessages = useCallback(async () => {
