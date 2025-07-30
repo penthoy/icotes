@@ -9,7 +9,7 @@ import asyncio
 import json
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional, Union, Callable, Set
 from pathlib import Path
@@ -128,7 +128,7 @@ class WorkflowEngine:
         
         try:
             self.state.status = WorkflowStatus.RUNNING
-            self.state.start_time = datetime.utcnow()
+            self.state.start_time = datetime.now(timezone.utc)
             await self._emit_event("workflow_started", {"workflow_id": self.workflow_id})
             
             # Execute tasks based on dependency graph
@@ -136,7 +136,7 @@ class WorkflowEngine:
             
             if self.state.status == WorkflowStatus.RUNNING:
                 self.state.status = WorkflowStatus.COMPLETED
-                self.state.end_time = datetime.utcnow()
+                self.state.end_time = datetime.now(timezone.utc)
                 await self._emit_event("workflow_completed", {"workflow_id": self.workflow_id})
             
             # Auto-save if enabled
@@ -148,7 +148,7 @@ class WorkflowEngine:
         except Exception as e:
             self.state.status = WorkflowStatus.FAILED
             self.state.error_message = str(e)
-            self.state.end_time = datetime.utcnow()
+            self.state.end_time = datetime.now(timezone.utc)
             await self._emit_event("workflow_failed", {"error": str(e)})
             return False
     
@@ -478,7 +478,7 @@ class WorkflowEngine:
         """Emit workflow event to all handlers"""
         event_data = {
             'event_type': event_type,
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'workflow_id': self.workflow_id,
             **data
         }
