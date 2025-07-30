@@ -2,29 +2,9 @@
 A web-based JavaScript code editor built with ViteReact, CodeMirror 6, and modern web technologies. The goal is to create the world's most powerful notebook for developers and hackers, it includes 3 core parts: 1. rich text editor, similar to evernote/notion hybrid, 2. code editor + terminal(similar to replit), 3. AI agent that can be customized with agentic frameworks such as crew ai, or openai agent sdk, or any other agentic framework. This tool is designed to be infinitely hackable and flexible to empower the nextgeneration of AI powered developers.
 
 ### In Progress
-- ✅ **Pytest Warnings Cleanup**: Reduced pytest warnings from 1599 to 33 (98% reduction) by:
-  1. ✅ Added comprehensive pytest configuration with warning filters for external dependencies (CrewAI pkg_resources, Pydantic v1/v2, AST deprecations, etc.)
-  2. ✅ Fixed all `datetime.utcnow()` deprecation warnings in codebase by updating to `datetime.now(timezone.utc)`
-  3. ✅ Updated timezone handling in MemoryEntry and context management for proper datetime comparisons
-  4. ✅ All 56 tests now pass with minimal warnings (only 33 dynamic/external warnings remain)
-  5. ✅ **Technical Achievement**: Clean test output with 98% warning reduction, all core datetime deprecations eliminated
+- [] icpy phase 6(including step 6.5) is all complete 
 
-## Recently Finished
-- ✅ **ICPY Plan Steps 6.1, 6.2, & 6.3 Completion**:
-  1. ✅ **Step 6.1 Fixed**: Resolved CrewAI pkg_resources dependency issue by installing setuptools
-  2. ✅ **Step 6.1 Verified**: All 8 agentic framework tests passing (OpenAI, CrewAI, LangChain, LangGraph compatibility)
-  3. ✅ **Step 6.2 Confirmed**: All 28 agent workflow infrastructure tests passing
-     - ✅ Agent workflow creation and execution infrastructure working
-     - ✅ Capability registry system for skill discovery operational
-     - ✅ Memory and context management system functional
-     - ✅ Agent templates system for rapid development ready
-     - ✅ All required files: base_agent.py, workflow_engine.py, capability_registry.py, context_manager.py, agent_templates.py
-  4. ✅ **Step 6.3 Verified**: All 20 agent service layer tests passing
-     - ✅ Agent lifecycle management and session handling working
-     - ✅ Agent communication bus and task queue operational
-     - ✅ Performance monitoring and resource management functional
-     - ✅ API exposure through REST and WebSocket endpoints ready
-     - ✅ Agent service fully integrated with workflow infrastructure
+
 
 
 ## Future task
@@ -147,6 +127,30 @@ A Panel installer,
 maya style code executor.
 
 ## Recently Completed ✅
+- ✅ **Pytest Warnings Cleanup**: Reduced pytest warnings from 1599 to 33 (98% reduction) by:
+  1. ✅ Added comprehensive pytest configuration with warning filters for external dependencies (CrewAI pkg_resources, Pydantic v1/v2, AST deprecations, etc.)
+  2. ✅ Fixed all `datetime.utcnow()` deprecation warnings in codebase by updating to `datetime.now(timezone.utc)`
+  3. ✅ Updated timezone handling in MemoryEntry and context management for proper datetime comparisons
+  4. ✅ All 56 tests now pass with minimal warnings (only 33 dynamic/external warnings remain)
+  5. ✅ **Technical Achievement**: Clean test output with 98% warning reduction, all core datetime deprecations eliminated
+
+## Recently Finished
+- ✅ **ICPY Plan Steps 6.1, 6.2, & 6.3 Completion**:
+  1. ✅ **Step 6.1 Fixed**: Resolved CrewAI pkg_resources dependency issue by installing setuptools
+  2. ✅ **Step 6.1 Verified**: All 8 agentic framework tests passing (OpenAI, CrewAI, LangChain, LangGraph compatibility)
+  3. ✅ **Step 6.2 Confirmed**: All 28 agent workflow infrastructure tests passing
+     - ✅ Agent workflow creation and execution infrastructure working
+     - ✅ Capability registry system for skill discovery operational
+     - ✅ Memory and context management system functional
+     - ✅ Agent templates system for rapid development ready
+     - ✅ All required files: base_agent.py, workflow_engine.py, capability_registry.py, context_manager.py, agent_templates.py
+  4. ✅ **Step 6.3 Verified**: All 20 agent service layer tests passing
+     - ✅ Agent lifecycle management and session handling working
+     - ✅ Agent communication bus and task queue operational
+     - ✅ Performance monitoring and resource management functional
+     - ✅ API exposure through REST and WebSocket endpoints ready
+     - ✅ Agent service fully integrated with workflow infrastructure
+
 - ✅ **Custom Agent System Bug Fixes**:
   1. ✅ Fixed OpenAIDemoAgent giving demo responses - removed blank line at beginning of file that prevented proper import
   2. ✅ OpenAIDemoAgent now makes real OpenAI API calls and provides intelligent responses
