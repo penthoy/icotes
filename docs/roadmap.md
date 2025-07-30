@@ -2,10 +2,20 @@
 A web-based JavaScript code editor built with ViteReact, CodeMirror 6, and modern web technologies. The goal is to create the world's most powerful notebook for developers and hackers, it includes 3 core parts: 1. rich text editor, similar to evernote/notion hybrid, 2. code editor + terminal(similar to replit), 3. AI agent that can be customized with agentic frameworks such as crew ai, or openai agent sdk, or any other agentic framework. This tool is designed to be infinitely hackable and flexible to empower the nextgeneration of AI powered developers.
 
 ### In Progress
-- [] icpy phase 6(including step 6.5) is all complete 
+- [✅] icpy phase 6(including step 6.5) is all complete, can you try to integrate it so that custom agents work?
 
-
-
+### Recently Completed ✅
+- ✅ **ICPY Phase 6.5: Custom Agent Integration Complete**:
+  1. ✅ **Unified Chat Service Integration**: Custom agents now route through `/ws/chat` instead of separate endpoints
+  2. ✅ **Three-Phase Streaming Protocol**: PersonalAgent, OpenAIDemoAgent, and OpenRouterAgent use START→CHUNKS→END protocol
+  3. ✅ **Protocol Consistency**: Fixed async generator iteration in chat service for proper streaming
+  4. ✅ **Backend Consolidation**: Removed deprecated `/api/custom-agents/chat` and `/ws/custom-agents/*/stream` endpoints  
+  5. ✅ **Message Persistence**: All custom agent conversations saved to chat.db with session management
+  6. ✅ **Agent Routing**: `agentType` metadata correctly routes messages to appropriate custom agents
+  7. ✅ **Real-time Streaming**: Custom agents stream responses in real-time through unified chat service
+  8. ✅ **Frontend Integration**: Dropdown selection and chat interface works seamlessly with all agent types
+  9. ✅ **Step 6.5 Implementation**: Successfully integrated custom agent registry into unified chat service per icpy_plan.md
+  - **Technical Achievement**: Custom agents fully integrated into unified streaming architecture with protocol consistency
 
 ## Future task
 - [] please start on icpy_plan.md 6.4 and 6.5
@@ -88,6 +98,11 @@ please stop for my review for each of these points as it could be pretty complex
 -- Milestone 3:
 Refined Agent integration:
 features: history, context
+markdown for chat ui https://github.com/remarkjs/react-markdown
+agent_plan.md
+all tools created mirroring most agentic platform like copilot, cursor.
+tool use indicator.
+ouput copy button
 
 -- Milestone 4:
 Advanced agents

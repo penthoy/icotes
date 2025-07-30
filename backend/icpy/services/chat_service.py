@@ -559,7 +559,7 @@ class ChatService:
             custom_stream = call_custom_agent_stream(agent_type, user_message.content, history_list)
             
             # Process streaming response with three-phase protocol
-            for chunk in custom_stream:
+            async for chunk in custom_stream:
                 if chunk:  # Only process non-empty chunks
                     # Send stream start for first chunk
                     if is_first_chunk:

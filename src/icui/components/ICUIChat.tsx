@@ -91,7 +91,17 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
   });
 
   // Get available custom agents
-  const { agents: customAgents } = useCustomAgents();
+  const { agents: customAgents, isLoading: agentsLoading, error: agentsError } = useCustomAgents();
+
+  // Debug log whenever custom agents change
+  useEffect(() => {
+    console.log('🎭 [ICUIChat] Custom agents updated:', { 
+      customAgents, 
+      isLoading: agentsLoading, 
+      error: agentsError,
+      selectedAgent 
+    });
+  }, [customAgents, agentsLoading, agentsError, selectedAgent]);
 
   // Use theme detection (following ICUITerminal pattern)
   const { isDark } = useTheme();
@@ -144,9 +154,20 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
   // Handle sending a message
   const handleSendMessage = useCallback(async (content?: string, options?: MessageOptions) => {
     const messageContent = content || inputValue.trim();
-    if (!messageContent) return;
+    if (!messageContent) {
+      console.log('⚠️ [ICUIChat] Empty message, skipping send');
+      return;
+    }
 
-    console.log('🎯🎯🎯 HANDLE SEND MESSAGE CALLED 🎯🎯🎯', { messageContent, selectedAgent });
+    console.log('🎯🎯🎯 HANDLE SEND MESSAGE CALLED 🎯🎯🎯', { 
+      messageContent, 
+      selectedAgent,
+      customAgents,
+      agentsLoading,
+      agentsError,
+      connectionStatus,
+      isConnected
+    });
     console.log('🔥 This should appear EVERY TIME you send a message!');
 
     try {
@@ -159,15 +180,19 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
         customAgents, 
         isCustomAgent,
         willUseCustomAPI: isCustomAgent,
-        willUseRegularAPI: !isCustomAgent
+        willUseRegularAPI: !isCustomAgent,
+        agentsLoading,
+        agentsError
       });
       
       if (isCustomAgent) {
-        console.log('📞 Using CUSTOM agent API for:', selectedAgent);
+        console.log('📞 [ICUIChat] Using CUSTOM agent API for:', selectedAgent);
         // Use custom agent API
+        console.log('⏳ [ICUIChat] Calling sendCustomAgentMessage...');
         await sendCustomAgentMessage(messageContent, selectedAgent);
+        console.log('✅ [ICUIChat] sendCustomAgentMessage completed');
       } else {
-        console.log('📞 Using REGULAR chat API for:', selectedAgent);
+        console.log('📞 [ICUIChat] Using REGULAR chat API for:', selectedAgent);
         // Use regular chat API with agent options
         const messageOptions: MessageOptions = {
           agentType: selectedAgent as any, // Cast to AgentType
@@ -175,7 +200,9 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
           ...options // Merge with any provided options
         };
         
+        console.log('⏳ [ICUIChat] Calling sendMessage with options:', messageOptions);
         await sendMessage(messageContent, messageOptions);
+        console.log('✅ [ICUIChat] sendMessage completed');
       }
       
       // Clear input only if using the input field

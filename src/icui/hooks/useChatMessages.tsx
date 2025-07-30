@@ -216,8 +216,11 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
   // Send message to custom agent
   // Send message to custom agent - using main branch pattern
   const sendCustomAgentMessage = useCallback(async (content: string, agentName: string) => {
+    console.log('🚀 [useChatMessages] sendCustomAgentMessage called:', { content, agentName });
+    
     try {
       const client = getClient();
+      console.log('📡 [useChatMessages] Got client:', !!client);
       
       // Add user message immediately to UI
       const userMessage: ChatMessage = {
@@ -231,18 +234,21 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
         }
       };
       
+      console.log('💬 [useChatMessages] Adding user message to UI:', userMessage);
       setMessages(prev => {
         const newMessages = [...prev, userMessage];
         return newMessages.length > maxMessages ? newMessages.slice(-maxMessages) : newMessages;
       });
       
       // Send via existing chat client with custom agent type
+      console.log('📤 [useChatMessages] Sending message via client.sendMessage with agentType:', agentName);
       await client.sendMessage(content, {
         agentType: agentName as any
       });
       
+      console.log('✅ [useChatMessages] Message sent successfully');
     } catch (error) {
-      console.error('Failed to send message to custom agent:', error);
+      console.error('💥 [useChatMessages] Failed to send message to custom agent:', error);
       notificationService.error(`Failed to send message to ${agentName}`);
     }
   }, [getClient, maxMessages]);

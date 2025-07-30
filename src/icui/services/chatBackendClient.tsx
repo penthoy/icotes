@@ -298,7 +298,10 @@ export class ChatBackendClient {
 
   // Send message via WebSocket
   async sendMessage(content: string, options: MessageOptions = {}): Promise<void> {
+    console.log('🚀 [ChatBackendClient] sendMessage called:', { content, options });
+    
     if (!this.websocket || this.websocket.readyState !== WebSocket.OPEN) {
+      console.error('❌ [ChatBackendClient] WebSocket not connected! State:', this.websocket?.readyState);
       throw new Error('WebSocket not connected to backend');
     }
     
@@ -316,8 +319,23 @@ export class ChatBackendClient {
       }
     };
     
-    console.log('Sending message:', message);
-    this.websocket.send(JSON.stringify(message));
+    // Convert to backend format with metadata
+    const backendMessage = {
+      type: 'message',
+      content,
+      sender: 'user',
+      timestamp: Date.now(),
+      metadata: {
+        agentType: options.agentType || 'openai'
+      }
+    };
+    
+    console.log('📤 [ChatBackendClient] Sending WebSocket message:', backendMessage);
+    console.log('🔗 [ChatBackendClient] WebSocket URL:', this.websocket.url);
+    console.log('🔌 [ChatBackendClient] WebSocket state:', this.websocket.readyState);
+    
+    this.websocket.send(JSON.stringify(backendMessage));
+    console.log('✅ [ChatBackendClient] Message sent successfully');
   }
 
   // Get message history via HTTP
