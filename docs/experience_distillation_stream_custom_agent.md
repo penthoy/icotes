@@ -77,6 +77,11 @@ await asyncio.sleep(0.01)  # 10ms delay between chunks
 - Confirmed real-time streaming delivery
 - Verified no performance impact
 
+### Phase 5: Debug Log Cleanup
+- Removed all phased debug logs from backend files
+- Cleaned up frontend debug logs with emoji markers
+- Maintained essential error logging for production
+
 ## Key Learnings
 
 ### Technical Insights
@@ -141,7 +146,10 @@ async def _process_with_custom_agent(self, message: ChatMessage, custom_agent_na
 - **Custom Agent Registry**: `backend/icpy/agent/custom_agent.py`
 - **OpenAI Agent**: `backend/icpy/agent/openai_agent.py` 
 - **Chat Service**: `backend/icpy/services/chat_service.py`
-- **Frontend Handler**: `src/icui/services/chatBackendClient.tsx`
+- **Frontend Chat Client**: `src/icui/services/chatBackendClient.tsx`
+- **Chat Component**: `src/icui/components/ICUIChat.tsx`
+- **Chat Messages Hook**: `src/icui/hooks/useChatMessages.tsx`
+- **Custom Agents Hook**: `src/hooks/useCustomAgents.ts`
 
 ## Impact Assessment
 

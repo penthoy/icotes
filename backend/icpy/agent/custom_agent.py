@@ -16,7 +16,7 @@ from .personal_agent import chat as personal_agent_chat
 from .openai_agent import chat as openai_agent_chat
 from .openrouter_agent import chat as openrouter_agent_chat
 
-def register_custom_agent():
+def build_agent_registry():
     """Register a custom agent with its chat functions (all streaming by default)
     """
     # Registry of available custom agents and their chat functions
@@ -29,12 +29,12 @@ def register_custom_agent():
 
 def get_available_custom_agents() -> List[str]:
     """Get list of available custom agent names for frontend dropdown menu"""
-    return list(register_custom_agent().keys())
+    return list(build_agent_registry().keys())
 
 
 def get_agent_chat_function(agent_name: str) -> Callable:
     """Get chat function for specified agent name (all functions support streaming)"""
-    agent = register_custom_agent().get(agent_name)
+    agent = build_agent_registry().get(agent_name)
     if not agent:
         return None
     

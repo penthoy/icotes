@@ -14,11 +14,11 @@ async def test_custom_agent_integration():
     # Test 1: Custom Agent Registry
     print("🔄 Test 1: Custom Agent Registry...")
     try:
-        from icpy.agent.custom_agent import get_available_custom_agents, register_custom_agent
+        from icpy.agent.custom_agent import get_available_custom_agents, build_agent_registry
         
         agents = get_available_custom_agents()
-        registry = register_custom_agent()
-        
+        registry = build_agent_registry()
+
         print(f"📋 Available agents: {agents}")
         print(f"🗂️ Registry keys: {list(registry.keys())}")
         
