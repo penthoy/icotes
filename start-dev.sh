@@ -32,6 +32,11 @@ if [ ! -f "package.json" ]; then
     exit 1
 fi
 
+# Ensure logs directory exists
+mkdir -p logs
+echo "📁 Logs directory ready: ./logs/"
+echo ""
+
 # Function to cleanup on exit
 cleanup() {
     echo ""
@@ -125,6 +130,10 @@ echo "🔍 Health Check:"
 echo "   General: http://localhost:$BACKEND_PORT/health"
 echo "   Terminal: http://localhost:$BACKEND_PORT/api/terminal/health"
 echo ""
+echo "📋 Logs:"
+echo "   Backend logs: ./logs/backend.log"
+echo "   Access logs: Console output"
+echo ""
 echo "⚠️  Note: Frontend is served from the backend server (SINGLE PORT)"
 echo "📝 Development Features:"
 echo "   • Backend auto-reload on Python file changes"
@@ -180,7 +189,8 @@ else
         --reload-exclude "*.pyc" \
         --reload-exclude "__pycache__" \
         --log-level debug \
-        --access-log &
+        --access-log \
+        --log-config logging.conf &
 fi
 
 BACKEND_PID=$!

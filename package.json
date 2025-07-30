@@ -13,7 +13,9 @@
     "types:supabase": "npx supabase gen types typescript --project-id $SUPABASE_PROJECT_ID > src/types/supabase.ts",
     "start": "./start.sh",
     "dev-backend": "cd backend && python3 -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload",
-    "prod": "npm run build && ./start.sh"
+    "prod": "npm run build && ./start.sh",
+    "logs:view": "tail -f logs/backend.log",
+    "logs:clear": "rm -f logs/*.log && echo 'Logs cleared'"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.18.6",
