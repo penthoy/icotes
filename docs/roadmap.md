@@ -2,7 +2,6 @@
 A web-based JavaScript code editor built with ViteReact, CodeMirror 6, and modern web technologies. The goal is to create the world's most powerful notebook for developers and hackers, it includes 3 core parts: 1. rich text editor, similar to evernote/notion hybrid, 2. code editor + terminal(similar to replit), 3. AI agent that can be customized with agentic frameworks such as crew ai, or openai agent sdk, or any other agentic framework. This tool is designed to be infinitely hackable and flexible to empower the nextgeneration of AI powered developers.
 
 ### In Progress
-- [] please work on debuging the issue detailed in stream_phased_debug.md from 1 through 5, if you require me to do a manual test stop and prompt for me to test.
 
 ### Recently Completed ✅
 - [✅] icpy phase 6(including step 6.5) is all complete, can you try to integrate it so that custom agents work?
@@ -17,6 +16,7 @@ A web-based JavaScript code editor built with ViteReact, CodeMirror 6, and moder
   8. ✅ **Frontend Integration**: Dropdown selection and chat interface works seamlessly with all agent types
   9. ✅ **Step 6.5 Implementation**: Successfully integrated custom agent registry into unified chat service per icpy_plan.md
   - **Technical Achievement**: Custom agents fully integrated into unified streaming architecture with protocol consistency
+- ✅ please work on debuging the issue detailed in stream_phased_debug.md from 1 through 5, if you require me to do a manual test stop and prompt for me to test.
 
 ## Future task
 - [] please start on icpy_plan.md 6.4 and 6.5

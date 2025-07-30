@@ -1,8 +1,6 @@
 ## Instructions: 
 When I said "continue progress(#)" in the prompt, check ##In Progress section in the roadmap.md file, and proceed to work on just In progress section, after finished, move it to Recently finished section, If there's a # after continue progress, only work on the number assigned, as other agent or person will be working on the other in progress items asynchronusly, if you work on it you'll clash with another person/agent; always keep the codebase clean, before attempt another approach, make sure you explain what you tried and anything you need the user to help make it work.
 
-Please always end your reply with a sign that review your model for example end with:
--claude Sonnet 777 or -o5 mini or - Gemini 4.5 pro, make sure you're certain what you are, if you're unsure do -unknown
 
 - When I said "housekeeping" 
 1. please update both Working.md and CHANGELOG.md by reading all ## recently finished section from Project_roadmap.md and then clean them up.
@@ -19,10 +17,6 @@ Use that as a guide rather than human instruction, as this is generated from mul
 Create a file under docs folder with the prefix: experience_distilation_xxx.md where xxx is a name for you to decide based on a one word that can best sumarized our current conversational session it could be a topic or a theme, inside this file please sumarize all your experiences in this current session based on the following topics: what you have learned about this code base and how we are approaching and coding this repo so far based on our conversations in this session, what was tried, what mistakes are made, and what was done well, the purpose for this doc is for future AIs to learn from your experience, so that you can continue to improve, this is a postmortem, try to be concise and to the point, don't repeat yourself so that you can save context lengths to fullfill the purpose of distillation. but don't be overly vague either, it should contain enough information for your future self to best receive your knowledge.
 
 - when I said "audit":
-
-
-- When I said "fix build errors":
-run "npm run build" and fix all build errors
 
 - When Start my prompt with "cc:":
 It means try to use claude code, claude code is a flagship coding agent that can execute on your behave, think of it as your assistant, you use it by running claude on the commandline, and then you'll be able to talk to it to make requests. when I type prompt starting with cc: what I want you to do is take full advantage of this tool. but you should always be the manager and be in control, try to check for outputs and ensure the agent did what it said it did.

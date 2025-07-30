@@ -12,8 +12,6 @@ Usage:
   icpy --interactive              # Enter interactive mode
   icpy --help                     # Show help
 
-Author: GitHub Copilot
-Date: July 16, 2025
 """
 
 import sys

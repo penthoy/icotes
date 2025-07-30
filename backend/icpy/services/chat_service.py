@@ -564,8 +564,8 @@ class ChatService:
                     full_content += chunk
                     
                     # Small delay to prevent WebSocket message batching and ensure real-time delivery
-                    await asyncio.sleep(0.01)  # 10ms delay between chunks
-            
+                    await asyncio.sleep(0.001)  # 1ms delay between chunks
+
             # Send stream end
             await self._send_streaming_end(
                 user_message.session_id,

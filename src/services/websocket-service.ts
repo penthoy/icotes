@@ -343,6 +343,14 @@ export class WebSocketService {
           // Handle welcome messages from backend
           this.handleWelcomeMessage(message.payload);
           break;
+        case 'subscribed':
+          // Handle subscription confirmation from backend
+          this.handleSubscriptionMessage(message.payload, true);
+          break;
+        case 'unsubscribed':
+          // Handle unsubscription confirmation from backend
+          this.handleSubscriptionMessage(message.payload, false);
+          break;
         default:
           console.warn('Unknown message type:', message.type);
       }
@@ -418,6 +426,25 @@ export class WebSocketService {
     // Backend sends welcome message on connection
     console.log('Received welcome message from backend:', payload);
     this.emit('welcome', payload);
+  }
+
+  /**
+   * Handle subscription/unsubscription confirmation messages from backend
+   */
+  private handleSubscriptionMessage(payload: any, isSubscribed: boolean): void {
+    const action = isSubscribed ? 'subscribed to' : 'unsubscribed from';
+    const topics = payload.topics || [];
+    
+    // Log subscription status for debugging
+    if (topics.length > 0) {
+      console.log(`WebSocket ${action} topics:`, topics);
+    }
+    
+    // Emit subscription event for components that need to track subscription status
+    this.emit(isSubscribed ? 'subscribed' : 'unsubscribed', {
+      topics,
+      timestamp: payload.timestamp
+    });
   }
 
   /**
