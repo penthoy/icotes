@@ -3,8 +3,11 @@ When I said "continue progress(#)" in the prompt, check ##In Progress section in
 
 
 - When I said "housekeeping" 
-1. please update both Working.md and CHANGELOG.md by reading all ## recently finished section from Project_roadmap.md and then clean them up.
+1. please update both Working.md and CHANGELOG.md by reading ALL ## recently finished/completed section from Project_roadmap.md and then clean them up/Remove them. please don't add more to the list for the housekeeping task. sometimes there could be a lot in this section make sure they're all moved. in Working.md
+keep content added to Working.md and CHANGELOG.md brief, they should be a brief summary of what was done, omit excessive details but only capture the key insight that was done. the purpose is for future human or agents who need to refer back to changes in case a bug was found later and need to refer back to old changes, but this repo is tracked by git so this is more for reference.
+if there were any file paths indicating these changes, make sure to include them.
 2. do cleanups if there were any previously added debug code.
+3. Never change any logic or functionality of the code, if and only if you find issues with the code during cleanup, write a cleanup_log.md in docs folder with details of the issues you find, and how you would go about fixing it, but do not directly address the issue. as you might not have the full context.
 
 - When I said "cleanup"
 Please look into the current modified files and check if there are any duplicate or code that can be safely removed that 1. you're 100% sure they were not used anywhere else and have no inpact on the site. 2. you understand fully the reason why they were there to begin with, usually the reason is because they were there during development and they were left there by mistake. 3. when you're in Doubt make sure to bring it up your findings.

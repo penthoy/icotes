@@ -36,13 +36,13 @@ class EnhancedClipboard {
     
     // Try server-side clipboard FIRST (most reliable cross-platform)
     if (await this.tryServerClipboard(text)) {
-      console.log('✓ Clipboard copy via server (system clipboard)');
+      // Clipboard copy via server (system clipboard)
       success = true;
     }
     
     // Try browser native API (will fail in most cases due to security)
     if (await this.tryNativeClipboard(text)) {
-      console.log('✓ Clipboard copy via native API');
+      // Clipboard copy via native API
       success = true;
     }
     
@@ -60,19 +60,19 @@ class EnhancedClipboard {
     // Try server-side clipboard FIRST
     const serverText = await this.tryServerPaste();
     if (serverText) {
-      console.log('✓ Clipboard paste via server');
+      // Clipboard paste via server
       return serverText;
     }
     
     // Try browser native API
     const nativeText = await this.tryNativePaste();
     if (nativeText) {
-      console.log('✓ Clipboard paste via native API');
+      // Clipboard paste via native API
       return nativeText;
     }
     
     // Use fallback
-    console.log('⚠ Using session clipboard fallback');
+    // Using session clipboard fallback
     return this.fallbackText;
   }
 
@@ -81,7 +81,7 @@ class EnhancedClipboard {
       await navigator.clipboard.writeText(text);
       return true;
     } catch (error) {
-      console.log('Native clipboard write failed (expected):', error);
+      // Native clipboard write failed (expected)
     }
     return false;
   }
@@ -90,7 +90,7 @@ class EnhancedClipboard {
     try {
       return await navigator.clipboard.readText();
     } catch (error) {
-      console.log('Native clipboard read failed (expected):', error);
+      // Native clipboard read failed (expected)
     }
     return null;
   }

@@ -116,7 +116,7 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
         return;
       }
 
-      console.log('[ICUIExplorer] File system event:', event, 'for', filePath);
+      // File system event received for workspace path: ${filePath}
 
       switch (event) {
         case 'fs.file_created':
@@ -142,7 +142,7 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
           break;
         
         default:
-          console.debug('[ICUIExplorer] Unknown event type:', event);
+          // Unknown event type received
       }
     };
 
@@ -152,7 +152,7 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
     // Subscribe to filesystem events - only if connected
     const subscribeToEvents = () => {
       if (!webSocketService.isConnected()) {
-        console.log('[ICUIExplorer] WebSocket not connected, waiting for connection...');
+        // WebSocket not connected, waiting for connection...
         return;
       }
 
@@ -161,7 +161,7 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
         webSocketService.notify('subscribe', { 
           topics: ['fs.file_created', 'fs.file_deleted', 'fs.file_moved'] 
         });
-        console.log('[ICUIExplorer] Subscribed to filesystem events');
+        // Subscribed to filesystem events
       } catch (error) {
         console.warn('[ICUIExplorer] Failed to subscribe to filesystem events:', error);
       }
@@ -173,7 +173,7 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
     } else {
       // Wait for connection and then subscribe
       const handleConnected = () => {
-        console.log('[ICUIExplorer] WebSocket connected, subscribing to events...');
+        // WebSocket connected, subscribing to events...
         subscribeToEvents();
         webSocketService.off('connected', handleConnected);
       };

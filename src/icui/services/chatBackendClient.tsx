@@ -60,12 +60,12 @@ export class ChatBackendClient {
       }
       
       const wsUrl = constructWebSocketUrl('/ws/chat');
-      console.log('Connecting to Chat WebSocket:', wsUrl);
+      // Connecting to Chat WebSocket
       
       this.websocket = new WebSocket(wsUrl);
       
       this.websocket.onopen = () => {
-        console.log('Chat WebSocket connected - agentic backend ready');
+        // Chat WebSocket connected - agentic backend ready
         this.reconnectAttempts = 0;
         this.isDisconnecting = false;
         this.notifyStatus({ 

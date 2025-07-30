@@ -91,7 +91,7 @@ export abstract class BackendClient {
       ...config
     };
     
-    console.log('BackendClient initialized with URL:', this.baseUrl);
+    // BackendClient initialized with URL
   }
 
   /**
@@ -372,7 +372,6 @@ export class FileClient extends BackendClient {
   }
 
   async saveFile(path: string, content: string): Promise<void> {
-    console.log('Saving file:', { path, content }); // Debug print
     return this.executeWithFallback(
       async () => {
         const response = await this.fetchWithRetry(`${this.baseUrl}/api/files`, {
@@ -384,7 +383,6 @@ export class FileClient extends BackendClient {
             create_dirs: true
           }),
         });
-        console.log('Save file response:', response.status, response.statusText); // Debug print
         await this.handleResponse(response);
       },
       async () => {

@@ -6,7 +6,19 @@
  * 
  * Key Features:
  * - Centralized backend service for file operations
- * - Multi-file tabs with backend synchronization
+ * - Multi-file tabs with bac      const newStatus = {
+        connected: false,
+        error: (error as Error).message || 'Unknown error',
+        timestamp: Date.now()
+      };
+      // Backend connection error
+      setConnectionStatus(newStatus);
+      if (onConnectionStatusChange) {
+        // Calling onConnectionStatusChange callback with error
+        onConnectionStatusChange(newStatus);
+      } else {
+        // No onConnectionStatusChange callback available
+      }zation
  * - Auto-save with debouncing
  * - Real-time file loading from backend
  * - CodeMirror 6 integration with syntax highlighting
@@ -265,14 +277,13 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
         connected: status.connected,
         timestamp: Date.now()
       };
-      console.log('Backend connection status updated:', newStatus);
-      console.log('onConnectionStatusChange callback exists:', !!onConnectionStatusChange);
+      // Backend connection status updated
       setConnectionStatus(newStatus);
       if (onConnectionStatusChange) {
-        console.log('Calling onConnectionStatusChange callback with:', newStatus);
+        // Calling onConnectionStatusChange callback
         onConnectionStatusChange(newStatus);
       } else {
-        console.log('No onConnectionStatusChange callback available');
+        // No onConnectionStatusChange callback available
       }
       return status.connected;
     } catch (error) {
@@ -281,14 +292,13 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
         error: error instanceof Error ? error.message : 'Unknown error',
         timestamp: Date.now()
       };
-      console.log('Backend connection error:', newStatus);
-      console.log('onConnectionStatusChange callback exists:', !!onConnectionStatusChange);
+      // Backend connection error
       setConnectionStatus(newStatus);
       if (onConnectionStatusChange) {
-        console.log('Calling onConnectionStatusChange callback with error:', newStatus);
+        // Calling onConnectionStatusChange callback with error
         onConnectionStatusChange(newStatus);
       } else {
-        console.log('No onConnectionStatusChange callback available');
+        // No onConnectionStatusChange callback available
       }
       return false;
     }
@@ -300,17 +310,17 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
     
     setIsLoading(true);
     try {
-      console.log('Loading files from workspace:', effectiveWorkspaceRoot);
+      // Loading files from workspace
       // First, get the list of files without content
       const loadedFiles = await backendService.getWorkspaceFiles(effectiveWorkspaceRoot);
-      console.log('Loaded file list:', loadedFiles);
+      // Loaded file list
       
       if (loadedFiles.length > 0) {
         // Load content for the first file immediately before setting files
         try {
-          console.log('Loading content for first file:', loadedFiles[0].path);
+          // Loading content for first file
           const fileWithContent = await backendService.getFile(loadedFiles[0].path!);
-          console.log('Loaded content for first file, length:', fileWithContent.content.length);
+          // Loaded content for first file
           
           // Update the first file with content
           loadedFiles[0] = { ...loadedFiles[0], content: fileWithContent.content };
@@ -323,7 +333,7 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
         
         // Set the first file as active if no active file is set
         if (!activeFileId) {
-          console.log('Setting active file to:', loadedFiles[0].id);
+          // Setting active file to first file
           setActiveFileId(loadedFiles[0].id);
         }
       } else {
@@ -519,14 +529,14 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
 
     // Don't initialize if no active file
     if (!activeFile) {
-      console.log('No active file, skipping editor initialization');
+      // No active file, skipping editor initialization
       return;
     }
 
     // Use activeFile content or default content for initial setup
     const initialContent = activeFile.content || '';
     
-    console.log('Initializing editor with content:', initialContent.substring(0, 100) + (initialContent.length > 100 ? '...' : ''));
+    // Initializing editor with content
     currentContentRef.current = initialContent;
 
     // Create new editor state
@@ -543,13 +553,13 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
 
     // Focus the editor
     editorViewRef.current.focus();
-    console.log('Editor initialized and focused');
+    // Editor initialized and focused
 
     return () => {
       if (editorViewRef.current) {
         editorViewRef.current.destroy();
         editorViewRef.current = null;
-        console.log('Editor instance destroyed on cleanup');
+        // Editor instance destroyed on cleanup
       }
     };
   }, [isDarkTheme, createExtensions, activeFile?.id]); // FIXED: Removed activeFile.content dependency
@@ -560,15 +570,11 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
 
     const currentContent = editorViewRef.current.state.doc.toString();
     
-    console.log('Editor content update check:');
-    console.log('- Active file:', activeFile.id);
-    console.log('- Current editor content length:', currentContent.length);
-    console.log('- Active file content length:', activeFile.content?.length || 0);
-    console.log('- Content matches?', currentContent === activeFile.content);
+    // Editor content update check for active file
     
     // Update when content is different (file switch or content loaded)
     if (currentContent !== activeFile.content) {
-      console.log('Updating editor with new file content');
+      // Updating editor with new file content
       
       // Update the ref first to prevent loops
       currentContentRef.current = activeFile.content || '';

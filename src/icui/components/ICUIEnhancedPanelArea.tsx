@@ -136,10 +136,10 @@ export const ICUIEnhancedPanelArea: React.FC<ICUIEnhancedPanelAreaProps> = ({
         return;
       }
       
-      console.log('Dropping panel:', { panelId, sourceAreaId, targetAreaId: id });
+      // Dropping panel in different area
       onPanelDrop?.(panelId, sourceAreaId);
     } else if (sourceAreaId === id) {
-      console.log('Ignoring drop in same area:', { panelId, sourceAreaId, targetAreaId: id });
+      // Ignoring drop in same area
     }
   }, [allowDrop, id, onPanelDrop, panels]);
 

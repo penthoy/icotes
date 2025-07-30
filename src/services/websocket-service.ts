@@ -345,11 +345,13 @@ export class WebSocketService {
           break;
         case 'subscribed':
           // Handle subscription confirmation from backend
-          this.handleSubscriptionMessage(message.payload, true);
+          // Note: subscribed messages have topics/timestamp at top level, not in payload
+          this.handleSubscriptionMessage(message, true);
           break;
         case 'unsubscribed':
           // Handle unsubscription confirmation from backend
-          this.handleSubscriptionMessage(message.payload, false);
+          // Note: unsubscribed messages have topics/timestamp at top level, not in payload
+          this.handleSubscriptionMessage(message, false);
           break;
         default:
           console.warn('Unknown message type:', message.type);
@@ -432,18 +434,24 @@ export class WebSocketService {
    * Handle subscription/unsubscription confirmation messages from backend
    */
   private handleSubscriptionMessage(payload: any, isSubscribed: boolean): void {
+    // Handle case where payload might be undefined or null
+    if (!payload) {
+      console.warn(`Received ${isSubscribed ? 'subscribed' : 'unsubscribed'} message with no payload`);
+      // Emit subscription event even without payload
+      this.emit(isSubscribed ? 'subscribed' : 'unsubscribed', {
+        topics: [],
+        timestamp: Date.now()
+      });
+      return;
+    }
+
     const action = isSubscribed ? 'subscribed to' : 'unsubscribed from';
     const topics = payload.topics || [];
-    
-    // Log subscription status for debugging
-    if (topics.length > 0) {
-      console.log(`WebSocket ${action} topics:`, topics);
-    }
     
     // Emit subscription event for components that need to track subscription status
     this.emit(isSubscribed ? 'subscribed' : 'unsubscribed', {
       topics,
-      timestamp: payload.timestamp
+      timestamp: payload.timestamp || Date.now()
     });
   }
 

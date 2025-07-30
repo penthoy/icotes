@@ -11,6 +11,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### July 2025 - Major Integration and Backend Fixes
 
+- **Pytest Warnings Cleanup**: Reduced pytest warnings from 1599 to 33 (98% reduction) by adding pytest configuration filters for external dependencies and fixing datetime.utcnow() deprecation warnings.
+
+- **ICPY Phase 6.5: Custom Agent Integration Complete**: Unified chat service integration for custom agents with real-time streaming through `/ws/chat` endpoint using START→CHUNKS→END protocol with full database persistence.
+
+- **Debug Log Cleanup & Production Readiness**: Comprehensive cleanup of console.log statements from frontend/backend components and removed chat.db from git tracking for production readiness.
+
+- **ICPY Plan Steps 6.1, 6.2, & 6.3 Completion**: Completed all major ICPY agentic framework foundation steps with 56 passing tests, full workflow infrastructure, and agent service layer operational.
+
+- **Custom Agent System Implementation**: Complete custom agent system with dropdown interface, streaming support, fixed OpenAIDemoAgent import issues, and full chat history persistence.
+
+- **Main.py Backend Refactoring**: Comprehensive backend cleanup reducing main.py from 1441 to 958 lines, removed legacy endpoints, organized code into functions.
+
+- **UI Component Fixes & Enhancements**: Fixed panel tab persistence, drag/drop infinite loops, terminal arrow key navigation, custom agent dropdown implementation.
+
+- **Custom Agent Architecture Abstraction**: Implemented CustomAgentBase abstract class with unified chat interface and agent registry system.
+
+- **ICUIChat.tsx Component Implementation**: Created new ICUI chat component with full theme support, WebSocket integration, replaced ICUIChatPanel.
+
+- **Streaming Chat & ICPY Phase 6 Complete**: Fixed duplicate message handling in streaming responses, completed icpy_plan.md steps 6.1-6.4 for production-ready agentic infrastructure.
+
+- **Framework Installation & Validation**: Installed and validated OpenAI SDK, CrewAI, LangChain/LangGraph with unified interface and comprehensive testing.
+
+- **Simple Components & Integration Testing**: Created simple components for testing, implemented smart domain detection for Cloudflare tunnel compatibility.
+
+- **Explorer & Home Route Enhancements**: Implemented VS Code-like explorer with tree folder expansion, real-time file system monitoring, migrated inthome.tsx to home.tsx.
+
+- **Framework Services & Theme Fixes**: Created notification service and backend client abstractions, fixed terminal/editor theme color consistency.
+
+- **Editor Bug Fixes & Tab Management**: Fixed critical tab switching without reload, cursor positioning bugs, proper scrollbar implementation.
+
+- **Debug Log Cleanup & Production Readiness Preparation**: Comprehensive cleanup of all phased debug logs and codebase preparation for production deployment. Removed debug logs from backend streaming files and frontend chat components, removed chat.db from git tracking, added WebSocket message type support, and verified build success. Codebase is now production-ready with clean logs, proper database management, and resolved frontend warnings.
+
 - **BackendConnectedEditor Cursor Positioning Bug Fix**: Fixed critical cursor positioning issue where typing caused cursor to jump to beginning instead of staying at current position. Root cause was stale closure issues in CodeMirror updateListener and unnecessary editor recreations. Applied fixes following the working ICUIEnhancedEditorPanel pattern including editor recreation logic fixes, updateListener closure fixes, content reference tracking, and content update effect improvements.
 
 - **Integration Plan Phase 2.4 - Home.tsx Rewrite and ICPY Preparation**: Successfully completed rewrite of home.tsx for ICPY integration. Copied original home.tsx to tests/integration/inthome.tsx and refactored for backend integration readiness. Cleaned up components, simplified backend state management with graceful fallbacks, and maintained existing integration while preparing for future ICPY backend connection.

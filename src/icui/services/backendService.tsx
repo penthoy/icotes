@@ -89,56 +89,49 @@ export class ICUIBackendService extends FileClient {
   async getDirectoryContents(path: string = '/'): Promise<ICUIFileNode[]> {
     await this.ensureInitialized();
     
-    console.log('[ICUIBackendService] getDirectoryContents called with path:', path);
-    console.log('[ICUIBackendService] baseUrl:', this.baseUrl);
-    console.log('[ICUIBackendService] connectionStatus:', this.connectionStatus);
+    // Getting directory contents for path
     
     return this.executeWithFallback(
       async () => {
         const url = `${this.baseUrl}/api/files?path=${encodeURIComponent(path)}`;
-        console.log('[ICUIBackendService] Fetching from URL:', url);
+        // Fetching from backend URL
         
-        const response = await this.fetchWithRetry(url);
-        console.log('[ICUIBackendService] Response status:', response.status, response.statusText);
+        const response = await fetch(url);
+        // Response status received
         
-        const result = await this.handleResponse<any>(response);
-        console.log('[ICUIBackendService] Parsed result:', result);
+        const result = await response.json();
+        // Parsed result received
         
         if (!result.success) {
           throw new Error(result.message || 'Failed to get directory contents');
         }
         
-        const fileList = result.data || [];
-        console.log('[ICUIBackendService] File list length:', fileList.length);
+        const fileList = result.files || [];
+        // File list retrieved
         
-        // Convert backend response to ICUIFileNode format
-        const nodes = fileList.map((item: any) => ({
-          id: item.path,
-          name: item.name,
-          type: item.is_directory ? 'folder' as const : 'file' as const,
-          path: item.path,
-          size: item.size,
-          modified: item.modified_at ? new Date(item.modified_at * 1000).toISOString() : undefined,
-          isExpanded: false,
-          children: item.is_directory ? [] : undefined
+        // Convert backend format to FileNode format
+        const nodes: ICUIFileNode[] = fileList.map((file: any) => ({
+          id: file.path || file.id,
+          name: file.name,
+          type: (file.is_directory || file.isDirectory) ? 'folder' : 'file',
+          path: file.path,
+          size: file.size,
+          modified: file.modified
         }));
-
-        console.log('[ICUIBackendService] Converted nodes:', nodes);
-
-        // Sort: folders first, then files, both alphabetically
+        
+        // Converted nodes to FileNode format                // Sort nodes: directories first, then files (alphabetically within each group)
         const sortedNodes = nodes.sort((a, b) => {
-          if (a.type !== b.type) {
-            return a.type === 'folder' ? -1 : 1;
-          }
+          if (a.type === 'folder' && b.type === 'file') return -1;
+          if (a.type === 'file' && b.type === 'folder') return 1;
           return a.name.localeCompare(b.name);
         });
         
-        console.log('[ICUIBackendService] Returning sorted nodes:', sortedNodes);
+        // Returning sorted nodes
         return sortedNodes;
       },
       async () => {
         // Fallback: return empty array
-        console.log('[ICUIBackendService] Using fallback - returning empty array');
+        // Using fallback - returning empty array
         return [];
       },
       'Directory listing'

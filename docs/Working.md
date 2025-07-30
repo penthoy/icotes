@@ -2,6 +2,75 @@
 
 ## Recently Finished (July 2025)
 
+### Pytest Warnings Cleanup
+- **Task**: Reduced pytest warnings from 1599 to 33 (98% reduction)
+- **Key Insight**: Added pytest configuration filters for external dependencies and fixed datetime.utcnow() deprecation warnings
+
+### ICPY Phase 6.5: Custom Agent Integration Complete
+- **Task**: Unified chat service integration for custom agents with real-time streaming
+- **Key Insight**: Custom agents now route through `/ws/chat` with START→CHUNKS→END protocol, full database persistence
+
+### Debug Log Cleanup & Production Readiness
+- **Task**: Cleaned up debug logs and prepared codebase for production
+- **Key Insight**: Removed console.log statements from frontend/backend, cleaned chat.db from git tracking
+
+### ICPY Plan Steps 6.1, 6.2, & 6.3 Completion
+- **Task**: Completed all major ICPY agentic framework foundation steps
+- **Key Insight**: All agentic framework tests passing (56 tests), full workflow infrastructure operational
+
+### Custom Agent System Implementation & Bug Fixes
+- **Task**: Complete custom agent system with dropdown interface and streaming
+- **Key Insight**: Rewrote custom_agent.py as registry, fixed OpenAIDemoAgent import issues, full chat history persistence
+
+### Main.py Backend Refactoring
+- **Task**: Comprehensive backend cleanup and optimization
+- **Key Insight**: Removed legacy endpoints and duplicate code, reduced from 1441 to 958 lines, organized into functions
+
+### UI Component Fixes & Enhancements
+- **Task**: Fixed major UI bugs and improved component behavior
+- **Key Insight**: Fixed panel tab persistence, drag/drop infinite loops, terminal arrow key navigation, custom agent dropdown implementation
+
+### Custom Agent Architecture Abstraction
+- **Task**: Created standardized custom agent framework
+- **Key Insight**: Implemented CustomAgentBase abstract class with unified chat interface, agent registry system
+
+### ICUIChat.tsx Component Implementation
+- **Task**: Created new ICUI chat component following framework patterns
+- **Key Insight**: Full theme support, WebSocket integration, replaced ICUIChatPanel with proper ICUI component
+
+### Streaming Chat & ICPY Phase 6 Complete
+- **Task**: Fixed streaming duplicates and completed full agentic backend integration
+- **Key Insight**: Fixed duplicate message handling, completed icpy_plan.md steps 6.1-6.4, production-ready agentic infrastructure
+
+### Framework Installation & Validation
+- **Task**: Installed and validated all agentic frameworks
+- **Key Insight**: OpenAI SDK, CrewAI, LangChain/LangGraph with unified interface and comprehensive testing
+
+### Simple Components & Integration Testing
+- **Task**: Created simple components for testing and Cloudflare tunnel compatibility
+- **Key Insight**: Smart domain detection for backend connections, comprehensive integration test environment
+
+### Explorer & Home Route Enhancements
+- **Task**: VS Code-like explorer behavior and home route migration
+- **Key Insight**: Tree-like folder expansion, real-time file system monitoring, migrated inthome.tsx to home.tsx
+
+### Framework Services & Theme Fixes
+- **Task**: Service abstractions and theme consistency improvements
+- **Key Insight**: Notification service, backend client abstraction, fixed terminal/editor theme colors
+
+### Editor Bug Fixes & Tab Management
+- **Task**: Fixed critical editor issues and improved tab behavior
+- **Key Insight**: Fixed tab switching without reload, cursor positioning bugs, proper scrollbar implementation
+- **Task**: Cleaned up all phased debug logs and prepared codebase for production deployment.
+- **Key Features**:
+  - Removed all phased debug logs from backend streaming files (chat_service.py, custom_agent.py)
+  - Removed all debug/emoji logs from frontend chat components (ICUIChat.tsx, chatBackendClient.tsx, useChatMessages.tsx, useCustomAgents.ts)
+  - Successfully removed chat.db from git tracking and verified .gitignore coverage
+  - Added support for "subscribed"/"unsubscribed" WebSocket message types in frontend service
+  - Confirmed frontend builds successfully with no warnings or errors
+  - Created comprehensive documentation in experience_distillation_stream_custom_agent.md
+  - **Technical Achievement**: Codebase is now production-ready with clean logs, proper database management, and resolved frontend warnings
+
 ### BackendConnectedEditor Cursor Positioning Bug Fix
 - **Task**: Fixed critical cursor positioning issue in BackendConnectedEditor where typing caused cursor to jump to beginning.
 - **Key Features**:
