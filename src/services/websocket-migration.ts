@@ -7,7 +7,7 @@
 
 import { EnhancedWebSocketService, ConnectionOptions, MessageOptions } from './enhanced-websocket-service';
 import { ServiceType } from './connection-manager';
-import { ChatBackendClient } from '../icui/services/chatBackendClient_deprecated';
+import { ChatBackendClient } from '../icui/services/chatBackendClient';
 
 export interface MigrationConfig {
   enableEnhancedService: boolean;

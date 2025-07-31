@@ -1,12 +1,13 @@
 /**
- * Backend Service
+ * Backend Service - Enhanced Version
  * 
- * Currently using the proven implementation for reliable backend functionality.
- * The enhanced version with advanced features is available as enhancedBackendService.tsx
+ * Using the enhanced implementation with advanced WebSocket features.
+ * Provides reliable backend functionality with connection management, error handling,
+ * message queuing, and health monitoring.
  */
 
-export * from './backendService_deprecated';
-export { icuiBackendService } from './backendService_deprecated';
+export * from './enhancedBackendService';
+export { icuiBackendService } from './enhancedBackendService';
 
-// Re-export the stable service as the default ICUIBackendService
-export { ICUIBackendService } from './backendService_deprecated';
+// Re-export the enhanced service as the default ICUIBackendService
+export { ICUIBackendService } from './enhancedBackendService';

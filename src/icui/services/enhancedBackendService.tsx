@@ -10,6 +10,7 @@ import { EventEmitter } from 'eventemitter3';
 import { EnhancedWebSocketService, ConnectionOptions, MessageOptions } from '../../services/enhanced-websocket-service';
 import { WebSocketMigrationHelper } from '../../services/websocket-migration';
 import { ConnectionStatus } from '../../types/backend-types';
+import { log } from '../../services/frontend-logger';
 
 export interface ICUIFile {
   id: string;
@@ -51,6 +52,9 @@ export class EnhancedICUIBackendService extends EventEmitter {
   private connectionId: string | null = null;
   private _initialized = false;
   
+  // Backend configuration
+  private baseUrl: string;
+  
   // Health monitoring
   private healthStatus: any = null;
   private connectionStats: any = null;
@@ -67,6 +71,18 @@ export class EnhancedICUIBackendService extends EventEmitter {
 
   constructor(config?: Partial<EnhancedBackendConfig>) {
     super();
+    
+    // Initialize baseUrl for REST API calls
+    // Check if we're in development (localhost) or production
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    if (isLocalhost) {
+      this.baseUrl = `http://localhost:8000`;
+    } else {
+      // For production/remote access, use the backend port
+      this.baseUrl = `http://${window.location.hostname}:8000`;
+    }
+    
+    // console.log('[EnhancedICUIBackendService] Backend URL:', this.baseUrl);
     
     if (config) {
       this.config = { ...this.config, ...config };
@@ -102,25 +118,25 @@ export class EnhancedICUIBackendService extends EventEmitter {
 
     // Enhanced service event handlers
     this.enhancedService.on('connection_opened', (data: any) => {
-      console.log('[EnhancedICUIBackendService] Enhanced service connected:', data);
+      log.info('EnhancedICUIBackendService', 'Enhanced service connected', data);
       this._initialized = true;
       this.emit('connection_status_changed', { status: 'connected' });
     });
 
     this.enhancedService.on('connection_closed', (data: any) => {
-      console.log('[EnhancedICUIBackendService] Enhanced service disconnected:', data);
+      log.info('EnhancedICUIBackendService', 'Enhanced service disconnected', data);
       this.emit('connection_status_changed', { status: 'disconnected' });
     });
 
     // Also listen for the legacy events for compatibility
     this.enhancedService.on('connected', (data: any) => {
-      console.log('[EnhancedICUIBackendService] Enhanced service connected (legacy event):', data);
+      // console.log('[EnhancedICUIBackendService] Enhanced service connected (legacy event):', data);
       this._initialized = true;
       this.emit('connection_status_changed', { status: 'connected' });
     });
 
     this.enhancedService.on('disconnected', (data: any) => {
-      console.log('[EnhancedICUIBackendService] Enhanced service disconnected (legacy event):', data);
+      // console.log('[EnhancedICUIBackendService] Enhanced service disconnected (legacy event):', data);
       this.emit('connection_status_changed', { status: 'disconnected' });
     });
 
@@ -137,12 +153,12 @@ export class EnhancedICUIBackendService extends EventEmitter {
 
     this.enhancedService.on('healthUpdate', (health: any) => {
       this.healthStatus = health;
-      console.log('[EnhancedICUIBackendService] Health update:', health);
+      // console.log('[EnhancedICUIBackendService] Health update:', health);
     });
 
     this.enhancedService.on('connectionClosed', (data: any) => {
       if (data.connectionId === this.connectionId) {
-        console.log('[EnhancedICUIBackendService] Connection closed:', data);
+        // console.log('[EnhancedICUIBackendService] Connection closed:', data);
         this.connectionId = null;
         this._initialized = false;
         this.emit('connection_status_changed', { status: 'disconnected' });
@@ -155,7 +171,7 @@ export class EnhancedICUIBackendService extends EventEmitter {
    */
   private async ensureInitialized(): Promise<void> {
     if (!this._initialized) {
-      console.log('[EnhancedICUIBackendService] Auto-initializing enhanced service...');
+      log.info('EnhancedICUIBackendService', 'Auto-initializing enhanced service');
       await this.initializeConnection();
       this._initialized = true;
     }
@@ -184,9 +200,9 @@ export class EnhancedICUIBackendService extends EventEmitter {
         timeout: 15000
       };
 
-      console.log('[EnhancedICUIBackendService] Connecting with options:', options);
+      log.info('EnhancedICUIBackendService', 'Connecting with options', options);
       this.connectionId = await this.enhancedService.connect(options);
-      console.log('[EnhancedICUIBackendService] Connected with ID:', this.connectionId);
+      log.info('EnhancedICUIBackendService', 'Connected with ID', { connectionId: this.connectionId });
       
     } catch (error) {
       console.error('[EnhancedICUIBackendService] Enhanced connection failed:', error);
@@ -215,32 +231,38 @@ export class EnhancedICUIBackendService extends EventEmitter {
   async getWorkspaceFiles(workspaceRoot?: string): Promise<ICUIFile[]> {
     await this.ensureInitialized();
     
-    if (!this.connectionId || !this.enhancedService) {
-      throw new Error('Enhanced backend service not connected');
-    }
-
     try {
-      const message = {
-        id: Math.random().toString(36),
-        method: 'file.list_workspace_files',
-        params: { workspaceRoot },
-        timestamp: Date.now()
-      };
-
-      await this.enhancedService.sendMessage(
-        this.connectionId,
-        JSON.stringify(message),
-        {
-          priority: 'normal',
-          timeout: 10000,
-          expectResponse: true,
-          retries: 2
-        }
-      );
-
-      // Response handling would be implemented through message events
-      // For now, return empty array as placeholder
-      return [];
+      // Use REST API for file listing (same as deprecated version)
+      const path = workspaceRoot || '/';
+      const url = `${this.baseUrl}/api/files?path=${encodeURIComponent(path)}`;
+      // console.log('[EnhancedICUIBackendService] Getting workspace files from:', url);
+      
+      const response = await fetch(url);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to get workspace files: ${response.status} ${response.statusText}`);
+      }
+      
+      const result = await response.json();
+      // console.log('[EnhancedICUIBackendService] Workspace files response:', result);
+      
+      if (!result.success) {
+        throw new Error(result.message || 'Failed to list workspace files');
+      }
+      
+      const fileList = result.data || [];
+      
+      // Convert backend response to ICUIFile format, filter out directories
+      return fileList
+        .filter((item: any) => !item.is_directory)
+        .map((item: any, index: number) => ({
+          id: item.path || `file_${index}`,
+          name: item.name,
+          language: this.detectLanguage(item.name),
+          content: '', // Content will be loaded separately
+          modified: false,
+          path: item.path
+        }));
     } catch (error) {
       console.error('[EnhancedICUIBackendService] Get workspace files failed:', error);
       throw error;
@@ -282,29 +304,29 @@ export class EnhancedICUIBackendService extends EventEmitter {
   async createDirectory(path: string): Promise<void> {
     await this.ensureInitialized();
     
-    if (!this.connectionId || !this.enhancedService) {
-      throw new Error('Enhanced backend service not connected');
-    }
-
     try {
-      const message = {
-        id: Math.random().toString(36),
-        method: 'file.create_directory',  
-        params: { path },
-        timestamp: Date.now()
-      };
-
-      await this.enhancedService.sendMessage(
-        this.connectionId,
-        JSON.stringify(message),
-        {
-          priority: 'normal',
-          timeout: 10000,
-          expectResponse: true,
-          retries: 1
-        }
-      );
-
+      // Use REST API for directory creation
+      const url = `${this.baseUrl}/api/directories`;
+      console.log('[EnhancedICUIBackendService] Creating directory at:', url, 'path:', path);
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ path }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to create directory: ${response.status} ${response.statusText}`);
+      }
+      
+      const result = await response.json();
+      console.log('[EnhancedICUIBackendService] Directory create response:', result);
+      
+      if (!result.success) {
+        throw new Error(result.message || 'Failed to create directory');
+      }
     } catch (error) {
       console.error('[EnhancedICUIBackendService] Create directory failed:', error);
       throw error;
@@ -374,32 +396,45 @@ export class EnhancedICUIBackendService extends EventEmitter {
   async getFileTree(path: string = '/'): Promise<ICUIFileNode[]> {
     await this.ensureInitialized();
     
-    if (!this.connectionId || !this.enhancedService) {
-      throw new Error('Enhanced backend service not connected');
-    }
-
     try {
-      const message = {
-        id: Math.random().toString(36),
-        method: 'file.list_directory',
-        params: { path },
-        timestamp: Date.now()
-      };
-
-      await this.enhancedService.sendMessage(
-        this.connectionId,
-        JSON.stringify(message),
-        {
-          priority: 'normal',
-          timeout: 8000,
-          expectResponse: true,
-          retries: 1
-        }
-      );
-
-      // Response handling would be implemented through message events
-      // For now, return empty array as placeholder
-      return [];
+      // Use REST API for file listing (same as deprecated version)
+      const url = `${this.baseUrl}/api/files?path=${encodeURIComponent(path)}`;
+      console.log('[EnhancedICUIBackendService] Fetching directory contents from:', url);
+      
+      const response = await fetch(url);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch directory contents: ${response.status} ${response.statusText}`);
+      }
+      
+      const result = await response.json();
+      console.log('[EnhancedICUIBackendService] Directory contents response:', result);
+      
+      if (!result.success) {
+        throw new Error(result.message || 'Failed to get directory contents');
+      }
+      
+      const fileList = result.data || result.files || [];
+      
+      // Convert backend format to FileNode format
+      const nodes: ICUIFileNode[] = fileList.map((file: any) => ({
+        id: file.path || file.id,
+        name: file.name,
+        type: (file.is_directory || file.isDirectory) ? 'folder' : 'file',
+        path: file.path,
+        size: file.size,
+        modified: file.modified_at || file.modified
+      }));
+      
+      // Sort nodes: directories first, then files (alphabetically within each group)
+      const sortedNodes = nodes.sort((a, b) => {
+        if (a.type === 'folder' && b.type === 'file') return -1;
+        if (a.type === 'file' && b.type === 'folder') return 1;
+        return a.name.localeCompare(b.name);
+      });
+      
+      console.log('[EnhancedICUIBackendService] Returning sorted nodes:', sortedNodes.length);
+      return sortedNodes;
     } catch (error) {
       console.error('[EnhancedICUIBackendService] Get file tree failed:', error);
       throw error;
@@ -412,32 +447,27 @@ export class EnhancedICUIBackendService extends EventEmitter {
   async readFile(path: string): Promise<string> {
     await this.ensureInitialized();
     
-    if (!this.connectionId || !this.enhancedService) {
-      throw new Error('Enhanced backend service not connected');
-    }
-
     try {
-      const message = {
-        id: Math.random().toString(36),
-        method: 'file.read',
-        params: { path },
-        timestamp: Date.now()
-      };
-
-      await this.enhancedService.sendMessage(
-        this.connectionId,
-        JSON.stringify(message),
-        {
-          priority: 'high',
-          timeout: 15000,
-          expectResponse: true,
-          retries: 2
-        }
-      );
-
-      // Response handling would be implemented through message events
-      // For now, return empty string as placeholder
-      return '';
+      // Use REST API for file reading - use /api/files/content endpoint
+      const url = `${this.baseUrl}/api/files/content?path=${encodeURIComponent(path)}`;
+      // console.log('[EnhancedICUIBackendService] Reading file from:', url);
+      
+      const response = await fetch(url);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to read file: ${response.status} ${response.statusText}`);
+      }
+      
+      const result = await response.json();
+      // console.log('[EnhancedICUIBackendService] File read response:', result);
+      
+      if (!result.success) {
+        throw new Error(result.message || 'Failed to read file');
+      }
+      
+      // Ensure we return a string
+      const content = result.data?.content || result.content || '';
+      return typeof content === 'string' ? content : String(content);
     } catch (error) {
       console.error('[EnhancedICUIBackendService] Read file failed:', error);
       throw error;
@@ -450,29 +480,29 @@ export class EnhancedICUIBackendService extends EventEmitter {
   async writeFile(path: string, content: string): Promise<void> {
     await this.ensureInitialized();
     
-    if (!this.connectionId || !this.enhancedService) {
-      throw new Error('Enhanced backend service not connected');
-    }
-
     try {
-      const message = {
-        id: Math.random().toString(36),
-        method: 'file.write',
-        params: { path, content },
-        timestamp: Date.now()
-      };
-
-      await this.enhancedService.sendMessage(
-        this.connectionId,
-        JSON.stringify(message),
-        {
-          priority: 'high',
-          timeout: 20000,
-          expectResponse: true,
-          retries: 2
-        }
-      );
-
+      // Use REST API for file writing (same as deprecated version)
+      const url = `${this.baseUrl}/api/files`;
+      console.log('[EnhancedICUIBackendService] Writing file to:', url, 'path:', path);
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ path, content }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to write file: ${response.status} ${response.statusText}`);
+      }
+      
+      const result = await response.json();
+      console.log('[EnhancedICUIBackendService] File write response:', result);
+      
+      if (!result.success) {
+        throw new Error(result.message || 'Failed to write file');
+      }
     } catch (error) {
       console.error('[EnhancedICUIBackendService] Write file failed:', error);
       throw error;
@@ -485,29 +515,29 @@ export class EnhancedICUIBackendService extends EventEmitter {
   async createFile(path: string, content: string = ''): Promise<void> {
     await this.ensureInitialized();
     
-    if (!this.connectionId || !this.enhancedService) {
-      throw new Error('Enhanced backend service not connected');
-    }
-
     try {
-      const message = {
-        id: Math.random().toString(36),
-        method: 'file.create',
-        params: { path, content },
-        timestamp: Date.now()
-      };
-
-      await this.enhancedService.sendMessage(
-        this.connectionId,
-        JSON.stringify(message),
-        {
-          priority: 'normal',
-          timeout: 10000,
-          expectResponse: true,
-          retries: 1
-        }
-      );
-
+      // Use REST API for file creation (same as deprecated version)
+      const url = `${this.baseUrl}/api/files`;
+      console.log('[EnhancedICUIBackendService] Creating file at:', url, 'path:', path);
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ path, content }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to create file: ${response.status} ${response.statusText}`);
+      }
+      
+      const result = await response.json();
+      console.log('[EnhancedICUIBackendService] File create response:', result);
+      
+      if (!result.success) {
+        throw new Error(result.message || 'Failed to create file');
+      }
     } catch (error) {
       console.error('[EnhancedICUIBackendService] Create file failed:', error);
       throw error;
@@ -520,29 +550,25 @@ export class EnhancedICUIBackendService extends EventEmitter {
   async deleteFile(path: string): Promise<void> {
     await this.ensureInitialized();
     
-    if (!this.connectionId || !this.enhancedService) {
-      throw new Error('Enhanced backend service not connected');
-    }
-
     try {
-      const message = {
-        id: Math.random().toString(36),
-        method: 'file.delete',
-        params: { path },
-        timestamp: Date.now()
-      };
-
-      await this.enhancedService.sendMessage(
-        this.connectionId,
-        JSON.stringify(message),
-        {
-          priority: 'normal',
-          timeout: 10000,
-          expectResponse: true,
-          retries: 1
-        }
-      );
-
+      // Use REST API for file deletion (same as deprecated version)
+      const url = `${this.baseUrl}/api/files?path=${encodeURIComponent(path)}`;
+      console.log('[EnhancedICUIBackendService] Deleting file at:', url);
+      
+      const response = await fetch(url, {
+        method: 'DELETE'
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to delete file: ${response.status} ${response.statusText}`);
+      }
+      
+      const result = await response.json();
+      console.log('[EnhancedICUIBackendService] File delete response:', result);
+      
+      if (!result.success) {
+        throw new Error(result.message || 'Failed to delete file');
+      }
     } catch (error) {
       console.error('[EnhancedICUIBackendService] Delete file failed:', error);
       throw error;
@@ -552,16 +578,53 @@ export class EnhancedICUIBackendService extends EventEmitter {
   /**
    * Handle WebSocket messages (adapted from parent class)
    */
-  private handleWebSocketMessage(event: { data: string }): void {
+  private handleWebSocketMessage(event: { data: string | object }): void {
     try {
-      const message = JSON.parse(event.data);
+      let message: any;
+      
+      // Handle both string and already-parsed object data
+      if (typeof event.data === 'string') {
+        // Check if event.data is valid before parsing
+        if (!event.data || event.data === 'undefined') {
+          console.warn('[EnhancedICUIBackendService] Invalid message data received:', event.data);
+          return;
+        }
+        message = JSON.parse(event.data);
+      } else if (typeof event.data === 'object' && event.data !== null) {
+        // Data is already parsed
+        message = event.data;
+      } else {
+        console.warn('[EnhancedICUIBackendService] Invalid message data received:', event.data);
+        return;
+      }
+
       console.log('[EnhancedICUIBackendService] Message received:', message);
       
-      // Emit appropriate events based on message type
-      if (message.method) {
+      // Handle different message types
+      if (message.type === 'filesystem_event') {
+        // Handle filesystem events and emit them for the explorer
+        log.debug('EnhancedICUIBackendService', 'Filesystem event received', { event: message.event, data: message.data });
+        console.log('[EnhancedICUIBackendService] Filesystem event received:', { event: message.event, data: message.data });
+        this.emit('filesystem_event', {
+          type: message.event,
+          path: message.data?.path,
+          data: message.data
+        });
+      } else if (message.type === 'subscribed') {
+        log.info('EnhancedICUIBackendService', 'Subscription confirmed', { topics: message.topics });
+        console.log('[EnhancedICUIBackendService] Subscription confirmed:', message.topics);
+      } else if (message.type === 'unsubscribed') {
+        log.info('EnhancedICUIBackendService', 'Unsubscription confirmed', { topics: message.topics });
+        console.log('[EnhancedICUIBackendService] Unsubscription confirmed:', message.topics);
+      } else if (message.type === 'welcome') {
+        log.info('EnhancedICUIBackendService', 'Welcome message received', { connectionId: message.connection_id });
+        console.log('[EnhancedICUIBackendService] Welcome message received:', message.connection_id);
+      } else if (message.method) {
         this.emit('response', message);
       } else if (message.event) {
         this.emit(message.event, message.data);
+      } else {
+        console.log('[EnhancedICUIBackendService] Unhandled message type:', message.type || 'unknown');
       }
     } catch (error) {
       console.error('[EnhancedICUIBackendService] Error parsing message:', error);
@@ -569,12 +632,68 @@ export class EnhancedICUIBackendService extends EventEmitter {
   }
 
   /**
+   * Send notification message (compatibility method for explorer)
+   */
+  async notify(method: string, params: any): Promise<any> {
+    await this.ensureInitialized();
+    
+    if (!this.connectionId || !this.enhancedService) {
+      throw new Error('WebSocket connection not established');
+    }
+
+    // Convert method+params format to WebSocket API format
+    let message: any;
+    if (method === 'subscribe') {
+      message = {
+        type: 'subscribe',
+        topics: params.topics || [],
+        id: Math.random().toString(36).substr(2, 9)
+      };
+    } else if (method === 'unsubscribe') {
+      message = {
+        type: 'unsubscribe',
+        topics: params.topics || [],
+        id: Math.random().toString(36).substr(2, 9)
+      };
+    } else {
+      // Generic method+params format for other notifications
+      message = {
+        method,
+        params,
+        id: Math.random().toString(36).substr(2, 9)
+      };
+    }
+
+    log.debug('EnhancedICUIBackendService', 'Sending notification', { method, params });
+    console.log('[EnhancedICUIBackendService] Sending notification:', { method, params, message, connectionId: this.connectionId });
+
+    try {
+      const response = await this.enhancedService.sendMessage(
+        this.connectionId,
+        message,
+        {
+          priority: 'normal',
+          timeout: 10000,
+          expectResponse: false
+        }
+      );
+      console.log('[EnhancedICUIBackendService] Notification response:', response);
+      return response;
+    } catch (error) {
+      console.error('[EnhancedICUIBackendService] Failed to send notification:', { method, params, error });
+      log.error('EnhancedICUIBackendService', 'Failed to send notification', { method, params, error });
+      throw error;
+    }
+  }
+
+  /**
    * Get connection status
    */
-  getConnectionStatus(): Promise<{ connected: boolean }> {
-    return Promise.resolve({
-      connected: this.connectionId !== null
-    });
+  async getConnectionStatus(): Promise<{ connected: boolean }> {
+    await this.ensureInitialized();
+    return {
+      connected: this.connectionId !== null && this.enhancedService !== null
+    };
   }
 
   /**
@@ -656,3 +775,7 @@ export class EnhancedICUIBackendService extends EventEmitter {
 
 // Create singleton instance with enhanced features
 export const enhancedICUIBackendService = new EnhancedICUIBackendService();
+
+// Compatibility exports for existing code
+export { EnhancedICUIBackendService as ICUIBackendService };
+export const icuiBackendService = enhancedICUIBackendService;

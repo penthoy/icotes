@@ -131,6 +131,22 @@ class ClipboardResponse(BaseModel):
     text: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = None
 
+class FrontendLogEntry(BaseModel):
+    """Frontend log entry model."""
+    timestamp: str
+    level: int
+    component: str
+    message: str
+    data: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+    sessionId: Optional[str] = None
+    connectionId: Optional[str] = None
+
+class FrontendLogsRequest(BaseModel):
+    """Request model for frontend logs."""
+    sessionId: str
+    logs: List[FrontendLogEntry]
+
 # Data models
 
 # App lifecycle management
@@ -433,6 +449,50 @@ async def execute_code(request: CodeExecutionRequest):
             output=[],
             errors=[f"Execution error: {str(e)}"],
             execution_time=0.0
+        )
+
+# Frontend logging endpoint
+@app.post("/api/logs/frontend")
+async def receive_frontend_logs(request: FrontendLogsRequest):
+    """Receive and store frontend logs."""
+    try:
+        # Create logs directory if it doesn't exist
+        logs_dir = os.path.join(os.path.dirname(__file__), '..', 'logs')
+        os.makedirs(logs_dir, exist_ok=True)
+        
+        # Create frontend log file path
+        log_file = os.path.join(logs_dir, 'frontend.log')
+        
+        # Format and write logs
+        with open(log_file, 'a', encoding='utf-8') as f:
+            for log_entry in request.logs:
+                level_names = {0: 'DEBUG', 1: 'INFO', 2: 'WARN', 3: 'ERROR'}
+                level_name = level_names.get(log_entry.level, 'UNKNOWN')
+                
+                # Format log entry similar to backend format
+                log_line = f"{log_entry.timestamp} - {level_name} - [{log_entry.component}] {log_entry.message}"
+                
+                if log_entry.data:
+                    log_line += f" | Data: {json.dumps(log_entry.data)}"
+                
+                if log_entry.error:
+                    log_line += f" | Error: {log_entry.error}"
+                
+                if log_entry.sessionId:
+                    log_line += f" | Session: {log_entry.sessionId}"
+                
+                if log_entry.connectionId:
+                    log_line += f" | Connection: {log_entry.connectionId}"
+                
+                f.write(log_line + '\n')
+        
+        return JSONResponse(content={"success": True, "message": f"Stored {len(request.logs)} log entries"})
+        
+    except Exception as e:
+        logger.error(f"Error storing frontend logs: {e}")
+        return JSONResponse(
+            status_code=500, 
+            content={"success": False, "message": f"Failed to store logs: {str(e)}"}
         )
 
 # Enhanced WebSocket endpoint (now the primary /ws endpoint)

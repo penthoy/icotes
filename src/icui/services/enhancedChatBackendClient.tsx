@@ -1,14 +1,29 @@
 /**
- * Enhanced Chat Backend Client
+ * import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { EnhancedWebSocketService } from '../../services/enhanced-websocket-service';
+import { log } from '../../services/frontend-logger';
+import type { ConnectionOptions, MessageOptions } from '../../services/enhanced-websocket-service';
+import type { ConnectionHealth } from '../../services/connection-manager';nced Chat Backend Client
  * 
  * Integrates all WebSocket improvements: connection management, error handling,
  * message queuing, health monitoring, and migration support for chat service.
  */
 
-import { EnhancedWebSocketService, ConnectionOptions, MessageOptions } from '../../services/enhanced-websocket-service';
-import { WebSocketMigrationHelper } from '../../services/websocket-migration';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { EnhancedWebSocketService } from '../../services/enhanced-websocket-service';
+import { log } from '../../services/frontend-logger';
+import type { ConnectionOptions, MessageOptions } from '../../services/enhanced-websocket-service';
+import type { ConnectionHealth } from '../../services/connection-manager';
 import { notificationService } from './notificationService';
 import { ConnectionStatus } from '../types/chatTypes';
+
+// Local types for WebSocket messages
+interface WebSocketMessage {
+  type: string;
+  data?: any;
+  id?: string;
+  timestamp?: string;
+}
 
 export interface ChatMessage {
   id: string;
@@ -72,7 +87,6 @@ export interface AgentConfig {
 
 export class EnhancedChatBackendClient {
   private enhancedService: EnhancedWebSocketService | null = null;
-  private migrationHelper: WebSocketMigrationHelper | null = null;
   private connectionId: string | null = null;
   
   // Event handlers
@@ -89,42 +103,50 @@ export class EnhancedChatBackendClient {
   private reconnectAttempts: number = 0;
   private isDisconnecting: boolean = false;
   
+  // Streaming state management (like deprecated client)
+  private streamingMessage: ChatMessage | null = null;
+  private processedMessageIds: Set<string> = new Set();
+  
   // Health monitoring
   private healthStatus: any = null;
   private connectionStats: any = null;
 
   constructor() {
     this.initializeEnhancedService();
+    
+    // Clean up old message IDs periodically to prevent memory leaks
+    setInterval(() => {
+      if (this.processedMessageIds.size > 1000) {
+        // Keep only the most recent 500 message IDs
+        const idsArray = Array.from(this.processedMessageIds);
+        this.processedMessageIds.clear();
+        // Add back the last 500
+        idsArray.slice(-500).forEach(id => this.processedMessageIds.add(id));
+      }
+    }, 60000); // Clean up every minute
   }
 
   /**
    * Initialize enhanced WebSocket service
    */
   private initializeEnhancedService(): void {
-    // Configure enhanced service for chat
+    // Configure enhanced service for chat with minimal features to avoid disconnects
     this.enhancedService = new EnhancedWebSocketService({
-      enableMessageQueue: true,
-      enableHealthMonitoring: true,
-      enableAutoRecovery: true,
-      maxConcurrentConnections: 3,
-      messageTimeout: 30000, // Chat needs longer timeout
+      enableMessageQueue: false, // Disable queuing
+      enableHealthMonitoring: false, // Disable health monitoring
+      enableAutoRecovery: false, // Disable auto recovery
+      maxConcurrentConnections: 1,
+      messageTimeout: 60000, // Longer timeout
       batchConfig: {
-        maxSize: 1, // No batching for chat - preserve message order
+        maxSize: 1,
         maxWaitTime: 0,
-        enableCompression: true
+        enableCompression: false // Disable compression
       }
-    });
-
-    // Set up migration helper
-    this.migrationHelper = new WebSocketMigrationHelper({
-      migrateChat: true,
-      fallbackToLegacy: true,
-      testMode: false
     });
 
     // Enhanced service event handlers
     this.enhancedService.on('connection_opened', (data: any) => {
-      console.log('[EnhancedChatBackendClient] Enhanced service connected:', data);
+      log.info('EnhancedChatBackendClient', 'Enhanced service connected', data);
       this.reconnectAttempts = 0;
       this.isDisconnecting = false;
       
@@ -139,7 +161,7 @@ export class EnhancedChatBackendClient {
 
     // Also listen for legacy events for compatibility
     this.enhancedService.on('connected', (data: any) => {
-      console.log('[EnhancedChatBackendClient] Enhanced service connected (legacy event):', data);
+      log.info('EnhancedChatBackendClient', 'Enhanced service connected (legacy event)', data);
       this.reconnectAttempts = 0;
       this.isDisconnecting = false;
       
@@ -153,7 +175,7 @@ export class EnhancedChatBackendClient {
     });
 
     this.enhancedService.on('connection_closed', (data: any) => {
-      console.log('[EnhancedChatBackendClient] Enhanced service disconnected:', data);
+      log.info('EnhancedChatBackendClient', 'Enhanced service disconnected', data);
       
       this.notifyStatus({
         connected: false,
@@ -164,7 +186,7 @@ export class EnhancedChatBackendClient {
     });
 
     this.enhancedService.on('disconnected', (data: any) => {
-      console.log('[EnhancedChatBackendClient] Enhanced service disconnected (legacy event):', data);
+      log.info('EnhancedChatBackendClient', 'Enhanced service disconnected (legacy event)', data);
       
       this.notifyStatus({
         connected: false,
@@ -175,15 +197,19 @@ export class EnhancedChatBackendClient {
     });
 
     this.enhancedService.on('message', (data: any) => {
+      // console.log('[EnhancedChatBackendClient] Raw message received:', data);
       if (data.connectionId === this.connectionId) {
         // Use rawData if available (original JSON string), otherwise stringify the parsed message
         const messageData = data.rawData || JSON.stringify(data.message);
+        // console.log('[EnhancedChatBackendClient] Processing message for connectionId:', this.connectionId, 'data:', messageData);
         this.handleWebSocketMessage({ data: messageData });
+      } else {
+        // console.log('[EnhancedChatBackendClient] Message not for this connection:', data.connectionId, 'expected:', this.connectionId);
       }
     });
 
     this.enhancedService.on('error', (error: any) => {
-      console.error('[EnhancedChatBackendClient] Enhanced service error:', error);
+      log.error('EnhancedChatBackendClient', 'Enhanced service error', { error });
       this.handleError(error.message || 'Unknown enhanced service error');
     });
 
@@ -214,7 +240,7 @@ export class EnhancedChatBackendClient {
     try {
       // Prevent multiple connection attempts
       if (this.connectionId && this.enhancedService) {
-        console.warn('[EnhancedChatBackendClient] Enhanced service already connected');
+        log.warn('EnhancedChatBackendClient', 'Enhanced service already connected');
         return true;
       }
 
@@ -231,25 +257,13 @@ export class EnhancedChatBackendClient {
         timeout: 15000
       };
 
-      console.log('[EnhancedChatBackendClient] Connecting with options:', options);
+      log.info('EnhancedChatBackendClient', 'Connecting with options', options);
       this.connectionId = await this.enhancedService.connect(options);
-      console.log('[EnhancedChatBackendClient] Connected with ID:', this.connectionId);
+      log.info('EnhancedChatBackendClient', 'Connected with ID', { connectionId: this.connectionId });
       
       return true;
     } catch (error) {
-      console.error('[EnhancedChatBackendClient] Enhanced connection failed:', error);
-      
-      // Fallback to legacy service
-      if (this.migrationHelper) {
-        console.log('[EnhancedChatBackendClient] Attempting fallback to legacy service');
-        try {
-          const legacyService = this.migrationHelper.getService('chat');
-          // Use legacy service - would need to implement adapter
-          console.warn('[EnhancedChatBackendClient] Using legacy service adapter');
-        } catch (fallbackError) {
-          console.error('[EnhancedChatBackendClient] Fallback also failed:', fallbackError);
-        }
-      }
+      log.error('EnhancedChatBackendClient', 'Enhanced connection failed', { error });
       
       this.notifyStatus({
         connected: false,
@@ -282,26 +296,29 @@ export class EnhancedChatBackendClient {
 
     const sessionId = options?.sessionId || this.currentSessionId || this.generateSessionId();
     const agentId = options?.agentId || this.selectedAgent;
+    const agentType = options?.agentType || agentId; // Use explicit agentType if provided
     const streaming = options?.streaming ?? true;
 
     const message = {
-      type: 'chat',
-      session_id: sessionId,
+      type: 'message', // Backend expects 'message', not 'chat'
       content: content,
-      agent_id: agentId,
-      streaming: streaming,
-      timestamp: new Date()
+      metadata: {
+        session_id: sessionId,
+        agentType: agentType, // Use the explicit agentType or fallback to agentId
+        streaming: streaming,
+        timestamp: new Date()
+      }
     };
 
     const messageOptions: MessageOptions = {
-      priority: options?.priority || 'high',
-      timeout: options?.timeout || 30000,
-      expectResponse: true,
-      retries: 2
+      priority: 'normal', // Lower priority
+      timeout: 60000, // Longer timeout
+      expectResponse: false, // Don't expect response
+      retries: 0 // No retries to avoid loops
     };
 
     try {
-      console.log('[EnhancedChatBackendClient] Sending enhanced message:', message);
+      // console.log('[EnhancedChatBackendClient] Sending enhanced message:', message);
       
       await this.enhancedService.sendMessage(
         this.connectionId,
@@ -317,7 +334,7 @@ export class EnhancedChatBackendClient {
       }
       
     } catch (error) {
-      console.error('[EnhancedChatBackendClient] Send message failed:', error);
+      log.error('EnhancedChatBackendClient', 'Send message failed', { error });
       throw error;
     }
   }
@@ -370,8 +387,54 @@ export class EnhancedChatBackendClient {
    * Get message history (legacy compatibility)
    */
   async getMessageHistory(maxMessages?: number): Promise<ChatMessage[]> {
-    // Return empty array as placeholder - would need to implement message storage
-    return [];
+    try {
+      // Use HTTP API to get message history from chat.db
+      const limit = maxMessages || 50;
+      let baseUrl = (window as any).__ICUI_API_URL__ || 
+                    (import.meta as any).env?.VITE_API_URL || 
+                    `${window.location.protocol}//${window.location.host}`;
+      
+      // Remove trailing /api if present to avoid double /api in URL
+      if (baseUrl.endsWith('/api')) {
+        baseUrl = baseUrl.slice(0, -4);
+      }
+      
+      const url = `${baseUrl}/api/chat/messages?limit=${limit}&offset=0`;
+      // console.log('[EnhancedChatBackendClient] Fetching message history from:', url);
+      
+      const response = await fetch(url);
+      
+      if (!response.ok) {
+        console.warn('[EnhancedChatBackendClient] Failed to fetch message history:', response.status);
+        return [];
+      }
+      
+      const result = await response.json();
+      // console.log('[EnhancedChatBackendClient] Message history result:', result);
+      
+      const messages = result.data || [];
+      
+      return messages.map((msg: any) => ({
+        id: msg.id,
+        role: msg.sender === 'user' ? 'user' : 'assistant',
+        content: msg.content,
+        timestamp: new Date(msg.timestamp),
+        sender: msg.sender,
+        metadata: {
+          agentId: msg.agentId,
+          agentName: msg.agentName,
+          agentType: msg.agentType,
+          messageType: msg.messageType,
+          workflowId: msg.workflowId,
+          taskId: msg.taskId,
+          capabilities: msg.capabilities,
+          context: msg.context
+        }
+      }));
+    } catch (error) {
+      console.error('[EnhancedChatBackendClient] Failed to load message history:', error);
+      return [];
+    }
   }
 
   /**
@@ -389,8 +452,34 @@ export class EnhancedChatBackendClient {
    * Clear messages (legacy compatibility)
    */
   async clearMessages(): Promise<void> {
-    // Implementation would depend on message storage system
-    console.log('[EnhancedChatBackendClient] Clear messages requested');
+    try {
+      // Use HTTP API to clear message history - use POST to /api/chat/clear like deprecated client
+      let baseUrl = (window as any).__ICUI_API_URL__ || 
+                    (import.meta as any).env?.VITE_API_URL || 
+                    `${window.location.protocol}//${window.location.host}`;
+      
+      // Remove trailing /api if present to avoid double /api in URL
+      if (baseUrl.endsWith('/api')) {
+        baseUrl = baseUrl.slice(0, -4);
+      }
+      
+      const url = `${baseUrl}/api/chat/clear`;
+      // console.log('[EnhancedChatBackendClient] Clearing messages at:', url);
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to clear messages: ${response.status} ${response.statusText}`);
+      }
+      
+      // console.log('[EnhancedChatBackendClient] Messages cleared successfully');
+    } catch (error) {
+      console.error('[EnhancedChatBackendClient] Failed to clear messages:', error);
+      throw error;
+    }
   }
 
   /**
@@ -471,55 +560,172 @@ export class EnhancedChatBackendClient {
    */
   private handleWebSocketMessage(event: { data: string }): void {
     try {
+      // console.log('[EnhancedChatBackendClient] handleWebSocketMessage called with:', event.data);
+      
+      // Check if event.data is valid before parsing
+      if (!event.data || event.data === 'undefined' || typeof event.data !== 'string') {
+        console.warn('[EnhancedChatBackendClient] Invalid message data received:', event.data);
+        return;
+      }
+
       const data = JSON.parse(event.data);
-      console.log('[EnhancedChatBackendClient] Message received:', data);
+      // console.log('[EnhancedChatBackendClient] Message parsed:', data);
       
       if (data.type === 'message') {
+        // console.log('[EnhancedChatBackendClient] Handling complete message');
         this.handleCompleteMessage(data);
       } else if (data.type === 'message_stream') {
+        // console.log('[EnhancedChatBackendClient] Handling streaming message');
         this.handleStreamingMessage(data);
       } else if (data.type === 'typing') {
+        // console.log('[EnhancedChatBackendClient] Handling typing indicator');
         this.handleTypingIndicator(data);
       } else if (data.type === 'agent_status') {
+        // console.log('[EnhancedChatBackendClient] Handling agent status');
         this.handleAgentStatus(data);
       } else if (data.type === 'error') {
+        // console.log('[EnhancedChatBackendClient] Handling error message');
         this.handleErrorMessage(data);
+      } else {
+        // console.log('[EnhancedChatBackendClient] Unknown message type:', data.type, 'full data:', data);
       }
     } catch (error) {
-      console.error('[EnhancedChatBackendClient] Error parsing message:', error);
+      console.error('[EnhancedChatBackendClient] Error parsing message:', error, 'raw data:', event.data);
     }
   }
 
   private handleCompleteMessage(data: any): void {
+    const messageId = data.id || Math.random().toString(36);
+    
+    // Skip if we've already processed this message ID via streaming
+    if (this.processedMessageIds.has(messageId)) {
+      // console.log('[EnhancedChatBackendClient] Skipping duplicate complete message:', messageId);
+      return;
+    }
+    
     const message: ChatMessage = {
-      id: data.message_id || Math.random().toString(36),
+      id: messageId,
       role: data.role || 'assistant',
       content: data.content || '',
-      timestamp: data.timestamp || Date.now(),
+      timestamp: new Date(data.timestamp || Date.now()),
       sender: data.role === 'user' ? 'user' : 'ai', // Map role to sender
       metadata: {
+        agentId: data.agentId,
+        agentName: data.agentName,
+        agentType: data.agentType,
+        messageType: data.messageType || 'text',
         model: data.model,
         agent: data.agent_id,
         streaming: false,
         tokens: data.tokens,
-        latency: data.latency
+        latency: data.latency,
+        isStreaming: false,
+        streamComplete: true
       }
     };
+    
+    // Mark this message ID as processed
+    this.processedMessageIds.add(messageId);
+    
+    // Don't notify callbacks for user messages (they're echoed back from backend)
+    // The UI already shows user messages when they're sent
+    if (message.sender === 'user') {
+      // console.log('[EnhancedChatBackendClient] Ignoring user message echo:', messageId);
+      return;
+    }
     
     this.messageCallbacks.forEach(callback => callback(message));
     this.isStreaming = false;
   }
 
   private handleStreamingMessage(data: any): void {
-    this.streamCallbacks.forEach(callback => 
-      callback({
-        content: data.content || '',
-        done: data.done || false
-      })
-    );
+    // console.log('[EnhancedChatBackendClient] Streaming message data:', data);
     
-    if (data.done) {
+    if (data.stream_start) {
+      // Start new streaming message
+      const messageId = data.id || Date.now().toString();
+      // console.log('[EnhancedChatBackendClient] Starting streaming message:', messageId);
+      
+      // Mark this message ID as processed to prevent duplicate complete messages
+      this.processedMessageIds.add(messageId);
+      
+      this.streamingMessage = {
+        id: messageId,
+        content: '',
+        role: 'assistant',
+        sender: 'ai',
+        timestamp: new Date(),
+        metadata: {
+          agentId: data.agentId,
+          agentName: data.agentName,
+          agentType: data.agentType,
+          messageType: 'streaming',
+          isStreaming: true,
+          streamComplete: false
+        }
+      };
+      
+      this.messageCallbacks.forEach(callback => callback(this.streamingMessage!));
+      this.isStreaming = true;
+      
+    } else if (data.stream_chunk && this.streamingMessage) {
+      // Append chunk to streaming message
+      // console.log('[EnhancedChatBackendClient] Appending chunk:', data.chunk);
+      this.streamingMessage.content += data.chunk;
+      this.messageCallbacks.forEach(callback => callback({ 
+        ...this.streamingMessage!,
+        metadata: {
+          ...this.streamingMessage!.metadata!,
+          isStreaming: true
+        }
+      }));
+      
+      // Also call stream callbacks for backward compatibility
+      this.streamCallbacks.forEach(callback => 
+        callback({
+          content: data.chunk || '',
+          done: false
+        })
+      );
+      
+    } else if (data.stream_end && this.streamingMessage) {
+      // Complete streaming message
+      // console.log('[EnhancedChatBackendClient] Ending streaming message:', this.streamingMessage.id);
+      this.streamingMessage.metadata!.streamComplete = true;
+      this.streamingMessage.metadata!.isStreaming = false;
+      this.messageCallbacks.forEach(callback => callback({ 
+        ...this.streamingMessage!,
+        metadata: {
+          ...this.streamingMessage!.metadata!,
+          isStreaming: false,
+          streamComplete: true
+        }
+      }));
+      
+      // Call stream callbacks with done flag
+      this.streamCallbacks.forEach(callback => 
+        callback({
+          content: '',
+          done: true
+        })
+      );
+      
+      this.streamingMessage = null;
       this.isStreaming = false;
+    } else {
+      console.warn('[EnhancedChatBackendClient] ⚠️ Unhandled streaming message:', data);
+      
+      // Fallback to old streaming format for compatibility
+      this.streamCallbacks.forEach(callback => 
+        callback({
+          content: data.content || '',
+          done: data.done || false
+        })
+      );
+      
+      if (data.done) {
+        this.isStreaming = false;
+      }
     }
   }
 
@@ -533,7 +739,7 @@ export class EnhancedChatBackendClient {
 
   private handleErrorMessage(data: any): void {
     const error = data.error || 'Unknown chat error';
-    console.error('[EnhancedChatBackendClient] Chat error:', error);
+      log.error('EnhancedChatBackendClient', 'Chat error', { error });
     this.handleError(error);
   }
 
@@ -594,12 +800,22 @@ export class EnhancedChatBackendClient {
   }
 
   /**
-   * Utility methods
+   * Helper method to notify message callbacks (like deprecated client)
+   */
+  private notifyMessage(message: ChatMessage): void {
+    this.messageCallbacks.forEach(callback => callback(message));
+  }
+
+  /**
+   * Helper method to notify status callbacks  
    */
   private notifyStatus(status: ChatStatus): void {
     this.statusCallbacks.forEach(callback => callback(status));
   }
 
+  /**
+   * Utility methods
+   */
   private generateSessionId(): string {
     return `session_${Date.now()}_${Math.random().toString(36).substring(2)}`;
   }
@@ -691,3 +907,7 @@ export class EnhancedChatBackendClient {
 
 // Create singleton instance
 export const enhancedChatBackendClient = new EnhancedChatBackendClient();
+
+// Compatibility exports for existing code
+export { EnhancedChatBackendClient as ChatBackendClient };
+export const chatBackendClient = enhancedChatBackendClient;

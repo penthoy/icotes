@@ -343,10 +343,12 @@ class WebSocketAPI:
             
             # Handle different message types
             message_type = data.get('type', 'unknown')
+            logger.debug(f"[WebSocketAPI] Processing message type: {message_type} from connection {connection_id}")
             
             if message_type == 'ping':
                 await self._handle_ping(connection_id, data)
             elif message_type == 'subscribe':
+                logger.debug(f"[WebSocketAPI] Handling subscription request: {data}")
                 await self._handle_subscribe(connection_id, data)
             elif message_type == 'unsubscribe':
                 await self._handle_unsubscribe(connection_id, data)
@@ -362,6 +364,7 @@ class WebSocketAPI:
                 await self._handle_execute_streaming(connection_id, data)
             else:
                 # Generic message handling
+                logger.debug(f"[WebSocketAPI] Handling generic message: {data}")
                 await self._handle_generic_message(connection_id, data)
                 
         except json.JSONDecodeError:
@@ -511,7 +514,10 @@ class WebSocketAPI:
 
     async def _handle_subscribe(self, connection_id: str, data: Dict[str, Any]):
         """Handle subscription message."""
+        logger.debug(f"[WebSocketAPI] Processing subscription for connection {connection_id}: {data}")
+        
         if connection_id not in self.connections:
+            logger.warning(f"[WebSocketAPI] Connection {connection_id} not found for subscription")
             return
         
         connection = self.connections[connection_id]
@@ -520,8 +526,12 @@ class WebSocketAPI:
         if isinstance(topics, str):
             topics = [topics]
         
+        logger.debug(f"[WebSocketAPI] Adding subscriptions {topics} to connection {connection_id}")
+        
         for topic in topics:
             connection.subscriptions.add(topic)
+        
+        logger.info(f"[WebSocketAPI] Connection {connection_id} subscribed to topics: {topics}")
         
         await self.send_message(connection_id, {
             'type': 'subscribed',
@@ -843,6 +853,8 @@ class WebSocketAPI:
     async def _handle_filesystem_event(self, message):
         """Handle filesystem-related events."""
         try:
+            logger.info(f"[WebSocketAPI] Handling filesystem event: {message.topic} - {message.payload}")
+            
             # Broadcast filesystem events to subscribed connections
             await self._broadcast_to_subscribers('fs.*', {
                 'type': 'filesystem_event',
@@ -850,6 +862,8 @@ class WebSocketAPI:
                 'data': message.payload,
                 'timestamp': time.time()
             })
+            
+            logger.info(f"[WebSocketAPI] Filesystem event broadcasted: {message.topic}")
             
         except Exception as e:
             logger.error(f"Error handling filesystem event {message.topic}: {e}")
@@ -870,11 +884,18 @@ class WebSocketAPI:
 
     async def _broadcast_to_subscribers(self, topic_pattern: str, data: Dict[str, Any]):
         """Broadcast message to connections subscribed to a topic pattern."""
+        logger.info(f"[WebSocketAPI] Broadcasting to subscribers of pattern '{topic_pattern}': {data}")
+        
+        sent_count = 0
         for connection in self.connections.values():
             for subscription in connection.subscriptions:
                 if self._matches_pattern(subscription, topic_pattern):
+                    logger.info(f"[WebSocketAPI] Sending to connection {connection.id} (subscription: {subscription})")
                     await self.send_message(connection.id, data)
+                    sent_count += 1
                     break
+        
+        logger.info(f"[WebSocketAPI] Broadcast sent to {sent_count} connections")
 
     def _matches_pattern(self, subscription: str, pattern: str) -> bool:
         """Check if subscription matches pattern."""

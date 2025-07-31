@@ -179,11 +179,33 @@ export class EnhancedWebSocketService extends EventEmitter {
     }
 
     const messageId = this.generateMessageId();
-    const messageWithId = {
-      id: messageId,
-      timestamp: Date.now(),
-      ...message
-    };
+    
+    let messageWithId: any;
+    if (typeof message === 'string') {
+      // If message is already a JSON string, parse it, add metadata, then stringify again
+      try {
+        const parsedMessage = JSON.parse(message);
+        messageWithId = JSON.stringify({
+          ...parsedMessage,
+          id: messageId,
+          timestamp: Date.now()
+        });
+      } catch (e) {
+        // If it's not valid JSON, treat as plain string message
+        messageWithId = JSON.stringify({
+          content: message,
+          id: messageId,
+          timestamp: Date.now()
+        });
+      }
+    } else {
+      // If message is an object, add metadata and stringify
+      messageWithId = JSON.stringify({
+        id: messageId,
+        timestamp: Date.now(),
+        ...message
+      });
+    }
 
     try {
       if (this.config.enableMessageQueue && options.priority !== 'critical') {
@@ -411,7 +433,23 @@ export class EnhancedWebSocketService extends EventEmitter {
     );
 
     if (options.expectResponse) {
-      return await this.waitForResponse(message.id, options.timeout || this.config.messageTimeout);
+      // Extract message ID from string or object
+      let actualMessageId: string;
+      if (typeof message === 'string') {
+        try {
+          const parsed = JSON.parse(message);
+          actualMessageId = parsed.id;
+        } catch (e) {
+          // If no ID can be extracted, skip waiting for response
+          return;
+        }
+      } else {
+        actualMessageId = message.id;
+      }
+      
+      if (actualMessageId) {
+        return await this.waitForResponse(actualMessageId, options.timeout || this.config.messageTimeout);
+      }
     }
   }
 
@@ -426,12 +464,28 @@ export class EnhancedWebSocketService extends EventEmitter {
     if (this.config.enableHealthMonitoring) {
       this.healthMonitor.updateMetrics(connectionId, {
         messagesSent: 1,
-        bytesSent: JSON.stringify(message).length
+        bytesSent: typeof message === 'string' ? message.length : JSON.stringify(message).length
       });
     }
 
     if (options.expectResponse) {
-      return await this.waitForResponse(message.id, options.timeout || this.config.messageTimeout);
+      // Extract message ID from string or object
+      let messageId: string;
+      if (typeof message === 'string') {
+        try {
+          const parsed = JSON.parse(message);
+          messageId = parsed.id;
+        } catch (e) {
+          // If no ID can be extracted, skip waiting for response
+          return;
+        }
+      } else {
+        messageId = message.id;
+      }
+      
+      if (messageId) {
+        return await this.waitForResponse(messageId, options.timeout || this.config.messageTimeout);
+      }
     }
   }
 

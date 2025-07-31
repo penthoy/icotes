@@ -262,8 +262,8 @@ class ChatService:
         # Store message
         await self._store_message(message)
         
-        # Send to connected clients
-        await self._broadcast_message(message)
+        # Don't broadcast user messages back to clients - they already have them
+        # Only AI responses should be broadcasted
         
         # Process with appropriate agent based on type
         if agent_type and agent_type.lower() in ['personalagent', 'openaidemoagent', 'openrouteragent']:
@@ -514,7 +514,7 @@ class ChatService:
                 )
     
     async def _process_with_custom_agent(self, user_message: ChatMessage, agent_type: str):
-        """Process user message with a custom agent using three-phase streaming protocol"""
+        """Process user message with a custom agent"""
         logger.info(f"🤖 Processing message with custom agent: {agent_type}")
         try:
             # Send typing indicator
@@ -537,10 +537,8 @@ class ChatService:
             # Get custom agent stream
             custom_stream = call_custom_agent_stream(agent_type, user_message.content, history_list)
             
-            # Process streaming response with three-phase protocol
-            chunk_count = 0
+            # Process streaming response
             async for chunk in custom_stream:
-                chunk_count += 1
                 if chunk:  # Only process non-empty chunks
                     # Send stream start for first chunk
                     if is_first_chunk:
@@ -549,8 +547,8 @@ class ChatService:
                             message_id,
                             user_message.id,
                             agent_type=agent_type,
-                            agent_id=agent_type,  # Use agent_type as agent_id for custom agents
-                            agent_name=agent_type.title()  # Use capitalized agent_type as name
+                            agent_id=agent_type,
+                            agent_name=agent_type.title()
                         )
                         is_first_chunk = False
                     
@@ -563,8 +561,8 @@ class ChatService:
                     )
                     full_content += chunk
                     
-                    # Small delay to prevent WebSocket message batching and ensure real-time delivery
-                    await asyncio.sleep(0.001)  # 1ms delay between chunks
+                    # CRITICAL FIX: Prevent WebSocket message batching
+                    await asyncio.sleep(0.01)  # 10ms delay between chunks
 
             # Send stream end
             await self._send_streaming_end(
@@ -574,76 +572,29 @@ class ChatService:
             )
             
             # Store the final complete message for persistence
-            final_message = ChatMessage(
-                id=message_id,
-                content=full_content,
-                sender=MessageSender.AI,
-                timestamp=datetime.now(timezone.utc).isoformat(),
-                agent_id=agent_type,
-                session_id=user_message.session_id,
-                metadata={'reply_to': user_message.id, 'streaming_complete': True, 'agentType': agent_type}
-            )
-            await self._store_message(final_message)
+            if full_content.strip():
+                final_message = ChatMessage(
+                    id=message_id,
+                    content=full_content,
+                    sender=MessageSender.AI,
+                    timestamp=datetime.now(timezone.utc).isoformat(),
+                    agent_id=agent_type,
+                    session_id=user_message.session_id,
+                    metadata={'reply_to': user_message.id, 'streaming_complete': True, 'agentType': agent_type}
+                )
+                await self._store_message(final_message)
             
             await self._send_typing_indicator(user_message.session_id, False)
             logger.info(f"✅ Custom agent {agent_type} response completed")
             
         except Exception as e:
             logger.error(f"❌ Error processing message with custom agent {agent_type}: {e}")
-            logger.exception("Full traceback:")
-            
-            # Send error as streaming response to maintain protocol consistency
-            error_content = f"I'm sorry, I encountered an error. Please try again. Error: {str(e)}"
-            
-            try:
-                # If no content has been streamed yet, start the stream
-                if is_first_chunk:
-                    await self._send_streaming_start(
-                        user_message.session_id,
-                        message_id,
-                        user_message.id,
-                        agent_type=agent_type,
-                        agent_id=agent_type,
-                        agent_name=agent_type.title()
-                    )
-                
-                # Send error as streaming chunk
-                await self._send_streaming_chunk(
-                    user_message.session_id,
-                    message_id,
-                    error_content,
-                    user_message.id
-                )
-                
-                # End the stream
-                await self._send_streaming_end(
-                    user_message.session_id,
-                    message_id,
-                    user_message.id
-                )
-                
-                # Store the error message for persistence
-                final_message = ChatMessage(
-                    id=message_id,
-                    content=error_content,
-                    sender=MessageSender.AI,
-                    timestamp=datetime.now(timezone.utc).isoformat(),
-                    agent_id=agent_type,
-                    session_id=user_message.session_id,
-                    metadata={'reply_to': user_message.id, 'streaming_complete': True, 'has_error': True, 'agentType': agent_type}
-                )
-                await self._store_message(final_message)
-                
-            except Exception as stream_error:
-                # If streaming fails too, fall back to regular error response
-                logger.error(f"Failed to send streaming error response: {stream_error}")
-                await self._send_ai_response(
-                    user_message.session_id,
-                    error_content,
-                    user_message.id
-                )
-            
             await self._send_typing_indicator(user_message.session_id, False)
+            await self._send_ai_response(
+                user_message.session_id,
+                f"Sorry, there was an error processing your request with {agent_type}.",
+                user_message.id
+            )
     
     async def _send_streaming_start(self, session_id: str, message_id: str, reply_to_id: str = None, agent_type: str = None, agent_id: str = None, agent_name: str = None):
         """Send streaming start message"""

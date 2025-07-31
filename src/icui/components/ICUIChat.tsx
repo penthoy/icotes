@@ -235,11 +235,37 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
   }, []);
 
   // Format timestamp (following simplechat pattern)
-  const formatTimestamp = useCallback((date: Date) => {
-    return new Intl.DateTimeFormat('en-US', {
-      hour: '2-digit',
-      minute: '2-digit'
-    }).format(date);
+  const formatTimestamp = useCallback((date: Date | number | string) => {
+    try {
+      // Handle different timestamp formats defensively
+      let validDate: Date;
+      
+      if (date instanceof Date) {
+        validDate = date;
+      } else if (typeof date === 'number') {
+        validDate = new Date(date);
+      } else if (typeof date === 'string') {
+        validDate = new Date(date);
+      } else {
+        validDate = new Date(); // Fallback to current time
+      }
+      
+      // Check if date is valid
+      if (isNaN(validDate.getTime())) {
+        validDate = new Date(); // Fallback to current time
+      }
+      
+      return new Intl.DateTimeFormat('en-US', {
+        hour: '2-digit',
+        minute: '2-digit'
+      }).format(validDate);
+    } catch (error) {
+      console.warn('Invalid timestamp:', date, error);
+      return new Intl.DateTimeFormat('en-US', {
+        hour: '2-digit',
+        minute: '2-digit'
+      }).format(new Date());
+    }
   }, []);
 
   // Handle message reception notification

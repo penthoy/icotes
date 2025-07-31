@@ -1,13 +1,14 @@
 /**
- * Chat Backend Client
+ * Chat Backend Client - Enhanced Version
  * 
- * Currently using the proven implementation for reliable chat functionality.
- * The enhanced version with advanced features is available as enhancedChatBackendClient.tsx
+ * Using the enhanced implementation with advanced WebSocket features.
+ * Provides reliable chat functionality with connection management, error handling,
+ * message queuing, and health monitoring.
  */
 
-export * from './chatBackendClient_deprecated';
-export { ChatBackendClient } from './chatBackendClient_deprecated';
+export * from './enhancedChatBackendClient';
+export { ChatBackendClient } from './enhancedChatBackendClient';
 
 // Create a default instance for compatibility
-import { ChatBackendClient as ChatBackendClientClass } from './chatBackendClient_deprecated';
-export const chatBackendClient = new ChatBackendClientClass();
+import { chatBackendClient } from './enhancedChatBackendClient';
+export { chatBackendClient };

@@ -2,7 +2,7 @@
 
 **Issue Duration**: 2 days of debugging (July 28-30, 2025)
 **Root Cause**: WebSocket message buffering preventing real-time streaming delivery
-**Solution**: Added 10ms delay between chunk sends to force WebSocket flush
+**Solution**: Added 1ms delay between chunk sends to force WebSocket flush
 
 ## Problem Summary
 

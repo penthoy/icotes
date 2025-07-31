@@ -30,7 +30,7 @@ from ..core.protocol import (
     ProtocolHandler, JsonRpcRequest, JsonRpcResponse, ProtocolError, ErrorCode,
     create_error_response, get_protocol_handler
 )
-from ..services import get_code_execution_service
+from ..services import get_code_execution_service, get_filesystem_service
 
 logger = logging.getLogger(__name__)
 
@@ -174,6 +174,13 @@ class ApiGateway:
         # Code execution
         self.protocol_handler.register_method("execute.code", self._handle_execute_code)
         self.protocol_handler.register_method("execute.code_streaming", self._handle_execute_code_streaming)
+        
+        # File system operations
+        self.protocol_handler.register_method("file.list_directory", ApiGatewayFileHandlers.handle_file_list_directory)
+        self.protocol_handler.register_method("file.read", ApiGatewayFileHandlers.handle_file_read)
+        self.protocol_handler.register_method("file.write", ApiGatewayFileHandlers.handle_file_write)
+        self.protocol_handler.register_method("file.delete", ApiGatewayFileHandlers.handle_file_delete)
+        self.protocol_handler.register_method("file.create_directory", ApiGatewayFileHandlers.handle_file_create_directory)
     
     async def handle_websocket(self, websocket: WebSocket):
         """Handle WebSocket connections"""
@@ -588,6 +595,152 @@ class ApiGateway:
         except Exception as e:
             logger.error(f"Error in streaming code execution: {e}")
             raise ValueError(f"Streaming code execution failed: {str(e)}")
+
+
+# Global API Gateway instance
+_api_gateway: Optional[ApiGateway] = None
+
+
+class ApiGatewayFileHandlers:
+    """File system handlers for API Gateway"""
+    
+    @staticmethod
+    async def handle_file_list_directory(params: Any, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle file.list_directory method"""
+        try:
+            filesystem_service = await get_filesystem_service()
+            path = params.get('path', '/')
+            include_hidden = params.get('include_hidden', False)
+            recursive = params.get('recursive', False)
+            
+            files = await filesystem_service.list_directory(path, include_hidden, recursive)
+            
+            # Convert FileInfo objects to dictionaries
+            file_list = []
+            for file_info in files:
+                file_dict = {
+                    'name': file_info.name,
+                    'path': file_info.path,
+                    'size': file_info.size,
+                    'type': file_info.type.value if hasattr(file_info.type, 'value') else str(file_info.type),
+                    'mime_type': file_info.mime_type,
+                    'created_at': file_info.created_at,
+                    'modified_at': file_info.modified_at,
+                    'is_directory': file_info.is_directory,
+                    'is_symlink': file_info.is_symlink,
+                    'is_hidden': file_info.is_hidden,
+                    'extension': file_info.extension
+                }
+                file_list.append(file_dict)
+            
+            return {
+                'success': True,
+                'files': file_list,
+                'path': path,
+                'count': len(file_list)
+            }
+        except Exception as e:
+            logger.error(f"Error listing directory {params.get('path', '/')}: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'files': [],
+                'path': params.get('path', '/'),
+                'count': 0
+            }
+    
+    @staticmethod
+    async def handle_file_read(params: Any, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle file.read method"""
+        try:
+            filesystem_service = await get_filesystem_service()
+            path = params.get('path')
+            if not path:
+                raise ValueError("Path parameter is required")
+            
+            content = await filesystem_service.read_file(path)
+            return {
+                'success': True,
+                'content': content,
+                'path': path
+            }
+        except Exception as e:
+            logger.error(f"Error reading file {params.get('path')}: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'content': '',
+                'path': params.get('path')
+            }
+    
+    @staticmethod
+    async def handle_file_write(params: Any, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle file.write method"""
+        try:
+            filesystem_service = await get_filesystem_service()
+            path = params.get('path')
+            content = params.get('content', '')
+            if not path:
+                raise ValueError("Path parameter is required")
+            
+            success = await filesystem_service.write_file(path, content)
+            return {
+                'success': success,
+                'path': path,
+                'bytes_written': len(content.encode('utf-8')) if success else 0
+            }
+        except Exception as e:
+            logger.error(f"Error writing file {params.get('path')}: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'path': params.get('path'),
+                'bytes_written': 0
+            }
+    
+    @staticmethod
+    async def handle_file_delete(params: Any, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle file.delete method"""
+        try:
+            filesystem_service = await get_filesystem_service()
+            path = params.get('path')
+            if not path:
+                raise ValueError("Path parameter is required")
+            
+            success = await filesystem_service.delete_file(path)
+            return {
+                'success': success,
+                'path': path
+            }
+        except Exception as e:
+            logger.error(f"Error deleting file {params.get('path')}: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'path': params.get('path')
+            }
+    
+    @staticmethod
+    async def handle_file_create_directory(params: Any, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle file.create_directory method"""
+        try:
+            filesystem_service = await get_filesystem_service()
+            path = params.get('path')
+            if not path:
+                raise ValueError("Path parameter is required")
+            
+            success = await filesystem_service.create_directory(path)
+            return {
+                'success': success,
+                'path': path
+            }
+        except Exception as e:
+            logger.error(f"Error creating directory {params.get('path')}: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'path': params.get('path')
+            }
 
 
 # Global API Gateway instance

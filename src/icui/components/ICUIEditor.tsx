@@ -17,7 +17,8 @@
         // Calling onConnectionStatusChange callback with error
         onConnectionStatusChange(newStatus);
       } else {
-        // No onConnectionStatusChange callback available
+        // No onCon  const activateFile = useCallback(async (fileId: string) => {
+    // console.log('Activating file:', fileId);ctionStatusChange callback available
       }zation
  * - Auto-save with debouncing
  * - Real-time file loading from backend
@@ -688,7 +689,7 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
       const currentFile = files.find(f => f.id === activeFileId);
       
       if (currentFile && currentContent !== currentFile.content) {
-        console.log('Saving current file content before switch');
+        // console.log('Saving current file content before switch');
         setFiles(prevFiles => 
           prevFiles.map(f => 
             f.id === activeFileId 
@@ -710,7 +711,7 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
     
     // Load file content if it's not already loaded BEFORE setting as active
     const file = files.find(f => f.id === fileId);
-    console.log('Found file for activation:', file);
+    // console.log('Found file for activation:', file);
     
     if (file && file.path && connectionStatus.connected) {
       // Load content if it's empty or not loaded yet

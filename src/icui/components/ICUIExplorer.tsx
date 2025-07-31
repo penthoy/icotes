@@ -6,9 +6,9 @@
  */
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { useWebSocketService } from '../../contexts/BackendContext';
 import { backendService, ICUIFileNode, useTheme } from '../services';
 import { getWorkspaceRoot } from '../lib';
+import { log } from '../../services/frontend-logger';
 
 interface FileNode extends ICUIFileNode {} // For backward compatibility
 
@@ -41,7 +41,6 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
   const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const loadDirectoryRef = useRef<(path?: string) => Promise<void>>();
 
-  const webSocketService = useWebSocketService();
   const { theme } = useTheme();
 
   // Check connection status using centralized service
@@ -80,7 +79,7 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
       setFiles(directoryContents);
       setCurrentPath(path);
     } catch (err) {
-      console.error('[ICUIExplorer] Failed to load directory:', err);
+      log.error('ICUIExplorer', 'Failed to load directory', { path, error: err }, err instanceof Error ? err : undefined);
       setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
@@ -99,7 +98,7 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
 
   // Real-time file system updates via WebSocket
   useEffect(() => {
-    if (!webSocketService) {
+    if (!backendService) {
       return;
     }
 
@@ -147,38 +146,56 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
     };
 
     // Subscribe to filesystem events
-    webSocketService.on('filesystem_event', handleFileSystemEvent);
+    backendService.on('filesystem_event', handleFileSystemEvent);
 
     // Subscribe to filesystem events - only if connected
-    const subscribeToEvents = () => {
-      if (!webSocketService.isConnected()) {
-        // WebSocket not connected, waiting for connection...
-        return;
-      }
-
+    const subscribeToEvents = async () => {
       try {
-        // Use the proper notification format for filesystem events
-        webSocketService.notify('subscribe', { 
+        const status = await backendService.getConnectionStatus();
+        if (!status.connected) {
+          // console.log('[ICUIExplorer] Backend not connected, waiting for connection...');
+          return;
+        }
+
+        // console.log('[ICUIExplorer] Subscribing to filesystem events...');
+        await backendService.notify('subscribe', { 
           topics: ['fs.file_created', 'fs.file_deleted', 'fs.file_moved'] 
         });
-        // Subscribed to filesystem events
+        // console.log('[ICUIExplorer] Successfully subscribed to filesystem events');
       } catch (error) {
-        console.warn('[ICUIExplorer] Failed to subscribe to filesystem events:', error);
+        console.error('[ICUIExplorer] Failed to subscribe to filesystem events:', error);
+        log.warn('ICUIExplorer', 'Failed to subscribe to filesystem events', { error });
       }
     };
 
     // If already connected, subscribe immediately
-    if (webSocketService.isConnected()) {
-      subscribeToEvents();
-    } else {
-      // Wait for connection and then subscribe
-      const handleConnected = () => {
-        // WebSocket connected, subscribing to events...
-        subscribeToEvents();
-        webSocketService.off('connected', handleConnected);
-      };
-      webSocketService.on('connected', handleConnected);
-    }
+    const initConnection = async () => {
+      try {
+        console.log('[ICUIExplorer] Initializing filesystem subscription...');
+        const status = await backendService.getConnectionStatus();
+        console.log('[ICUIExplorer] Connection status:', status);
+        
+        if (status.connected) {
+          console.log('[ICUIExplorer] Backend connected, subscribing immediately');
+          await subscribeToEvents();
+        } else {
+          console.log('[ICUIExplorer] Backend not connected, waiting for connection event');
+          // Wait for connection and then subscribe
+          const handleConnected = async () => {
+            console.log('[ICUIExplorer] Backend connected event received, subscribing to events...');
+            await subscribeToEvents();
+            backendService.off('connected', handleConnected);
+          };
+
+          backendService.on('connected', handleConnected);
+        }
+      } catch (error) {
+        console.error('[ICUIExplorer] Error initializing connection:', error);
+      }
+    };
+
+    console.log('[ICUIExplorer] Starting filesystem subscription initialization...');
+    initConnection();
 
     return () => {
       // Clear any pending refresh timeout
@@ -187,20 +204,24 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
         refreshTimeoutRef.current = null;
       }
       // Remove event listener
-      webSocketService.off('filesystem_event', handleFileSystemEvent);
+      backendService.off('filesystem_event', handleFileSystemEvent);
       
       // Unsubscribe from filesystem events
-      if (webSocketService.isConnected()) {
+      const cleanup = async () => {
         try {
-          webSocketService.notify('unsubscribe', { 
-            topics: ['fs.file_created', 'fs.file_deleted', 'fs.file_moved'] 
-          });
+          const status = await backendService.getConnectionStatus();
+          if (status.connected) {
+            await backendService.notify('unsubscribe', { 
+              topics: ['fs.file_created', 'fs.file_deleted', 'fs.file_moved'] 
+            });
+          }
         } catch (error) {
-          console.warn('[ICUIExplorer] Failed to unsubscribe from filesystem events:', error);
+          log.warn('ICUIExplorer', 'Failed to unsubscribe from filesystem events', { error });
         }
-      }
+      };
+      cleanup();
     };
-  }, [webSocketService, currentPath]); // Include currentPath to re-subscribe when directory changes
+  }, [currentPath]); // Include currentPath to re-subscribe when directory changes
 
   // Helper function to find a node in the tree
   const findNodeInTree = useCallback((nodes: FileNode[], nodeId: string): FileNode | null => {

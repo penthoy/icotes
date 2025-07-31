@@ -20,6 +20,6 @@
     }
   },
   "include": ["src"],
-  "exclude": [],
+  "exclude": ["src/components/archived/**/*"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }
