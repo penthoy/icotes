@@ -1,9 +1,5 @@
 /**
- * import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
-import { EnhancedWebSocketService } from '../../services/enhanced-websocket-service';
-import { log } from '../../services/frontend-logger';
-import type { ConnectionOptions, MessageOptions } from '../../services/enhanced-websocket-service';
-import type { ConnectionHealth } from '../../services/connection-manager';nced Chat Backend Client
+ * Enhanced Chat Backend Client
  * 
  * Integrates all WebSocket improvements: connection management, error handling,
  * message queuing, health monitoring, and migration support for chat service.

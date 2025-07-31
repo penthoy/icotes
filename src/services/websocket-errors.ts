@@ -94,7 +94,7 @@ export class WebSocketErrorHandler {
         return {
           type: 'auth',
           message: 'Authentication failed. Please refresh the page to re-authenticate.',
-          action: async () => window.location.reload()
+          action: async () => WebSocketErrorHandler.reloadPage()
         };
 
       case WebSocketErrorType.SERVICE_UNAVAILABLE:
@@ -450,6 +450,18 @@ export class WebSocketErrorHandler {
         additionalInfo: context?.additionalInfo
       }
     };
+  }
+
+  /**
+   * Safely reload the page, checking for window existence
+   */
+  static reloadPage(): void {
+    if (typeof window !== 'undefined' && window.location) {
+      window.location.reload();
+    } else {
+      // In non-browser environments (testing, server-side), log the action
+      console.warn('Page reload requested but window.location is not available');
+    }
   }
 }
 

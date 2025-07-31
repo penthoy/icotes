@@ -17,6 +17,22 @@ export interface TestResult {
   details?: any;
 }
 
+export interface ExportedTestResults {
+  summary: {
+    total: number;
+    passed: number;
+    failed: number;
+    duration: number;
+    passRate: number;
+  };
+  results: TestResult[];
+  timestamp: number;
+  environment: {
+    userAgent: string;
+    webSocketSupport: boolean;
+  };
+}
+
 export class WebSocketTestSuite {
   private enhancedService: EnhancedWebSocketService | null = null;
   private testResults: TestResult[] = [];
@@ -383,7 +399,7 @@ export class WebSocketTestSuite {
   /**
    * Export test results
    */
-  exportResults(): any {
+  exportResults(): ExportedTestResults {
     return {
       summary: this.getTestSummary(),
       results: this.testResults,

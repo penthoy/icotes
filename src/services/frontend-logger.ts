@@ -28,6 +28,7 @@ class FrontendLogger {
   private maxQueueSize: number = 100;
   private flushTimer?: NodeJS.Timeout;
   private isFlushingEnabled: boolean = true; // Re-enable backend logging with safety measures
+  private isCurrentlyFlushing: boolean = false; // Add mutex flag to prevent concurrent flushes
 
   constructor() {
     this.sessionId = this.generateSessionId();
@@ -127,15 +128,15 @@ class FrontendLogger {
   }
 
   private async flushLogs(): Promise<void> {
-    if (!this.isFlushingEnabled || this.logQueue.length === 0) {
+    if (!this.isFlushingEnabled || this.logQueue.length === 0 || this.isCurrentlyFlushing) {
       return;
     }
 
+    // Set mutex to prevent concurrent flushes
+    this.isCurrentlyFlushing = true;
+
     const logsToFlush = [...this.logQueue];
     this.logQueue = [];
-
-    // Prevent recursive logging during flush
-    this.isFlushingEnabled = false;
 
     try {
       const response = await fetch('/api/logs/frontend', {
@@ -157,8 +158,8 @@ class FrontendLogger {
       // Backend not available, silently re-queue logs
       this.logQueue = [...logsToFlush.slice(-10), ...this.logQueue].slice(-50);
     } finally {
-      // Re-enable logging after flush attempt
-      this.isFlushingEnabled = true;
+      // Clear mutex flag after flush attempt
+      this.isCurrentlyFlushing = false;
     }
   }
 

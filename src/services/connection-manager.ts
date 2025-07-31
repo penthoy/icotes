@@ -12,6 +12,12 @@ import { EventEmitter } from 'eventemitter3';
 export type ServiceType = 'main' | 'chat' | 'terminal';
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
 
+export interface ConnectionOptions {
+  terminalId?: string;
+  sessionId?: string;
+  [key: string]: any;
+}
+
 export interface ServiceConnection {
   id: string;
   type: ServiceType;
@@ -292,22 +298,22 @@ export class ConnectionManager extends EventEmitter {
 
   // Private methods
 
-  private generateConnectionId(serviceType: ServiceType, options?: any): string {
+  private generateConnectionId(serviceType: ServiceType, options?: ConnectionOptions): string {
     const timestamp = Date.now();
     const random = Math.random().toString(36).substring(2, 8);
     
-    if (serviceType === 'terminal' && options?.terminalId) {
+    if (serviceType === 'terminal' && 'terminalId' in options) {
       return `terminal-${options.terminalId}-${timestamp}-${random}`;
     }
     
-    if (serviceType === 'chat' && options?.sessionId) {
+    if (serviceType === 'chat' && 'sessionId' in options) {
       return `chat-${options.sessionId}-${timestamp}-${random}`;
     }
     
     return `${serviceType}-${timestamp}-${random}`;
   }
 
-  private buildWebSocketUrl(serviceType: ServiceType, options?: any): string {
+  private buildWebSocketUrl(serviceType: ServiceType, options?: ConnectionOptions): string {
     const envWsUrl = (import.meta as any).env?.VITE_WS_URL as string | undefined;
     
     // Build base URL
