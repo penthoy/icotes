@@ -4,14 +4,20 @@ A web-based JavaScript code editor built with ViteReact, CodeMirror 6, and moder
 ### In Progress
 
 ## Future task
+
+1. create a complete implementation of a tool use agent of personal_agent.
+2. look into custom agents personal agent who can use tools
+3. design other tools for agents to use, in that list, first choose the first few that's simplest to implement. so we can build an plan to incrementally test each of the tools in phases.
+4. at the end we should be able to have our agent make tool calls and do exactly what copilot agents do.
+5. make sure these tools are easily extendable, tool creation are meant for humans to do which should be implemented as simple as possible and even a junior developer can do it, use our 3 personal agent as example on how it'll be done. make sure the backend does all the heavy lifting or build tooling and abstraction layers to make tool creation and custom agent creation very simple.
+
 -- CLI/api
-pip install typer fastapi of CLI
-CLI that agents can work with
+pip install typer fastapi of CLI that agents can work with
 Able to open file in the editor with cli
 
-- [] This api layer can also be used in the comand line which also have hooks to the UI to do things like open a file in editor or have AI assistant use tools to edit file etc.
+- [] This api layer can also be used in the command line which also have hooks to the UI to do things like open a file in editor or have AI assistant use tools to edit file etc.
 - api feature: detect what view is active so that the AI can have the correct context when you talk to it, it saves the state of the
-- we'll add these endpoints later, but first we need to create a design document named api_plan.md in docs folder and wait for me to review/edit it before proceed with building this layer.
+- we'll add these endpoints later, but first we need to create a design document named api_plan.md in docs/plans folder and wait for me to review/edit it before proceed with building this layer.
 
 -- Agents chat
 1. AI can use tools, can edit files.
@@ -46,12 +52,11 @@ Explorer able to unlock Root path and go up and down different paths
 json config for layouts
 Drag and drop file and download file
 
--- Rich text editor integration (Phase 7)
--- Phase 7: Extension Points for Future Features
-  - Service Discovery and Registry (7.1)
-  - Plugin System Foundation (7.2) 
-  - Authentication and Security Service (7.3)
-  - Content Management Service Foundation (7.4)
+icui: side tabs
+icui: context menus
+
+Github and git integration
+Rich text editor integration 
 
 Add a settings menu under File menu
 Add a custom sub menu under Layout, inside custom, there should be a save layout button, when clicked, it should give a popup to name your layout and click ok, once clicked it'll save the state of the current layout. as a new custom layout.
@@ -74,6 +79,7 @@ Save state: file that's opened previously should have their states saved this sa
 
 
 -- Milestone 3:
+Able to write simple software.
 Refined Agent integration:
 features: history, context
 markdown for chat ui https://github.com/remarkjs/react-markdown
@@ -83,7 +89,7 @@ tool use indicator.
 ouput copy button
 
 -- Milestone 4:
-Advanced agents
+Able to edit itself and improve itself with agentic features.
 Everything that copilot, cursor can do
 
 -- Milestone 5:
@@ -105,9 +111,10 @@ maya style code executor.
 CLI should work similar to maya's, which later this will be for the nodes, similar to how nuke nodes would work.
 
 ## Recently Completed ✅
-1. ✓ when the page first loaded code editor should be empty.
-2. ✓ When clicking on a text/script file in the explorer, it should temporily open in the editor and the name should be italic. if click on another text file immediate, the other file will replace that temporarilly opened file.
-3. ✓ When double clicked on a text/script file it should open the file in "permenent" state, so when clicking on another file it will not be replaced, and the text on it will not be italic. this behavior is exactly the same as vs code.
+1. ✓ Fixed PersonalAgent tool call issue - resolved OpenAI API error "Missing required parameter: 'messages[3].tool_calls[0].type'" by properly formatting tool_calls with required "type": "function" field in `/home/penthoy/ilaborcode/backend/icpy/agent/personal_agent.py`
+2. ✓ when the page first loaded code editor should be empty.
+3. ✓ When clicking on a text/script file in the explorer, it should temporily open in the editor and the name should be italic. if click on another text file immediate, the other file will replace that temporarilly opened file.
+4. ✓ When double clicked on a text/script file it should open the file in "permenent" state, so when clicking on another file it will not be replaced, and the text on it will not be italic. this behavior is exactly the same as vs code.
 
 -- Milestone 2:
 ✓ custom agent picker dropdown.

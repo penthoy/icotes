@@ -182,10 +182,22 @@ def chat(message, history):
             results = handle_tool_calls(tool_calls)
             
             # Add assistant message with tool calls to conversation
+            # Format tool_calls properly for OpenAI API (requires "type": "function")
+            formatted_tool_calls = []
+            for tc in collected_tool_calls:
+                formatted_tool_calls.append({
+                    "id": tc["id"],
+                    "type": "function",
+                    "function": {
+                        "name": tc["function"]["name"],
+                        "arguments": tc["function"]["arguments"]
+                    }
+                })
+            
             assistant_message = {
                 "role": "assistant", 
                 "content": ''.join(collected_chunks),
-                "tool_calls": collected_tool_calls
+                "tool_calls": formatted_tool_calls
             }
             messages.append(assistant_message)
             messages.extend(results)
