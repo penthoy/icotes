@@ -1,10 +1,13 @@
 /**
- * ICUI Terminal Component - Enhanced Version
+ * ICUI Terminal Component
+ * Updated to follow simpleterminal.tsx pattern - the most complete terminal implementation
  * 
- * This is the enhanced terminal using modern WebSocket service integration.
+ * This component provides a direct WebSocket connection to ICPY backend terminal service,
+ * following the proven pattern from SimpleTerminal.tsx for maximum reliability.
+ * 
  * Features:
+ * - Direct WebSocket connection to ICPY backend (no complex state management)
  * - Clean terminal functionality using XTerm.js
- * - Enhanced WebSocket service integration
  * - No local echo (backend handles all character echoing)  
  * - Proper scrolling behavior and theming
  * - Connection status monitoring
@@ -18,8 +21,9 @@ import React, { useRef, useEffect, useState, useCallback, useImperativeHandle, f
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
+import { useWebSocketService } from '../../contexts/BackendContext';
 
-// Enhanced clipboard functionality
+// Enhanced clipboard functionality (same as SimpleTerminal)
 class EnhancedClipboard {
   private fallbackText: string = '';
   
@@ -33,11 +37,13 @@ class EnhancedClipboard {
     
     // Try server-side clipboard FIRST (most reliable cross-platform)
     if (await this.tryServerClipboard(text)) {
+      // Clipboard copy via server (system clipboard)
       success = true;
     }
     
     // Try browser native API (will fail in most cases due to security)
     if (await this.tryNativeClipboard(text)) {
+      // Clipboard copy via native API
       success = true;
     }
     
@@ -55,16 +61,19 @@ class EnhancedClipboard {
     // Try server-side clipboard FIRST
     const serverText = await this.tryServerPaste();
     if (serverText) {
+      // Clipboard paste via server
       return serverText;
     }
     
     // Try browser native API
     const nativeText = await this.tryNativePaste();
     if (nativeText) {
+      // Clipboard paste via native API
       return nativeText;
     }
     
     // Use fallback
+    // Using session clipboard fallback
     return this.fallbackText;
   }
 
@@ -172,7 +181,10 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
   const maxReconnectAttempts = 5;
   const [isConnected, setIsConnected] = useState(false);
 
-  // Clipboard handlers
+  // Use the centralized WebSocket service for connection status monitoring
+  const webSocketService = useWebSocketService();
+
+  // Clipboard handlers (same as SimpleTerminal)
   const handleCopy = useCallback(async () => {
     const selection = terminal.current?.getSelection();
     if (selection) {
@@ -189,11 +201,12 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
     }
   }, []);
 
-  // Theme detection
+  // Theme detection (following ICUIEnhancedTerminalPanel pattern with debouncing)
   useEffect(() => {
     let timeoutId: NodeJS.Timeout;
     
     const detectTheme = () => {
+      // Debounce theme detection to prevent rapid changes
       clearTimeout(timeoutId);
       timeoutId = setTimeout(() => {
         const htmlElement = document.documentElement;
@@ -204,11 +217,12 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
                        htmlElement.classList.contains('icui-theme-dracula') ||
                        htmlElement.classList.contains('icui-theme-solarized-dark');
         setIsDarkTheme(isDark);
-      }, 50);
+      }, 50); // 50ms debounce
     };
 
     detectTheme();
     
+    // Create observer to watch for theme changes
     const observer = new MutationObserver(detectTheme);
     observer.observe(document.documentElement, {
       attributes: true,
@@ -221,13 +235,15 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
     };
   }, []);
 
-  // Main terminal initialization
+  // Main terminal initialization - runs only once (following SimpleTerminal pattern)
   useEffect(() => {
     if (!terminalRef.current) return;
     
+    // Get theme colors from CSS variables
     const computedStyle = getComputedStyle(document.documentElement);
     const getThemeVar = (varName: string) => computedStyle.getPropertyValue(varName).trim();
     
+    // Create terminal with theme-aware colors using ICUI CSS variables
     terminal.current = new Terminal({
       scrollback: 1000,
       fontSize: 14,
@@ -235,11 +251,13 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
       cursorStyle: 'block',
       cursorBlink: true,
       theme: {
+        // Use ICUI CSS variables for background to match other panels
         background: getThemeVar('--icui-bg-primary') || (isDarkTheme ? '#1e1e1e' : '#ffffff'),
         foreground: getThemeVar('--icui-text-primary') || (isDarkTheme ? '#d4d4d4' : '#000000'),
         cursor: getThemeVar('--icui-text-primary') || (isDarkTheme ? '#d4d4d4' : '#000000'),
         cursorAccent: getThemeVar('--icui-bg-primary') || (isDarkTheme ? '#1e1e1e' : '#ffffff'),
         selectionBackground: isDarkTheme ? '#264f78' : '#add6ff',
+        // Use ICUI terminal color variables
         black: getThemeVar('--icui-terminal-black') || '#000000',
         brightBlack: getThemeVar('--icui-terminal-bright-black') || '#666666',
         red: getThemeVar('--icui-terminal-red') || '#cd3131',
@@ -259,20 +277,25 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
       },
     });
 
+    // Create and load FitAddon
     fitAddon.current = new FitAddon();
     terminal.current.loadAddon(fitAddon.current);
 
+    // CRITICAL: Open terminal BEFORE fitting (code-server pattern)
     terminal.current.open(terminalRef.current);
     
+    // Wait for DOM to be ready and then fit with safety checks
     setTimeout(() => {
       if (fitAddon.current && terminal.current && terminalRef.current) {
         try {
+          // Check if container has valid dimensions before fitting
           const rect = terminalRef.current.getBoundingClientRect();
           if (rect.width > 0 && rect.height > 0) {
             fitAddon.current.fit();
           }
         } catch (error) {
           console.warn('Terminal fit error during initialization:', error);
+          // Retry after a longer delay
           setTimeout(() => {
             if (fitAddon.current && terminal.current) {
               try {
@@ -286,18 +309,23 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
       }
     }, 100);
 
+    // Focus the terminal to ensure it can receive keyboard input
     terminal.current.focus();
-    terminal.current.write('ICUITerminal Enhanced initialized!\r\n');
+
+    // Write initial messages
+    terminal.current.write('ICUITerminal initialized!\r\n');
     terminal.current.write('Terminal ID: ' + terminalId.current + '\r\n');
     terminal.current.write('Connecting to backend...\r\n');
 
-    // Connect using enhanced WebSocket service
+    // Connect to backend via direct WebSocket with robust reconnection logic
     const connectToTerminal = () => {
+      // Clear any existing reconnection timeout
       if (reconnectTimeout.current) {
         clearTimeout(reconnectTimeout.current);
         reconnectTimeout.current = null;
       }
 
+      // Close existing connection if any
       if (websocket.current) {
         websocket.current.close();
         websocket.current = null;
@@ -306,29 +334,33 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
       const envWsUrl = (import.meta as any).env?.VITE_WS_URL as string | undefined;
       let wsUrl: string;
       if (envWsUrl && envWsUrl.trim() !== '') {
+        // Use configured WebSocket URL from .env - ensure /ws prefix for terminal endpoint
         wsUrl = `${envWsUrl}/ws/terminal/${terminalId.current}`;
       } else {
+        // Fallback to dynamic URL construction
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const host = window.location.host;
         wsUrl = `${protocol}//${host}/ws/terminal/${terminalId.current}`;
       }
       
-      console.log(`[ICUITerminal Enhanced] Connecting to: ${wsUrl}`);
+      console.log(`[ICUITerminal] Connecting to: ${wsUrl}`);
       websocket.current = new WebSocket(wsUrl);
       
       websocket.current.onopen = () => {
-        console.log(`[ICUITerminal Enhanced] Connected to terminal ${terminalId.current}`);
+        console.log(`[ICUITerminal] Connected to terminal ${terminalId.current}`);
         setIsConnected(true);
-        reconnectAttempts.current = 0;
+        reconnectAttempts.current = 0; // Reset reconnect attempts on successful connection
         
         terminal.current?.write('\r\n\x1b[32mConnected to backend!\x1b[0m\r\n');
         terminal.current?.clear();
-        terminal.current?.write('ICUITerminal Enhanced - Backend Connected!\r\n');
+        terminal.current?.write('ICUITerminal - Backend Connected!\r\n');
         terminal.current?.write('Terminal ID: ' + terminalId.current + '\r\n');
         terminal.current?.write('Ready for commands...\r\n');
         
+        // Change to workspace directory if configured
         const workspaceRoot = (import.meta as any).env?.VITE_WORKSPACE_ROOT as string | undefined;
         if (workspaceRoot && websocket.current?.readyState === WebSocket.OPEN) {
+          // Send cd command to change to workspace directory
           websocket.current.send(`cd "${workspaceRoot}"\r`);
           terminal.current?.write(`Changing to workspace: ${workspaceRoot}\r\n`);
         }
@@ -340,12 +372,11 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
       websocket.current.onmessage = (event) => {
         if (terminal.current) {
           try {
-            // Use raw data like the enhanced terminal approach
-            const rawData = event.data;
-            terminal.current.write(rawData);
-            onTerminalOutput?.(rawData);
+            terminal.current.write(event.data);
+            onTerminalOutput?.(event.data);
           } catch (error) {
             console.warn('Terminal write error:', error);
+            // Fallback: try to write data in smaller chunks
             const data = event.data;
             for (let i = 0; i < data.length; i += 1024) {
               const chunk = data.slice(i, i + 1024);
@@ -356,14 +387,15 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
       };
       
       websocket.current.onclose = (event) => {
-        console.log(`[ICUITerminal Enhanced] Disconnected from terminal ${terminalId.current}:`, event.code, event.reason);
+        console.log(`[ICUITerminal] Disconnected from terminal ${terminalId.current}:`, event.code, event.reason);
         setIsConnected(false);
         
         if (event.code !== 1000) {
           terminal.current?.write("\r\n\x1b[31mTerminal disconnected\x1b[0m\r\n");
           
+          // Attempt reconnection if we haven't exceeded max attempts
           if (reconnectAttempts.current < maxReconnectAttempts) {
-            const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 10000);
+            const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 10000); // Exponential backoff, max 10s
             reconnectAttempts.current++;
             
             terminal.current?.write(`\r\n\x1b[33mReconnecting in ${delay/1000}s... (attempt ${reconnectAttempts.current}/${maxReconnectAttempts})\x1b[0m\r\n`);
@@ -380,11 +412,12 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
       };
       
       websocket.current.onerror = (error) => {
-        console.error('[ICUITerminal Enhanced] WebSocket error:', error);
+        console.error('[ICUITerminal] WebSocket error:', error);
         terminal.current?.write("\r\n\x1b[31mTerminal connection error\x1b[0m\r\n");
       };
     };
 
+    // Handle user input: send to backend via direct WebSocket
     terminal.current.onData((data) => {
       if (websocket.current?.readyState === WebSocket.OPEN) {
         websocket.current.send(data);
@@ -397,9 +430,29 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
       }
     });
 
-    // Connect terminal directly without centralized WebSocket service dependency
+    // Monitor centralized WebSocketService for backend status (optional enhancement)
+    const handleBackendConnected = () => {
+      // Backend is connected, attempt terminal connection if not already connected
+      if (!isConnected && reconnectAttempts.current < maxReconnectAttempts) {
+        console.log('[ICUITerminal] Backend connected, attempting terminal connection');
+        connectToTerminal();
+      }
+    };
+
+    const handleBackendDisconnected = () => {
+      // Backend disconnected, terminal will likely disconnect too
+      console.log('[ICUITerminal] Backend disconnected, terminal may disconnect');
+    };
+
+    // Set up backend connection monitoring  
+    webSocketService.on('connected', handleBackendConnected);
+    webSocketService.on('disconnected', handleBackendDisconnected);
+
+    // Initial connection attempt - terminal has its own direct WebSocket connection
+    // Don't wait for centralized WebSocketService, connect directly
     connectToTerminal();
 
+    // Resize handling with debounce and safety checks
     const handleResize = () => {
       if (resizeTimeout.current) {
         clearTimeout(resizeTimeout.current);
@@ -407,6 +460,7 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
       resizeTimeout.current = setTimeout(() => {
         if (fitAddon.current && terminal.current && terminalRef.current) {
           try {
+            // Check if container has valid dimensions before fitting
             const rect = terminalRef.current.getBoundingClientRect();
             if (rect.width > 0 && rect.height > 0) {
               fitAddon.current.fit();
@@ -418,19 +472,27 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
       }, 100);
     };
 
+    // Window resize listener
     window.addEventListener('resize', handleResize);
 
+    // ResizeObserver for container changes
     if (terminalRef.current) {
       resizeObserver.current = new ResizeObserver(handleResize);
       resizeObserver.current.observe(terminalRef.current);
     }
 
     return () => {
+      // Clear reconnection timeout
       if (reconnectTimeout.current) {
         clearTimeout(reconnectTimeout.current);
         reconnectTimeout.current = null;
       }
       
+      // Cleanup WebSocketService event listeners
+      webSocketService.off('connected', handleBackendConnected);
+      webSocketService.off('disconnected', handleBackendDisconnected);
+      
+      // Close direct WebSocket connection
       if (websocket.current) {
         websocket.current.close();
         websocket.current = null;
@@ -447,21 +509,25 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
       }
       window.removeEventListener('resize', handleResize);
     };
-  }, [onTerminalReady, onTerminalOutput, onTerminalExit]);
+  }, [onTerminalReady, onTerminalOutput, onTerminalExit]); // Removed isDarkTheme dependency
 
-  // Theme update effect
+  // Separate effect to update terminal theme when isDarkTheme changes
   useEffect(() => {
     if (terminal.current && terminal.current.options) {
+      // Add a small delay to ensure CSS variables have propagated
       const themeUpdateTimeout = setTimeout(() => {
+        // Get theme colors from CSS variables
         const computedStyle = getComputedStyle(document.documentElement);
         const getThemeVar = (varName: string) => computedStyle.getPropertyValue(varName).trim();
         
         const newTheme = {
+          // Use ICUI CSS variables for background to match other panels
           background: getThemeVar('--icui-bg-primary') || (isDarkTheme ? '#1e1e1e' : '#ffffff'),
           foreground: getThemeVar('--icui-text-primary') || (isDarkTheme ? '#d4d4d4' : '#000000'),
           cursor: getThemeVar('--icui-text-primary') || (isDarkTheme ? '#d4d4d4' : '#000000'),
           cursorAccent: getThemeVar('--icui-bg-primary') || (isDarkTheme ? '#1e1e1e' : '#ffffff'),
           selectionBackground: isDarkTheme ? '#264f78' : '#add6ff',
+          // Use ICUI terminal color variables
           black: getThemeVar('--icui-terminal-black') || '#000000',
           brightBlack: getThemeVar('--icui-terminal-bright-black') || '#666666',
           red: getThemeVar('--icui-terminal-red') || '#cd3131',
@@ -480,19 +546,21 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
           brightWhite: getThemeVar('--icui-terminal-bright-white') || '#ffffff',
         };
         
+        // Update theme without reinitializing terminal
         if (terminal.current) {
           terminal.current.options.theme = newTheme;
           terminal.current.refresh(0, terminal.current.rows - 1);
         }
-      }, 100);
+      }, 100); // 100ms delay
 
       return () => clearTimeout(themeUpdateTimeout);
     }
   }, [isDarkTheme]);
 
-  // Keyboard shortcuts for copy/paste
+  // Keyboard shortcuts for copy/paste (same as SimpleTerminal)
   useEffect(() => {
     const handleKeyDown = async (event: KeyboardEvent) => {
+      // Only handle keyboard shortcuts when terminal is focused or as global shortcuts
       if ((event.ctrlKey || event.metaKey) && event.shiftKey) {
         if (event.key === 'C' || event.key === 'c') {
           event.preventDefault();
@@ -511,14 +579,15 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
     };
   }, [handleCopy, handlePaste]);
 
-  // CSS styles for viewport scrolling
+  // Apply critical CSS for viewport scrolling (same as SimpleTerminal)
   useEffect(() => {
+    // Get theme colors from CSS variables for viewport styling
     const computedStyle = getComputedStyle(document.documentElement);
     const bgColor = computedStyle.getPropertyValue('--icui-bg-primary').trim() || 
                    (isDarkTheme ? '#1e1e1e' : '#ffffff');
     
     const styleElement = document.createElement('style');
-    styleElement.id = 'icui-terminal-styles';
+    styleElement.id = 'icui-terminal-styles'; // Add ID for easier cleanup
     styleElement.textContent = `
       .icui-terminal-container .xterm .xterm-viewport {
         background-color: ${bgColor} !important;
@@ -541,6 +610,7 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
       }
     `;
     
+    // Remove any existing styles with the same ID first
     const existingStyle = document.getElementById('icui-terminal-styles');
     if (existingStyle) {
       existingStyle.remove();
@@ -549,18 +619,21 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
     document.head.appendChild(styleElement);
 
     return () => {
-      const elementToRemove = document.getElementById('icui-terminal-styles');
+      // Clean up the style element
+      const elementToRemove = document.getElementById('backend-connected-terminal-styles');
       if (elementToRemove) {
         elementToRemove.remove();
       }
     };
-  }, [isDarkTheme]);
+  }, [isDarkTheme]); // Add isDarkTheme dependency to update when theme changes
 
-  // Force update terminal viewport background when theme changes
+  // Additional effect to force update terminal viewport background when theme changes
   useEffect(() => {
     if (!terminalRef.current || !terminal.current) return;
 
+    // Add a small delay to ensure CSS variables have propagated
     const updateTimeout = setTimeout(() => {
+      // Force update viewport background directly
       const terminalViewport = terminalRef.current?.querySelector('.xterm-viewport');
       if (terminalViewport) {
         const computedStyle = getComputedStyle(document.documentElement);
@@ -568,12 +641,12 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
                        (isDarkTheme ? '#1e1e1e' : '#ffffff');
         (terminalViewport as HTMLElement).style.backgroundColor = bgColor;
       }
-    }, 100);
+    }, 100); // 100ms delay to ensure CSS variables are updated
 
     return () => clearTimeout(updateTimeout);
-  }, [isDarkTheme]);
+  }, [isDarkTheme]); // Update viewport background when theme changes
 
-  // Expose terminal methods via ref
+  // Expose terminal methods via ref (matching SimpleTerminal pattern)
   useImperativeHandle(ref, () => ({
     terminal: terminal.current,
     sendInput: (input: string) => {
@@ -593,11 +666,13 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
       }
     },
     destroy: () => {
+      // Clear reconnection timeout
       if (reconnectTimeout.current) {
         clearTimeout(reconnectTimeout.current);
         reconnectTimeout.current = null;
       }
       
+      // Close WebSocket connection
       if (websocket.current) {
         websocket.current.close();
         websocket.current = null;

@@ -106,7 +106,13 @@ export const BackendContextProvider: React.FC<BackendContextProviderProps> = ({
       setConnectionStatus('connecting');
       setError(null);
       
-      await webSocketService.connect(config.websocket_url);
+      // For the main backend context, use 'main' service type
+      await webSocketService.connect({
+        serviceType: 'main',
+        sessionId: `backend-${Date.now()}`,
+        autoReconnect: true,
+        maxRetries: 5
+      });
       setConnectionStatus('connected');
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to connect to backend';
