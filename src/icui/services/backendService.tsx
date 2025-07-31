@@ -106,7 +106,7 @@ export class ICUIBackendService extends FileClient {
           throw new Error(result.message || 'Failed to get directory contents');
         }
         
-        const fileList = result.files || [];
+        const fileList = result.data || result.files || [];
         // File list retrieved
         
         // Convert backend format to FileNode format
