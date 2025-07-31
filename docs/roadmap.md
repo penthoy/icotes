@@ -3,9 +3,15 @@ A web-based JavaScript code editor built with ViteReact, CodeMirror 6, and moder
 
 ### In Progress
 
-## Future task
+## Recently Completed (Latest First)
 
-1. create a complete implementation of a tool use agent of personal_agent.
+1. **Terminal Connection Fix** - Fixed terminal hanging at "Waiting for backend connection..." by ensuring direct WebSocket connection to `/ws/terminal/{id}` endpoint regardless of centralized WebSocketService status. Terminal now connects immediately and reliably.
+
+1. create a enhanced_AI_frontend_plan.md use agent of personal_agent.
+add code highlighting support
+support markdown on all replies.
+copy pasting images and reference scripts and context.
+analyze the current chatui and
 2. look into custom agents personal agent who can use tools
 3. design other tools for agents to use, in that list, first choose the first few that's simplest to implement. so we can build an plan to incrementally test each of the tools in phases.
 4. at the end we should be able to have our agent make tool calls and do exactly what copilot agents do.
@@ -111,10 +117,12 @@ maya style code executor.
 CLI should work similar to maya's, which later this will be for the nodes, similar to how nuke nodes would work.
 
 ## Recently Completed ✅
-1. ✓ Fixed PersonalAgent tool call issue - resolved OpenAI API error "Missing required parameter: 'messages[3].tool_calls[0].type'" by properly formatting tool_calls with required "type": "function" field in `/home/penthoy/ilaborcode/backend/icpy/agent/personal_agent.py`
-2. ✓ when the page first loaded code editor should be empty.
-3. ✓ When clicking on a text/script file in the explorer, it should temporily open in the editor and the name should be italic. if click on another text file immediate, the other file will replace that temporarilly opened file.
-4. ✓ When double clicked on a text/script file it should open the file in "permenent" state, so when clicking on another file it will not be replaced, and the text on it will not be italic. this behavior is exactly the same as vs code.
+1. ✓ Fixed Explorer "Directory is empty" issue - resolved API response parsing mismatch by updating `result.files` to support both `result.data` and `result.files` in `/home/penthoy/ilaborcode/src/icui/services/backendService.tsx`
+2. ✓ Fixed Terminal hanging "Connecting to backend..." issue - reverted to direct WebSocket connection to `/ws/terminal/{id}` endpoint (as expected by backend) while adding robust reconnection logic with exponential backoff, max 5 attempts, and backend connection monitoring in `/home/penthoy/ilaborcode/src/icui/components/ICUITerminal.tsx`
+3. ✓ Fixed PersonalAgent tool call issue - resolved OpenAI API error "Missing required parameter: 'messages[3].tool_calls[0].type'" by properly formatting tool_calls with required "type": "function" field in `/home/penthoy/ilaborcode/backend/icpy/agent/personal_agent.py`
+4. ✓ when the page first loaded code editor should be empty.
+5. ✓ When clicking on a text/script file in the explorer, it should temporily open in the editor and the name should be italic. if click on another text file immediate, the other file will replace that temporarilly opened file.
+6. ✓ When double clicked on a text/script file it should open the file in "permenent" state, so when clicking on another file it will not be replaced, and the text on it will not be italic. this behavior is exactly the same as vs code.
 
 -- Milestone 2:
 ✓ custom agent picker dropdown.

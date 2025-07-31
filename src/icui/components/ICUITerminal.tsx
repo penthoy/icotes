@@ -21,6 +21,7 @@ import React, { useRef, useEffect, useState, useCallback, useImperativeHandle, f
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
+import { useWebSocketService } from '../../contexts/BackendContext';
 
 // Enhanced clipboard functionality (same as SimpleTerminal)
 class EnhancedClipboard {
@@ -175,6 +176,13 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
   const resizeObserver = useRef<ResizeObserver | null>(null);
   const resizeTimeout = useRef<NodeJS.Timeout | null>(null);
   const [isDarkTheme, setIsDarkTheme] = useState(false);
+  const reconnectTimeout = useRef<NodeJS.Timeout | null>(null);
+  const reconnectAttempts = useRef<number>(0);
+  const maxReconnectAttempts = 5;
+  const [isConnected, setIsConnected] = useState(false);
+
+  // Use the centralized WebSocket service for connection status monitoring
+  const webSocketService = useWebSocketService();
 
   // Clipboard handlers (same as SimpleTerminal)
   const handleCopy = useCallback(async () => {
@@ -309,80 +317,140 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
     terminal.current.write('Terminal ID: ' + terminalId.current + '\r\n');
     terminal.current.write('Connecting to backend...\r\n');
 
-    // Handle user input: send to backend. NO LOCAL ECHO - let backend handle it
+    // Connect to backend via direct WebSocket with robust reconnection logic
+    const connectToTerminal = () => {
+      // Clear any existing reconnection timeout
+      if (reconnectTimeout.current) {
+        clearTimeout(reconnectTimeout.current);
+        reconnectTimeout.current = null;
+      }
+
+      // Close existing connection if any
+      if (websocket.current) {
+        websocket.current.close();
+        websocket.current = null;
+      }
+
+      const envWsUrl = (import.meta as any).env?.VITE_WS_URL as string | undefined;
+      let wsUrl: string;
+      if (envWsUrl && envWsUrl.trim() !== '') {
+        // Use configured WebSocket URL from .env - ensure /ws prefix for terminal endpoint
+        wsUrl = `${envWsUrl}/ws/terminal/${terminalId.current}`;
+      } else {
+        // Fallback to dynamic URL construction
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const host = window.location.host;
+        wsUrl = `${protocol}//${host}/ws/terminal/${terminalId.current}`;
+      }
+      
+      console.log(`[ICUITerminal] Connecting to: ${wsUrl}`);
+      websocket.current = new WebSocket(wsUrl);
+      
+      websocket.current.onopen = () => {
+        console.log(`[ICUITerminal] Connected to terminal ${terminalId.current}`);
+        setIsConnected(true);
+        reconnectAttempts.current = 0; // Reset reconnect attempts on successful connection
+        
+        terminal.current?.write('\r\n\x1b[32mConnected to backend!\x1b[0m\r\n');
+        terminal.current?.clear();
+        terminal.current?.write('ICUITerminal - Backend Connected!\r\n');
+        terminal.current?.write('Terminal ID: ' + terminalId.current + '\r\n');
+        terminal.current?.write('Ready for commands...\r\n');
+        
+        // Change to workspace directory if configured
+        const workspaceRoot = (import.meta as any).env?.VITE_WORKSPACE_ROOT as string | undefined;
+        if (workspaceRoot && websocket.current?.readyState === WebSocket.OPEN) {
+          // Send cd command to change to workspace directory
+          websocket.current.send(`cd "${workspaceRoot}"\r`);
+          terminal.current?.write(`Changing to workspace: ${workspaceRoot}\r\n`);
+        }
+        
+        terminal.current?.focus();
+        onTerminalReady?.(terminal.current);
+      };
+      
+      websocket.current.onmessage = (event) => {
+        if (terminal.current) {
+          try {
+            terminal.current.write(event.data);
+            onTerminalOutput?.(event.data);
+          } catch (error) {
+            console.warn('Terminal write error:', error);
+            // Fallback: try to write data in smaller chunks
+            const data = event.data;
+            for (let i = 0; i < data.length; i += 1024) {
+              const chunk = data.slice(i, i + 1024);
+              terminal.current.write(chunk);
+            }
+          }
+        }
+      };
+      
+      websocket.current.onclose = (event) => {
+        console.log(`[ICUITerminal] Disconnected from terminal ${terminalId.current}:`, event.code, event.reason);
+        setIsConnected(false);
+        
+        if (event.code !== 1000) {
+          terminal.current?.write("\r\n\x1b[31mTerminal disconnected\x1b[0m\r\n");
+          
+          // Attempt reconnection if we haven't exceeded max attempts
+          if (reconnectAttempts.current < maxReconnectAttempts) {
+            const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 10000); // Exponential backoff, max 10s
+            reconnectAttempts.current++;
+            
+            terminal.current?.write(`\r\n\x1b[33mReconnecting in ${delay/1000}s... (attempt ${reconnectAttempts.current}/${maxReconnectAttempts})\x1b[0m\r\n`);
+            
+            reconnectTimeout.current = setTimeout(() => {
+              connectToTerminal();
+            }, delay);
+          } else {
+            terminal.current?.write("\r\n\x1b[31mMax reconnection attempts reached. Please refresh to try again.\x1b[0m\r\n");
+          }
+        }
+        
+        onTerminalExit?.(event.code || 0);
+      };
+      
+      websocket.current.onerror = (error) => {
+        console.error('[ICUITerminal] WebSocket error:', error);
+        terminal.current?.write("\r\n\x1b[31mTerminal connection error\x1b[0m\r\n");
+      };
+    };
+
+    // Handle user input: send to backend via direct WebSocket
     terminal.current.onData((data) => {
       if (websocket.current?.readyState === WebSocket.OPEN) {
         websocket.current.send(data);
         onTerminalOutput?.(data);
+      } else {
+        terminal.current?.write("\r\n\x1b[31mTerminal disconnected - attempting reconnection...\x1b[0m\r\n");
+        if (reconnectAttempts.current < maxReconnectAttempts) {
+          connectToTerminal();
+        }
       }
     });
 
-    // Connect to backend via WebSocket using .env configuration (same as SimpleTerminal)
-    const envWsUrl = (import.meta as any).env?.VITE_WS_URL as string | undefined;
-    let wsUrl: string;
-    if (envWsUrl && envWsUrl.trim() !== '') {
-      // Use configured WebSocket URL from .env
-      wsUrl = `${envWsUrl}/terminal/${terminalId.current}`;
-    } else {
-      // Fallback to dynamic URL construction
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const host = window.location.host;
-      wsUrl = `${protocol}//${host}/ws/terminal/${terminalId.current}`;
-    }
-    
-    websocket.current = new WebSocket(wsUrl);
-    
-    websocket.current.onopen = () => {
-      terminal.current?.write('\r\n\x1b[32mConnected to backend!\x1b[0m\r\n');
-      // Clear screen on connect
-      terminal.current?.clear();
-      terminal.current?.write('ICUITerminal - Backend Connected!\r\n');
-      terminal.current?.write('Terminal ID: ' + terminalId.current + '\r\n');
-      terminal.current?.write('Ready for commands...\r\n');
-      
-      // Change to workspace directory if configured
-      const workspaceRoot = (import.meta as any).env?.VITE_WORKSPACE_ROOT as string | undefined;
-      if (workspaceRoot && websocket.current?.readyState === WebSocket.OPEN) {
-        // Send cd command to change to workspace directory
-        websocket.current.send(`cd "${workspaceRoot}"\r`);
-        terminal.current?.write(`Changing to workspace: ${workspaceRoot}\r\n`);
-      }
-      
-      // Focus the terminal after connection is established
-      terminal.current?.focus();
-      
-      onTerminalReady?.(terminal.current);
-    };
-    
-    websocket.current.onmessage = (event) => {
-      if (terminal.current) {
-        // Ensure terminal can handle the data properly
-        try {
-          terminal.current.write(event.data);
-          onTerminalOutput?.(event.data);
-        } catch (error) {
-          console.warn('Terminal write error:', error);
-          // Fallback: try to write data in smaller chunks
-          const data = event.data;
-          for (let i = 0; i < data.length; i += 1024) {
-            const chunk = data.slice(i, i + 1024);
-            terminal.current.write(chunk);
-          }
-        }
+    // Monitor centralized WebSocketService for backend status (optional enhancement)
+    const handleBackendConnected = () => {
+      // Backend is connected, attempt terminal connection if not already connected
+      if (!isConnected && reconnectAttempts.current < maxReconnectAttempts) {
+        console.log('[ICUITerminal] Backend connected, attempting terminal connection');
+        connectToTerminal();
       }
     };
-    
-    websocket.current.onclose = (event) => {
-      if (event.code !== 1000) {
-        terminal.current?.write("\r\n\x1b[31mTerminal disconnected\x1b[0m\r\n");
-      }
-      onTerminalExit?.(event.code || 0);
+
+    const handleBackendDisconnected = () => {
+      // Backend disconnected, terminal will likely disconnect too
+      console.log('[ICUITerminal] Backend disconnected, terminal may disconnect');
     };
-    
-    websocket.current.onerror = (error) => {
-      console.error('[ICUITerminal] WebSocket error:', error);
-      terminal.current?.write("\r\n\x1b[31mTerminal connection error\x1b[0m\r\n");
-    };
+
+    // Set up backend connection monitoring  
+    webSocketService.on('connected', handleBackendConnected);
+    webSocketService.on('disconnected', handleBackendDisconnected);
+
+    // Initial connection attempt - terminal has its own direct WebSocket connection
+    // Don't wait for centralized WebSocketService, connect directly
+    connectToTerminal();
 
     // Resize handling with debounce and safety checks
     const handleResize = () => {
@@ -414,10 +482,22 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
     }
 
     return () => {
-      // Cleanup
+      // Clear reconnection timeout
+      if (reconnectTimeout.current) {
+        clearTimeout(reconnectTimeout.current);
+        reconnectTimeout.current = null;
+      }
+      
+      // Cleanup WebSocketService event listeners
+      webSocketService.off('connected', handleBackendConnected);
+      webSocketService.off('disconnected', handleBackendDisconnected);
+      
+      // Close direct WebSocket connection
       if (websocket.current) {
         websocket.current.close();
+        websocket.current = null;
       }
+      
       if (terminal.current) {
         terminal.current.dispose();
       }
@@ -586,9 +666,18 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
       }
     },
     destroy: () => {
+      // Clear reconnection timeout
+      if (reconnectTimeout.current) {
+        clearTimeout(reconnectTimeout.current);
+        reconnectTimeout.current = null;
+      }
+      
+      // Close WebSocket connection
       if (websocket.current) {
         websocket.current.close();
+        websocket.current = null;
       }
+      
       if (terminal.current) {
         terminal.current.dispose();
       }
