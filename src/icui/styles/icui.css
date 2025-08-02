@@ -1,0 +1,296 @@
+/**
+ * ICUI Framework Styles
+ * CSS for the Interactive Component UI Framework
+ */
+
+@import './icui-panel.css';
+@import './icui-panel-area.css';
+@import './themes/icui-themes.css';
+
+/* Frame Container Base Styles */
+.icui-frame-container {
+  box-sizing: border-box;
+  position: relative;
+  transition: border-color 0.2s ease;
+  background-color: var(--icui-bg-primary);
+  border-color: var(--icui-border);
+  color: var(--icui-text-primary);
+}
+
+.icui-frame-container[data-icui-border-detection="true"] {
+  border-style: solid;
+  border-width: 0;
+}
+
+/* Frame Content */
+.icui-frame-content {
+  overflow: auto;
+  box-sizing: border-box;
+  background-color: var(--icui-bg-primary);
+}
+
+/* Resize Handles */
+.icui-resize-handle {
+  position: absolute;
+  z-index: 10;
+  transition: all 0.2s ease;
+  border-radius: 2px;
+  opacity: 0;
+}
+
+.icui-resize-handle:hover {
+  opacity: 1 !important;
+  background-color: var(--icui-accent) !important;
+}
+
+.icui-resize-handle:active {
+  opacity: 1 !important;
+  background-color: var(--icui-accent-hover) !important;
+}
+
+/* Vertical resize handle - positioned dynamically via inline styles */
+.icui-resize-handle[data-icui-direction="vertical"] {
+  cursor: col-resize;
+  width: 4px;
+  height: 100%;
+}
+
+/* Horizontal resize handle - positioned dynamically via inline styles */
+.icui-resize-handle[data-icui-direction="horizontal"] {
+  cursor: row-resize;
+  width: 100%;
+  height: 4px;
+}
+
+/* Debug Info */
+.icui-debug-info {
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  line-height: 1.2;
+  pointer-events: none;
+  z-index: 1000;
+  background-color: var(--icui-bg-overlay);
+  color: var(--icui-text-primary);
+  border: 1px solid var(--icui-border);
+}
+
+/* Split Panel Styles */
+.icui-split-panel {
+  box-sizing: border-box;
+  background-color: var(--icui-bg-primary);
+}
+
+.icui-split-handle {
+  position: absolute;
+  z-index: 10;
+  transition: background-color 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--icui-border);
+}
+
+.icui-split-handle:hover {
+  background-color: var(--icui-accent) !important;
+}
+
+.icui-split-handle:active {
+  background-color: var(--icui-accent-hover) !important;
+}
+
+.icui-split-first-panel,
+.icui-split-second-panel {
+  box-sizing: border-box;
+  background-color: var(--icui-bg-primary);
+}
+
+.icui-split-controls {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.icui-split-panel:hover .icui-split-controls {
+  opacity: 1;
+}
+
+/* Touch support for mobile */
+@media (hover: none) and (pointer: coarse) {
+  .icui-split-handle {
+    background-color: var(--icui-border);
+    opacity: 0.8;
+  }
+  
+  .icui-split-controls {
+    opacity: 1;
+  }
+}
+
+/* Animation for smooth transitions */
+.icui-frame-container.icui-animating {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Focus styles for accessibility */
+.icui-frame-container:focus-within {
+  outline: 2px solid var(--icui-accent);
+  outline-offset: 2px;
+}
+
+.icui-resize-handle:focus {
+  outline: 2px solid var(--icui-accent);
+  outline-offset: 2px;
+}
+
+/* High contrast mode */
+@media (prefers-contrast: high) {
+  .icui-resize-handle {
+    background-color: var(--icui-text-primary) !important;
+    border: 1px solid var(--icui-bg-primary);
+  }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .icui-frame-container,
+  .icui-resize-handle {
+    transition: none;
+  }
+}
+
+/* Terminal Scrollbar Styles - Only for xterm viewport */
+.xterm .xterm-viewport {
+  overflow-y: auto !important;
+  scrollbar-width: thin;
+  scrollbar-color: var(--icui-text-muted) var(--icui-bg-secondary);
+}
+
+.xterm .xterm-viewport::-webkit-scrollbar {
+  width: 8px;
+}
+
+.xterm .xterm-viewport::-webkit-scrollbar-track {
+  background: var(--icui-bg-secondary);
+  border-radius: 4px;
+}
+
+.xterm .xterm-viewport::-webkit-scrollbar-thumb {
+  background: var(--icui-text-muted);
+  border-radius: 4px;
+  border: 1px solid var(--icui-bg-secondary);
+}
+
+.xterm .xterm-viewport::-webkit-scrollbar-thumb:hover {
+  background: var(--icui-text-secondary);
+}
+
+/* Ensure terminal containers don't add extra scrollbars */
+.xterm {
+  overflow: hidden !important;
+}
+
+.xterm .xterm-screen {
+  overflow: hidden !important;
+}
+
+/* ICUI Terminal V2 - Clean implementation styles */
+.icui-terminal-v2 {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: var(--icui-bg-primary);
+}
+
+.icui-terminal-header {
+  flex-shrink: 0;
+  z-index: 1;
+  display: flex;
+  background: var(--icui-bg-secondary);
+  border-bottom: 1px solid var(--icui-border-subtle);
+  color: var(--icui-text-primary);
+}
+
+.icui-terminal-container {
+  overflow: hidden;
+  position: relative;
+  flex: 1;
+  min-height: 200px;
+  min-width: 300px;
+  background-color: var(--icui-bg-primary);
+}
+
+.icui-terminal-v2 .xterm {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  position: relative;
+}
+
+.icui-terminal-v2 .xterm .xterm-helper-textarea {
+  position: absolute;
+  opacity: 0;
+  left: -9999px;
+}
+
+.icui-terminal-v2 .xterm .xterm-screen {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  height: 100%;
+}
+
+.icui-terminal-v2 .xterm .xterm-viewport {
+  overflow-y: auto;
+  overflow-x: hidden;
+  position: relative;
+  display: block;
+  scrollbar-width: thin;
+  scrollbar-color: var(--icui-text-muted) var(--icui-bg-secondary);
+}
+
+.icui-terminal-v2 .xterm .xterm-viewport::-webkit-scrollbar {
+  width: 8px;
+}
+
+.icui-terminal-v2 .xterm .xterm-viewport::-webkit-scrollbar-track {
+  background: var(--icui-bg-secondary);
+  border-radius: 4px;
+}
+
+.icui-terminal-v2 .xterm .xterm-viewport::-webkit-scrollbar-thumb {
+  background: var(--icui-text-muted);
+  border-radius: 4px;
+  border: 1px solid var(--icui-bg-secondary);
+}
+
+.icui-terminal-v2 .xterm .xterm-viewport::-webkit-scrollbar-thumb:hover {
+  background: var(--icui-text-secondary);
+}
+
+.icui-terminal-v2 .xterm .xterm-rows {
+  position: relative;
+}
+
+.icui-terminal-v2 .xterm .xterm-rows .xterm-row {
+  line-height: inherit;
+  white-space: pre;
+}
+
+.icui-terminal-v2 .xterm .xterm-cursor-layer {
+  position: absolute;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.icui-terminal-v2 .xterm .xterm-cursor-layer .xterm-cursor {
+  position: absolute;
+}
+
+.icui-terminal-v2 .xterm .xterm-text-layer {
+  position: absolute;
+  z-index: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+}

@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Direct Chat Test</title>
+</head>
+<body>
+    <div id="output"></div>
+    <input type="text" id="messageInput" placeholder="Type a message..." />
+    <button onclick="sendMessage()">Send</button>
+    <button onclick="connect()">Connect</button>
+    <button onclick="disconnect()">Disconnect</button>
+
+    <script>
+        let ws = null;
+        const output = document.getElementById('output');
+        
+        function log(message) {
+            const div = document.createElement('div');
+            div.textContent = `${new Date().toISOString()}: ${message}`;
+            output.appendChild(div);
+            console.log(message);
+        }
+        
+        function connect() {
+            if (ws) {
+                ws.close();
+            }
+            
+            ws = new WebSocket('ws://localhost:8000/ws/chat');
+            
+            ws.onopen = function(event) {
+                log('WebSocket connected');
+            };
+            
+            ws.onmessage = function(event) {
+                log('Received: ' + event.data);
+            };
+            
+            ws.onclose = function(event) {
+                log('WebSocket closed: ' + event.code + ' ' + event.reason);
+            };
+            
+            ws.onerror = function(error) {
+                log('WebSocket error: ' + error);
+            };
+        }
+        
+        function disconnect() {
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+        }
+        
+        function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+            
+            if (!message || !ws) {
+                return;
+            }
+            
+            const chatMessage = {
+                type: 'message',
+                content: message,
+                metadata: {
+                    session_id: 'test_session_' + Date.now(),
+                    agentType: 'openai',
+                    streaming: true,
+                    timestamp: new Date()
+                }
+            };
+            
+            log('Sending: ' + JSON.stringify(chatMessage));
+            ws.send(JSON.stringify(chatMessage));
+            input.value = '';
+        }
+        
+        // Auto-connect on load
+        window.onload = function() {
+            connect();
+        };
+        
+        // Allow Enter key to send message
+        document.getElementById('messageInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+    </script>
+</body>
+</html>

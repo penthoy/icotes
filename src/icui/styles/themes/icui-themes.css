@@ -1,0 +1,838 @@
+/**
+ * ICUI Framework Theme System
+ * Comprehensive theming for all ICUI components
+ * Includes multiple dark and light theme variations
+ */
+
+/* ===== BASE THEME VARIABLES ===== */
+:root {
+  /* GitHub Dark Theme Variables */
+  --icui-github-dark-bg-primary: #0d1117;
+  --icui-github-dark-bg-secondary: #161b22;
+  --icui-github-dark-bg-tertiary: #21262d;
+  --icui-github-dark-bg-overlay: #30363d;
+  --icui-github-dark-border: #30363d;
+  --icui-github-dark-border-subtle: #21262d;
+  --icui-github-dark-text-primary: #e6edf3;
+  --icui-github-dark-text-secondary: #7d8590;
+  --icui-github-dark-text-muted: #656d76;
+  --icui-github-dark-accent: #58a6ff;
+  --icui-github-dark-accent-hover: #1f6feb;
+  --icui-github-dark-success: #3fb950;
+  --icui-github-dark-danger: #f85149;
+  --icui-github-dark-warning: #d29922;
+  
+  /* GitHub Dark Terminal Colors */
+  --icui-github-dark-terminal-white: #e5e5e5;
+  --icui-github-dark-terminal-bright-white: #ffffff;
+  --icui-github-dark-terminal-bright-black: #666666;
+  --icui-github-dark-terminal-green: #0dbc79;
+  --icui-github-dark-terminal-bright-green: #23d18b;
+  --icui-github-dark-terminal-yellow: #e5e510;
+  --icui-github-dark-terminal-bright-yellow: #f5f543;
+  --icui-github-dark-terminal-blue: #2472c8;
+  --icui-github-dark-terminal-bright-blue: #3b8eea;
+  --icui-github-dark-terminal-magenta: #bc3fbc;
+  --icui-github-dark-terminal-bright-magenta: #d670d6;
+  --icui-github-dark-terminal-cyan: #11a8cd;
+  --icui-github-dark-terminal-bright-cyan: #29b8db;
+  --icui-github-dark-terminal-red: #cd3131;
+  --icui-github-dark-terminal-bright-red: #f14c4c;
+  
+  /* Monokai Theme Variables */
+  --icui-monokai-bg-primary: #272822;
+  --icui-monokai-bg-secondary: #383830;
+  --icui-monokai-bg-tertiary: #49483e;
+  --icui-monokai-bg-overlay: #75715e;
+  --icui-monokai-border: #49483e;
+  --icui-monokai-border-subtle: #383830;
+  --icui-monokai-text-primary: #f8f8f2;
+  --icui-monokai-text-secondary: #cfcfc2;
+  --icui-monokai-text-muted: #75715e;
+  --icui-monokai-accent: #66d9ef;
+  --icui-monokai-accent-hover: #a6e22e;
+  --icui-monokai-success: #a6e22e;
+  --icui-monokai-danger: #f92672;
+  --icui-monokai-warning: #e6db74;
+  
+  /* One Dark Theme Variables */
+  --icui-one-dark-bg-primary: #282c34;
+  --icui-one-dark-bg-secondary: #21252b;
+  --icui-one-dark-bg-tertiary: #2c313c;
+  --icui-one-dark-bg-overlay: #3e4451;
+  --icui-one-dark-border: #3e4451;
+  --icui-one-dark-border-subtle: #2c313c;
+  --icui-one-dark-text-primary: #abb2bf;
+  --icui-one-dark-text-secondary: #828997;
+  --icui-one-dark-text-muted: #5c6370;
+  --icui-one-dark-accent: #61afef;
+  --icui-one-dark-accent-hover: #528bff;
+  --icui-one-dark-success: #98c379;
+  --icui-one-dark-danger: #e06c75;
+  --icui-one-dark-warning: #e5c07b;
+  
+  /* GitHub Light Theme Variables */
+  --icui-github-light-bg-primary: #ffffff;
+  --icui-github-light-bg-secondary: #f6f8fa;
+  --icui-github-light-bg-tertiary: #f1f3f4;
+  --icui-github-light-bg-overlay: #ffffff;
+  --icui-github-light-border: #d0d7de;
+  --icui-github-light-border-subtle: #d8dee4;
+  --icui-github-light-text-primary: #24292f;
+  --icui-github-light-text-secondary: #656d76;
+  --icui-github-light-text-muted: #8b949e;
+  --icui-github-light-accent: #0969da;
+  --icui-github-light-accent-hover: #0550ae;
+  --icui-github-light-success: #1a7f37;
+  --icui-github-light-danger: #cf222e;
+  --icui-github-light-warning: #9a6700;
+  
+  /* GitHub Light Terminal Colors */
+  --icui-github-light-terminal-white: #333333;
+  --icui-github-light-terminal-bright-white: #000000;
+  --icui-github-light-terminal-bright-black: #666666;
+  --icui-github-light-terminal-green: #008000;
+  --icui-github-light-terminal-bright-green: #00a000;
+  --icui-github-light-terminal-yellow: #b58900;
+  --icui-github-light-terminal-bright-yellow: #cb4b16;
+  --icui-github-light-terminal-blue: #0451a5;
+  --icui-github-light-terminal-bright-blue: #0066cc;
+  --icui-github-light-terminal-magenta: #a020f0;
+  --icui-github-light-terminal-bright-magenta: #800080;
+  --icui-github-light-terminal-cyan: #0598bc;
+  --icui-github-light-terminal-bright-cyan: #008080;
+  --icui-github-light-terminal-red: #a31515;
+  --icui-github-light-terminal-bright-red: #cd3131;
+  
+  /* VS Code Light Theme Variables */
+  --icui-vscode-light-bg-primary: #ffffff;
+  --icui-vscode-light-bg-secondary: #f3f3f3;
+  --icui-vscode-light-bg-tertiary: #eeeeee;
+  --icui-vscode-light-bg-overlay: #ffffff;
+  --icui-vscode-light-border: #cccccc;
+  --icui-vscode-light-border-subtle: #e5e5e5;
+  --icui-vscode-light-text-primary: #333333;
+  --icui-vscode-light-text-secondary: #666666;
+  --icui-vscode-light-text-muted: #999999;
+  --icui-vscode-light-accent: #007acc;
+  --icui-vscode-light-accent-hover: #005a9e;
+  --icui-vscode-light-success: #008000;
+  --icui-vscode-light-danger: #cd3131;
+  --icui-vscode-light-warning: #ff8c00;
+  
+  /* VSCode Light Terminal Colors */
+  --icui-vscode-light-terminal-white: #333333;
+  --icui-vscode-light-terminal-bright-white: #000000;
+  --icui-vscode-light-terminal-bright-black: #666666;
+  --icui-vscode-light-terminal-green: #008000;
+  --icui-vscode-light-terminal-bright-green: #00a000;
+  --icui-vscode-light-terminal-yellow: #b58900;
+  --icui-vscode-light-terminal-bright-yellow: #cb4b16;
+  --icui-vscode-light-terminal-blue: #0451a5;
+  --icui-vscode-light-terminal-bright-blue: #0066cc;
+  --icui-vscode-light-terminal-magenta: #a020f0;
+  --icui-vscode-light-terminal-bright-magenta: #800080;
+  --icui-vscode-light-terminal-cyan: #0598bc;
+  --icui-vscode-light-terminal-bright-cyan: #008080;
+  --icui-vscode-light-terminal-red: #a31515;
+  --icui-vscode-light-terminal-bright-red: #cd3131;
+}
+
+/* ===== GITHUB DARK THEME ===== */
+/* GitHub Dark Theme (Default Dark) */
+.icui-theme-github-dark {
+  /* Background Colors */
+  --icui-bg-primary: #0d1117;
+  --icui-bg-secondary: #21262d;
+  --icui-bg-tertiary: #30363d;
+  --icui-bg-overlay: #1c2128;
+
+  /* Text Colors */
+  --icui-text-primary: #e6edf3;
+  --icui-text-secondary: #7d8590;
+  --icui-text-muted: #656d76;
+
+  /* Border Colors - DIMMED for better dark theme experience */
+  --icui-border: #30363d;
+  --icui-border-subtle: #21262d;
+
+  /* Accent Colors */
+  --icui-accent: #238636;
+  --icui-accent-hover: #2ea043;
+  --icui-success: #238636;
+  --icui-danger: #da3633;
+  --icui-warning: #d29922;
+  
+  /* Terminal Colors */
+  --icui-terminal-black: #000000;
+  --icui-terminal-white: var(--icui-github-dark-terminal-white);
+  --icui-terminal-bright-white: var(--icui-github-dark-terminal-bright-white);
+  --icui-terminal-bright-black: var(--icui-github-dark-terminal-bright-black);
+  --icui-terminal-green: var(--icui-github-dark-terminal-green);
+  --icui-terminal-bright-green: var(--icui-github-dark-terminal-bright-green);
+  --icui-terminal-yellow: var(--icui-github-dark-terminal-yellow);
+  --icui-terminal-bright-yellow: var(--icui-github-dark-terminal-bright-yellow);
+  --icui-terminal-blue: var(--icui-github-dark-terminal-blue);
+  --icui-terminal-bright-blue: var(--icui-github-dark-terminal-bright-blue);
+  --icui-terminal-magenta: var(--icui-github-dark-terminal-magenta);
+  --icui-terminal-bright-magenta: var(--icui-github-dark-terminal-bright-magenta);
+  --icui-terminal-cyan: var(--icui-github-dark-terminal-cyan);
+  --icui-terminal-bright-cyan: var(--icui-github-dark-terminal-bright-cyan);
+  --icui-terminal-red: var(--icui-github-dark-terminal-red);
+  --icui-terminal-bright-red: var(--icui-github-dark-terminal-bright-red);
+}
+
+/* Dark theme specific tab overrides - FIXED: Active tabs should be lighter */
+.icui-theme-github-dark .icui-panel-tab {
+  background-color: transparent;
+  color: var(--icui-text-secondary);
+}
+
+.icui-theme-github-dark .icui-panel-tab:hover {
+  background-color: var(--icui-bg-tertiary);
+}
+
+.icui-theme-github-dark .icui-panel-tab.active {
+  background-color: var(--icui-bg-tertiary);
+  color: var(--icui-text-primary);
+}
+
+.icui-theme-github-dark .icui-tab-container .icui-tab {
+  background-color: transparent;
+}
+
+.icui-theme-github-dark .icui-tab-container .icui-tab:hover {
+  background-color: var(--icui-bg-tertiary);
+}
+
+.icui-theme-github-dark .icui-tab-container .icui-tab.active {
+  background-color: var(--icui-bg-tertiary);
+}
+
+/* Monokai Theme */
+.icui-theme-monokai {
+  /* Background Colors */
+  --icui-bg-primary: #272822;
+  --icui-bg-secondary: #3e3d32;
+  --icui-bg-tertiary: #49483e;
+  --icui-bg-overlay: #2f3129;
+
+  /* Text Colors */
+  --icui-text-primary: #f8f8f2;
+  --icui-text-secondary: #75715e;
+  --icui-text-muted: #5e5a4e;
+
+  /* Border Colors - DIMMED */
+  --icui-border: #3e3d32;
+  --icui-border-subtle: #2f3129;
+
+  /* Accent Colors */
+  --icui-accent: #a6e22e;
+  --icui-accent-hover: #b8f040;
+  --icui-success: #a6e22e;
+  --icui-danger: #f92672;
+  --icui-warning: #e6db74;
+  
+  /* Terminal Colors - Using dark theme colors */
+  --icui-terminal-black: #000000;
+  --icui-terminal-white: var(--icui-github-dark-terminal-white);
+  --icui-terminal-bright-white: var(--icui-github-dark-terminal-bright-white);
+  --icui-terminal-bright-black: var(--icui-github-dark-terminal-bright-black);
+  --icui-terminal-green: var(--icui-github-dark-terminal-green);
+  --icui-terminal-bright-green: var(--icui-github-dark-terminal-bright-green);
+  --icui-terminal-yellow: var(--icui-github-dark-terminal-yellow);
+  --icui-terminal-bright-yellow: var(--icui-github-dark-terminal-bright-yellow);
+  --icui-terminal-blue: var(--icui-github-dark-terminal-blue);
+  --icui-terminal-bright-blue: var(--icui-github-dark-terminal-bright-blue);
+  --icui-terminal-magenta: var(--icui-github-dark-terminal-magenta);
+  --icui-terminal-bright-magenta: var(--icui-github-dark-terminal-bright-magenta);
+  --icui-terminal-cyan: var(--icui-github-dark-terminal-cyan);
+  --icui-terminal-bright-cyan: var(--icui-github-dark-terminal-bright-cyan);
+  --icui-terminal-red: var(--icui-github-dark-terminal-red);
+  --icui-terminal-bright-red: var(--icui-github-dark-terminal-bright-red);
+}
+
+/* Monokai dark theme tab overrides - FIXED: Active tabs should be lighter */
+.icui-theme-monokai .icui-panel-tab {
+  background-color: transparent;
+  color: var(--icui-text-secondary);
+}
+
+.icui-theme-monokai .icui-panel-tab:hover {
+  background-color: var(--icui-bg-tertiary);
+}
+
+.icui-theme-monokai .icui-panel-tab.active {
+  background-color: var(--icui-bg-tertiary);
+  color: var(--icui-text-primary);
+}
+
+.icui-theme-monokai .icui-tab-container .icui-tab {
+  background-color: transparent;
+}
+
+.icui-theme-monokai .icui-tab-container .icui-tab:hover {
+  background-color: var(--icui-bg-tertiary);
+}
+
+.icui-theme-monokai .icui-tab-container .icui-tab.active {
+  background-color: var(--icui-bg-tertiary);
+}
+
+/* One Dark Theme */
+.icui-theme-one-dark {
+  /* Background Colors */
+  --icui-bg-primary: #282c34;
+  --icui-bg-secondary: #3e4451;
+  --icui-bg-tertiary: #4b5263;
+  --icui-bg-overlay: #2c313c;
+
+  /* Text Colors */
+  --icui-text-primary: #abb2bf;
+  --icui-text-secondary: #5c6370;
+  --icui-text-muted: #4b5263;
+
+  /* Border Colors - DIMMED */
+  --icui-border: #3e4451;
+  --icui-border-subtle: #2c313c;
+
+  /* Accent Colors */
+  --icui-accent: #61afef;
+  --icui-accent-hover: #73b7f2;
+  --icui-success: #98c379;
+  --icui-danger: #e06c75;
+  --icui-warning: #e5c07b;
+  
+  /* Terminal Colors - Using dark theme colors */
+  --icui-terminal-black: #000000;
+  --icui-terminal-white: var(--icui-github-dark-terminal-white);
+  --icui-terminal-bright-white: var(--icui-github-dark-terminal-bright-white);
+  --icui-terminal-bright-black: var(--icui-github-dark-terminal-bright-black);
+  --icui-terminal-green: var(--icui-github-dark-terminal-green);
+  --icui-terminal-bright-green: var(--icui-github-dark-terminal-bright-green);
+  --icui-terminal-yellow: var(--icui-github-dark-terminal-yellow);
+  --icui-terminal-bright-yellow: var(--icui-github-dark-terminal-bright-yellow);
+  --icui-terminal-blue: var(--icui-github-dark-terminal-blue);
+  --icui-terminal-bright-blue: var(--icui-github-dark-terminal-bright-blue);
+  --icui-terminal-magenta: var(--icui-github-dark-terminal-magenta);
+  --icui-terminal-bright-magenta: var(--icui-github-dark-terminal-bright-magenta);
+  --icui-terminal-cyan: var(--icui-github-dark-terminal-cyan);
+  --icui-terminal-bright-cyan: var(--icui-github-dark-terminal-bright-cyan);
+  --icui-terminal-red: var(--icui-github-dark-terminal-red);
+  --icui-terminal-bright-red: var(--icui-github-dark-terminal-bright-red);
+}
+
+/* One Dark theme tab overrides - FIXED: Active tabs should be lighter */
+.icui-theme-one-dark .icui-panel-tab {
+  background-color: transparent;
+  color: var(--icui-text-secondary);
+}
+
+.icui-theme-one-dark .icui-panel-tab:hover {
+  background-color: var(--icui-bg-tertiary);
+}
+
+.icui-theme-one-dark .icui-panel-tab.active {
+  background-color: var(--icui-bg-tertiary);
+  color: var(--icui-text-primary);
+}
+
+.icui-theme-one-dark .icui-tab-container .icui-tab {
+  background-color: transparent;
+}
+
+.icui-theme-one-dark .icui-tab-container .icui-tab:hover {
+  background-color: var(--icui-bg-tertiary);
+}
+
+.icui-theme-one-dark .icui-tab-container .icui-tab.active {
+  background-color: var(--icui-bg-tertiary);
+}
+
+/* ===== GITHUB LIGHT THEME ===== */
+.icui-theme-github-light {
+  --icui-bg-primary: var(--icui-github-light-bg-primary);
+  --icui-bg-secondary: var(--icui-github-light-bg-secondary);
+  --icui-bg-tertiary: var(--icui-github-light-bg-tertiary);
+  --icui-bg-overlay: var(--icui-github-light-bg-overlay);
+  --icui-border: var(--icui-github-light-border);
+  --icui-border-subtle: var(--icui-github-light-border-subtle);
+  --icui-text-primary: var(--icui-github-light-text-primary);
+  --icui-text-secondary: var(--icui-github-light-text-secondary);
+  --icui-text-muted: var(--icui-github-light-text-muted);
+  --icui-accent: var(--icui-github-light-accent);
+  --icui-accent-hover: var(--icui-github-light-accent-hover);
+  --icui-success: var(--icui-github-light-success);
+  --icui-danger: var(--icui-github-light-danger);
+  --icui-warning: var(--icui-github-light-warning);
+  
+  /* Terminal Colors */
+  --icui-terminal-black: #000000;
+  --icui-terminal-white: var(--icui-github-light-terminal-white);
+  --icui-terminal-bright-white: var(--icui-github-light-terminal-bright-white);
+  --icui-terminal-bright-black: var(--icui-github-light-terminal-bright-black);
+  --icui-terminal-green: var(--icui-github-light-terminal-green);
+  --icui-terminal-bright-green: var(--icui-github-light-terminal-bright-green);
+  --icui-terminal-yellow: var(--icui-github-light-terminal-yellow);
+  --icui-terminal-bright-yellow: var(--icui-github-light-terminal-bright-yellow);
+  --icui-terminal-blue: var(--icui-github-light-terminal-blue);
+  --icui-terminal-bright-blue: var(--icui-github-light-terminal-bright-blue);
+  --icui-terminal-magenta: var(--icui-github-light-terminal-magenta);
+  --icui-terminal-bright-magenta: var(--icui-github-light-terminal-bright-magenta);
+  --icui-terminal-cyan: var(--icui-github-light-terminal-cyan);
+  --icui-terminal-bright-cyan: var(--icui-github-light-terminal-bright-cyan);
+  --icui-terminal-red: var(--icui-github-light-terminal-red);
+  --icui-terminal-bright-red: var(--icui-github-light-terminal-bright-red);
+}
+
+/* ===== VSCODE LIGHT THEME ===== */
+.icui-theme-vscode-light {
+  --icui-bg-primary: var(--icui-vscode-light-bg-primary);
+  --icui-bg-secondary: var(--icui-vscode-light-bg-secondary);
+  --icui-bg-tertiary: var(--icui-vscode-light-bg-tertiary);
+  --icui-bg-overlay: var(--icui-vscode-light-bg-overlay);
+  --icui-border: var(--icui-vscode-light-border);
+  --icui-border-subtle: var(--icui-vscode-light-border-subtle);
+  --icui-text-primary: var(--icui-vscode-light-text-primary);
+  --icui-text-secondary: var(--icui-vscode-light-text-secondary);
+  --icui-text-muted: var(--icui-vscode-light-text-muted);
+  --icui-accent: var(--icui-vscode-light-accent);
+  --icui-accent-hover: var(--icui-vscode-light-accent-hover);
+  --icui-success: var(--icui-vscode-light-success);
+  --icui-danger: var(--icui-vscode-light-danger);
+  --icui-warning: var(--icui-vscode-light-warning);
+  
+  /* Terminal Colors */
+  --icui-terminal-black: #000000;
+  --icui-terminal-white: var(--icui-vscode-light-terminal-white);
+  --icui-terminal-bright-white: var(--icui-vscode-light-terminal-bright-white);
+  --icui-terminal-bright-black: var(--icui-vscode-light-terminal-bright-black);
+  --icui-terminal-green: var(--icui-vscode-light-terminal-green);
+  --icui-terminal-bright-green: var(--icui-vscode-light-terminal-bright-green);
+  --icui-terminal-yellow: var(--icui-vscode-light-terminal-yellow);
+  --icui-terminal-bright-yellow: var(--icui-vscode-light-terminal-bright-yellow);
+  --icui-terminal-blue: var(--icui-vscode-light-terminal-blue);
+  --icui-terminal-bright-blue: var(--icui-vscode-light-terminal-bright-blue);
+  --icui-terminal-magenta: var(--icui-vscode-light-terminal-magenta);
+  --icui-terminal-bright-magenta: var(--icui-vscode-light-terminal-bright-magenta);
+  --icui-terminal-cyan: var(--icui-vscode-light-terminal-cyan);
+  --icui-terminal-bright-cyan: var(--icui-vscode-light-terminal-bright-cyan);
+  --icui-terminal-red: var(--icui-vscode-light-terminal-red);
+  --icui-terminal-bright-red: var(--icui-vscode-light-terminal-bright-red);
+}
+
+/* ===== COMPONENT THEMING ===== */
+/* All themes use CSS variables for consistency */
+
+/* Panel Base Styles */
+.icui-base-panel {
+  background-color: var(--icui-bg-primary);
+  border-color: var(--icui-border);
+  color: var(--icui-text-primary);
+}
+
+.icui-base-panel.icui-panel-active {
+  border-color: var(--icui-accent);
+}
+
+/* Panel Headers */
+.icui-panel-header {
+  background-color: var(--icui-bg-secondary);
+  border-color: var(--icui-border-subtle);
+  color: var(--icui-text-primary);
+}
+
+.icui-panel-header:hover {
+  background-color: var(--icui-bg-tertiary);
+}
+
+/* Panel Areas */
+.icui-panel-area {
+  background-color: var(--icui-bg-primary);
+  border-color: var(--icui-border);
+}
+
+.icui-panel-area.icui-area-empty {
+  border-color: var(--icui-border-subtle);
+}
+
+/* Panel Tabs */
+.icui-panel-tabs {
+  background-color: var(--icui-bg-secondary);
+  border-color: var(--icui-border-subtle);
+}
+
+.icui-panel-tab {
+  border-color: var(--icui-border-subtle);
+  color: var(--icui-text-secondary);
+  background-color: transparent;
+}
+
+.icui-panel-tab:hover {
+  background-color: var(--icui-bg-tertiary);
+}
+
+.icui-panel-tab.active {
+  background-color: var(--icui-bg-tertiary);
+  color: var(--icui-text-primary);
+}
+
+.icui-panel-tab.active::after {
+  background-color: var(--icui-accent);
+}
+
+/* Enhanced Panel Areas */
+.icui-enhanced-panel-area {
+  background-color: var(--icui-bg-primary);
+  border-color: var(--icui-border);
+}
+
+/* Tab Container */
+.icui-tab-container {
+  background-color: var(--icui-bg-primary);
+  border-color: var(--icui-border);
+}
+
+.icui-tab-container .icui-tab-bar {
+  background-color: var(--icui-bg-secondary);
+  border-color: var(--icui-border-subtle);
+}
+
+.icui-tab-container .icui-tab {
+  background-color: transparent;
+  border-color: var(--icui-border-subtle);
+  color: var(--icui-text-secondary);
+}
+
+.icui-tab-container .icui-tab:hover {
+  background-color: var(--icui-bg-tertiary);
+}
+
+.icui-tab-container .icui-tab.active {
+  background-color: var(--icui-bg-tertiary);
+  color: var(--icui-text-primary);
+}
+
+/* Panel Selector */
+.icui-panel-selector-button {
+  background-color: var(--icui-accent);
+  border-color: var(--icui-border);
+  color: var(--icui-text-primary);
+}
+
+.icui-panel-selector-button:hover {
+  background-color: var(--icui-accent-hover);
+}
+
+.icui-panel-selector-dropdown {
+  background-color: var(--icui-bg-overlay);
+  border-color: var(--icui-border);
+  color: var(--icui-text-primary);
+}
+
+.icui-panel-selector-dropdown button {
+  color: var(--icui-text-primary);
+}
+
+.icui-panel-selector-dropdown button:hover {
+  background-color: var(--icui-bg-tertiary);
+}
+
+/* Terminal Specific */
+.icui-terminal-panel {
+  background-color: var(--icui-bg-primary);
+}
+
+.icui-terminal-header {
+  background-color: var(--icui-bg-secondary);
+  border-color: var(--icui-border-subtle);
+}
+
+/* Editor Specific */
+.icui-editor-panel {
+  background-color: var(--icui-bg-primary);
+}
+
+.icui-editor-toolbar {
+  background-color: var(--icui-bg-secondary);
+  border-color: var(--icui-border-subtle);
+}
+
+.icui-editor-placeholder {
+  background-color: var(--icui-bg-primary);
+}
+
+/* Explorer Specific */
+.icui-explorer-panel {
+  background-color: var(--icui-bg-primary);
+}
+
+.icui-explorer-header {
+  background-color: var(--icui-bg-secondary);
+  border-color: var(--icui-border-subtle);
+}
+
+.icui-tree-item:hover {
+  background-color: var(--icui-bg-tertiary);
+}
+
+/* Chat Specific */
+.icui-chat-panel {
+  background-color: var(--icui-bg-primary);
+  color: var(--icui-text-primary);
+}
+
+.icui-chat-header {
+  background-color: var(--icui-bg-secondary);
+  border-color: var(--icui-border-subtle);
+}
+
+/* Scrollbar Theming */
+.icui-theme-github-dark *::-webkit-scrollbar,
+.icui-theme-monokai *::-webkit-scrollbar,
+.icui-theme-one-dark *::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+.icui-theme-github-dark *::-webkit-scrollbar-track,
+.icui-theme-monokai *::-webkit-scrollbar-track,
+.icui-theme-one-dark *::-webkit-scrollbar-track {
+  background: var(--icui-bg-secondary);
+  border-radius: 6px;
+}
+
+.icui-theme-github-dark *::-webkit-scrollbar-thumb,
+.icui-theme-monokai *::-webkit-scrollbar-thumb,
+.icui-theme-one-dark *::-webkit-scrollbar-thumb {
+  background: #6e7681;
+  border-radius: 6px;
+  border: 2px solid var(--icui-bg-secondary);
+}
+
+.icui-theme-github-dark *::-webkit-scrollbar-thumb:hover,
+.icui-theme-monokai *::-webkit-scrollbar-thumb:hover,
+.icui-theme-one-dark *::-webkit-scrollbar-thumb:hover {
+  background: #8b949e;
+}
+
+.icui-theme-github-light *::-webkit-scrollbar,
+.icui-theme-vscode-light *::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+.icui-theme-github-light *::-webkit-scrollbar-track,
+.icui-theme-vscode-light *::-webkit-scrollbar-track {
+  background: var(--icui-bg-secondary);
+  border-radius: 6px;
+}
+
+.icui-theme-github-light *::-webkit-scrollbar-thumb,
+.icui-theme-vscode-light *::-webkit-scrollbar-thumb {
+  background: #d0d7de;
+  border-radius: 6px;
+  border: 2px solid var(--icui-bg-secondary);
+}
+
+.icui-theme-github-light *::-webkit-scrollbar-thumb:hover,
+.icui-theme-vscode-light *::-webkit-scrollbar-thumb:hover {
+  background: #8b949e;
+}
+
+/* Firefox scrollbar support */
+.icui-theme-github-dark *,
+.icui-theme-monokai *,
+.icui-theme-one-dark * {
+  scrollbar-width: thin;
+  scrollbar-color: #6e7681 var(--icui-bg-secondary);
+}
+
+.icui-theme-github-light *,
+.icui-theme-vscode-light * {
+  scrollbar-width: thin;
+  scrollbar-color: #d0d7de var(--icui-bg-secondary);
+}
+
+/* Default theme mapping */
+.dark {
+  /* Default to GitHub Dark */
+  --icui-bg-primary: var(--icui-github-dark-bg-primary);
+  --icui-bg-secondary: var(--icui-github-dark-bg-secondary);
+  --icui-bg-tertiary: var(--icui-github-dark-bg-tertiary);
+  --icui-bg-overlay: var(--icui-github-dark-bg-overlay);
+  --icui-border: var(--icui-github-dark-border);
+  --icui-border-subtle: var(--icui-github-dark-border-subtle);
+  --icui-text-primary: var(--icui-github-dark-text-primary);
+  --icui-text-secondary: var(--icui-github-dark-text-secondary);
+  --icui-text-muted: var(--icui-github-dark-text-muted);
+  --icui-accent: var(--icui-github-dark-accent);
+  --icui-accent-hover: var(--icui-github-dark-accent-hover);
+  --icui-success: var(--icui-github-dark-success);
+  --icui-danger: var(--icui-github-dark-danger);
+  --icui-warning: var(--icui-github-dark-warning);
+  
+  /* Terminal Colors - Default for all dark themes */
+  --icui-terminal-black: #000000;
+  --icui-terminal-white: var(--icui-github-dark-terminal-white);
+  --icui-terminal-bright-white: var(--icui-github-dark-terminal-bright-white);
+  --icui-terminal-bright-black: var(--icui-github-dark-terminal-bright-black);
+  --icui-terminal-green: var(--icui-github-dark-terminal-green);
+  --icui-terminal-bright-green: var(--icui-github-dark-terminal-bright-green);
+  --icui-terminal-yellow: var(--icui-github-dark-terminal-yellow);
+  --icui-terminal-bright-yellow: var(--icui-github-dark-terminal-bright-yellow);
+  --icui-terminal-blue: var(--icui-github-dark-terminal-blue);
+  --icui-terminal-bright-blue: var(--icui-github-dark-terminal-bright-blue);
+  --icui-terminal-magenta: var(--icui-github-dark-terminal-magenta);
+  --icui-terminal-bright-magenta: var(--icui-github-dark-terminal-bright-magenta);
+  --icui-terminal-cyan: var(--icui-github-dark-terminal-cyan);
+  --icui-terminal-bright-cyan: var(--icui-github-dark-terminal-bright-cyan);
+  --icui-terminal-red: var(--icui-github-dark-terminal-red);
+  --icui-terminal-bright-red: var(--icui-github-dark-terminal-bright-red);
+  --icui-selection-bg: rgba(0, 157, 255, 0.75); /* vivid blue highlight */
+}
+
+/* Default dark theme tab overrides */
+.dark .icui-panel-tab {
+  background-color: transparent;
+  color: var(--icui-text-secondary);
+}
+
+.dark .icui-panel-tab:hover {
+  background-color: var(--icui-bg-tertiary);
+}
+
+.dark .icui-panel-tab.active {
+  background-color: var(--icui-bg-tertiary);
+  color: var(--icui-text-primary);
+}
+
+.dark .icui-tab-container .icui-tab {
+  background-color: transparent;
+}
+
+.dark .icui-tab-container .icui-tab:hover {
+  background-color: var(--icui-bg-tertiary);
+}
+
+.dark .icui-tab-container .icui-tab.active {
+  background-color: var(--icui-bg-tertiary);
+}
+
+.dark .cm-selectionLayer .cm-selectionBackground,
+.dark .cm-editor .cm-selectionBackground {
+  background-color: rgba(88, 166, 255, 0.55) !important;
+}
+
+/* --- ICUI selection highlight override to defeat Tailwind selection utilities --- */
+.cm-selectionLayer .cm-selectionBackground,
+.cm-editor .cm-selectionBackground {
+  background-image: none !important;
+}
+
+.light {
+  /* Default to GitHub Light */
+  --icui-bg-primary: var(--icui-github-light-bg-primary);
+  --icui-bg-secondary: var(--icui-github-light-bg-secondary);
+  --icui-bg-tertiary: var(--icui-github-light-bg-tertiary);
+  --icui-bg-overlay: var(--icui-github-light-bg-overlay);
+  --icui-border: var(--icui-github-light-border);
+  --icui-border-subtle: var(--icui-github-light-border-subtle);
+  --icui-text-primary: var(--icui-github-light-text-primary);
+  --icui-text-secondary: var(--icui-github-light-text-secondary);
+  --icui-text-muted: var(--icui-github-light-text-muted);
+  --icui-accent: var(--icui-github-light-accent);
+  --icui-accent-hover: var(--icui-github-light-accent-hover);
+  --icui-success: var(--icui-github-light-success);
+  --icui-danger: var(--icui-github-light-danger);
+  --icui-warning: var(--icui-github-light-warning);
+  
+  /* Terminal Colors - Default for all light themes */
+  --icui-terminal-black: #000000;
+  --icui-terminal-white: var(--icui-github-light-terminal-white);
+  --icui-terminal-bright-white: var(--icui-github-light-terminal-bright-white);
+  --icui-terminal-bright-black: var(--icui-github-light-terminal-bright-black);
+  --icui-terminal-green: var(--icui-github-light-terminal-green);
+  --icui-terminal-bright-green: var(--icui-github-light-terminal-bright-green);
+  --icui-terminal-yellow: var(--icui-github-light-terminal-yellow);
+  --icui-terminal-bright-yellow: var(--icui-github-light-terminal-bright-yellow);
+  --icui-terminal-blue: var(--icui-github-light-terminal-blue);
+  --icui-terminal-bright-blue: var(--icui-github-light-terminal-bright-blue);
+  --icui-terminal-magenta: var(--icui-github-light-terminal-magenta);
+  --icui-terminal-bright-magenta: var(--icui-github-light-terminal-bright-magenta);
+  --icui-terminal-cyan: var(--icui-github-light-terminal-cyan);
+  --icui-terminal-bright-cyan: var(--icui-github-light-terminal-bright-cyan);
+  --icui-terminal-red: var(--icui-github-light-terminal-red);
+  --icui-terminal-bright-red: var(--icui-github-light-terminal-bright-red);
+  --icui-selection-bg: rgba(0, 120, 212, 0.75); /* vivid blue highlight for light background */
+}
+
+.light .cm-selectionLayer .cm-selectionBackground,
+.light .cm-editor .cm-selectionBackground {
+  background-color: rgba(0, 120, 212, 0.6) !important;
+}
+
+/* ===== LIGHT THEME TERMINAL TEXT VISIBILITY FIXES ===== */
+/* Override any white/light text that would be invisible on light backgrounds */
+
+.icui-theme-github-light .icui-enhanced-terminal-panel .xterm-screen,
+.icui-theme-vscode-light .icui-enhanced-terminal-panel .xterm-screen,
+.light .icui-enhanced-terminal-panel .xterm-screen {
+  /* Ensure base terminal text is dark */
+  color: #000000 !important;
+}
+
+/* Fix bright white text (color 15) - would be invisible on light background */
+.icui-theme-github-light .icui-enhanced-terminal-panel .xterm-color-15,
+.icui-theme-github-light .icui-enhanced-terminal-panel .xterm-fg-15,
+.icui-theme-github-light .icui-enhanced-terminal-panel .xterm-bright-white,
+.icui-theme-vscode-light .icui-enhanced-terminal-panel .xterm-color-15,
+.icui-theme-vscode-light .icui-enhanced-terminal-panel .xterm-fg-15,
+.icui-theme-vscode-light .icui-enhanced-terminal-panel .xterm-bright-white,
+.light .icui-enhanced-terminal-panel .xterm-color-15,
+.light .icui-enhanced-terminal-panel .xterm-fg-15,
+.light .icui-enhanced-terminal-panel .xterm-bright-white {
+  color: #000000 !important;
+}
+
+/* Fix regular white text (color 7) - make it darker for visibility */
+.icui-theme-github-light .icui-enhanced-terminal-panel .xterm-color-7,
+.icui-theme-github-light .icui-enhanced-terminal-panel .xterm-fg-7,
+.icui-theme-vscode-light .icui-enhanced-terminal-panel .xterm-color-7,
+.icui-theme-vscode-light .icui-enhanced-terminal-panel .xterm-fg-7,
+.light .icui-enhanced-terminal-panel .xterm-color-7,
+.light .icui-enhanced-terminal-panel .xterm-fg-7 {
+  color: #333333 !important;
+}
+
+/* Fix light gray text that might be hard to read */
+.icui-theme-github-light .icui-enhanced-terminal-panel .xterm-color-8,
+.icui-theme-github-light .icui-enhanced-terminal-panel .xterm-fg-8,
+.icui-theme-vscode-light .icui-enhanced-terminal-panel .xterm-color-8,
+.icui-theme-vscode-light .icui-enhanced-terminal-panel .xterm-fg-8,
+.light .icui-enhanced-terminal-panel .xterm-color-8,
+.light .icui-enhanced-terminal-panel .xterm-fg-8 {
+  color: #666666 !important;
+}
+
+/* Ensure default terminal text is always dark in light themes */
+.icui-theme-github-light .icui-enhanced-terminal-panel .xterm-fg-default,
+.icui-theme-vscode-light .icui-enhanced-terminal-panel .xterm-fg-default,
+.light .icui-enhanced-terminal-panel .xterm-fg-default {
+  color: #000000 !important;
+}
+
+/* Fix any remaining light colored text elements */
+.icui-theme-github-light .icui-enhanced-terminal-panel .xterm-rows,
+.icui-theme-github-light .icui-enhanced-terminal-panel .xterm-viewport,
+.icui-theme-vscode-light .icui-enhanced-terminal-panel .xterm-rows,
+.icui-theme-vscode-light .icui-enhanced-terminal-panel .xterm-viewport,
+.light .icui-enhanced-terminal-panel .xterm-rows,
+.light .icui-enhanced-terminal-panel .xterm-viewport {
+  color: #000000 !important;
+}
+
+/* ===== LIGHT THEME CODE EDITOR SYNTAX HIGHLIGHTING ===== */
+/* Let CodeMirror handle syntax highlighting naturally - no overrides needed */
+
+ 

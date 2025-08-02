@@ -1,0 +1,200 @@
+@import './icui/styles/icui.css';
+
+@tailwind base;
+  @tailwind components;
+  @tailwind utilities;
+
+  @layer base {
+    :root {
+      --background: 0 0% 100%;
+      --foreground: 222.2 84% 4.9%;
+
+      --card: 0 0% 100%;
+      --card-foreground: 222.2 84% 4.9%;
+
+      --popover: 0 0% 100%;
+      --popover-foreground: 222.2 84% 4.9%;
+
+      --primary: 222.2 47.4% 11.2%;
+      --primary-foreground: 210 40% 98%;
+
+      --secondary: 210 40% 96.1%;
+      --secondary-foreground: 222.2 47.4% 11.2%;
+
+      --muted: 210 40% 96.1%;
+      --muted-foreground: 215.4 16.3% 46.9%;
+
+      --accent: 210 40% 96.1%;
+      --accent-foreground: 222.2 47.4% 11.2%;
+
+      --destructive: 0 84.2% 60.2%;
+      --destructive-foreground: 210 40% 98%;
+
+      --border: 214.3 31.8% 91.4%;
+      --input: 214.3 31.8% 91.4%;
+      --ring: 222.2 84% 4.9%;
+
+      --radius: 0.5rem;
+    }
+
+    .dark {
+      --background: 222.2 84% 4.9%;
+      --foreground: 210 40% 98%;
+
+      --card: 222.2 84% 4.9%;
+      --card-foreground: 210 40% 98%;
+
+      --popover: 222.2 84% 4.9%;
+      --popover-foreground: 210 40% 98%;
+
+      --primary: 210 40% 98%;
+      --primary-foreground: 222.2 47.4% 11.2%;
+
+      --secondary: 217.2 32.6% 17.5%;
+      --secondary-foreground: 210 40% 98%;
+
+      --muted: 217.2 32.6% 17.5%;
+      --muted-foreground: 215 20.2% 65.1%;
+
+      --accent: 217.2 32.6% 17.5%;
+      --accent-foreground: 210 40% 98%;
+
+      --destructive: 0 62.8% 30.6%;
+      --destructive-foreground: 210 40% 98%;
+
+      --border: 217.2 32.6% 17.5%;
+      --input: 217.2 32.6% 17.5%;
+      --ring: 212.7 26.8% 83.9%;
+    }
+  }
+
+  @layer base {
+    * {
+      @apply border-border;
+    }
+    body {
+      @apply bg-background text-foreground;
+    }
+  }
+
+  /* Custom scrollbar styles for terminal */
+  .xterm-viewport::-webkit-scrollbar {
+    width: 12px;
+    background: hsl(var(--muted));
+  }
+
+  .xterm-viewport::-webkit-scrollbar-track {
+    background: hsl(var(--muted));
+    border-radius: 6px;
+  }
+
+  .xterm-viewport::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--muted-foreground));
+    border-radius: 6px;
+    opacity: 0.7;
+    border: 2px solid hsl(var(--muted));
+  }
+
+  .xterm-viewport::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--foreground));
+    opacity: 0.9;
+  }
+
+  .dark .xterm-viewport::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  .dark .xterm-viewport::-webkit-scrollbar-thumb {
+    background-color: rgba(156, 163, 175, 0.6);
+    border: 2px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .dark .xterm-viewport::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(156, 163, 175, 0.9);
+  }
+
+  /* Terminal container constraints to prevent overflow */
+  .xterm-terminal {
+    height: 100% !important;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
+    /* Ensure terminal doesn't exceed its container */
+    max-height: 100% !important;
+    position: relative !important;
+  }
+
+  /* Ensure terminal viewport handles scrolling properly with visible scrollbars */
+  .xterm-viewport {
+    overflow-y: scroll !important;
+    overflow-x: hidden !important;
+    /* Critical: constrain the viewport to its container */
+    max-height: calc(100% - 2px) !important;
+    height: 100% !important;
+    box-sizing: border-box !important;
+    /* Force scrollbar to always be visible */
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--muted-foreground)) hsl(var(--muted));
+    /* Ensure it doesn't expand beyond container bounds */
+    position: relative !important;
+    
+    /* Force scrollbar to always be visible even when content fits */
+    overflow-y: scroll !important;
+    scrollbar-gutter: stable !important;
+  }
+
+  /* Force scrollbar to always be visible on Firefox */
+  @supports (scrollbar-width: thin) {
+    .xterm-viewport {
+      scrollbar-width: thin !important;
+      scrollbar-color: hsl(var(--muted-foreground)) hsl(var(--muted)) !important;
+    }
+  }
+
+  /* Force scrollbar to always be visible on Chrome/Safari */
+  @supports (scrollbar-gutter: stable) {
+    .xterm-viewport {
+      scrollbar-gutter: stable !important;
+    }
+  }
+
+  /* Ensure terminal takes full height but respects container */
+  .xterm-screen {
+    height: 100% !important;
+    max-height: 100% !important;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Fix terminal rows container */
+  .xterm-rows {
+    height: auto !important;
+    max-height: none !important;
+    padding-right: 4px; /* Account for scrollbar space */
+    box-sizing: border-box !important;
+  }
+
+  /* Ensure terminal helper textarea doesn't interfere */
+  .xterm-helper-textarea {
+    position: absolute !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+  }
+
+  /* Fix for terminal overflow prevention */
+  .terminal-container {
+    height: 100% !important;
+    max-height: 100% !important;
+    overflow: hidden !important;
+    display: flex !important;
+    flex-direction: column !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Ensure terminal content area respects header */
+  .terminal-content {
+    flex: 1 !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+    position: relative !important;
+    box-sizing: border-box !important;
+  }

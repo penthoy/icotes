@@ -1,0 +1,506 @@
+/**
+ * ICUI Framework - Panel Area and Docking Styles
+ * CSS for panel areas, tabs, and docking system
+ */
+
+/* ===== PANEL AREA STYLES ===== */
+.icui-panel-area {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: var(--icui-bg-primary);
+  border: 1px solid var(--icui-border);
+  border-radius: 8px;
+  overflow: hidden;
+  min-height: 200px;
+  position: relative;
+}
+
+.icui-panel-area.icui-area-drag-over {
+  border-color: var(--icui-accent);
+  background-color: var(--icui-bg-tertiary);
+  box-shadow: 0 0 0 2px var(--icui-accent);
+}
+
+.icui-panel-area.icui-area-empty {
+  border-style: dashed;
+  border-width: 2px;
+  border-color: var(--icui-border-subtle);
+}
+
+/* Empty Area Styles */
+.icui-area-empty-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--icui-text-muted);
+  padding: 2rem;
+}
+
+.icui-empty-icon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+  opacity: 0.5;
+}
+
+.icui-empty-text {
+  font-size: 1.125rem;
+  font-weight: 500;
+  opacity: 0.7;
+}
+
+.icui-area-drag-over .icui-empty-icon,
+.icui-area-drag-over .icui-empty-text {
+  color: var(--icui-accent);
+  opacity: 1;
+}
+
+/* ===== PANEL TABS STYLES ===== */
+.icui-panel-tabs {
+  display: flex;
+  background-color: var(--icui-bg-secondary);
+  border-bottom: 1px solid var(--icui-border-subtle);
+  min-height: 40px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.icui-panel-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.icui-panel-tab {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  border-right: 1px solid var(--icui-border-subtle);
+  min-width: 0;
+  flex-shrink: 0;
+  user-select: none;
+  transition: all 0.2s ease-in-out;
+  max-width: 200px;
+  color: var(--icui-text-secondary);
+  /* Default (inactive) tabs use transparent background like editor tabs */
+  background-color: transparent;
+}
+
+.icui-panel-tab:hover {
+  background-color: var(--icui-bg-tertiary);
+}
+
+.icui-panel-tab.active {
+  /* Active tabs use lighter background like editor tabs */
+  background-color: var(--icui-bg-tertiary);
+  border-bottom: none;
+  position: relative;
+  color: var(--icui-text-primary);
+}
+
+.icui-panel-tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background-color: var(--icui-accent);
+}
+
+.icui-panel-tab.drag-over {
+  background-color: var(--icui-bg-tertiary);
+  border-color: var(--icui-accent);
+}
+
+.icui-tab-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.icui-tab-title {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: inherit;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.icui-tab-close {
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+  background: none;
+  border: none;
+  cursor: pointer;
+  flex-shrink: 0;
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  transition: all 0.2s ease;
+  color: var(--icui-text-secondary);
+}
+
+.icui-tab-close:hover {
+  background-color: var(--icui-bg-tertiary);
+  color: var(--icui-danger);
+}
+
+/* ===== PANEL CONTENT AREA STYLES ===== */
+.icui-panel-content-area {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background-color: var(--icui-bg-primary);
+}
+
+.icui-docked-panel-content {
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  background-color: var(--icui-bg-primary);
+}
+
+.icui-custom-panel-content {
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  background-color: var(--icui-bg-primary);
+}
+
+/* Special class for terminal containers to prevent double scrollbars */
+.icui-terminal-panel-content {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden !important;
+  background-color: var(--icui-bg-primary);
+}
+
+.icui-docked-panel {
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  height: 100% !important;
+  position: relative !important;
+  left: auto !important;
+  top: auto !important;
+  width: 100% !important;
+  background-color: var(--icui-bg-primary);
+}
+
+.icui-docked-panel .icui-panel-header {
+  display: none; /* Header is replaced by tabs */
+}
+
+.icui-docked-panel .icui-panel-content {
+  border-radius: 0;
+  background-color: var(--icui-bg-primary);
+}
+
+/* ===== PANEL TYPE CONTENT STYLES ===== */
+.icui-panel-type-content {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--icui-bg-primary);
+}
+
+/* Editor Content */
+.icui-editor-content {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--icui-bg-primary);
+}
+
+.icui-editor-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+  background-color: var(--icui-bg-secondary);
+  border-bottom: 1px solid var(--icui-border-subtle);
+  color: var(--icui-text-primary);
+}
+
+.icui-editor-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.icui-toolbar-btn {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  background-color: var(--icui-bg-tertiary);
+  border: 1px solid var(--icui-border);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: var(--icui-text-primary);
+}
+
+.icui-toolbar-btn:hover {
+  background-color: var(--icui-bg-overlay);
+}
+
+.icui-editor-area {
+  flex: 1;
+  overflow: hidden;
+  background-color: var(--icui-bg-primary);
+}
+
+.icui-code-editor {
+  height: 100%;
+  width: 100%;
+  background-color: var(--icui-bg-primary);
+}
+
+.icui-editor-placeholder {
+  height: 100%;
+  padding: 1rem;
+  font-family: 'Courier New', monospace;
+  font-size: 0.875rem;
+  background-color: var(--icui-bg-primary);
+  color: var(--icui-text-primary);
+}
+
+.icui-editor-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.icui-line {
+  display: flex;
+}
+
+.icui-line-number {
+  width: 2rem;
+  color: var(--icui-text-muted);
+  text-align: right;
+  margin-right: 1rem;
+  user-select: none;
+}
+
+.icui-code {
+  color: var(--icui-text-primary);
+}
+
+/* Terminal Content */
+.icui-terminal-content {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--icui-bg-primary);
+}
+
+.icui-terminal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+  background-color: var(--icui-bg-secondary);
+  border-bottom: 1px solid var(--icui-border-subtle);
+  color: var(--icui-text-primary);
+}
+
+.icui-terminal-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.icui-terminal-area {
+  flex: 1;
+  overflow: hidden;
+  background-color: var(--icui-bg-primary);
+}
+
+.icui-terminal-output {
+  height: 100%;
+  padding: 0.75rem;
+  font-family: 'Courier New', monospace;
+  font-size: 0.875rem;
+  color: var(--icui-text-primary);
+  overflow: auto;
+}
+
+.icui-terminal-line {
+  white-space: pre-wrap;
+  line-height: 1.4;
+}
+
+.icui-terminal-cursor {
+  position: relative;
+}
+
+.icui-cursor {
+  background-color: var(--icui-accent);
+  color: var(--icui-bg-primary);
+  padding: 0 2px;
+  animation: blink 1s infinite;
+}
+
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+/* Explorer Content */
+.icui-explorer-content {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--icui-bg-primary);
+}
+
+.icui-explorer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+  background-color: var(--icui-bg-secondary);
+  border-bottom: 1px solid var(--icui-border-subtle);
+  color: var(--icui-text-primary);
+}
+
+.icui-explorer-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.icui-explorer-tree {
+  flex: 1;
+  overflow: auto;
+  padding: 0.5rem;
+  background-color: var(--icui-bg-primary);
+}
+
+.icui-tree-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  color: var(--icui-text-primary);
+}
+
+.icui-tree-item:hover {
+  background-color: var(--icui-bg-tertiary);
+}
+
+.icui-tree-item.icui-nested {
+  margin-left: 1rem;
+}
+
+.icui-tree-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.icui-tree-name {
+  font-size: 0.875rem;
+  color: var(--icui-text-primary);
+}
+
+.icui-folder.expanded .icui-tree-icon {
+  transform: rotate(0deg);
+}
+
+/* Generic Content */
+.icui-generic-content {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--icui-bg-primary);
+}
+
+.icui-generic-header {
+  padding: 0.5rem 0.75rem;
+  background-color: var(--icui-bg-secondary);
+  border-bottom: 1px solid var(--icui-border-subtle);
+  color: var(--icui-text-primary);
+}
+
+.icui-generic-body {
+  flex: 1;
+  padding: 1rem;
+  overflow: auto;
+  background-color: var(--icui-bg-primary);
+  color: var(--icui-text-primary);
+}
+
+/* ===== DRAG AND DROP VISUAL FEEDBACK ===== */
+.icui-panel-area.icui-drop-target {
+  border-color: var(--icui-accent);
+  box-shadow: 0 0 0 2px var(--icui-accent);
+}
+
+.icui-drop-zone-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--icui-bg-tertiary);
+  border: 2px dashed var(--icui-accent);
+  border-radius: 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  pointer-events: none;
+}
+
+.icui-drop-zone-text {
+  color: var(--icui-accent);
+  font-weight: 500;
+  font-size: 1.125rem;
+  background: var(--icui-bg-primary);
+  padding: 1rem 2rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--icui-accent);
+}
+
+/* ===== RESPONSIVE DESIGN ===== */
+@media (max-width: 768px) {
+  .icui-panel-tabs {
+    min-height: 36px;
+  }
+  
+  .icui-panel-tab {
+    padding: 0.25rem 0.5rem;
+    max-width: 150px;
+  }
+  
+  .icui-tab-title {
+    font-size: 0.75rem;
+  }
+  
+  .icui-toolbar-btn {
+    padding: 0.125rem 0.25rem;
+    font-size: 0.75rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .icui-panel-tab {
+    max-width: 120px;
+  }
+  
+  .icui-empty-icon {
+    font-size: 2rem;
+  }
+  
+  .icui-empty-text {
+    font-size: 1rem;
+  }
+}

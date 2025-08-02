@@ -1,0 +1,34 @@
+#!/bin/bash
+
+# icotes Clipboard Command
+# This script provides code-server style clipboard integration
+# Usage: echo "text" | icotes-clipboard    (copy to clipboard)
+#        icotes-clipboard --paste           (paste from clipboard)
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BACKEND_SCRIPT="$SCRIPT_DIR/backend/main.py"
+
+# Check if backend script exists
+if [ ! -f "$BACKEND_SCRIPT" ]; then
+    echo "Error: Backend script not found at $BACKEND_SCRIPT" >&2
+    exit 1
+fi
+
+# Handle different modes
+case "$1" in
+    "--paste"|"-p")
+        # Paste from clipboard
+        python3 "$BACKEND_SCRIPT" --clipboard-to-stdout
+        ;;
+    "--help"|"-h")
+        echo "icotes Clipboard Command"
+        echo "Usage:"
+        echo "  echo 'text' | icotes-clipboard       Copy text to clipboard"
+        echo "  icotes-clipboard --paste             Paste from clipboard"
+        echo "  icotes-clipboard --help              Show this help"
+        ;;
+    *)
+        # Default: copy from stdin to clipboard
+        python3 "$BACKEND_SCRIPT" --stdin-to-clipboard
+        ;;
+esac 

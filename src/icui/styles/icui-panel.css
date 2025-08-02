@@ -1,0 +1,460 @@
+/**
+ * ICUI Framework - Panel System Styles
+ * CSS for base panel, header, and content components
+ */
+
+/* ===== BASE PANEL STYLES ===== */
+.icui-base-panel {
+  border: 1px solid var(--icui-border);
+  background-color: var(--icui-bg-primary);
+  border-radius: 8px;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  min-width: 200px;
+  min-height: 100px;
+  display: flex;
+  flex-direction: column;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: var(--icui-text-primary);
+}
+
+.icui-base-panel.icui-panel-active {
+  border-color: var(--icui-accent);
+  box-shadow: 0 0 0 2px var(--icui-accent);
+}
+
+.icui-base-panel.icui-panel-dragging {
+  cursor: move;
+  transform: rotate(1deg) scale(1.02);
+  opacity: 0.9;
+  z-index: 9999 !important;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  transition: none !important;
+}
+
+.icui-base-panel.icui-panel-maximized {
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.icui-base-panel.icui-panel-minimized {
+  height: auto !important;
+  min-height: auto;
+}
+
+/* ===== PANEL HEADER STYLES ===== */
+.icui-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+  background-color: var(--icui-bg-secondary);
+  border-bottom: 1px solid var(--icui-border-subtle);
+  border-radius: 8px 8px 0 0;
+  cursor: move;
+  user-select: none;
+  min-height: 40px;
+  color: var(--icui-text-primary);
+}
+
+.icui-panel-header:hover {
+  background-color: var(--icui-bg-tertiary);
+}
+
+.icui-panel-maximized .icui-panel-header {
+  border-radius: 0;
+}
+
+/* Panel Type Section */
+.icui-panel-type-section {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.icui-panel-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.icui-panel-icon:hover {
+  background-color: var(--icui-bg-tertiary);
+}
+
+.icui-panel-icon-emoji {
+  font-size: 16px;
+}
+
+/* Type Selector Dropdown */
+.icui-panel-type-selector {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 0.25rem;
+  background-color: var(--icui-bg-overlay);
+  border: 1px solid var(--icui-border);
+  border-radius: 8px;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  z-index: 50;
+  min-width: 120px;
+}
+
+.icui-panel-type-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  color: var(--icui-text-primary);
+  border-radius: 4px;
+}
+
+.icui-panel-type-option:hover {
+  background-color: var(--icui-bg-tertiary);
+}
+
+.icui-panel-type-option:first-child {
+  border-radius: 8px 8px 4px 4px;
+}
+
+.icui-panel-type-option:last-child {
+  border-radius: 4px 4px 8px 8px;
+}
+
+.icui-panel-type-option.selected {
+  background-color: var(--icui-accent);
+  color: var(--icui-bg-primary);
+}
+
+/* Title Section */
+.icui-panel-title-section {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.icui-panel-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--icui-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex: 1;
+}
+
+.icui-panel-title-input {
+  font-size: 0.875rem;
+  font-weight: 600;
+  background: var(--icui-bg-primary);
+  border: 1px solid var(--icui-border);
+  border-radius: 4px;
+  padding: 0.25rem 0.5rem;
+  color: var(--icui-text-primary);
+  flex: 1;
+  min-width: 0;
+}
+
+.icui-panel-title-input:focus {
+  outline: none;
+  border-color: var(--icui-accent);
+  box-shadow: 0 0 0 2px var(--icui-accent);
+}
+
+/* Controls Section */
+.icui-panel-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.icui-panel-control {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  font-size: 0.75rem;
+  color: var(--icui-text-secondary);
+  background: none;
+  border: none;
+}
+
+.icui-panel-control:hover {
+  background-color: var(--icui-bg-tertiary);
+}
+
+.icui-panel-control.minimize {
+  color: var(--icui-warning);
+}
+
+.icui-panel-control.maximize {
+  color: var(--icui-accent);
+}
+
+.icui-panel-control.close {
+  color: var(--icui-danger);
+}
+
+.icui-panel-control:hover.minimize {
+  background-color: var(--icui-warning);
+  color: var(--icui-bg-primary);
+}
+
+.icui-panel-control:hover.maximize {
+  background-color: var(--icui-accent);
+  color: var(--icui-bg-primary);
+}
+
+.icui-panel-control:hover.close {
+  background-color: var(--icui-danger);
+  color: var(--icui-bg-primary);
+}
+
+/* ===== PANEL CONTENT STYLES ===== */
+.icui-panel-content {
+  flex: 1;
+  min-height: 0;
+  background-color: var(--icui-bg-primary);
+  border-radius: 0 0 8px 8px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.icui-panel-maximized .icui-panel-content {
+  border-radius: 0;
+}
+
+.icui-content-scrollable {
+  overflow: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.icui-content-padded {
+  padding: 1rem;
+}
+
+.icui-content-unpadded {
+  padding: 0;
+}
+
+/* ===== PANEL RESIZE HANDLES ===== */
+.icui-panel-resize-handles {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.icui-resize-handle {
+  position: absolute;
+  pointer-events: all;
+  opacity: 0;
+  transition: opacity 0.2s ease-in-out;
+  background: var(--icui-accent);
+  border: 1px solid var(--icui-bg-primary);
+}
+
+.icui-resize-handle.active {
+  opacity: 1;
+}
+
+/* North resize handle */
+.icui-resize-n {
+  top: -4px;
+  left: 8px;
+  right: 8px;
+  height: 8px;
+  cursor: n-resize;
+}
+
+/* South resize handle */
+.icui-resize-s {
+  bottom: -4px;
+  left: 8px;
+  right: 8px;
+  height: 8px;
+  cursor: s-resize;
+}
+
+/* West resize handle */
+.icui-resize-w {
+  left: -4px;
+  top: 8px;
+  bottom: 8px;
+  width: 8px;
+  cursor: w-resize;
+}
+
+/* East resize handle */
+.icui-resize-e {
+  right: -4px;
+  top: 8px;
+  bottom: 8px;
+  width: 8px;
+  cursor: e-resize;
+}
+
+/* Resize handle hover effects */
+.icui-resize-handle:hover {
+  background: var(--icui-accent);
+  border: 1px solid var(--icui-bg-primary);
+  border-radius: 2px;
+  transition: all 0.2s ease-in-out;
+}
+
+.icui-resize-handle:active {
+  background: var(--icui-accent-hover);
+  transform: scale(1.1);
+}
+
+/* Better visual indicators for resize handles */
+.icui-resize-handle::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 4px;
+  height: 4px;
+  background: var(--icui-accent);
+  border-radius: 50%;
+  opacity: 0;
+  transition: opacity 0.2s ease-in-out;
+}
+
+.icui-panel-resize-handles:hover .icui-resize-handle::before {
+  opacity: 1;
+}
+
+/* ===== PANEL TYPE SPECIFIC STYLES ===== */
+.icui-panel-terminal {
+  background-color: var(--icui-bg-primary);
+  color: var(--icui-text-primary);
+}
+
+.icui-panel-terminal .icui-panel-header {
+  background-color: var(--icui-bg-secondary);
+  border-color: var(--icui-border-subtle);
+}
+
+.icui-panel-editor {
+  background-color: var(--icui-bg-primary);
+}
+
+.icui-panel-explorer {
+  background-color: var(--icui-bg-primary);
+}
+
+.icui-panel-output {
+  background-color: var(--icui-bg-primary);
+}
+
+.icui-panel-properties {
+  background-color: var(--icui-bg-primary);
+}
+
+.icui-panel-timeline {
+  background-color: var(--icui-bg-primary);
+}
+
+.icui-panel-inspector {
+  background-color: var(--icui-bg-primary);
+}
+
+/* ===== RESPONSIVE DESIGN ===== */
+@media (max-width: 768px) {
+  .icui-base-panel {
+    min-width: 150px;
+    min-height: 80px;
+  }
+  
+  .icui-panel-header {
+    padding: 0.25rem 0.5rem;
+    min-height: 36px;
+  }
+  
+  .icui-panel-title {
+    font-size: 0.75rem;
+  }
+  
+  .icui-panel-control {
+    width: 1.25rem;
+    height: 1.25rem;
+    font-size: 10px;
+  }
+  
+  .icui-content-padded {
+    padding: 0.5rem;
+  }
+}
+
+/* ===== ANIMATIONS ===== */
+@keyframes panelSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.icui-panel-slide-in {
+  animation: panelSlideIn 0.3s ease-out;
+}
+
+/* ===== ACCESSIBILITY ===== */
+.icui-panel-header:focus {
+  outline: 2px solid var(--icui-accent);
+  outline-offset: 2px;
+}
+
+.icui-panel-control:focus {
+  outline: 2px solid var(--icui-accent);
+  outline-offset: 2px;
+}
+
+/* ===== THEME OVERRIDES ===== */
+/* Allow themes to override specific panel styles */
+.icui-theme-monokai .icui-panel-terminal {
+  background-color: var(--icui-bg-primary);
+}
+
+.icui-theme-monokai .icui-panel-terminal .icui-panel-header {
+  background-color: var(--icui-bg-secondary);
+}
+
+.icui-theme-one-dark .icui-panel-editor {
+  background-color: var(--icui-bg-primary);
+}
+
+.icui-theme-github-dark .icui-panel-content {
+  background-color: var(--icui-bg-primary);
+}
+
+.icui-theme-github-light .icui-panel-content {
+  background-color: var(--icui-bg-primary);
+}
+
+.icui-theme-vscode-light .icui-panel-content {
+  background-color: var(--icui-bg-primary);
+}
