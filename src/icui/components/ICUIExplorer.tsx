@@ -25,13 +25,13 @@ import { backendService, ICUIFileNode, useTheme } from '../services';
 import { getWorkspaceRoot } from '../lib';
 import { explorerPreferences } from '../../lib/utils';
 import { log } from '../../services/frontend-logger';
-import { Button } from '../../components/ui/button';
+import { Button } from './ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '../../components/ui/dropdown-menu';
+} from './ui/dropdown-menu';
 
 interface FileNode extends ICUIFileNode {} // For backward compatibility
 

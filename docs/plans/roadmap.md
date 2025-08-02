@@ -2,8 +2,6 @@
 A web-based JavaScript code editor built with ViteReact, CodeMirror 6, and modern web technologies. The goal is to create the world's most powerful notebook for developers and hackers, it includes 3 core parts: 1. rich text editor, similar to evernote/notion hybrid, 2. code editor + terminal(similar to replit), 3. AI agent that can be customized with agentic frameworks such as crew ai, or openai agent sdk, or any other agentic framework. This tool is designed to be infinitely hackable and flexible to empower the nextgeneration of AI powered developers.
 
 ### In Progress
-- [] remove anything not being used under src/stories and src/components/ui make sure they're not being used or called anywhere.
-- [] clean up tests: search for the test keyword for files, most of them are python, make sure they're not under the test folder, there are test file scattered around created in development only clean these up not the test file insite of test folders, check if they're not being used anymore, if there's still use for it move them into a test folder where they belong.
 
 ### Todos before public release
 - [] clean up the enhanced keyword: Search for the Enhanced word, I want to clean these up very conservatively
@@ -120,6 +118,21 @@ maya style code executor.
 CLI should work similar to maya's, which later this will be for the nodes, similar to how nuke nodes would work.
 
 ## Recently Completed ✅
+1. ✓ **UI Components Cleanup and ICUI Standalone** - Moved used UI components to ICUI and cleaned up development artifacts in `/home/penthoy/icotes/src/icui/components/ui/`:
+   - **Removed Stories**: Deleted entire `src/stories` directory since Storybook is not configured
+   - **Moved UI Components**: Transferred actively used components to ICUI for standalone functionality:
+     - Core components: `button`, `select`, `dropdown-menu`, `label`
+     - Toast system: `toast`, `use-toast`, `toaster`
+     - Complex components: `dialog`, `command`, `calendar`, `popover`, `form`, `carousel`, `alert-dialog`, `pagination`, `date-picker-with-range`
+   - **Updated Imports**: Fixed all import paths in ICUI components to use local UI components
+   - **Cleaned Test Files**: Removed scattered development test files:
+     - `backend/test_default_vs_custom.py`, `backend/test_personal_agent_fix.py`, `backend/test_simple_agent.py`
+     - `backend/test-file.js`, `backend/test_websocket_streaming.html`
+     - `public/test-codemirror.html`, `public/test_chat_direct.html`
+     - `test-explorer-update.py`
+   - **ICUI Independence**: ICUI components now use their own UI library, making the framework more modular and standalone
+   - **Build Verification**: Confirmed all changes work correctly with successful production build
+
 1. ✓ **Chat Frontend Plan** - Created comprehensive implementation plan for modern agentic chat UI at `/home/penthoy/ilaborcode/docs/plans/chat_frontend_plan.md`:
    - **Architecture Analysis**: Analyzed current chat components (ICUIChat.tsx, ICUIChatPanel.tsx, useChatMessages.tsx) and backend tool call system (personal_agent.py)
    - **Technology Stack Selection**: Chose @vercel/ai + react-markdown + shiki for modern AI chat interface with superior streaming and syntax highlighting
