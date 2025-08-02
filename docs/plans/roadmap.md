@@ -2,21 +2,28 @@
 A web-based JavaScript code editor built with ViteReact, CodeMirror 6, and modern web technologies. The goal is to create the world's most powerful notebook for developers and hackers, it includes 3 core parts: 1. rich text editor, similar to evernote/notion hybrid, 2. code editor + terminal(similar to replit), 3. AI agent that can be customized with agentic frameworks such as crew ai, or openai agent sdk, or any other agentic framework. This tool is designed to be infinitely hackable and flexible to empower the nextgeneration of AI powered developers.
 
 ### In Progress
-- [] Feedbacks for plan:
+- [] remove anything not being used under src/stories and src/components/ui make sure they're not being used or called anywhere.
+- [] clean up tests: search for the test keyword for files, most of them are python, make sure they're not under the test folder, there are test file scattered around created in development only clean these up not the test file insite of test folders, check if they're not being used anymore, if there's still use for it move them into a test folder where they belong.
+
+### Todos before public release
+- [] clean up the enhanced keyword: Search for the Enhanced word, I want to clean these up very conservatively
+clean up old icuiPanels
+- [] have a landing page
+- [] able to use ollama
+- [] add discord server
+- [] build button that it can change itself and update itself with build button.
+- [] chat should at least able to edit text files
+- [] make sure the enhanced version's features are fully integrated such as the connection status from terminal.
+- [] remove the Enhanced keyword from websocket enhancement
+
+
+### Future tasks
+- [] Feedbacks for agent_frontend plan:
 1. those framework might be overkill:
 2. design a .icotes folder in the root directory where it'll store any icotes related configs and infomation similar to .vscode, histories should be stored in .icotes/chat_history in .json format, design a schema that is optimized for simplicity and speed and flexibility. so that it is future proof in case plugins are added in the future or new capabilities added. so past chat histories will still be able to adapt.
 3. add feature to measure agent context and token usage.
 
-create a torrent of token sharing. by creating your own machine and sharing your tokens, you gain credits that you can use for later.
-### cleanup
-- [] make sure the enhanced version's features are fully integrated such as the connection status from terminal.
-- [] remove the Enhanced keyword from websocket enhancement
-
-### Future tasks
-
-2. look into custom agents personal_agent which can use tools create a agent_tools_plan.md under docs/plans
-3. design other tools for agents to use, in that list, first choose the first few that's simplest to implement. so we can build an plan to incrementally test each of the tools in phases.
-4. at the end we should be able to have our agent make tool calls and do exactly what copilot agents do.
+   e to have our agent make tool calls and do exactly what copilot agents do.
 5. make sure these tools are easily extendable, tool creation are meant for humans to do which should be implemented as simple as possible and even a junior developer can do it, use our 3 personal agent as example on how it'll be done. make sure the backend does all the heavy lifting or build tooling and abstraction layers to make tool creation and custom agent creation very simple.
 
 -- CLI/api
@@ -32,28 +39,22 @@ Able to open file in the editor with cli
 2. Proper history and new chat + button.
 3. create tools: file/folder crud
 
-Steps:
-1. ChatUI supports tool use.
 
 -- bug:
 Bug: Terminal press up and down or down and up, the cursor will go up and remove the previous line
 Bug: I can ctrl + c to system memory but not from system memory to terminal
 
 -- consolditate:
-clean up docs folder, clean up tests
-There seems to be multiple ws endpoints clean up endpoints.
+clean up docs folder,
 clean up the enhanced keyword.
-clean up old icuiPanels
-update documentation to use docu library
-remove anything not being used under src/components/ui and src/components/archived
-remove anything not being used under src/stories
+update documentation using a documentation library
+
 look into backend/main.py and further abstract this code base.
 Use icui menus
 clean up unused routes in App.tsx
 
 -- alpha deployment:
-Try deploy on a fresh ubuntu server.
-docker image
+create docker image
 
 --Features:
 Explorer able to unlock Root path and go up and down different paths
