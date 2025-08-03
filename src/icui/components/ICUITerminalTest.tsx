@@ -1,15 +1,15 @@
 /**
- * Enhanced ICUI Terminal Component
+ * ICUI Terminal Test Component
  * 
- * Integrates all WebSocket improvements: connection management, error handling,
- * message queuing, health monitoring, and migration support.
+ * WebSocket integration testing terminal with Enhanced WebSocket service.
+ * Specialized component for testing Enhanced WebSocket service functionality.
  */
 
 import React, { useEffect, useRef, useState, useCallback, forwardRef, useImperativeHandle } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
-import { EnhancedWebSocketService, ConnectionOptions } from '../../services/enhanced-websocket-service';
+import { EnhancedWebSocketService, ConnectionOptions } from '../../services/websocket-service-impl';
 import { WebSocketMigrationHelper } from '../../services/websocket-migration';
 import { useWebSocketService } from '../../contexts/BackendContext';
 
@@ -59,7 +59,7 @@ class EnhancedClipboard {
   }
 }
 
-interface ICUITerminalEnhancedProps {
+interface ICUITerminalTestProps {
   className?: string;
   terminalId?: string;
   onTerminalReady?: (terminal: Terminal) => void;
@@ -67,7 +67,7 @@ interface ICUITerminalEnhancedProps {
   onTerminalExit?: (code: number) => void;
 }
 
-export interface ICUITerminalEnhancedRef {
+export interface ICUITerminalTestRef {
   getTerminal: () => Terminal | null;
   clear: () => void;
   focus: () => void;
@@ -77,7 +77,7 @@ export interface ICUITerminalEnhancedRef {
   getHealthStatus: () => any;
 }
 
-const ICUITerminalEnhanced = forwardRef<ICUITerminalEnhancedRef, ICUITerminalEnhancedProps>(({
+const ICUITerminalTest = forwardRef<ICUITerminalTestRef, ICUITerminalTestProps>(({
   className = '',
   terminalId: propTerminalId,
   onTerminalReady,
@@ -182,7 +182,7 @@ const ICUITerminalEnhanced = forwardRef<ICUITerminalEnhancedRef, ICUITerminalEnh
 
     // Enhanced service event handlers - listen for both connection_opened and connected
     enhancedService.current.on('connection_opened', (data: any) => {
-      console.log('[ICUITerminalEnhanced] Enhanced service connected:', data);
+      console.log('[ICUITerminalTest] Enhanced service connected:', data);
       setIsConnected(true);
       
       if (terminal.current) {
@@ -196,13 +196,13 @@ const ICUITerminalEnhanced = forwardRef<ICUITerminalEnhancedRef, ICUITerminalEnh
     });
 
     enhancedService.current.on('connected', (data: any) => {
-      console.log('[ICUITerminalEnhanced] Enhanced service connected (legacy event):', data);
+      console.log('[ICUITerminalTest] Enhanced service connected (legacy event):', data);
       setIsConnected(true);
       onTerminalReady?.(terminal.current!);
     });
 
     enhancedService.current.on('connection_closed', (data: any) => {
-      console.log('[ICUITerminalEnhanced] Enhanced service disconnected:', data);
+      console.log('[ICUITerminalTest] Enhanced service disconnected:', data);
       setIsConnected(false);
       if (terminal.current) {
         terminal.current.write('\r\n\x1b[31mTerminal disconnected\x1b[0m\r\n');
@@ -210,7 +210,7 @@ const ICUITerminalEnhanced = forwardRef<ICUITerminalEnhancedRef, ICUITerminalEnh
     });
 
     enhancedService.current.on('disconnected', (data: any) => {
-      console.log('[ICUITerminalEnhanced] Enhanced service disconnected (legacy event):', data);
+      console.log('[ICUITerminalTest] Enhanced service disconnected (legacy event):', data);
       setIsConnected(false);
       if (terminal.current) {
         terminal.current.write('\r\n\x1b[31mTerminal disconnected\x1b[0m\r\n');
@@ -229,7 +229,7 @@ const ICUITerminalEnhanced = forwardRef<ICUITerminalEnhancedRef, ICUITerminalEnh
     });
 
     enhancedService.current.on('error', (error: any) => {
-      console.error('[ICUITerminalEnhanced] Enhanced service error:', error);
+      console.error('[ICUITerminalTest] Enhanced service error:', error);
       if (terminal.current) {
         terminal.current.write(`\r\n\x1b[31mConnection error: ${error.message}\x1b[0m\r\n`);
       }
@@ -237,12 +237,12 @@ const ICUITerminalEnhanced = forwardRef<ICUITerminalEnhancedRef, ICUITerminalEnh
 
     enhancedService.current.on('healthUpdate', (health: any) => {
       setHealthStatus(health);
-      console.log('[ICUITerminalEnhanced] Health update:', health);
+      console.log('[ICUITerminalTest] Health update:', health);
     });
 
     enhancedService.current.on('connectionClosed', (data: any) => {
       if (data.connectionId === connectionId.current) {
-        console.log('[ICUITerminalEnhanced] Connection closed:', data);
+        console.log('[ICUITerminalTest] Connection closed:', data);
         setIsConnected(false);
         connectionId.current = null;
         onTerminalExit?.(data.code || 0);
@@ -264,21 +264,21 @@ const ICUITerminalEnhanced = forwardRef<ICUITerminalEnhancedRef, ICUITerminalEnh
         timeout: 10000
       };
 
-      console.log('[ICUITerminalEnhanced] Connecting with options:', options);
+      console.log('[ICUITerminalTest] Connecting with options:', options);
       connectionId.current = await enhancedService.current.connect(options);
-      console.log('[ICUITerminalEnhanced] Connected with ID:', connectionId.current);
+      console.log('[ICUITerminalTest] Connected with ID:', connectionId.current);
       
     } catch (error) {
-      console.error('[ICUITerminalEnhanced] Connection failed:', error);
+      console.error('[ICUITerminalTest] Connection failed:', error);
       
       // Fallback to legacy service using migration helper
       if (migrationHelper.current) {
-        console.log('[ICUITerminalEnhanced] Attempting fallback to legacy service');
+        console.log('[ICUITerminalTest] Attempting fallback to legacy service');
         try {
           const legacyService = migrationHelper.current.getService('terminal');
           // Use legacy service connection logic here
         } catch (fallbackError) {
-          console.error('[ICUITerminalEnhanced] Fallback also failed:', fallbackError);
+          console.error('[ICUITerminalTest] Fallback also failed:', fallbackError);
         }
       }
     }
@@ -405,6 +405,6 @@ const ICUITerminalEnhanced = forwardRef<ICUITerminalEnhancedRef, ICUITerminalEnh
   );
 });
 
-ICUITerminalEnhanced.displayName = 'ICUITerminalEnhanced';
+ICUITerminalTest.displayName = 'ICUITerminalTest';
 
-export default ICUITerminalEnhanced;
+export default ICUITerminalTest;

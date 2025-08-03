@@ -128,11 +128,11 @@ const ICUIEditorComparison: React.FC = () => {
             Editor Comparison Tool
           </div>
           <a 
-            href="/icui-enhanced" 
+            href="/icui-main" 
             className="px-4 py-2 text-xs rounded hover:opacity-80 transition-opacity"
             style={{ backgroundColor: 'var(--icui-bg-tertiary, #3e3e3e)', color: 'var(--icui-text-primary, #d4d4d4)' }}
           >
-            Enhanced Test →
+            ICUI Main →
           </a>
         </div>
       </div>

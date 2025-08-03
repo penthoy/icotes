@@ -14,7 +14,6 @@ import { ICUILayoutMenuTest } from "./icui/components/tests/ICUILayoutMenuTest";
 import ICUIEditorComparison from "../tests/integration/icui/ICUIEditorComparison";
 import { ICUIReferenceLayouts } from "../tests/integration/icui/ICUIReferenceLayouts";
 import { ICUIMainPage } from "../tests/integration/icui/ICUIMainPage";
-import { ICUITestEnhanced } from "../tests/integration/icui/ICUITestEnhanced";
 import { ICUITerminalTest } from "../tests/integration/icui/icuiTerminaltest";
 import ICUIServicesTest from "../tests/integration/icui/ICUIServicesTest";
 import ICUIServicesPhase2Test from "../tests/integration/icui/ICUIServicesPhase2Test";
@@ -59,7 +58,6 @@ function App() {
           <Route path="/icui-editor-comparison" element={<ICUIEditorComparison />} />
           <Route path="/icui-layouts" element={<ICUIReferenceLayouts />} />
           <Route path="/icui-main" element={<ICUIMainPage />} />
-          <Route path="/icui-enhanced" element={<ICUITestEnhanced />} />
           <Route path="/icui-terminal-test" element={<ICUITerminalTest />} />
           
           {/* Handle double slash routes */}

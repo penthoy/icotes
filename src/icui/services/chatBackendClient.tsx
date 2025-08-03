@@ -6,9 +6,9 @@
  * message queuing, and health monitoring.
  */
 
-export * from './enhancedChatBackendClient';
-export { ChatBackendClient } from './enhancedChatBackendClient';
+export * from './chat-backend-client-impl';
+export { ChatBackendClient } from './chat-backend-client-impl';
 
 // Create a default instance for compatibility
-import { chatBackendClient } from './enhancedChatBackendClient';
+import { chatBackendClient } from './chat-backend-client-impl';
 export { chatBackendClient };

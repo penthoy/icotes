@@ -2,18 +2,18 @@
 A web-based JavaScript code editor built with ViteReact, CodeMirror 6, and modern web technologies. The goal is to create the world's most powerful notebook for developers and hackers, it includes 3 core parts: 1. rich text editor, similar to evernote/notion hybrid, 2. code editor + terminal(similar to replit), 3. AI agent that can be customized with agentic frameworks such as crew ai, or openai agent sdk, or any other agentic framework. This tool is designed to be infinitely hackable and flexible to empower the nextgeneration of AI powered developers.
 
 ### In Progress
-- [] clean up the enhanced keyword: Search for the Enhanced word, I want to clean these up very conservatively, first search for it, analyze and give insight before change anything, and wait for my feedback.
-
+- [] clean up the enhanced/Enhanced keyword: Search for the Enhanced word, I want to clean these up very conservatively, first search for it, analyze and give insight before change anything, and wait for my feedback.
+- [] make sure the enhanced version's features are fully integrated 
 
 ### Todos before public release
-
-clean up old icuiPanels
+- [] remove the duplicate uis from src/components/ui if they're under src/icui/components/ui
+- [] search for any hardcoding pathes.
 - [] have a landing page
 - [] able to use ollama
 - [] add discord server
 - [] build button that it can change itself and update itself with build button.
 - [] chat should at least able to edit text files
-- [] make sure the enhanced version's features are fully integrated such as the connection status from terminal.
+such as the connection status from terminal.
 - [] remove the Enhanced keyword from websocket enhancement
 - [] add license
 - [] add screenshot, and update readme
@@ -40,7 +40,6 @@ Able to open file in the editor with cli
 2. Proper history and new chat + button.
 3. create tools: file/folder crud
 
-
 -- bug:
 Bug: Terminal press up and down or down and up, the cursor will go up and remove the previous line
 Bug: I can ctrl + c to system memory but not from system memory to terminal
@@ -61,10 +60,10 @@ create docker image
 Explorer able to unlock Root path and go up and down different paths
 json config for layouts
 Drag and drop file and download file
-
+learn and do playwright
 icui: side tabs
 icui: context menus
-
+icui: drag and drop upload for future notebook for image, pdfs and media files.
 Github and git integration
 Rich text editor integration 
 

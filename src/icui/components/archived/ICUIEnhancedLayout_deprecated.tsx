@@ -5,10 +5,10 @@
  */
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { ICUIFrameContainer } from './ICUIFrameContainer';
-import { ICUISplitPanel } from './ICUISplitPanel';
-import { ICUIPanelArea, ICUIPanel } from './ICUIPanelArea';
-import { ICUIPanelType } from './ICUIPanelSelector';
+import { ICUIFrameContainer } from '../ICUIFrameContainer';
+import { ICUISplitPanel } from '../ICUISplitPanel';
+import { ICUIPanelArea, ICUIPanel } from '../ICUIPanelArea';
+import { ICUIPanelType } from '../ICUIPanelSelector';
 
 export interface ICUILayoutArea {
   id: string;

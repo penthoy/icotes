@@ -7,7 +7,7 @@
  */
 
 import { EventEmitter } from 'eventemitter3';
-import { EnhancedWebSocketService, ConnectionOptions, MessageOptions } from '../../services/enhanced-websocket-service';
+import { EnhancedWebSocketService, ConnectionOptions, MessageOptions } from '../../services/websocket-service-impl';
 import { WebSocketMigrationHelper } from '../../services/websocket-migration';
 import { ConnectionStatus } from '../../types/backend-types';
 import { log } from '../../services/frontend-logger';

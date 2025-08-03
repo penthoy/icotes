@@ -14,7 +14,7 @@ export { ICUIPanelContent } from './components/ICUIPanelContent';
 export { ICUIPanelArea } from './components/ICUIPanelArea';
 export { default as ICUITabContainer } from './components/ICUITabContainer';
 export { ICUILayout } from './components/ICUILayout';
-export { ICUIEnhancedLayout } from './components/ICUIEnhancedLayout_deprecated'; // @deprecated - use ICUILayout
+export { ICUIEnhancedLayout } from './components/archived/ICUIEnhancedLayout_deprecated'; // @deprecated - use ICUILayout
 
 // Core Components (Main ICUI interface components)
 export { default as ICUIChat } from './components/ICUIChat';
@@ -128,7 +128,7 @@ export type {
   ICUILayoutArea as ICUILayoutAreaDeprecated,
   ICUILayoutConfig as ICUILayoutConfigDeprecated,
   ICUIEnhancedLayoutProps,
-} from './components/ICUIEnhancedLayout_deprecated';
+} from './components/archived/ICUIEnhancedLayout_deprecated';
 
 export type {
   ICUIPanel,

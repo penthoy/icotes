@@ -6,10 +6,10 @@
  * The deprecated version is available in src/components/archived/services/websocket-service_deprecated.ts
  */
 
-import { EnhancedWebSocketService } from './enhanced-websocket-service';
+import { EnhancedWebSocketService } from './websocket-service-impl';
 
-export * from './enhanced-websocket-service';
-export { EnhancedWebSocketService as WebSocketService } from './enhanced-websocket-service';
+export * from './websocket-service-impl';
+export { EnhancedWebSocketService as WebSocketService } from './websocket-service-impl';
 
 // Singleton instance for backward compatibility
 let websocketServiceInstance: any = null;

@@ -13,7 +13,7 @@ import {
   ICUIChatPanel
 } from '../icui';
 import Layout from './Layout';
-import type { ICUILayoutConfig } from '../icui/components/ICUIEnhancedLayout_deprecated';
+import type { ICUILayoutConfig } from '../icui/components/archived/ICUIEnhancedLayout_deprecated';
 import type { ICUIPanel } from '../icui/components/ICUIPanelArea';
 import type { ICUIEditorFile } from '../icui/components/panels/ICUIEditorPanel';
 import type { ICUIPanelType } from '../icui/components/ICUIPanelSelector';

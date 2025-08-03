@@ -6,9 +6,9 @@
  */
 
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
-import { EnhancedWebSocketService } from '../../services/enhanced-websocket-service';
+import { EnhancedWebSocketService } from '../../services/websocket-service-impl';
 import { log } from '../../services/frontend-logger';
-import type { ConnectionOptions, MessageOptions } from '../../services/enhanced-websocket-service';
+import type { ConnectionOptions, MessageOptions } from '../../services/websocket-service-impl';
 import type { ConnectionHealth } from '../../services/connection-manager';
 import { notificationService } from './notificationService';
 import { ConnectionStatus } from '../types/chatTypes';

@@ -6,8 +6,8 @@
  * message queuing, and health monitoring.
  */
 
-export * from './enhancedBackendService';
-export { icuiBackendService } from './enhancedBackendService';
+export * from './backend-service-impl';
+export { icuiBackendService } from './backend-service-impl';
 
 // Re-export the enhanced service as the default ICUIBackendService
-export { ICUIBackendService } from './enhancedBackendService';
+export { ICUIBackendService } from './backend-service-impl';

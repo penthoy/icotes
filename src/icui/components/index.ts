@@ -11,7 +11,7 @@ export { ICUITabContainer } from './ICUITabContainer';
 export { ICUIPanelArea } from './ICUIPanelArea';
 export { ICUIPanelContent } from './ICUIPanelContent';
 export { ICUIPanelHeader } from './ICUIPanelHeader';
-export { ICUIEnhancedLayout } from './ICUIEnhancedLayout_deprecated';
+export { ICUIEnhancedLayout } from './archived/ICUIEnhancedLayout_deprecated';
 export { ICUILayout } from './ICUILayout';
 export { ICUIBaseHeader } from './ICUIBaseHeader';
 export { ICUIBaseFooter } from './ICUIBaseFooter';

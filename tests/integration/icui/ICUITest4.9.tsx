@@ -135,11 +135,11 @@ const ICUITest49: React.FC = () => {
               Compare →
             </a>
             <a 
-              href="/icui-enhanced" 
+              href="/icui-main" 
               className="px-4 py-2 text-xs rounded hover:opacity-80 transition-opacity"
               style={{ backgroundColor: 'var(--icui-bg-tertiary)', color: 'var(--icui-text-primary)' }}
             >
-              Enhanced Test →
+              ICUI Main →
             </a>
           </div>
         </div>

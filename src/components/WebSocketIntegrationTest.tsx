@@ -1,8 +1,8 @@
 /**
- * Enhanced WebSocket Services Integration Test
+ * WebSocket Services Integration Test
  * 
- * This test component demonstrates the integration of all enhanced WebSocket services:
- * - Enhanced Terminal
+ * This test component demonstrates the integration of enhanced WebSocket services:
+ * - Terminal Test Component
  * - Enhanced Chat
  * - Enhanced Backend Service
  * - Connection Manager
@@ -19,7 +19,7 @@ interface IntegrationTestProps {
   className?: string;
 }
 
-const EnhancedWebSocketIntegrationTest: React.FC<IntegrationTestProps> = ({ className = '' }) => {
+const WebSocketIntegrationTest: React.FC<IntegrationTestProps> = ({ className = '' }) => {
   const terminalRef = useRef<ICUITerminalTestRef>(null);
   const healthMonitor = useRef<ConnectionHealthMonitor>(new ConnectionHealthMonitor());
   
@@ -265,4 +265,4 @@ const EnhancedWebSocketIntegrationTest: React.FC<IntegrationTestProps> = ({ clas
   );
 };
 
-export default EnhancedWebSocketIntegrationTest;
+export default WebSocketIntegrationTest;
