@@ -178,16 +178,16 @@ setup_environment() {
     # Get local IP address
     LOCAL_IP=$(hostname -I | awk '{print $1}')
     
-    # Backup existing .env if it exists
+    # Check if .env already exists - if so, skip creation to preserve existing configuration
     if [ -f ".env" ]; then
-        print_status "Backing up existing .env file..."
-        cp .env .env.backup.$(date +%Y%m%d_%H%M%S)
-        print_success "Backup created: .env.backup.$(date +%Y%m%d_%H%M%S)"
+        print_success ".env file already exists - preserving existing configuration"
+        print_warning "⚠️  If you need to update configuration, please manually edit .env or remove it and run setup again"
+        return 0
     fi
     
-    print_status "Creating/updating .env file with single-port configuration..."
+    print_status "Creating .env file with single-port configuration..."
     
-    # Create updated .env file matching current configuration structure
+    # Create new .env file matching current configuration structure
     cat > .env << EOF
 SITE_URL=${LOCAL_IP}
 PORT=8000
@@ -227,7 +227,7 @@ DASHSCOPE_API_KEY=your_dashscope_api_key_here
 MOONSHOT_API_KEY=your_moonshot_api_key_here
 EOF
     
-    print_success ".env file created/updated with single-port configuration (IP: $LOCAL_IP)"
+    print_success ".env file created with single-port configuration (IP: $LOCAL_IP)"
     print_warning "⚠️  Please update the API keys in .env with your actual keys before using agent features"
 }
 

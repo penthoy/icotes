@@ -7,7 +7,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { ICUIEditorFile } from '../../../src/icui/components/panels/ICUIEnhancedEditorPanel';
+import { ICUIEditorFile } from '../../../src/icui/components/panels/ICUIEditorPanel';
 import { useBackendState } from '../../../src/hooks/useBackendState';
 import { useBackendContext } from '../../../src/contexts/BackendContext';
 import BackendConnectedExplorer from './BackendConnectedExplorer';

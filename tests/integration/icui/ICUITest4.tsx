@@ -7,12 +7,12 @@ import React, { useState, useCallback } from 'react';
 import { 
   ICUIFrameContainer,
   ICUISplitPanel,
-  ICUIPanelArea,
-  useICUIPanels, 
+  useICUIPanels,
   createPanel,
   ICUIPanelType,
   ICUIPanelInstance
 } from '../../../src/icui';
+import { ICUIPanelArea } from '../../../src/icui/components/archived/ICUIPanelArea_deprecated';
 import { FileData } from '../../../src/components/archived/FileTabs';
 import ICUITerminalPanel from '../../../src/icui/components/panels/ICUITerminalPanel';
 import CodeEditor, { SupportedLanguage } from '../../../src/components/archived/CodeEditor';

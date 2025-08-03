@@ -5,7 +5,7 @@
  * to the enhanced WebSocket service with backward compatibility.
  */
 
-import { EnhancedWebSocketService, ConnectionOptions, MessageOptions } from './enhanced-websocket-service';
+import { EnhancedWebSocketService } from './websocket-service-impl';
 import { ServiceType } from './connection-manager';
 import { ChatBackendClient } from '../icui/services/chatBackendClient';
 

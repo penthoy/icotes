@@ -5,8 +5,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import ICUIEditorPanelFromScratch from '../../../src/icui/components/panels/ICUIEditorPanelFromScratch';
-import ICUIEnhancedEditorPanel from '../../../src/icui/components/panels/ICUIEnhancedEditorPanelOld';
+import ICUIEditorPanel from '../../../src/icui/components/panels/ICUIEditorPanel';
 import '../../../src/icui/styles/themes/icui-themes.css';
 
 const ICUIEditorComparison: React.FC = () => {
@@ -86,7 +85,7 @@ const ICUIEditorComparison: React.FC = () => {
               </p>
             </div>
             <div className="flex-1">
-              <ICUIEnhancedEditorPanel />
+              <ICUIEditorPanel />
             </div>
           </div>
         </div>
@@ -103,7 +102,7 @@ const ICUIEditorComparison: React.FC = () => {
               </p>
             </div>
             <div className="flex-1">
-              <ICUIEditorPanelFromScratch />
+              <ICUIEditorPanel />
             </div>
           </div>
         </div>
@@ -129,11 +128,11 @@ const ICUIEditorComparison: React.FC = () => {
             Editor Comparison Tool
           </div>
           <a 
-            href="/icui-enhanced" 
+            href="/icui-main" 
             className="px-4 py-2 text-xs rounded hover:opacity-80 transition-opacity"
             style={{ backgroundColor: 'var(--icui-bg-tertiary, #3e3e3e)', color: 'var(--icui-text-primary, #d4d4d4)' }}
           >
-            Enhanced Test →
+            ICUI Main →
           </a>
         </div>
       </div>

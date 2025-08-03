@@ -5,7 +5,7 @@
  * before integrating with the existing system.
  */
 
-import { EnhancedWebSocketService } from './enhanced-websocket-service';
+import { EnhancedWebSocketService } from './websocket-service-impl';
 import { WebSocketErrorHandler } from './websocket-errors';
 import { webSocketMigration } from './websocket-migration';
 

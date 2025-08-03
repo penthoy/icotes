@@ -18,7 +18,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
-  ICUIEnhancedLayout,
+  ICUILayout,
   ICUIChatPanel
 } from '../../src/icui';
 import Layout from '../../src/components/Layout';
@@ -26,8 +26,8 @@ import BackendConnectedExplorer from './components/BackendConnectedExplorer';
 import BackendConnectedTerminal from './components/BackendConnectedTerminal';
 import BackendConnectedEditor from './components/BackendConnectedEditor';
 
-import type { ICUILayoutConfig } from '../../src/icui/components/ICUIEnhancedLayout';
-import type { ICUIEnhancedPanel } from '../../src/icui/components/ICUIEnhancedPanelArea';
+import type { ICUILayoutConfig } from '../../src/icui/components/ICUILayout';
+import type { ICUIPanel } from '../../src/icui/components/ICUIPanelArea';
 import type { ICUIPanelType } from '../../src/icui/components/ICUIPanelSelector';
 
 // Editor file interface (compatible with BackendConnectedEditor)
@@ -78,7 +78,7 @@ const IntegratedHome: React.FC<IntegratedHomeProps> = ({ className = '' }) => {
   const [layout, setLayout] = useState<ICUILayoutConfig>(defaultLayout);
   // Remove local file management - let BackendConnectedEditor handle its own files
   const [currentTheme, setCurrentTheme] = useState<string>('github-dark');
-  const [panels, setPanels] = useState<ICUIEnhancedPanel[]>([]);
+  const [panels, setPanels] = useState<ICUIPanel[]>([]);
 
   // Simple connection status for now - will be replaced with actual backend connection
   const isConnected = true; // Set to true since BackendConnectedEditor will handle connection checking
@@ -185,7 +185,7 @@ const IntegratedHome: React.FC<IntegratedHomeProps> = ({ className = '' }) => {
     }
     
     // Create new panel
-    const newPanel: ICUIEnhancedPanel = {
+    const newPanel: ICUIPanel = {
       id: newPanelId,
       type: panelType.id,
       title: panelType.name,
@@ -213,7 +213,7 @@ const IntegratedHome: React.FC<IntegratedHomeProps> = ({ className = '' }) => {
 
   // Initialize panels on mount
   useEffect(() => {
-    const initialPanels: ICUIEnhancedPanel[] = [
+    const initialPanels: ICUIPanel[] = [
       {
         id: 'explorer',
         type: 'explorer',
@@ -359,7 +359,7 @@ const IntegratedHome: React.FC<IntegratedHomeProps> = ({ className = '' }) => {
       </div>
 
       {/* Main Layout */}
-      <ICUIEnhancedLayout
+      <ICUILayout
         panels={panels}
         layout={layout}
         onLayoutChange={setLayout}

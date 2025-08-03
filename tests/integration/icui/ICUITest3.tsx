@@ -7,12 +7,12 @@ import React, { useState, useCallback } from 'react';
 import { 
   ICUIFrameContainer,
   ICUISplitPanel,
-  ICUIPanelArea,
   useICUIPanels, 
   createPanel,
   ICUIPanelType,
   ICUIPanelInstance
 } from '../../../src/icui';
+import { ICUIPanelArea } from '../../../src/icui/components/archived/ICUIPanelArea_deprecated';
 
 interface ICUITest3Props {
   className?: string;

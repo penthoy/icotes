@@ -6,6 +6,19 @@
 
 ICUI is a React-based UI framework that provides a flexible, modular panel system. It allows users to create, remove, and transform panels dynamically while maintaining complete control over the layout.
 
+**Architecture Note**: ICUI follows clean API design principles:
+- **Primary components** use intuitive names (`ICUILayout`, `ICUIEditor`, `ICUITerminal`)
+- **Enhanced variants** provide specialized features for advanced use cases
+- **Service layer** uses Enhanced implementations with clean public APIs
+
+## Core Components
+
+### Layout System
+- **`ICUILayout`** (Primary) - Modern layout component with IDE-like panel management  
+- **`ICUIEnhancedLayout`** (Deprecated) - Use `ICUILayout` instead
+- **`ICUIFrameContainer`** - Frame wrapper with responsive sizing
+- **`ICUISplitPanel`** - Resizable split panel system
+
 ## Features
 
 - **Responsive Frame Container**: Automatically detects viewport changes and adjusts layout
