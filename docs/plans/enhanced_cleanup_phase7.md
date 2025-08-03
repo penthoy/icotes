@@ -18,8 +18,8 @@ Please add comments for each file to decide the action:
   - **Action**: ✅ Updated component names, interfaces, and references
 
 - `/home/penthoy/icotes/src/components/EnhancedWebSocketIntegrationTest.tsx`
-  - **Status**: ✅ Renamed to `WebSocketIntegrationTest.tsx`
-  - **Action**: ✅ Updated component name and header comments
+  - **Status**: ✅ Removed (unused duplicate test file)
+  - **Action**: ✅ Deleted along with `WebSocketIntegrationTest.tsx` - both were unused, nearly identical integration test files with no imports or routes
 
 - `/home/penthoy/icotes/tests/integration/icui/ICUITestEnhanced.tsx`
   - **Status**: ✅ Archived to `tests/integration/icui/archived/ICUITestEnhanced_deprecated.tsx`
