@@ -12,7 +12,7 @@ import {
   ICUIPanelType,
   ICUIPanelInstance
 } from '../../../src/icui';
-import { ICUIPanelArea } from '../../../src/icui/components/ICUIPanelArea_deprecated';
+import { ICUIPanelArea } from '../../../src/icui/components/archived/ICUIPanelArea_deprecated';
 
 interface ICUITest3Props {
   className?: string;

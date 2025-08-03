@@ -7,10 +7,22 @@ Phase 7 is the final review of remaining Enhanced files and archival of deprecat
 
 Please add comments for each file to decide the action:
 
-### 1. Deprecated Files (1 file) ✅ COMPLETED
+### 1. Deprecated Files (4 files) ✅ COMPLETED
 - `/home/penthoy/icotes/src/icui/components/ICUIEnhancedLayout_deprecated.tsx`
-  - **Status**: Moved to `src/icui/components/archived/` folder
+  - **Status**: ✅ Moved to `src/icui/components/archived/` folder
   - **Action**: ✅ Archived with updated import paths
+
+- `/home/penthoy/icotes/src/icui/components/ICUIPanelArea_deprecated.tsx`
+  - **Status**: ✅ Moved to `src/icui/components/archived/` folder  
+  - **Action**: ✅ Archived with fixed import paths and updated test references
+
+- `/home/penthoy/icotes/src/icui/components/panels/ICUITerminalPanel_deprecated.tsx`
+  - **Status**: ✅ Moved to `src/icui/components/archived/` folder
+  - **Action**: ✅ Archived deprecated terminal panel implementation
+
+- `/home/penthoy/icotes/src/icui/components/panels/ICUIEditorPanel_deprecated.tsx`
+  - **Status**: ✅ Moved to `src/icui/components/archived/` folder
+  - **Action**: ✅ Archived deprecated editor panel implementation
 
 ### 2. Specialized Components (3 files) ✅ COMPLETED
 - `/home/penthoy/icotes/src/icui/components/ICUITerminalEnhanced.tsx`
@@ -61,17 +73,23 @@ Please add comments for each file to decide the action:
 ## Planned Actions
 
 ### Archive Setup ✅ COMPLETED
-1. **Created Archive Structure**:
+1. **Expanded Archive Structure**:
    ```
    src/icui/components/archived/
    ├── ICUIEnhancedLayout_deprecated.tsx
+   ├── ICUIPanelArea_deprecated.tsx
+   ├── ICUITerminalPanel_deprecated.tsx
+   ├── ICUIEditorPanel_deprecated.tsx
    └── README.md
    ```
 
-2. **Moved Deprecated Files**:
+2. **Moved All Deprecated Files**:
    - ✅ `ICUIEnhancedLayout_deprecated.tsx` → `src/icui/components/archived/`
-   - ✅ Updated all import references 
-   - ✅ Fixed relative import paths in archived file
+   - ✅ `ICUIPanelArea_deprecated.tsx` → `src/icui/components/archived/`
+   - ✅ `ICUITerminalPanel_deprecated.tsx` → `src/icui/components/archived/`
+   - ✅ `ICUIEditorPanel_deprecated.tsx` → `src/icui/components/archived/`
+   - ✅ Updated all import references and fixed relative import paths
+   - ✅ Updated test files (`ICUITest3.tsx`, `ICUITest4.tsx`) to reference archived locations
    - ✅ Added archive documentation
 
 ### Documentation Updates

@@ -4,8 +4,8 @@
  */
 
 import React, { useState, useCallback, useRef } from 'react';
-import { ICUIBasePanel } from './ICUIBasePanel';
-import { ICUIPanelInstance } from '../types/icui-panel';
+import { ICUIBasePanel } from '../ICUIBasePanel';
+import { ICUIPanelInstance } from '../../types/icui-panel';
 
 export interface ICUIPanelAreaProps {
   id: string;
