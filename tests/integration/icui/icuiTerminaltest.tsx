@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import ICUITerminalPanelFromScratch from '../../../src/icui/components/panels/ICUITerminalPanelFromScratch';
+import ICUITerminalPanel from '../../../src/icui/components/panels/ICUITerminalPanel';
 
 export const ICUITerminalTest: React.FC = () => {
   return (
@@ -16,7 +16,7 @@ export const ICUITerminalTest: React.FC = () => {
       
       {/* Terminal container taking full remaining height */}
       <div className="flex-1 overflow-hidden">
-        <ICUITerminalPanelFromScratch />
+        <ICUITerminalPanel />
       </div>
     </div>
   );

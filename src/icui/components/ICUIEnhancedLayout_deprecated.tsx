@@ -7,7 +7,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { ICUIFrameContainer } from './ICUIFrameContainer';
 import { ICUISplitPanel } from './ICUISplitPanel';
-import { ICUIEnhancedPanelArea, ICUIEnhancedPanel } from './ICUIEnhancedPanelArea';
+import { ICUIPanelArea, ICUIPanel } from './ICUIPanelArea';
 import { ICUIPanelType } from './ICUIPanelSelector';
 
 export interface ICUILayoutArea {
@@ -32,7 +32,7 @@ export interface ICUILayoutConfig {
 }
 
 export interface ICUIEnhancedLayoutProps {
-  panels: ICUIEnhancedPanel[];
+  panels: ICUIPanel[];
   layout: ICUILayoutConfig;
   onLayoutChange?: (layout: ICUILayoutConfig) => void;
   onPanelMove?: (panelId: string, targetAreaId: string, sourceAreaId: string) => void;
@@ -134,13 +134,13 @@ export const ICUIEnhancedLayout: React.FC<ICUIEnhancedLayoutProps> = ({
   }, [currentLayout, persistLayout, layoutKey, isInitialized]);
 
   // Get panels for a specific area
-  const getPanelsForArea = useCallback((areaId: string): ICUIEnhancedPanel[] => {
+  const getPanelsForArea = useCallback((areaId: string): ICUIPanel[] => {
     const area = currentLayout.areas[areaId];
     if (!area) return [];
     
     return area.panelIds
       .map(id => panels.find(p => p.id === id))
-      .filter(Boolean) as ICUIEnhancedPanel[];
+      .filter(Boolean) as ICUIPanel[];
   }, [panels, currentLayout]);
 
   // Handle panel activation
@@ -302,7 +302,7 @@ export const ICUIEnhancedLayout: React.FC<ICUIEnhancedLayoutProps> = ({
       firstPanel={
         /* Left Panel Area - Full Height */
         leftArea.visible !== false ? (
-          <ICUIEnhancedPanelArea
+          <ICUIPanelArea
             id="left"
             panels={leftPanels}
             activePanelId={leftArea.activePanelId}
@@ -347,7 +347,7 @@ export const ICUIEnhancedLayout: React.FC<ICUIEnhancedLayoutProps> = ({
               onSplitChange={(split) => handleSplitChange('centerVerticalSplit', split)}
               firstPanel={
                 /* Editor Area */
-                <ICUIEnhancedPanelArea
+                <ICUIPanelArea
                   id="center"
                   panels={centerPanels}
                   activePanelId={centerArea.activePanelId}
@@ -367,7 +367,7 @@ export const ICUIEnhancedLayout: React.FC<ICUIEnhancedLayoutProps> = ({
               secondPanel={
                 /* Terminal Area */
                 bottomArea.visible !== false ? (
-                  <ICUIEnhancedPanelArea
+                  <ICUIPanelArea
                     id="bottom"
                     panels={bottomPanels}
                     activePanelId={bottomArea.activePanelId}
@@ -391,7 +391,7 @@ export const ICUIEnhancedLayout: React.FC<ICUIEnhancedLayoutProps> = ({
           secondPanel={
             /* Right Panel Area - Full Height */
             rightArea.visible !== false ? (
-              <ICUIEnhancedPanelArea
+              <ICUIPanelArea
                 id="right"
                 panels={rightPanels}
                 activePanelId={rightArea.activePanelId}
@@ -444,7 +444,7 @@ export const ICUIEnhancedLayout: React.FC<ICUIEnhancedLayoutProps> = ({
           firstPanel={
             /* Left Panel Area */
             leftArea.visible !== false ? (
-              <ICUIEnhancedPanelArea
+              <ICUIPanelArea
                 id="left"
                 panels={leftPanels}
                 activePanelId={leftArea.activePanelId}
@@ -476,7 +476,7 @@ export const ICUIEnhancedLayout: React.FC<ICUIEnhancedLayoutProps> = ({
               onSplitChange={(split) => handleSplitChange('rightVerticalSplit', split)}
               firstPanel={
                 /* Center Panel Area */
-                <ICUIEnhancedPanelArea
+                <ICUIPanelArea
                   id="center"
                   panels={centerPanels}
                   activePanelId={centerArea.activePanelId}
@@ -493,7 +493,7 @@ export const ICUIEnhancedLayout: React.FC<ICUIEnhancedLayoutProps> = ({
               secondPanel={
                 /* Right Panel Area */
                 rightArea.visible !== false ? (
-                  <ICUIEnhancedPanelArea
+                  <ICUIPanelArea
                     id="right"
                     panels={rightPanels}
                     activePanelId={rightArea.activePanelId}
@@ -519,7 +519,7 @@ export const ICUIEnhancedLayout: React.FC<ICUIEnhancedLayoutProps> = ({
       secondPanel={
         /* Bottom Panel Area */
         bottomArea.visible !== false ? (
-          <ICUIEnhancedPanelArea
+          <ICUIPanelArea
             id="bottom"
             panels={bottomPanels}
             activePanelId={bottomArea.activePanelId}

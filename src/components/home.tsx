@@ -18,7 +18,7 @@
 
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { 
-  ICUIEnhancedLayout,
+  ICUILayout,
   ICUIChat
 } from '../icui';
 import Layout from './Layout';
@@ -26,8 +26,8 @@ import ICUIExplorer from '../icui/components/ICUIExplorer';
 import ICUITerminal from '../icui/components/ICUITerminal';
 import ICUIEditor, { ICUIEditorRef } from '../icui/components/ICUIEditor';
 
-import type { ICUILayoutConfig } from '../icui/components/ICUIEnhancedLayout';
-import type { ICUIEnhancedPanel } from '../icui/components/ICUIEnhancedPanelArea';
+import type { ICUILayoutConfig } from '../icui/components/ICUILayout';
+import type { ICUIPanel } from '../icui/components/ICUIPanelArea';
 import type { ICUIPanelType } from '../icui/components/ICUIPanelSelector';
 
 // Editor file interface (compatible with ICUIEditor)
@@ -78,7 +78,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
   const [layout, setLayout] = useState<ICUILayoutConfig>(defaultLayout);
   // Remove local file management - let ICUIEditor handle its own files
   const [currentTheme, setCurrentTheme] = useState<string>('github-dark');
-  const [panels, setPanels] = useState<ICUIEnhancedPanel[]>([]);
+  const [panels, setPanels] = useState<ICUIPanel[]>([]);
 
   // Real connection status from ICUIEditor
   const [editorConnectionStatus, setEditorConnectionStatus] = useState<{connected: boolean; error?: string; timestamp?: number}>({ connected: false });
@@ -229,7 +229,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
     }
     
     // Create new panel
-    const newPanel: ICUIEnhancedPanel = {
+    const newPanel: ICUIPanel = {
       id: newPanelId,
       type: panelType.id,
       title: panelType.name,
@@ -257,7 +257,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
 
   // Initialize panels on mount
   useEffect(() => {
-    const initialPanels: ICUIEnhancedPanel[] = [
+    const initialPanels: ICUIPanel[] = [
       {
         id: 'explorer',
         type: 'explorer',
@@ -389,7 +389,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
       onFileAction={handleFileAction}
     >
       {/* Main Layout */}
-      <ICUIEnhancedLayout
+      <ICUILayout
         panels={panels}
         layout={layout}
         onLayoutChange={setLayout}

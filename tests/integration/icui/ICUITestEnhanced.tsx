@@ -6,15 +6,15 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
 import { 
-  ICUIEnhancedLayout,
-  ICUIEnhancedEditorPanel,
-  ICUIEnhancedTerminalPanel,
+  ICUILayout,
+  ICUIEditorPanel,
+  ICUITerminalPanel,
   ICUIExplorerPanel,
   ICUIChatPanel
 } from '../../../src/icui';
-import type { ICUILayoutConfig } from '../../../src/icui/components/ICUIEnhancedLayout';
-import type { ICUIEnhancedPanel } from '../../../src/icui/components/ICUIEnhancedPanelArea';
-import type { ICUIEditorFile } from '../../../src/icui/components/panels/ICUIEnhancedEditorPanel';
+import type { ICUILayoutConfig } from '../../../src/icui/components/ICUILayout';
+import type { ICUIPanel } from '../../../src/icui/components/ICUIPanelArea';
+import type { ICUIEditorFile } from '../../../src/icui/components/panels/ICUIEditorPanel';
 import type { ICUIPanelType } from '../../../src/icui/components/ICUIPanelSelector';
 
 interface ICUITestEnhancedProps {
@@ -76,11 +76,11 @@ export const ICUITestEnhanced: React.FC<ICUITestEnhancedProps> = ({ className = 
   const [editorFiles, setEditorFiles] = useState<ICUIEditorFile[]>(sampleFiles);
   const [activeFileId, setActiveFileId] = useState<string>('main-js');
   const [currentTheme, setCurrentTheme] = useState<string>('github-dark');
-  const [panels, setPanels] = useState<ICUIEnhancedPanel[]>([]);
+  const [panels, setPanels] = useState<ICUIPanel[]>([]);
 
   /*
    * Apply selected theme classes to the <html> element so that
-   * components (like ICUIEnhancedEditorPanel) that look for these
+   * components (like ICUIEditorPanel) that look for these
    * classes on document.documentElement can correctly detect the
    * active dark / light theme. This mirrors the behaviour used in
    * ICUITest4.9 (from-scratch editor test).
@@ -200,7 +200,7 @@ export const ICUITestEnhanced: React.FC<ICUITestEnhancedProps> = ({ className = 
       case 'editor':
         // For editor panels, use placeholder content that will be updated by the effect
         content = (
-          <ICUIEnhancedEditorPanel
+          <ICUIEditorPanel
             files={editorFiles}
             activeFileId={activeFileId}
             onFileChange={handleFileChange}
@@ -216,7 +216,7 @@ export const ICUITestEnhanced: React.FC<ICUITestEnhancedProps> = ({ className = 
         );
         break;
       case 'terminal':
-        content = <ICUIEnhancedTerminalPanel className="h-full" />;
+        content = <ICUITerminalPanel className="h-full" />;
         break;
       case 'chat':
         content = <ICUIChatPanel className="h-full" />;
@@ -232,7 +232,7 @@ export const ICUITestEnhanced: React.FC<ICUITestEnhancedProps> = ({ className = 
     }
     
     // Create new panel
-    const newPanel: ICUIEnhancedPanel = {
+    const newPanel: ICUIPanel = {
       id: newPanelId,
       type: panelType.id,
       title: panelType.name,
@@ -260,7 +260,7 @@ export const ICUITestEnhanced: React.FC<ICUITestEnhancedProps> = ({ className = 
 
   // Initialize panels on mount - ONLY ONCE
   React.useEffect(() => {
-    const initialPanels: ICUIEnhancedPanel[] = [
+    const initialPanels: ICUIPanel[] = [
       {
         id: 'explorer',
         type: 'explorer',
@@ -276,7 +276,7 @@ export const ICUITestEnhanced: React.FC<ICUITestEnhancedProps> = ({ className = 
         icon: '📝',
         closable: true,
         content: (
-          <ICUIEnhancedEditorPanel
+          <ICUIEditorPanel
             files={editorFiles}
             activeFileId={activeFileId}
             onFileChange={handleFileChange}
@@ -298,7 +298,7 @@ export const ICUITestEnhanced: React.FC<ICUITestEnhancedProps> = ({ className = 
         icon: '💻',
         closable: true,
         status: 'connected', // Test: Set to connected to verify the dot shows
-        content: <ICUIEnhancedTerminalPanel className="h-full" />
+        content: <ICUITerminalPanel className="h-full" />
       },
       {
         id: 'chat',
@@ -320,7 +320,7 @@ export const ICUITestEnhanced: React.FC<ICUITestEnhancedProps> = ({ className = 
         return {
           ...panel,
           content: (
-            <ICUIEnhancedEditorPanel
+            <ICUIEditorPanel
               files={editorFiles}
               activeFileId={activeFileId}
               onFileChange={handleFileChange}
@@ -419,7 +419,7 @@ export const ICUITestEnhanced: React.FC<ICUITestEnhancedProps> = ({ className = 
 
       {/* Layout - Takes remaining height with proper constraints */}
       <div className="flex-1 min-h-0 max-h-full overflow-hidden">
-        <ICUIEnhancedLayout
+        <ICUILayout
           panels={panels}
           layout={layout}
           onLayoutChange={setLayout}

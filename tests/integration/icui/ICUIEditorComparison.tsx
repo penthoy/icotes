@@ -5,8 +5,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import ICUIEditorPanelFromScratch from '../../../src/icui/components/panels/ICUIEditorPanelFromScratch';
-import ICUIEnhancedEditorPanel from '../../../src/icui/components/panels/ICUIEnhancedEditorPanelOld';
+import ICUIEditorPanel from '../../../src/icui/components/panels/ICUIEditorPanel';
 import '../../../src/icui/styles/themes/icui-themes.css';
 
 const ICUIEditorComparison: React.FC = () => {
@@ -86,7 +85,7 @@ const ICUIEditorComparison: React.FC = () => {
               </p>
             </div>
             <div className="flex-1">
-              <ICUIEnhancedEditorPanel />
+              <ICUIEditorPanel />
             </div>
           </div>
         </div>
@@ -103,7 +102,7 @@ const ICUIEditorComparison: React.FC = () => {
               </p>
             </div>
             <div className="flex-1">
-              <ICUIEditorPanelFromScratch />
+              <ICUIEditorPanel />
             </div>
           </div>
         </div>

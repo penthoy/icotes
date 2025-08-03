@@ -4,8 +4,8 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import ICUIEnhancedLayout from '../../../src/icui/components/ICUIEnhancedLayout';
-import ICUIEditorPanelFromScratch from '../../../src/icui/components/panels/ICUIEditorPanelFromScratch';
+import ICUILayout from '../../../src/icui/components/ICUILayout';
+import ICUIEditorPanel from '../../../src/icui/components/panels/ICUIEditorPanel';
 import '../../../src/icui/styles/themes/icui-themes.css';
 
 const ICUITest49: React.FC = () => {
@@ -49,7 +49,7 @@ const ICUITest49: React.FC = () => {
       id: 'editor-from-scratch',
       type: 'editor-from-scratch',
       title: 'Python Editor (From Scratch)',
-      content: <ICUIEditorPanelFromScratch />,
+      content: <ICUIEditorPanel />,
       closable: true,
     },
   ];
@@ -103,7 +103,7 @@ const ICUITest49: React.FC = () => {
       {/* Main Layout - Simplified for testing */}
       <div className="flex-1 h-full" style={{ height: 'calc(100vh - 60px)' }}>
         <div className="h-full w-full" style={{ backgroundColor: 'var(--icui-bg-primary)' }}>
-          <ICUIEditorPanelFromScratch />
+          <ICUIEditorPanel />
         </div>
       </div>
 

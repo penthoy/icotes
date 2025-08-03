@@ -7,15 +7,15 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { 
   ICUIEnhancedLayout,
-  ICUIEnhancedEditorPanel,
-  ICUIEnhancedTerminalPanel,
+  ICUIEditorPanel,
+  ICUITerminalPanel,
   ICUIExplorerPanel,
   ICUIChatPanel
 } from '../icui';
 import Layout from './Layout';
-import type { ICUILayoutConfig } from '../icui/components/ICUIEnhancedLayout';
-import type { ICUIEnhancedPanel } from '../icui/components/ICUIEnhancedPanelArea';
-import type { ICUIEditorFile } from '../icui/components/panels/ICUIEnhancedEditorPanel';
+import type { ICUILayoutConfig } from '../icui/components/ICUIEnhancedLayout_deprecated';
+import type { ICUIPanel } from '../icui/components/ICUIPanelArea';
+import type { ICUIEditorFile } from '../icui/components/panels/ICUIEditorPanel';
 import type { ICUIPanelType } from '../icui/components/ICUIPanelSelector';
 
 interface HomeProps {
@@ -70,7 +70,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
   const [editorFiles, setEditorFiles] = useState<ICUIEditorFile[]>(defaultFiles);
   const [activeFileId, setActiveFileId] = useState<string>('welcome-js');
   const [currentTheme, setCurrentTheme] = useState<string>('github-dark');
-  const [panels, setPanels] = useState<ICUIEnhancedPanel[]>([]);
+  const [panels, setPanels] = useState<ICUIPanel[]>([]);
 
   // Apply theme classes to document element for proper theme detection
   useEffect(() => {
@@ -198,7 +198,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
         break;
       case 'editor':
         content = (
-          <ICUIEnhancedEditorPanel
+          <ICUIEditorPanel
             files={editorFiles}
             activeFileId={activeFileId}
             onFileChange={handleFileChange}
@@ -216,7 +216,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
         );
         break;
       case 'terminal':
-        content = <ICUIEnhancedTerminalPanel className="h-full" />;
+        content = <ICUITerminalPanel className="h-full" />;
         break;
       case 'chat':
         content = <ICUIChatPanel className="h-full" />;
@@ -232,7 +232,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
     }
     
     // Create new panel
-    const newPanel: ICUIEnhancedPanel = {
+    const newPanel: ICUIPanel = {
       id: newPanelId,
       type: panelType.id,
       title: panelType.name,
@@ -260,7 +260,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
 
   // Initialize panels on mount
   useEffect(() => {
-    const initialPanels: ICUIEnhancedPanel[] = [
+    const initialPanels: ICUIPanel[] = [
       {
         id: 'explorer',
         type: 'explorer',
@@ -276,7 +276,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
         icon: '📝',
         closable: true,
         content: (
-          <ICUIEnhancedEditorPanel
+          <ICUIEditorPanel
             files={editorFiles}
             activeFileId={activeFileId}
             onFileChange={handleFileChange}
@@ -299,7 +299,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
         title: 'Terminal',
         icon: '💻',
         closable: true,
-        content: <ICUIEnhancedTerminalPanel className="h-full" />
+        content: <ICUITerminalPanel className="h-full" />
       },
       {
         id: 'chat',
@@ -320,7 +320,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
         return {
           ...panel,
           content: (
-            <ICUIEnhancedEditorPanel
+            <ICUIEditorPanel
               files={editorFiles}
               activeFileId={activeFileId}
               onFileChange={handleFileChange}

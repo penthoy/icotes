@@ -2,9 +2,11 @@
 A web-based JavaScript code editor built with ViteReact, CodeMirror 6, and modern web technologies. The goal is to create the world's most powerful notebook for developers and hackers, it includes 3 core parts: 1. rich text editor, similar to evernote/notion hybrid, 2. code editor + terminal(similar to replit), 3. AI agent that can be customized with agentic frameworks such as crew ai, or openai agent sdk, or any other agentic framework. This tool is designed to be infinitely hackable and flexible to empower the nextgeneration of AI powered developers.
 
 ### In Progress
+- [] clean up the enhanced keyword: Search for the Enhanced word, I want to clean these up very conservatively, first search for it, analyze and give insight before change anything, and wait for my feedback.
+
 
 ### Todos before public release
-- [] clean up the enhanced keyword: Search for the Enhanced word, I want to clean these up very conservatively
+
 clean up old icuiPanels
 - [] have a landing page
 - [] able to use ollama
@@ -13,7 +15,8 @@ clean up old icuiPanels
 - [] chat should at least able to edit text files
 - [] make sure the enhanced version's features are fully integrated such as the connection status from terminal.
 - [] remove the Enhanced keyword from websocket enhancement
-
+- [] add license
+- [] add screenshot, and update readme
 
 ### Future tasks
 - [] Feedbacks for agent_frontend plan:

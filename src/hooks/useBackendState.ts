@@ -14,7 +14,7 @@ import type {
   WorkspaceFile, 
   TerminalSession 
 } from '../types/backend-types';
-import type { ICUIEditorFile } from '../icui/components/panels/ICUIEnhancedEditorPanel';
+import type { ICUIEditorFile } from '../icui/components/panels/ICUIEditorPanel';
 
 export interface BackendStateHook {
   // Connection state

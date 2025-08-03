@@ -13,7 +13,8 @@ export { ICUIPanelHeader } from './components/ICUIPanelHeader';
 export { ICUIPanelContent } from './components/ICUIPanelContent';
 export { ICUIPanelArea } from './components/ICUIPanelArea';
 export { default as ICUITabContainer } from './components/ICUITabContainer';
-export { ICUIEnhancedLayout } from './components/ICUIEnhancedLayout';
+export { ICUILayout } from './components/ICUILayout';
+export { ICUIEnhancedLayout } from './components/ICUIEnhancedLayout_deprecated'; // @deprecated - use ICUILayout
 
 // Core Components (Main ICUI interface components)
 export { default as ICUIChat } from './components/ICUIChat';
@@ -33,13 +34,7 @@ export { ICUIBaseFooter } from './components/ICUIBaseFooter';
 // Enhanced Components (New)
 // export { ICUITest1, ICUITest2, ICUITest3, ICUITest4, ICUITest5, ICUITest6, ICUITest7, ICUITest8, ICUITest9, ICUITest10 } from './tests';
 
-// Enhanced Panels
-export { default as ICUIEnhancedEditorPanel } from './components/panels/ICUIEnhancedEditorPanel';
-export { default as ICUIEnhancedEditorPanelOld } from './components/panels/ICUIEnhancedEditorPanelOld';
-export { default as ICUIEditorPanelFromScratch } from './components/panels/ICUIEditorPanelFromScratch';
-export { default as ICUIEnhancedTerminalPanel } from './components/panels/ICUIEnhancedTerminalPanel';
-
-// Original Specialized Panels
+// Primary Panels (formerly Enhanced)
 export { default as ICUITerminalPanel } from './components/panels/ICUITerminalPanel';
 export { default as ICUIEditorPanel } from './components/panels/ICUIEditorPanel';
 export { default as ICUIExplorerPanel } from './components/panels/ICUIExplorerPanel';
@@ -121,17 +116,24 @@ export type {
   ICUIPanelHookResult,
 } from './types/icui-panel';
 
-// Enhanced Component Types
+// Layout Component Types
 export type {
   ICUILayoutArea,
   ICUILayoutConfig,
+  ICUILayoutProps,
+} from './components/ICUILayout';
+
+// @deprecated - use types from ICUILayout instead
+export type {
+  ICUILayoutArea as ICUILayoutAreaDeprecated,
+  ICUILayoutConfig as ICUILayoutConfigDeprecated,
   ICUIEnhancedLayoutProps,
-} from './components/ICUIEnhancedLayout';
+} from './components/ICUIEnhancedLayout_deprecated';
 
 export type {
-  ICUIEnhancedPanel,
-  ICUIEnhancedPanelAreaProps,
-} from './components/ICUIEnhancedPanelArea';
+  ICUIPanel,
+  ICUIPanelAreaProps,
+} from './components/ICUIPanelArea';
 
 export type {
   ICUITab,
@@ -140,8 +142,8 @@ export type {
 
 export type {
   ICUIEditorFile,
-  ICUIEnhancedEditorPanelProps,
-} from './components/panels/ICUIEnhancedEditorPanel';
+  ICUIEditorPanelProps,
+} from './components/panels/ICUIEditorPanel';
 
 // Base Layout Component Types
 export type {

@@ -1,12 +1,47 @@
 /**
- * ICUI Editor Panel - Simple Implementation
- * A basic code editor using native textarea element
- * No CodeMirror dependency - built from scratch
+ * ICUI Enhanced Editor Panel - Combined Implementation
+ * Combines the best features from multiple implementations:
+ * - Excellent syntax highlighting and editor features
+ * - Tabs functionality for multiple files
+ * - Full ICUI framework integration
+ * - Clean, minimal architecture
  */
 
-import React, { useState, useRef } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
+import {
+  EditorView,
+  keymap,
+  lineNumbers,
+  dropCursor,
+  rectangularSelection,
+  crosshairCursor,
+} from "@codemirror/view";
+import { EditorState, Extension } from "@codemirror/state";
+import {
+  defaultKeymap,
+  history,
+  historyKeymap,
+  indentWithTab,
+} from "@codemirror/commands";
+import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
+import {
+  autocompletion,
+  completionKeymap,
+  closeBrackets,
+  closeBracketsKeymap,
+} from "@codemirror/autocomplete";
+import {
+  syntaxHighlighting,
+  indentOnInput,
+  bracketMatching,
+  foldKeymap,
+  foldGutter,
+} from "@codemirror/language";
+import { createICUISyntaxHighlighting, createICUIEnhancedEditorTheme, getLanguageExtension } from '../../utils/syntaxHighlighting';
+import { python } from '@codemirror/lang-python';
+import { javascript } from '@codemirror/lang-javascript';
 
-// Export interface for compatibility with enhanced version
+// Re-export interface for compatibility
 export interface ICUIEditorFile {
   id: string;
   name: string;
@@ -15,9 +50,8 @@ export interface ICUIEditorFile {
   modified: boolean;
 }
 
-interface ICUIEditorPanelProps {
+export interface ICUIEditorPanelProps {
   className?: string;
-  // Accept enhanced props for compatibility but ignore them
   files?: ICUIEditorFile[];
   activeFileId?: string;
   onFileChange?: (fileId: string, newContent: string) => void;
@@ -26,191 +60,360 @@ interface ICUIEditorPanelProps {
   onFileSave?: (fileId: string) => void;
   onFileRun?: (fileId: string, content: string, language: string) => void;
   onFileActivate?: (fileId: string) => void;
+  onFileReorder?: (fromIndex: number, toIndex: number) => void;
   autoSave?: boolean;
   autoSaveDelay?: number;
+  enableDragDrop?: boolean;
 }
 
-const ICUIEditorPanel: React.FC<ICUIEditorPanelProps> = ({ className = '' }) => {
-  const [content, setContent] = useState<string>(`// ICUI Editor Panel - Simple Implementation
-// No CodeMirror - just a plain textarea
+const ICUIEditorPanel: React.FC<ICUIEditorPanelProps> = ({
+  className = '',
+  files = [],
+  activeFileId,
+  onFileChange,
+  onFileClose,
+  onFileCreate,
+  onFileSave,
+  onFileRun,
+  onFileActivate,
+  onFileReorder,
+  autoSave = false,
+  autoSaveDelay = 1000,
+  enableDragDrop = false,
+}) => {
+  const editorRef = useRef<HTMLDivElement>(null);
+  const viewRef = useRef<EditorView | null>(null);
+  const [isDarkTheme, setIsDarkTheme] = useState(false);
+  const [draggedFile, setDraggedFile] = useState<string | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  // Auto-save timer
+  const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-function example() {
-  return "This is a basic implementation";
-}
+  // Get current active file
+  const activeFile = files.find(f => f.id === activeFileId) || files[0];
 
-example();`);
+  // Default file if no files provided
+  const defaultFile: ICUIEditorFile = {
+    id: 'default',
+    name: 'main.py',
+    language: 'python',
+    content: `# ICUI Enhanced Editor with Tabs!
+# Combining the best features from multiple implementations
 
-  const [isModified, setIsModified] = useState(false);
-  const [language, setLanguage] = useState('javascript');
-  const [lineNumbers, setLineNumbers] = useState(true);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+def enhanced_example():
+    """Enhanced editor with excellent syntax highlighting and tabs"""
+    print("Welcome to ICUI Enhanced Editor!")
+    return "Framework abstraction complete!"
 
-  // Calculate line numbers
-  const lines = content.split('\n');
-  const lineCount = lines.length;
-
-  // Handle content change
-  const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setContent(e.target.value);
-    setIsModified(true);
+# Test the enhanced functionality
+if __name__ == "__main__":
+    result = enhanced_example()
+    print(f"Result: {result}")
+    
+    # More Python features
+    numbers = [1, 2, 3, 4, 5]
+    squares = [x**2 for x in numbers if x % 2 == 0]
+    print(f"Even squares: {squares}")
+    
+    # Class example
+    class CodeEditor:
+        def __init__(self, name):
+            self.name = name
+            self.files = []
+        
+        def add_file(self, filename):
+            self.files.append(filename)
+            return f"Added {filename} to {self.name}"
+    
+    editor = CodeEditor("ICUI Enhanced")
+    print(editor.add_file("example.py"))`,
+    modified: false,
   };
+
+  const currentFile = activeFile || defaultFile;
+
+  // Detect theme changes
+  useEffect(() => {
+    const detectTheme = () => {
+      const htmlElement = document.documentElement;
+      const isDark = htmlElement.classList.contains('dark') || 
+                     htmlElement.classList.contains('icui-theme-github-dark') ||
+                     htmlElement.classList.contains('icui-theme-monokai') ||
+                     htmlElement.classList.contains('icui-theme-one-dark');
+
+      setIsDarkTheme(isDark);
+    };
+
+    detectTheme();
+    
+    const observer = new MutationObserver(detectTheme);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class']
+    });
+
+    return () => observer.disconnect();
+  }, []);
+
+  // Initialize CodeMirror editor (only recreate on theme changes)
+  useEffect(() => {
+    if (!editorRef.current) return;
+
+    // Get current content from existing view if it exists, otherwise use current file content
+    const currentContent = viewRef.current?.state.doc.toString() || currentFile.content;
+
+    // Clean up existing view
+    if (viewRef.current) {
+      viewRef.current.destroy();
+      viewRef.current = null;
+    }
+
+    // Create enhanced theme for CodeMirror using abstracted function
+    const enhancedTheme = EditorView.theme(createICUIEnhancedEditorTheme(isDarkTheme));
+
+    // Create extensions array with proper ordering
+    const extensions: Extension[] = [
+      lineNumbers(),
+      foldGutter(),
+      dropCursor(),
+      EditorState.allowMultipleSelections.of(true),
+      indentOnInput(),
+      bracketMatching(),
+      closeBrackets(),
+      autocompletion(),
+      rectangularSelection(),
+      crosshairCursor(),
+      highlightSelectionMatches(),
+      history(),
+      keymap.of([
+        ...closeBracketsKeymap,
+        ...defaultKeymap,
+        ...searchKeymap,
+        ...historyKeymap,
+        ...foldKeymap,
+        ...completionKeymap,
+        indentWithTab,
+      ]),
+      syntaxHighlighting(createICUISyntaxHighlighting(isDarkTheme)),
+      enhancedTheme,
+      EditorView.updateListener.of((update) => {
+        if (update.docChanged) {
+          const newContent = update.state.doc.toString();
+          if (newContent !== currentFile.content) {
+            onFileChange?.(currentFile.id, newContent);
+            
+            // Auto-save functionality
+            if (autoSave) {
+              if (autoSaveTimerRef.current) {
+                clearTimeout(autoSaveTimerRef.current);
+              }
+              autoSaveTimerRef.current = setTimeout(() => {
+                onFileSave?.(currentFile.id);
+              }, autoSaveDelay);
+            }
+          }
+        }
+      }),
+    ];
+
+    // Add language extension directly based on current file language
+    if (currentFile.language === 'python') {
+      extensions.push(python());
+    } else if (currentFile.language === 'javascript') {
+      extensions.push(javascript());
+    } else if (currentFile.language === 'typescript') {
+      extensions.push(javascript({ typescript: true }));
+    }
+
+    // Create new editor state
+    const state = EditorState.create({
+      doc: currentContent,
+      extensions,
+    });
+
+    // Create new editor view
+    viewRef.current = new EditorView({
+      state,
+      parent: editorRef.current,
+    });
+
+    return () => {
+      if (viewRef.current) {
+        viewRef.current.destroy();
+        viewRef.current = null;
+      }
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+      }
+    };
+  }, [isDarkTheme, currentFile.language]); // Only recreate when theme or language changes
+
+  // Update editor content when file changes (without recreating the editor)
+  useEffect(() => {
+    if (!viewRef.current || !currentFile) return;
+
+    const currentContent = viewRef.current.state.doc.toString();
+    if (currentContent !== currentFile.content) {
+      // Update editor content without recreating the editor
+      viewRef.current.dispatch({
+        changes: {
+          from: 0,
+          to: currentContent.length,
+          insert: currentFile.content
+        }
+      });
+    }
+  }, [currentFile.content, currentFile.id]);
+
+  // Handle tab click
+  const handleTabClick = useCallback((fileId: string) => {
+    onFileActivate?.(fileId);
+  }, [onFileActivate]);
+
+  // Handle tab close
+  const handleTabClose = useCallback((e: React.MouseEvent, fileId: string) => {
+    e.stopPropagation();
+    onFileClose?.(fileId);
+  }, [onFileClose]);
+
+  // Drag and Drop Handlers for file tabs
+  const handleDragStart = useCallback((e: React.DragEvent, fileId: string) => {
+    if (!enableDragDrop) return;
+    setDraggedFile(fileId);
+    e.dataTransfer.setData('application/icui-file', fileId);
+    e.dataTransfer.effectAllowed = 'move';
+  }, [enableDragDrop]);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    if (!enableDragDrop) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  }, [enableDragDrop]);
+
+  const handleDrop = useCallback((e: React.DragEvent, targetIndex: number) => {
+    if (!enableDragDrop || !onFileReorder) return;
+    e.preventDefault();
+    const fileId = e.dataTransfer.getData('application/icui-file');
+    if (fileId) {
+      const draggedIndex = files.findIndex(file => file.id === fileId);
+      if (draggedIndex !== -1 && draggedIndex !== targetIndex) {
+        onFileReorder(draggedIndex, targetIndex);
+      }
+    }
+    setDraggedFile(null);
+    setDragOverIndex(null);
+  }, [enableDragDrop, onFileReorder, files]);
+
+  // Handle drag end to reset state
+  const handleDragEnd = useCallback(() => {
+    setDraggedFile(null);
+    setDragOverIndex(null);
+  }, []);
 
   // Handle save
-  const handleSave = () => {
-    setIsModified(false);
-  };
-
-  // Handle run code
-  const handleRun = () => {
-    try {
-      if (language === 'javascript') {
-        // Simple evaluation for demo purposes
-        eval(content);
-      }
-    } catch (error) {
-      console.error('Code execution error:', error);
+  const handleSave = useCallback(() => {
+    if (currentFile.modified) {
+      onFileSave?.(currentFile.id);
     }
-  };
+  }, [currentFile.id, currentFile.modified, onFileSave]);
+
+  // Handle run
+  const handleRun = useCallback(() => {
+    const content = viewRef.current?.state.doc.toString() || currentFile.content;
+    onFileRun?.(currentFile.id, content, currentFile.language);
+  }, [currentFile.id, currentFile.language, onFileRun]);
 
   // Handle key shortcuts
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.ctrlKey || e.metaKey) {
-      if (e.key === 's') {
-        e.preventDefault();
-        handleSave();
-      } else if (e.key === 'Enter') {
-        e.preventDefault();
-        handleRun();
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        if (e.key === 's') {
+          e.preventDefault();
+          handleSave();
+        } else if (e.key === 'Enter') {
+          e.preventDefault();
+          handleRun();
+        }
       }
-    }
-    
-    // Tab handling
-    if (e.key === 'Tab') {
-      e.preventDefault();
-      const textarea = textareaRef.current;
-      if (textarea) {
-        const start = textarea.selectionStart;
-        const end = textarea.selectionEnd;
-        const value = textarea.value;
-        
-        // Insert tab
-        const newValue = value.substring(0, start) + '  ' + value.substring(end);
-        setContent(newValue);
-        setIsModified(true);
-        
-        // Move cursor after tab
-        setTimeout(() => {
-          textarea.selectionStart = textarea.selectionEnd = start + 2;
-        }, 0);
-      }
-    }
-  };
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleSave, handleRun]);
 
   return (
-    <div className={`flex flex-col h-full w-full ${className}`}>
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2 bg-gray-100 dark:bg-gray-800 border-b border-gray-300 dark:border-gray-600">
-        <div className="flex items-center space-x-3">
-          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-            Editor
-          </span>
-          <select
-            value={language}
-            onChange={(e) => setLanguage(e.target.value)}
-            className="text-xs px-2 py-1 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="javascript">JavaScript</option>
-            <option value="typescript">TypeScript</option>
-            <option value="python">Python</option>
-            <option value="html">HTML</option>
-            <option value="css">CSS</option>
-            <option value="json">JSON</option>
-            <option value="markdown">Markdown</option>
-            <option value="text">Plain Text</option>
-          </select>
-          <button
-            onClick={() => setLineNumbers(!lineNumbers)}
-            className="text-xs px-2 py-1 bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-300 dark:hover:bg-gray-500 transition-colors"
-          >
-            {lineNumbers ? 'Hide' : 'Show'} Lines
-          </button>
-        </div>
-        
-        <div className="flex items-center space-x-2">
-          {isModified && (
-            <span className="text-xs text-orange-600 dark:text-orange-400">
-              Modified
-            </span>
-          )}
-          <button
-            onClick={handleSave}
-            disabled={!isModified}
-            className={`px-3 py-1 text-xs rounded transition-colors ${
-              isModified 
-                ? 'bg-blue-500 hover:bg-blue-600 text-white' 
-                : 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
-            }`}
-          >
-            Save
-          </button>
-          <button
-            onClick={handleRun}
-            className="px-3 py-1 text-xs bg-green-500 hover:bg-green-600 text-white rounded transition-colors"
-          >
-            Run
-          </button>
-        </div>
-      </div>
-
-      {/* Editor Area */}
-      <div className="flex-1 flex min-h-0 overflow-hidden">
-        {/* Line Numbers */}
-        {lineNumbers && (
-          <div className="flex-shrink-0 bg-gray-50 dark:bg-gray-800 border-r border-gray-300 dark:border-gray-600 px-3 py-2">
-            <div className="text-xs text-gray-500 dark:text-gray-400 font-mono leading-6">
-              {Array.from({ length: lineCount }, (_, i) => (
-                <div key={i + 1} className="text-right">
-                  {i + 1}
-                </div>
-              ))}
-            </div>
+    <div className={`flex flex-col h-full w-full ${className}`} style={{ backgroundColor: 'var(--icui-bg-primary)' }}>
+      {/* Tab Bar */}
+      {files.length > 0 && (
+        <div className="flex items-center border-b overflow-x-auto overflow-y-hidden h-8 whitespace-nowrap" style={{ backgroundColor: 'var(--icui-bg-secondary)', borderBottomColor: 'var(--icui-border-subtle)', userSelect: 'none' }}>
+          <div className="flex min-w-0 flex-1">
+            {files.map((file, index) => (
+              <div
+                key={file.id}
+                className={`flex items-center px-3 py-1 border-r cursor-pointer hover:opacity-80 transition-opacity ${
+                  file.id === activeFileId ? 'bg-opacity-20' : ''
+                }${draggedFile === file.id ? ' dragging' : ''}`}
+                style={{ 
+                  backgroundColor: file.id === activeFileId ? 'var(--icui-bg-tertiary)' : 'transparent',
+                  borderRightColor: 'var(--icui-border-subtle)',
+                  color: 'var(--icui-text-primary)',
+                  opacity: draggedFile === file.id ? 0.5 : 1,
+                  cursor: enableDragDrop ? (draggedFile === file.id ? 'grabbing' : 'grab') : 'pointer',
+                  userSelect: 'none',
+                }}
+                onClick={() => handleTabClick(file.id)}
+                onDragStart={(e) => handleDragStart(e, file.id)}
+                onDragEnd={handleDragEnd}
+                onDragOver={handleDragOver}
+                onDrop={(e) => handleDrop(e, index)}
+                draggable={enableDragDrop}
+              >
+                <span className="text-sm font-medium truncate max-w-32">
+                  {file.name}
+                </span>
+                {file.modified && (
+                  <span className="ml-1 text-xs" style={{ color: 'var(--icui-warning)' }}>
+                    ●
+                  </span>
+                )}
+                {files.length > 1 && (
+                  <button
+                    className="ml-2 p-0.5 hover:opacity-60 transition-opacity"
+                    onClick={(e) => handleTabClose(e, file.id)}
+                    style={{ color: 'var(--icui-text-muted)' }}
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            ))}
           </div>
-        )}
-        
-        {/* Text Area */}
-        <div className="flex-1 min-w-0">
-          <textarea
-            ref={textareaRef}
-            value={content}
-            onChange={handleContentChange}
-            onKeyDown={handleKeyDown}
-            className="w-full h-full p-2 font-mono text-sm bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 border-none resize-none focus:outline-none leading-6"
-            placeholder="Start typing your code here..."
-            spellCheck={false}
-            style={{ 
-              tabSize: 2,
-              minHeight: '100%',
-              outline: 'none',
-              border: 'none',
-            }}
-          />
+          {onFileCreate && (
+            <button
+              className="flex items-center px-2 py-1 hover:opacity-80 transition-opacity"
+              onClick={onFileCreate}
+              style={{ color: 'var(--icui-text-muted)' }}
+            >
+              <span className="text-sm">+</span>
+            </button>
+          )}
         </div>
+      )}
+
+      {/* Header removed for more code space */}
+
+      {/* Editor Area - CodeMirror uses hardcoded dark colors, container uses CSS variables */}
+      <div className="flex-1 min-h-0 overflow-hidden" style={{ backgroundColor: 'var(--icui-bg-primary)' }}>
+        <div ref={editorRef} className="h-full w-full" />
       </div>
 
       {/* Status Bar */}
-      <div className="flex items-center justify-between px-4 py-1 bg-gray-50 dark:bg-gray-800 border-t border-gray-300 dark:border-gray-600 text-xs text-gray-600 dark:text-gray-400">
-        <div className="flex items-center space-x-4">
-          <span>Lines: {lineCount}</span>
-          <span>Characters: {content.length}</span>
-          <span>Language: {language}</span>
-        </div>
-        <div className="flex items-center space-x-2">
-          <span>Ctrl+S to save</span>
-          <span>•</span>
-          <span>Ctrl+Enter to run</span>
-          <span>•</span>
-          <span>Tab to indent</span>
-        </div>
+      <div className="px-3 py-1 border-t text-xs flex justify-between" style={{ backgroundColor: 'var(--icui-bg-secondary)', borderTopColor: 'var(--icui-border-subtle)', color: 'var(--icui-text-muted)' }}>
+        <span>{currentFile.language} • {currentFile.name}</span>
+        <span>
+          Ctrl+S to save • Ctrl+Enter to run
+          {autoSave && ' • Auto-save enabled'}
+        </span>
       </div>
     </div>
   );
