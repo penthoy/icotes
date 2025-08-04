@@ -6,8 +6,8 @@ set -e
 # with nginx reverse proxy, systemd service, and security best practices
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-APP_NAME="ilaborcode"
-APP_USER="ilaborcode"
+APP_NAME="icotes"
+APP_USER="icotes"
 APP_DIR="/opt/$APP_NAME"
 NGINX_CONFIG="/etc/nginx/sites-available/$APP_NAME"
 SYSTEMD_SERVICE="/etc/systemd/system/$APP_NAME.service"

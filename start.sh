@@ -27,7 +27,7 @@ setup_systemd() {
         echo "🔧 Setting up systemd service..."
         
         # Create systemd service file
-        cat > /tmp/ilaborcode.service << EOF
+        cat > /tmp/icotes.service << EOF
 [Unit]
 Description=icotes
 After=network.target
@@ -45,11 +45,11 @@ Environment=NODE_ENV=production
 WantedBy=multi-user.target
 EOF
 
-        echo "📄 Systemd service file created at /tmp/ilaborcode.service"
-        echo "   To install: sudo cp /tmp/ilaborcode.service /etc/systemd/system/"
-        echo "   To enable: sudo systemctl enable ilaborcode"
-        echo "   To start: sudo systemctl start ilaborcode"
-        echo "   To view logs: sudo journalctl -fu ilaborcode"
+        echo "📄 Systemd service file created at /tmp/icotes.service"
+        echo "   To install: sudo cp /tmp/icotes.service /etc/systemd/system/"
+        echo "   To enable: sudo systemctl enable icotes"
+        echo "   To start: sudo systemctl start icotes"
+        echo "   To view logs: sudo journalctl -fu icotes"
         echo ""
     fi
 }
