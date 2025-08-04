@@ -1,22 +1,17 @@
-# icotes
-
-AI powered power notebook for developers, Designed to be flexible and customizable
-
+![icotes Code Editor](public/screenshot.png)
+# icotes is an AI powered power notebook for developers, Designed to be flexible and customizable
 ## Features
 
-- 🎨 **Modern UI** - Built with React, TypeScript, and Tailwind CSS
+- 🎨 **Modern UI** - Customizable UI, can be rearanged any way you want.
+- 📁 **File Explorer** - Navigate and manage your project files with ease
+- ✏️ **Code Editor** - Full-featured editor with syntax highlighting
 - 💻 **Integrated Terminal** - Full terminal access via WebSocket
-- 🤖 **AI Agents** - Multiple AI providers for code assistance
+- 🤖 **AI Agents** - Customizable AI agents, support OpenAI sdk, crew, langchain and langgraph, can easily add your own agents via python, expose it in our backend written  in FastAPI and adding it as an option for the chat window.
 
-## Community
+## Connect with us
 
-- 💬 **Discord**: Join our community at https://discord.com/invite/f9vT36nV7z
-- 📺 **YouTube**: Subscribe for tutorials and updates at https://www.youtube.com/@icotes
-
-## Screenshots
-
-![icotes Code Editor](docs/images/icotes-screenshot.png)
-*Modern web-based code editor with integrated terminal, AI assistant, and real-time execution*
+[![Discord](https://img.shields.io/badge/Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.com/invite/f9vT36nV7z)
+[![YouTube](https://img.shields.io/badge/YouTube-FF0000?style=for-the-badge&logo=youtube&logoColor=white)](https://www.youtube.com/@icotes)
 
 ## Quick Setup
 
@@ -143,5 +138,7 @@ icotes/
 
 - **Single Port Setup**: Both frontend and backend run on the same port (8000) for simplified development and deployment
 - **UV Package Manager**: Uses modern UV for faster Python dependency management
+- **Idempotent Setup**: Run `./setup.sh` multiple times safely for updates
+- **Environment Variables**: Always use `.env` configuration, never hardcode URLs or ports
 - **Idempotent Setup**: Run `./setup.sh` multiple times safely for updates
 - **Environment Variables**: Always use `.env` configuration, never hardcode URLs or ports
