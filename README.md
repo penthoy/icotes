@@ -1,5 +1,5 @@
 ![icotes Code Editor](public/screenshot.png)
-# icotes is an AI powered notebook designed to be flexible and customizable.
+# icotes is an AI powered coding notebook designed to be flexible and customizable.
 ## Features
 
 - 🎨 **Modern UI** - Customizable UI, can be rearanged any way you want.

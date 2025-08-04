@@ -6,18 +6,20 @@ A web-based JavaScript code editor built with ViteReact, CodeMirror 6, and moder
 - Currently no tasks in progress
 
 ### Todos before public release
-- [] Edit readme, add discord server
+- [] add docs in .gitignore
 - [] add license
-- [] add screenshot, and update readme
 - [] have a landing page
-- [] clean up the linkedin pdf?
+
 
 --Features:
+- [] clean up the linkedin pdf?
 - [] able to use ollama
 - [] build button that it can change itself and update itself with build button.
 - [] chat should at least able to edit text files such as the connection status from terminal.
 - [] update the run button to do just uv run python [file_name] on the active terminal.
 
+- [x] add screenshot, and update readme
+- [x] Edit readme, add discord server
 - [x] remove the duplicate uis from src/components/ui if they're under src/icui/components/ui
 - [x] clean up the enhanced/Enhanced keyword: Search for the Enhanced word, I want to clean these up very conservatively, first search for it, analyze and give insight before change anything, and wait for my feedback.
 - [x] make sure the enhanced version's features are fully integrated 
