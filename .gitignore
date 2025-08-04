@@ -93,3 +93,9 @@ backend/test_env/
 
 # Database files
 backend/chat.db
+
+# Development documentation (not public-facing)
+docs/plans/
+docs/guides/
+docs/summaries/
+docs/tickets/
