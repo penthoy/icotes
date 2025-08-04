@@ -4,9 +4,9 @@ The icotes project is licensed under the Apache License 2.0, with the following 
 
 1. **Commercial Use Permitted**: You can use icotes for commercialization. You can use icotes as a "backend-as-a-service" for your other applications, or sell/rent it to customers if it is not used as an application development platform. However, when the following conditions are met, you must contact the producer to obtain a commercial license:
 
-   a. **Multi-tenant SaaS Service**: Unless explicitly authorized by icotes in writing, you may not use the icotes AI source code to operate a multi-tenant SaaS service that is similar to icotes.
+   a. **Multi-tenant SaaS Service**: Unless explicitly authorized by icotes in writing, you may not use the icotes' source code to operate a multi-tenant SaaS service that is similar to icotes.
    
-   b. **Logo and Copyright Information**: In the process of using icotes, you may not remove or modify the LOGO or copyright information in the icotes console.
+   b. **Logo and Copyright Information**: In the process of using icotes, you may not remove or modify the LOGO or copyright information in the icotes web app.
 
 2. **As a contributor, you should agree that your contributed code:**
    
