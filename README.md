@@ -1,17 +1,22 @@
 # icotes
 
-A modern web-based code editor with real-time execution, terminal access, and AI-powered collaborative features.
+AI powered power notebook for developers, Designed to be flexible and customizable
 
 ## Features
 
 - 🎨 **Modern UI** - Built with React, TypeScript, and Tailwind CSS
-- 🚀 **Real-time Code Execution** - Execute Python code instantly
 - 💻 **Integrated Terminal** - Full terminal access via WebSocket
 - 🤖 **AI Agents** - Multiple AI providers for code assistance
-- 🔌 **WebSocket Support** - Real-time communication and updates
-- 📱 **Responsive Design** - Works on desktop and mobile devices
-- 🔧 **FastAPI Backend** - High-performance Python API server
-- 🏗️ **Single Port Architecture** - Simplified deployment and development
+
+## Community
+
+- 💬 **Discord**: Join our community at https://discord.com/invite/f9vT36nV7z
+- 📺 **YouTube**: Subscribe for tutorials and updates at https://www.youtube.com/@icotes
+
+## Screenshots
+
+![icotes Code Editor](docs/images/icotes-screenshot.png)
+*Modern web-based code editor with integrated terminal, AI assistant, and real-time execution*
 
 ## Quick Setup
 

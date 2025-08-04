@@ -10,11 +10,13 @@ A web-based JavaScript code editor built with ViteReact, CodeMirror 6, and moder
 - [] add license
 - [] add screenshot, and update readme
 - [] have a landing page
+- [] clean up the linkedin pdf?
 
 --Features:
 - [] able to use ollama
 - [] build button that it can change itself and update itself with build button.
 - [] chat should at least able to edit text files such as the connection status from terminal.
+- [] update the run button to do just uv run python [file_name] on the active terminal.
 
 - [x] remove the duplicate uis from src/components/ui if they're under src/icui/components/ui
 - [x] clean up the enhanced/Enhanced keyword: Search for the Enhanced word, I want to clean these up very conservatively, first search for it, analyze and give insight before change anything, and wait for my feedback.
