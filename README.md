@@ -19,8 +19,8 @@ A modern web-based code editor with real-time execution, terminal access, and AI
 
 ```bash
 # Clone the repository
-git clone https://github.com/penthoy/ilaborcode.git
-cd ilaborcode
+git clone https://github.com/penthoy/icotes.git
+cd icotes
 
 # Run automated setup (installs everything and can be run multiple times for updates)
 ./setup.sh

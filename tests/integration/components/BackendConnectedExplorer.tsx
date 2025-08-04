@@ -6,6 +6,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { getWorkspaceRoot } from '../../../src/icui/lib/workspaceUtils';
 
 interface FileNode {
   id: string;
@@ -174,7 +175,7 @@ const BackendConnectedExplorer: React.FC<BackendConnectedExplorerProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isConnected, setIsConnected] = useState(false);
-  const [currentPath, setCurrentPath] = useState<string>((import.meta as any).env?.VITE_WORKSPACE_ROOT || '/home/penthoy/ilaborcode/workspace');
+  const [currentPath, setCurrentPath] = useState<string>(getWorkspaceRoot());
   const [lastLoadTime, setLastLoadTime] = useState(0);
 
   const backendClient = new ExplorerBackendClient();
@@ -187,7 +188,7 @@ const BackendConnectedExplorer: React.FC<BackendConnectedExplorerProps> = ({
   }, []);
 
   // Load directory contents
-  const loadDirectory = useCallback(async (path: string = (import.meta as any).env?.VITE_WORKSPACE_ROOT || '/home/penthoy/ilaborcode/workspace') => {
+  const loadDirectory = useCallback(async (path: string = getWorkspaceRoot()) => {
     // Prevent rapid successive calls (debounce)
     const now = Date.now();
     if (now - lastLoadTime < 100) {

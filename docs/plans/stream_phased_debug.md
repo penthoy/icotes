@@ -236,13 +236,13 @@ await self._send_streaming_end(...)
 **Backend Log Monitoring**:
 ```bash
 # Monitor backend logs in real-time
-tail -f /home/penthoy/ilaborcode/backend/backend.log | grep -E "(DEBUG|process_with_custom_agent|streaming)"
+tail -f /home/penthoy/icotes/backend/backend.log | grep -E "(DEBUG|process_with_custom_agent|streaming)"
 ```
 
 **Custom Agent Test**:
 ```bash
 # Test custom agent directly
-cd /home/penthoy/ilaborcode/backend
+cd /home/penthoy/icotes/backend
 uv run python -c "
 from icpy.agent.custom_agent import call_custom_agent_stream
 import asyncio

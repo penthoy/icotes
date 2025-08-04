@@ -8,6 +8,7 @@
 
 import { BackendClient } from './backendClient';
 import { notificationService } from './notificationService';
+import { getWorkspaceRoot } from '../lib/workspaceUtils';
 
 export interface FileInfo {
   id: string;
@@ -40,7 +41,7 @@ export class FileService extends BackendClient {
     super();
     
     this.fileConfig = {
-      workspacePath: config.workspacePath || '/home/penthoy/ilaborcode/workspace',
+      workspacePath: config.workspacePath || getWorkspaceRoot(),
       autoSaveDelay: config.autoSaveDelay || 2000,
       enableAutoSave: config.enableAutoSave !== false, // Default to true
       ...config

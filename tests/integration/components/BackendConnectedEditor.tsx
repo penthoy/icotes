@@ -48,6 +48,7 @@ import {
 import { python } from '@codemirror/lang-python';
 import { javascript } from '@codemirror/lang-javascript';
 import { createICUISyntaxHighlighting, createICUIEnhancedEditorTheme } from '../../../src/icui/utils/syntaxHighlighting';
+import { getWorkspaceRoot } from '../../../src/icui/lib/workspaceUtils';
 
 // File interface (following ICUIEnhancedEditorPanel pattern)
 interface EditorFile {
@@ -353,7 +354,7 @@ const BackendConnectedEditor: React.FC<BackendConnectedEditorProps> = ({
   const currentContentRef = useRef<string>(''); // Track current content to prevent loops
 
   // Get workspace root from environment (following BackendConnectedExplorer pattern)
-  const effectiveWorkspaceRoot = workspaceRoot || (import.meta as any).env?.VITE_WORKSPACE_ROOT || '/home/penthoy/ilaborcode/workspace';
+  const effectiveWorkspaceRoot = workspaceRoot || getWorkspaceRoot();
 
   // Theme detection (following BackendConnectedTerminal pattern with all themes)
   useEffect(() => {

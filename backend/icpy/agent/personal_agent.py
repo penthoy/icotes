@@ -99,7 +99,7 @@ def handle_tool_calls(tool_calls):
 
 def get_system_prompt(name="Tao Zhang", linkedin=None):
     if linkedin is None:
-        linkedin = get_pdf_reader("/home/penthoy/ilaborcode/backend/icpy/agent/tools/tazhang_linkedin.pdf")
+        linkedin = get_pdf_reader(os.path.join(os.path.dirname(__file__), "tools", "tazhang_linkedin.pdf"))
     system_prompt = f"You are acting as {name}. You are answering questions on {name}'s website, \
     particularly questions related to {name}'s career, background, skills and experience. \
     Your responsibility is to represent {name} for interactions on the website as faithfully as possible. \

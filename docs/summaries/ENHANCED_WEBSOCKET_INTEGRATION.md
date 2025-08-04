@@ -1,6 +1,6 @@
 # Enhanced WebSocket Services Integration
 
-This document describes the enhanced WebSocket services that have been integrated into the ilaborcode project, providing improved connection management, error handling, message queuing, and health monitoring.
+This document describes the enhanced WebSocket services that have been integrated into the icotes project, providing improved connection management, error handling, message queuing, and health monitoring.
 
 ## Overview
 
@@ -158,4 +158,4 @@ const config = {
 4. **Full Migration**: Complete migration from legacy to enhanced services
 5. **Documentation Updates**: Update component documentation with enhanced features
 
-The enhanced WebSocket services provide a solid foundation for reliable, high-performance real-time communication in the ilaborcode project.
+The enhanced WebSocket services provide a solid foundation for reliable, high-performance real-time communication in the icotes project.

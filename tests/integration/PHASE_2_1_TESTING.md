@@ -13,11 +13,11 @@ This guide covers manual testing procedures for the newly implemented backend-co
 ### Starting the Test Environment
 ```bash
 # Terminal 1: Start backend server
-cd /home/penthoy/ilaborcode/backend
+cd /home/penthoy/icotes/backend
 python3 -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
 # Terminal 2: Build frontend (if needed)
-cd /home/penthoy/ilaborcode
+cd /home/penthoy/icotes
 npm run build
 ```
 

@@ -87,10 +87,10 @@ Add a dedicated `/api/directories` endpoint for directory operations.
 # Test directory creation
 curl -X POST "http://192.168.2.195:8000/api/files" \
   -H "Content-Type: application/json" \
-  -d '{"path": "/home/penthoy/ilaborcode/workspace/test_new_folder", "type": "directory"}'
+  -d '{"path": "/home/penthoy/icotes/workspace/test_new_folder", "type": "directory"}'
 
 # Verify directory was created
-ls -la /home/penthoy/ilaborcode/workspace/ | grep test_new_folder
+ls -la /home/penthoy/icotes/workspace/ | grep test_new_folder
 ```
 
 ## Impact Assessment
@@ -116,9 +116,9 @@ This issue is blocking the simple-explorer functionality for directory creation,
 - [x] Backend tests added for directory creation functionality
 
 ## Related Files
-- `/home/penthoy/ilaborcode/backend/icpy/api/rest_api.py` (lines 91-97, 408-420)
-- `/home/penthoy/ilaborcode/tests/integration/simpleexplorer.tsx` (lines 161-175)
-- `/home/penthoy/ilaborcode/backend/icpy/services/filesystem_service.py`
+- `/home/penthoy/icotes/backend/icpy/api/rest_api.py` (lines 91-97, 408-420)
+- `/home/penthoy/icotes/tests/integration/simpleexplorer.tsx` (lines 161-175)
+- `/home/penthoy/icotes/backend/icpy/services/filesystem_service.py`
 
 ---
 
@@ -244,7 +244,7 @@ All acceptance criteria met, comprehensive testing completed, and full backward 
 ## Implementation Details
 
 ### 1. Enhanced FileSystemService 
-**File: `/home/penthoy/ilaborcode/backend/icpy/services/filesystem_service.py`**
+**File: `/home/penthoy/icotes/backend/icpy/services/filesystem_service.py`**
 
 Added new `create_directory` method:
 ```python
@@ -262,7 +262,7 @@ async def create_directory(self, dir_path: str, parents: bool = True) -> bool:
 ```
 
 ### 2. Updated REST API Endpoint
-**File: `/home/penthoy/ilaborcode/backend/icpy/api/rest_api.py`**
+**File: `/home/penthoy/icotes/backend/icpy/api/rest_api.py`**
 
 Modified the `create_file` endpoint to handle both files and directories:
 ```python

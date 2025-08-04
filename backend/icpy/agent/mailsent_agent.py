@@ -3,7 +3,7 @@ import os
 from dotenv import load_dotenv
 import requests
 # Load environment variables from the root .env file FIRST
-load_dotenv(dotenv_path="/home/penthoy/ilaborcode/.env")
+load_dotenv(dotenv_path="../.env")
 
 from agents import Agent, Runner, trace, function_tool
 from openai.types.responses import ResponseTextDeltaEvent
