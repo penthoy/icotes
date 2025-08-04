@@ -6,6 +6,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNotifications } from '../../../src/icui/services/notificationService';
 import { FileClient, TerminalClient, ExecutionClient, ConnectionStatus } from '../../../src/icui/services/backendClient';
+import { getWorkspaceRoot } from '../../../src/icui/lib/workspaceUtils';
 
 const ICUIServicesTest: React.FC = () => {
   const notifications = useNotifications();
@@ -56,7 +57,7 @@ const ICUIServicesTest: React.FC = () => {
   const testFileOperations = async () => {
     try {
       notifications.info('Testing file operations...');
-      const fileList = await fileClient.listFiles('/home/penthoy/ilaborcode/workspace');
+      const fileList = await fileClient.listFiles(getWorkspaceRoot());
       // Handle both array and object response formats
       const filesArray = Array.isArray(fileList) ? fileList : ((fileList as any)?.data || []);
       setFiles(filesArray);

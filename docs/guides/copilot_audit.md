@@ -9,7 +9,7 @@ This document audits the **GitHub Copilot platform/framework** - the infrastruct
 ## Platform Context & Awareness (What Copilot Framework Provides)
 
 ### **Workspace Integration**
-- **Repository Access**: Full read/write access to `/home/penthoy/ilaborcode`
+- **Repository Access**: Full read/write access to `/home/penthoy/icotes`
 - **File Tracking**: Real-time awareness of current file and cursor position
 - **Branch Context**: Knowledge of current Git branch and repository state
 - **Project Recognition**: Automatic detection of frameworks and technologies

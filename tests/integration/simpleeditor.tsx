@@ -3,6 +3,7 @@
  */
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { getWorkspaceRoot } from '../../src/icui/lib/workspaceUtils';
 
 // File interface
 interface SimpleFile {
@@ -94,7 +95,7 @@ class EditorBackendClient {
   async listFiles(): Promise<SimpleFile[]> {
     try {
       // Use workspace directory for ICPY file operations
-      const workspacePath = '/home/penthoy/ilaborcode/workspace';
+      const workspacePath = getWorkspaceRoot();
       const response = await fetch(`${this.baseUrl}/api/files?path=${encodeURIComponent(workspacePath)}`);
       if (!response.ok) {
         throw new Error(`Failed to list files: ${response.statusText}`);
@@ -193,7 +194,7 @@ class EditorBackendClient {
       // Add appropriate extension based on language
       const extension = this.getExtensionFromLanguage(language);
       const filename = name.includes('.') ? name : `${name}.${extension}`;
-      const workspacePath = '/home/penthoy/ilaborcode/workspace';
+      const workspacePath = getWorkspaceRoot();
       const filepath = `${workspacePath}/${filename}`;
       
       const response = await fetch(`${this.baseUrl}/api/files`, {

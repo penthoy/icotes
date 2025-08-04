@@ -154,8 +154,8 @@ attrs[3] &= ~termios.ECHO    # Disable local echo - let shell handle it
 ## Code State
 
 ### Files Modified
-- `/home/penthoy/ilaborcode/src/icui/components/ICUITerminal.tsx`: WebSocket URL, terminal config, DOM structure, CSS injection simplified
-- `/home/penthoy/ilaborcode/backend/terminal.py`: PTY configuration changed from canonical to raw mode
+- `/home/penthoy/icotes/src/icui/components/ICUITerminal.tsx`: WebSocket URL, terminal config, DOM structure, CSS injection simplified
+- `/home/penthoy/icotes/backend/terminal.py`: PTY configuration changed from canonical to raw mode
 
 ### Build Status
 - Frontend builds successfully ✓

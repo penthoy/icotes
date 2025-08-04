@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-This document provides instructions for an AI agent to perform a code audit on the `ilaborcode` repository. The goal is to identify areas for improvement in code quality, security, performance, and documentation.
+This document provides instructions for an AI agent to perform a code audit on the `icotes` repository. The goal is to identify areas for improvement in code quality, security, performance, and documentation.
 
 **Your Task**: Follow the guidelines below to audit the section specified in the `Audit Focus` section. Provide a clear, concise report with actionable recommendations.
 

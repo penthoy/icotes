@@ -5,6 +5,7 @@
  */
 
 import React, { useRef, useEffect, useState, useCallback } from 'react';
+import { getWorkspaceRoot } from '../../lib/workspaceUtils';
 
 interface ICUIExplorerPanelProps {
   className?: string;
@@ -104,7 +105,7 @@ const ICUIExplorerPanel: React.FC<ICUIExplorerPanelProps> = ({ className = '' })
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [currentPath, setCurrentPath] = useState<string>((import.meta as any).env?.VITE_WORKSPACE_ROOT || '/home/penthoy/ilaborcode/workspace');
+  const [currentPath, setCurrentPath] = useState<string>(getWorkspaceRoot());
   
   const backendClient = useRef(new ExplorerBackendClient());
 
@@ -113,9 +114,7 @@ const ICUIExplorerPanel: React.FC<ICUIExplorerPanelProps> = ({ className = '' })
     setLoading(true);
     setError(null);
     try {
-      console.log('Loading directory:', path);
       const directoryContents = await backendClient.current.getDirectoryContents(path);
-      console.log('Directory contents received:', directoryContents);
       setFiles(directoryContents);
       setCurrentPath(path);
     } catch (err) {

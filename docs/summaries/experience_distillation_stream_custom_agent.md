@@ -51,7 +51,7 @@ await asyncio.sleep(0.01)  # 10ms delay between chunks
 - **Universal Solution**: Works across different WebSocket implementations
 
 ### Implementation Location
-**File**: `/home/penthoy/ilaborcode/backend/icpy/services/chat_service.py`
+**File**: `/home/penthoy/icotes/backend/icpy/services/chat_service.py`
 **Method**: `_process_with_custom_agent()`
 **Line**: After `await self._send_streaming_chunk()` call
 

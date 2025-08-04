@@ -7,9 +7,17 @@
 
 /**
  * Get the configured workspace root path
+ * Throws an error if VITE_WORKSPACE_ROOT is not configured
  */
 export const getWorkspaceRoot = (): string => {
-  return (import.meta as any).env?.VITE_WORKSPACE_ROOT || '/home/penthoy/ilaborcode/workspace';
+  const workspaceRoot = (import.meta as any).env?.VITE_WORKSPACE_ROOT;
+  if (!workspaceRoot) {
+    throw new Error(
+      'VITE_WORKSPACE_ROOT environment variable is not configured. ' +
+      'Please ensure your .env file contains VITE_WORKSPACE_ROOT=/path/to/workspace'
+    );
+  }
+  return workspaceRoot;
 };
 
 /**
