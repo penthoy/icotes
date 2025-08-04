@@ -122,9 +122,8 @@ icotes/
 
 ## Documentation
 
-- [Detailed Setup Guide](SETUP.md)
+- [Detailed Setup Guide](docs/SETUP.md)
 - [Project Architecture](docs/architecture.md)
-- [Development Workflow](docs/Agent_dev_workflow.md)
 - [API Documentation](docs/)
 
 ## Tech Stack
