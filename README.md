@@ -1,7 +1,7 @@
 ![icotes Code Editor](public/screenshot.png)
 # icotes is an AI powered coding notebook designed to be flexible and customizable.
 
-# This Repository is currently in pre-alpha and under heavy development, if you do decide to test it, please expect there will be bugs.
+##### This Repository is currently in pre-alpha and under heavy development, if you do decide to test it, please expect there will be tons of bugs bugs, but feel free to join our discord server and ask questions in the server.
 
 ## Features
 
