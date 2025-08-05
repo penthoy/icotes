@@ -1,5 +1,8 @@
 ![icotes Code Editor](public/screenshot.png)
 # icotes is an AI powered coding notebook designed to be flexible and customizable.
+
+# This Repository is currently in pre-alpha and under heavy development, if you do decide to test it, please expect there will be bugs.
+
 ## Features
 
 - 🎨 **Modern UI** - Customizable UI, can be rearanged any way you want.
@@ -125,7 +128,7 @@ icotes/
 - [Detailed Setup Guide](docs/SETUP.md)
 - [Project Architecture](docs/architecture.md)
 - [API Documentation](docs/)
-
+- Invite code on the website: githubprealpha
 ## Tech Stack
 
 **Frontend:** React 18, TypeScript, Vite, Tailwind CSS, Radix UI  
