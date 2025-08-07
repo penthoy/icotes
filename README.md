@@ -31,6 +31,20 @@ cd icotes
 
 The setup script is **idempotent** - you can run it multiple times safely to update dependencies or reconfigure the environment.
 
+### Docker Installation
+
+```bash
+# Run directly from Docker Hub
+docker run -d --name icotes -p 8000:8000 penthoy/icotes:latest
+
+# Or use docker-compose for multi-instance setup
+git clone https://github.com/penthoy/icotes.git
+cd icotes
+docker compose up -d
+```
+
+Access at http://localhost:8000 - no additional setup required!
+
 ### Manual Installation
 
 **Prerequisites:** Ubuntu/Debian Linux
