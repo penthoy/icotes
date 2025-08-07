@@ -18,6 +18,7 @@ import React, { useRef, useEffect, useState, useCallback, useImperativeHandle, f
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
+import { configService } from '../../services/config-service';
 
 // Enhanced clipboard functionality
 class EnhancedClipboard {
@@ -292,7 +293,7 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
     terminal.current.write('Connecting to backend...\r\n');
 
     // Connect using enhanced WebSocket service
-    const connectToTerminal = () => {
+    const connectToTerminal = async () => {
       if (reconnectTimeout.current) {
         clearTimeout(reconnectTimeout.current);
         reconnectTimeout.current = null;
@@ -303,18 +304,39 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
         websocket.current = null;
       }
 
-      const envWsUrl = (import.meta as any).env?.VITE_WS_URL as string | undefined;
-      let wsUrl: string;
-      if (envWsUrl && envWsUrl.trim() !== '') {
-        wsUrl = `${envWsUrl}/ws/terminal/${terminalId.current}`;
-      } else {
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const host = window.location.host;
-        wsUrl = `${protocol}//${host}/ws/terminal/${terminalId.current}`;
+      try {
+        // Get WebSocket URL from config service (which prioritizes backend /api/config)
+        const config = await configService.getConfig();
+        const wsBaseUrl = config.ws_url;
+        
+        console.log(`🔗 Using WebSocket URL from config service: ${wsBaseUrl}`);
+        
+        // Parse the WebSocket URL to get base URL and construct terminal URL
+        const url = new URL(wsBaseUrl);
+        const baseUrl = `${url.protocol}//${url.host}`;
+        const wsUrl = `${baseUrl}/ws/terminal/${terminalId.current}`;
+        
+        console.log(`[ICUITerminal Enhanced] Connecting to: ${wsUrl}`);
+        websocket.current = new WebSocket(wsUrl);
+        
+      } catch (error) {
+        console.error('❌ Failed to get config, falling back to environment variables:', error);
+        
+        // Fallback to environment variables (for compatibility)
+        const envWsUrl = (import.meta as any).env?.VITE_WS_URL as string | undefined;
+        let wsUrl: string;
+        if (envWsUrl && envWsUrl.trim() !== '') {
+          // VITE_WS_URL already includes /ws, so just append the terminal path
+          wsUrl = `${envWsUrl}/terminal/${terminalId.current}`;
+        } else {
+          const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+          const host = window.location.host;
+          wsUrl = `${protocol}//${host}/ws/terminal/${terminalId.current}`;
+        }
+        
+        console.log(`[ICUITerminal Enhanced] Connecting to (fallback): ${wsUrl}`);
+        websocket.current = new WebSocket(wsUrl);
       }
-      
-      console.log(`[ICUITerminal Enhanced] Connecting to: ${wsUrl}`);
-      websocket.current = new WebSocket(wsUrl);
       
       websocket.current.onopen = () => {
         console.log(`[ICUITerminal Enhanced] Connected to terminal ${terminalId.current}`);
@@ -327,11 +349,8 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
         terminal.current?.write('Terminal ID: ' + terminalId.current + '\r\n');
         terminal.current?.write('Ready for commands...\r\n');
         
-        const workspaceRoot = (import.meta as any).env?.VITE_WORKSPACE_ROOT as string | undefined;
-        if (workspaceRoot && websocket.current?.readyState === WebSocket.OPEN) {
-          websocket.current.send(`cd "${workspaceRoot}"\r`);
-          terminal.current?.write(`Changing to workspace: ${workspaceRoot}\r\n`);
-        }
+        // Don't automatically cd to workspace - let the backend terminal start in the correct directory
+        // The backend terminal_startup.sh or backend terminal.py should handle workspace directory setup
         
         terminal.current?.focus();
         onTerminalReady?.(terminal.current);
@@ -368,8 +387,8 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
             
             terminal.current?.write(`\r\n\x1b[33mReconnecting in ${delay/1000}s... (attempt ${reconnectAttempts.current}/${maxReconnectAttempts})\x1b[0m\r\n`);
             
-            reconnectTimeout.current = setTimeout(() => {
-              connectToTerminal();
+            reconnectTimeout.current = setTimeout(async () => {
+              await connectToTerminal();
             }, delay);
           } else {
             terminal.current?.write("\r\n\x1b[31mMax reconnection attempts reached. Please refresh to try again.\x1b[0m\r\n");
@@ -392,13 +411,17 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
       } else {
         terminal.current?.write("\r\n\x1b[31mTerminal disconnected - attempting reconnection...\x1b[0m\r\n");
         if (reconnectAttempts.current < maxReconnectAttempts) {
-          connectToTerminal();
+          connectToTerminal().catch(error => {
+            console.error('❌ Error during reconnection:', error);
+          });
         }
       }
     });
 
     // Connect terminal directly without centralized WebSocket service dependency
-    connectToTerminal();
+    connectToTerminal().catch(error => {
+      console.error('❌ Error during initial connection:', error);
+    });
 
     const handleResize = () => {
       if (resizeTimeout.current) {

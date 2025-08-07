@@ -70,7 +70,24 @@ export interface BackendStateHook {
 export const useBackendState = (): BackendStateHook => {
   // Services
   const wsService = useRef(getWebSocketService());
-  const backendClient = useRef(getBackendClient());
+  const backendClient = useRef<any>(null);
+  const [isClientReady, setIsClientReady] = useState(false);
+  
+  // Initialize backend client
+  useEffect(() => {
+    const initClient = async () => {
+      try {
+        backendClient.current = await getBackendClient();
+        setIsClientReady(true);
+        console.log('✅ BackendClient initialized in useBackendState');
+      } catch (error) {
+        console.error('❌ Failed to initialize BackendClient:', error);
+        setError('Failed to initialize backend connection');
+      }
+    };
+    
+    initClient();
+  }, []);
   
   // State
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected');
@@ -137,6 +154,10 @@ export const useBackendState = (): BackendStateHook => {
    * Workspace operations
    */
   const fetchWorkspaceState = useCallback(async (): Promise<WorkspaceState> => {
+    if (!isClientReady || !backendClient.current) {
+      throw new Error('Backend client not ready');
+    }
+    
     try {
       const state = await backendClient.current.getWorkspaceState();
       setWorkspaceState(state);
@@ -157,7 +178,7 @@ export const useBackendState = (): BackendStateHook => {
       handleError(error, 'fetch workspace state');
       throw error;
     }
-  }, [convertToICUIFile, handleError]);
+  }, [convertToICUIFile, handleError, isClientReady]);
   
   const updateWorkspaceState = useCallback(async (updates: Partial<WorkspaceState>) => {
     try {

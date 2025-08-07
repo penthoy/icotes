@@ -11,7 +11,10 @@
  */
 export const getWorkspaceRoot = (): string => {
   const workspaceRoot = (import.meta as any).env?.VITE_WORKSPACE_ROOT;
+  
   if (!workspaceRoot) {
+    console.error('🚨 WORKSPACE DEBUG: VITE_WORKSPACE_ROOT is not configured!');
+    console.error('Available env vars:', (import.meta as any).env);
     throw new Error(
       'VITE_WORKSPACE_ROOT environment variable is not configured. ' +
       'Please ensure your .env file contains VITE_WORKSPACE_ROOT=/path/to/workspace'

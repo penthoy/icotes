@@ -8,6 +8,7 @@
 
 import { BackendConfig } from '../types/backend-types';
 import { EventEmitter } from 'eventemitter3';
+import { configService } from './config-service';
 
 export type ServiceType = 'main' | 'chat' | 'terminal';
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
@@ -157,7 +158,7 @@ export class ConnectionManager extends EventEmitter {
     this.connections.set(connectionId, connection);
     
     try {
-      const wsUrl = this.buildWebSocketUrl(serviceType, options);
+      const wsUrl = await this.buildWebSocketUrl(serviceType, options);
       const ws = new WebSocket(wsUrl);
       
       this.setupWebSocketHandlers(connection, ws);
@@ -313,30 +314,57 @@ export class ConnectionManager extends EventEmitter {
     return `${serviceType}-${timestamp}-${random}`;
   }
 
-  private buildWebSocketUrl(serviceType: ServiceType, options?: ConnectionOptions): string {
-    const envWsUrl = (import.meta as any).env?.VITE_WS_URL as string | undefined;
-    
-    // Build base URL
-    let baseUrl: string;
-    if (envWsUrl) {
-      // VITE_WS_URL should be like 'ws://host:port/ws', extract the base
-      const url = new URL(envWsUrl);
-      baseUrl = `${url.protocol}//${url.host}`;
-    } else {
-      // Fallback to constructing from current location
-      baseUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`;
-    }
-    
-    switch (serviceType) {
-      case 'terminal':
-        const terminalId = options?.terminalId || Math.random().toString(36).substring(2);
-        return `${baseUrl}/ws/terminal/${terminalId}`;
-      case 'chat':
-        return `${baseUrl}/ws/chat`;
-      case 'main':
-        return `${baseUrl}/ws`;
-      default:
-        throw new Error(`Unknown service type: ${serviceType}`);
+  private async buildWebSocketUrl(serviceType: ServiceType, options?: ConnectionOptions): Promise<string> {
+    try {
+      // Get config from the dynamic config service (which prioritizes backend /api/config)
+      const config = await configService.getConfig();
+      const wsUrl = config.ws_url;
+      
+      console.log(`🔗 Using WebSocket URL from config service: ${wsUrl}`);
+      
+      // Parse the WebSocket URL to get base URL
+      const url = new URL(wsUrl);
+      const baseUrl = `${url.protocol}//${url.host}`;
+      
+      switch (serviceType) {
+        case 'terminal':
+          const terminalId = options?.terminalId || Math.random().toString(36).substring(2);
+          return `${baseUrl}/ws/terminal/${terminalId}`;
+        case 'chat':
+          return `${baseUrl}/ws/chat`;
+        case 'main':
+          return `${baseUrl}/ws`;
+        default:
+          throw new Error(`Unknown service type: ${serviceType}`);
+      }
+    } catch (error) {
+      console.error('❌ Failed to get config, falling back to environment variables:', error);
+      
+      // Fallback to environment variables (for compatibility)
+      const envWsUrl = (import.meta as any).env?.VITE_WS_URL as string | undefined;
+      
+      // Build base URL
+      let baseUrl: string;
+      if (envWsUrl) {
+        // VITE_WS_URL should be like 'ws://host:port/ws', extract the base
+        const url = new URL(envWsUrl);
+        baseUrl = `${url.protocol}//${url.host}`;
+      } else {
+        // Fallback to constructing from current location
+        baseUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`;
+      }
+      
+      switch (serviceType) {
+        case 'terminal':
+          const terminalId = options?.terminalId || Math.random().toString(36).substring(2);
+          return `${baseUrl}/ws/terminal/${terminalId}`;
+        case 'chat':
+          return `${baseUrl}/ws/chat`;
+        case 'main':
+          return `${baseUrl}/ws`;
+        default:
+          throw new Error(`Unknown service type: ${serviceType}`);
+      }
     }
   }
 
@@ -412,7 +440,7 @@ export class ConnectionManager extends EventEmitter {
       if (connection.status === 'error' && this.connections.has(connection.id)) {
         console.log(`Attempting reconnection for ${connection.id}`);
         try {
-          const wsUrl = this.buildWebSocketUrl(connection.type, connection.metadata);
+          const wsUrl = await this.buildWebSocketUrl(connection.type, connection.metadata);
           const ws = new WebSocket(wsUrl);
           this.setupWebSocketHandlers(connection, ws);
           connection.websocket = ws;

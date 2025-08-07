@@ -13,7 +13,11 @@ RUN npm ci
 # Copy frontend source code
 COPY . .
 
-# Build the frontend
+# Build the frontend with dynamic configuration (no hardcoded URLs)
+# Clear any local environment variables that might interfere
+ENV VITE_API_URL=
+ENV VITE_WS_URL=
+ENV VITE_BACKEND_URL=
 RUN npm run build
 
 # Stage 2: Setup Python backend dependencies
@@ -28,15 +32,18 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv package manager
-RUN pip install uv
+RUN pip install --no-cache-dir uv
 
 WORKDIR /app/backend
 
 # Copy Python dependency files
 COPY backend/requirements.txt ./
 
-# Install Python dependencies with pip (fallback for complex dependencies)
+# Install base Python dependencies with pip (for C++ compatibility)
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Install additional JWT dependency
+RUN pip install --no-cache-dir python-jose[cryptography]
 
 # Stage 3: Final production image
 FROM python:3.12-slim

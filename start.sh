@@ -109,10 +109,30 @@ fi
 # Set production environment
 export NODE_ENV=production
 
+# Function to substitute {PROJECT_ROOT} in environment variables
+substitute_project_root() {
+    local env_file="$1"
+    local project_root="$PWD"
+    
+    if [ -f "$env_file" ]; then
+        # Create a temporary file with substitutions
+        local temp_env_file=$(mktemp)
+        sed "s|{PROJECT_ROOT}|$project_root|g" "$env_file" > "$temp_env_file"
+        echo "$temp_env_file"
+    else
+        echo ""
+    fi
+}
+
 # Load environment variables from .env.production if it exists
 if [ -f ".env.production" ]; then
     echo "📄 Loading environment variables from .env.production..."
-    export $(cat .env.production | grep -v '^#' | grep -v '^$' | xargs)
+    TEMP_ENV_FILE=$(substitute_project_root ".env.production")
+    if [ -n "$TEMP_ENV_FILE" ]; then
+        echo "🔧 Substituting {PROJECT_ROOT} with $PWD in environment variables..."
+        export $(cat "$TEMP_ENV_FILE" | grep -v '^#' | grep -v '^$' | xargs)
+        rm -f "$TEMP_ENV_FILE"
+    fi
 fi
 
 # Set default values if not provided

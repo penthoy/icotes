@@ -8,6 +8,7 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { EnhancedWebSocketService } from '../../services/websocket-service-impl';
 import { log } from '../../services/frontend-logger';
+import { configService } from '../../services/config-service';
 import type { ConnectionOptions, MessageOptions } from '../../services/websocket-service-impl';
 import type { ConnectionHealth } from '../../services/connection-manager';
 import { notificationService } from './notificationService';
@@ -386,9 +387,20 @@ export class EnhancedChatBackendClient {
     try {
       // Use HTTP API to get message history from chat.db
       const limit = maxMessages || 50;
-      let baseUrl = (window as any).__ICUI_API_URL__ || 
-                    (import.meta as any).env?.VITE_API_URL || 
-                    `${window.location.protocol}//${window.location.host}`;
+      
+      // Use config service for dynamic API URL resolution (prioritizes backend /api/config)
+      let baseUrl: string;
+      try {
+        const config = await configService.getConfig();
+        baseUrl = config.api_url || config.base_url;
+      } catch (error) {
+        console.warn('[EnhancedChatBackendClient] Failed to get config, using fallbacks:', error);
+        // Fallback to environment variables
+        baseUrl = (window as any).__ICUI_API_URL__ || 
+                  (import.meta as any).env?.VITE_API_URL || 
+                  (import.meta as any).env?.VITE_BACKEND_URL ||
+                  `${window.location.protocol}//${window.location.host}`;
+      }
       
       // Remove trailing /api if present to avoid double /api in URL
       if (baseUrl.endsWith('/api')) {

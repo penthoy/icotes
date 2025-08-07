@@ -1,4 +1,4 @@
-import { Suspense } from "react";
+import { Suspense, useEffect } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import Home from "./components/home";
 import IntegratedHome from "../tests/integration/inthome";
@@ -23,8 +23,18 @@ import SimpleEditor from "../tests/integration/simpleeditor";
 import SimpleExplorer from "../tests/integration/simpleexplorer";
 import SimpleChat from "../tests/integration/simplechat";
 import { BackendContextProvider } from "./contexts/BackendContext";
+import { configService } from "./services/config-service";
 
 function App() {
+  // Initialize dynamic configuration on app startup
+  useEffect(() => {
+    configService.getConfig().then(config => {
+      console.log('🚀 Dynamic configuration initialized:', config);
+    }).catch(err => {
+      console.warn('⚠️  Failed to load dynamic configuration:', err);
+    });
+  }, []);
+
   return (
     <div>
       <Suspense fallback={<p>Loading...</p>}>

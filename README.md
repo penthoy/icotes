@@ -34,8 +34,12 @@ The setup script is **idempotent** - you can run it multiple times safely to upd
 ### Docker Installation
 
 ```bash
-# Run directly from Docker Hub
+# Run directly from Docker Hub (works on localhost, LAN, or remote servers)
 docker run -d --name icotes -p 8000:8000 penthoy/icotes:latest
+
+# For custom port mapping
+docker run -d --name icotes -p 3000:8000 penthoy/icotes:latest
+
 
 # Or use docker-compose for multi-instance setup
 git clone https://github.com/penthoy/icotes.git
@@ -43,7 +47,12 @@ cd icotes
 docker compose up -d
 ```
 
-Access at http://localhost:8000 - no additional setup required!
+**✨ Auto-Configuration**: The Docker image automatically detects the host and port you're accessing from, so it works seamlessly whether you're using:
+- `http://localhost:8000` (local development)
+- `http://192.168.1.100:8000` (LAN access)
+- `http://your-server.com:8000` (remote server)
+
+No manual configuration needed - just run and access!
 
 ### Manual Installation
 

@@ -29,7 +29,7 @@ from datetime import datetime
 # Third-party imports
 import uvicorn
 from dotenv import load_dotenv
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -53,6 +53,7 @@ try:
     from icpy.services import get_workspace_service, get_filesystem_service, get_terminal_service, get_agent_service, get_chat_service, get_code_execution_service, get_code_execution_service
     from icpy.services.clipboard_service import clipboard_service
     from icpy.agent.custom_agent import get_available_custom_agents, call_custom_agent, call_custom_agent_stream
+    from icpy.auth import auth_manager, get_current_user, get_optional_user
     ICPY_AVAILABLE = True
     logger.info("icpy modules loaded successfully")
 except ImportError as e:
@@ -62,6 +63,15 @@ except ImportError as e:
     get_available_custom_agents = lambda: ["TestAgent", "DefaultAgent"]  # Fallback
     call_custom_agent = lambda agent, msg, hist: f"Custom agent {agent} not available"
     call_custom_agent_stream = lambda agent, msg, hist: iter([f"Custom agent {agent} not available"])
+    
+    # Authentication fallbacks
+    class MockAuthManager:
+        def is_saas_mode(self): return False
+        def is_standalone_mode(self): return True
+    
+    auth_manager = MockAuthManager()
+    get_current_user = lambda request: None
+    get_optional_user = lambda request: None
 
 try:
     from terminal import terminal_manager
@@ -288,17 +298,135 @@ mount_static_files(app)
 
 # Health check endpoint
 @app.get("/health")
-async def health_check():
+async def health_check(request: Request):
     """Health check endpoint."""
     clipboard_status = await clipboard_service.get_status() if ICPY_AVAILABLE else {"capabilities": {"read": False, "write": False}}
-    return {
+    
+    # Get user info without failing if not authenticated
+    user = None
+    try:
+        user = get_optional_user(request) if ICPY_AVAILABLE else None
+    except Exception:
+        user = None
+    
+    health_data = {
         "status": "healthy",
         "services": {
             "icpy": ICPY_AVAILABLE,
             "terminal": TERMINAL_AVAILABLE,
             "clipboard": clipboard_status["capabilities"]
         },
-        "timestamp": asyncio.get_event_loop().time()
+        "timestamp": asyncio.get_event_loop().time(),
+        "auth": {
+            "mode": "saas" if (ICPY_AVAILABLE and auth_manager.is_saas_mode()) else "standalone",
+            "authenticated": user is not None if (ICPY_AVAILABLE and auth_manager.is_saas_mode()) else None,
+            "user_id": user.get("user_id") if user else None
+        }
+    }
+    
+    return health_data
+
+# Dynamic configuration endpoint for frontend
+@app.get("/api/config")
+async def get_frontend_config(request: Request):
+    """
+    Provide dynamic configuration for the frontend based on the request host.
+    In development mode, prioritize environment variables.
+    In Docker mode, use dynamic host detection.
+    """
+    import os
+    
+    # Check for development environment variables first
+    env_backend_url = os.getenv('VITE_BACKEND_URL')
+    env_api_url = os.getenv('VITE_API_URL') 
+    env_ws_url = os.getenv('VITE_WS_URL')
+    
+    if env_backend_url and env_api_url and env_ws_url:
+        # Development mode: use environment variables
+        config = {
+            "base_url": env_backend_url,
+            "api_url": env_api_url,
+            "ws_url": env_ws_url,
+            "version": "1.0.0",
+            "auth_mode": auth_manager.auth_mode if ICPY_AVAILABLE else "standalone",
+            "features": {
+                "terminal": TERMINAL_AVAILABLE,
+                "icpy": ICPY_AVAILABLE,
+                "clipboard": True
+            }
+        }
+        logger.info(f"Using environment-based config: {config}")
+        return config
+    
+    # Docker mode: dynamic host detection
+    # Get the host from the request
+    host = request.headers.get("host", "localhost:8000")
+    
+    # Determine protocol (HTTP vs HTTPS)
+    # Check for forwarded proto first (reverse proxy), then connection
+    protocol = "http"
+    if (request.headers.get("x-forwarded-proto") == "https" or 
+        request.headers.get("x-forwarded-ssl") == "on" or
+        str(request.url.scheme) == "https"):
+        protocol = "https"
+    
+    # Build URLs
+    base_url = f"{protocol}://{host}"
+    ws_protocol = "wss" if protocol == "https" else "ws"
+    ws_url = f"{ws_protocol}://{host}/ws"
+    
+    config = {
+        "base_url": base_url,
+        "api_url": f"{base_url}/api",
+        "ws_url": ws_url,
+        "version": "1.0.0",
+        "auth_mode": auth_manager.auth_mode if ICPY_AVAILABLE else "standalone",
+        "features": {
+            "terminal": TERMINAL_AVAILABLE,
+            "icpy": ICPY_AVAILABLE,
+            "clipboard": True
+        }
+    }
+    
+    logger.info(f"Using dynamic host-based config: {config}")
+    return config
+
+# Authentication info endpoint
+@app.get("/auth/info")
+async def auth_info(request: Request):
+    """Get authentication information."""
+    user = None
+    try:
+        user = get_optional_user(request) if ICPY_AVAILABLE else None
+    except Exception:
+        user = None
+        
+    return {
+        "auth_mode": "saas" if (ICPY_AVAILABLE and auth_manager.is_saas_mode()) else "standalone",
+        "authenticated": user is not None if (ICPY_AVAILABLE and auth_manager.is_saas_mode()) else None,
+        "user": {
+            "id": user.get("user_id") if user else None,
+            "email": user.get("email") if user else None,
+            "role": user.get("role") if user else None
+        } if user else None,
+        "requires_auth": ICPY_AVAILABLE and auth_manager.is_saas_mode()
+    }
+
+# SaaS mode user profile endpoint (protected)
+@app.get("/auth/profile")
+async def user_profile(request: Request, user: Dict[str, Any] = Depends(get_current_user)):
+    """Get current user profile. Only available in SaaS mode."""
+    if auth_manager.is_standalone_mode():
+        raise HTTPException(status_code=404, detail="User profiles not available in standalone mode")
+    
+    return {
+        "user": {
+            "id": user.get("user_id"),
+            "email": user.get("email"),
+            "role": user.get("role"),
+            "token_issued_at": user.get("iat"),
+            "token_expires_at": user.get("exp")
+        }
     }
 
 # ========================================

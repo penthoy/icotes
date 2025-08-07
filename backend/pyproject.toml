@@ -26,6 +26,7 @@ dependencies = [
     "openai-agents>=0.0.6",
     "setuptools>=80.9.0",
     "python-dotenv>=0.21.0",
+    "python-jose[cryptography]>=3.3.0",
 ]
 
 [tool.pytest.ini_options]
