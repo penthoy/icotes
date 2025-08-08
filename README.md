@@ -40,11 +40,6 @@ docker run -d --name icotes -p 8000:8000 penthoy/icotes:latest
 # For custom port mapping
 docker run -d --name icotes -p 3000:8000 penthoy/icotes:latest
 
-
-# Or use docker-compose for multi-instance setup
-git clone https://github.com/penthoy/icotes.git
-cd icotes
-docker compose up -d
 ```
 
 **✨ Auto-Configuration**: The Docker image automatically detects the host and port you're accessing from, so it works seamlessly whether you're using:
@@ -54,41 +49,14 @@ docker compose up -d
 
 No manual configuration needed - just run and access!
 
-### Manual Installation
-
-**Prerequisites:** Ubuntu/Debian Linux
-
-```bash
-# Install dependencies
-sudo apt update
-sudo apt install -y nodejs npm python3 python3-pip python3-venv
-
-# Install UV package manager (recommended for faster Python dependency management)
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Install frontend dependencies
-npm install
-
-# Setup backend (UV automatically handles Python dependencies)
-cd backend
-uv sync
-cd ..
-
-# Start development servers
-./start-dev.sh
-```
 
 ## Usage
 
 ```bash
-# Start both servers (single port mode - everything on port 8000)
+# start production server
+./start.sh
+# start dev server
 ./start-dev.sh
-
-# Check server status
-./check-servers.sh
-
-# Verify setup
-./verify-setup.sh
 ```
 
 ## Access URLs (Single Port Architecture)

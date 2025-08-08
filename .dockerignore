@@ -83,8 +83,8 @@ docs/
 # Development scripts
 *.sh
 
-# Workspace (user data, not needed in base image)
-workspace/
+# Workspace sample files should be included for new user experience
+# workspace/ - COMMENTED OUT to include sample files
 
 # Backend chat database
 backend/chat.db

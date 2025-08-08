@@ -49,17 +49,54 @@ RUN pip install --no-cache-dir python-jose[cryptography]
 FROM python:3.12-slim
 
 # Install system dependencies and tini for proper PID 1 handling
-RUN apt-get update && apt-get install -y \
-    curl \
-    tini \
+# CRITICAL FIX: Add procps for PTY support
+# DEV-LIKE TOOLS: Add sudo, htop, git, editors, bash-completion, locales, build tools
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl tini procps \
+    sudo bash-completion locales \
+    git vim nano htop less \
+    build-essential gcc g++ make \
+    unzip zip tar \
+    && sed -i 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen \
+    && locale-gen \
+    && update-locale LANG=en_US.UTF-8 \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
 # Install uv in final image
 RUN pip install --no-cache-dir uv
 
-# Create non-root user for security
-RUN useradd --create-home --shell /bin/bash icotes
+# Create non-root user for security (add early so we can configure)
+RUN useradd --create-home --shell /bin/bash icotes \
+    && echo 'icotes ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/icotes \
+    && chmod 440 /etc/sudoers.d/icotes
+
+# Provide a developer-friendly bash configuration (aliases, colors)
+RUN cat <<'EOF' >> /home/icotes/.bashrc
+# --- iCotes dev conveniences ---
+export LANG=en_US.UTF-8
+export LC_ALL=en_US.UTF-8
+export TERM=xterm-256color
+# Color prompt if supported
+if [ -n "$PS1" ]; then
+  if [ -x /usr/bin/tput ] && tput setaf 1 >&/dev/null; then
+    PS1='\[\e[01;32m\]\u@\h \[\e[01;34m\]\w\[\e[00m\]$ '
+  fi
+fi
+alias ll='ls -alF'
+alias la='ls -A'
+alias l='ls -CF'
+alias grep='grep --color=auto'
+# Load bash completion if available
+if [ -f /etc/bash_completion ]; then
+  . /etc/bash_completion
+fi
+# --- end ---
+EOF
+RUN chown icotes:icotes /home/icotes/.bashrc \
+    && echo 'if [ -f ~/.bashrc ]; then . ~/.bashrc; fi' > /home/icotes/.bash_profile \
+    && chown icotes:icotes /home/icotes/.bash_profile
+
 USER icotes
 
 WORKDIR /app
@@ -77,10 +114,18 @@ COPY --from=frontend-builder --chown=icotes:icotes /app/dist ./dist/
 # Create necessary directories
 RUN mkdir -p ./logs ./workspace
 
+# WORKSPACE FIX: Copy workspace files with sample content
+COPY --chown=icotes:icotes workspace/ ./workspace/
+
 # Set environment variables
-ENV PORT=8000
-ENV AUTH_MODE=standalone
-ENV NODE_ENV=production
+ENV PORT=8000 \
+    AUTH_MODE=standalone \
+    NODE_ENV=production \
+    WORKSPACE_ROOT=/app/workspace \
+    VITE_WORKSPACE_ROOT=/app/workspace \
+    LANG=en_US.UTF-8 \
+    LC_ALL=en_US.UTF-8 \
+    TERM=xterm-256color
 
 # Expose the application port
 EXPOSE 8000
@@ -92,6 +137,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 # Change to backend directory for proper imports
 WORKDIR /app/backend
 
+# TERMINAL FIX: Use privileged mode for PTY support
 # Use tini as init system and start the application
 ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

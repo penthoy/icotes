@@ -623,6 +623,44 @@ async def receive_frontend_logs(request: FrontendLogsRequest):
             content={"success": False, "message": f"Failed to store logs: {str(e)}"}
         )
 
+# Terminal WebSocket endpoint (moved before generic /ws to fix routing)
+@app.websocket("/ws/terminal/{terminal_id}")
+async def terminal_websocket_endpoint(websocket: WebSocket, terminal_id: str):
+    """Terminal WebSocket endpoint."""
+    logger.info(f"[DEBUG] Terminal WebSocket connection attempt for terminal_id: {terminal_id}")
+    
+    if not TERMINAL_AVAILABLE or terminal_manager is None:
+        logger.error(f"[DEBUG] Terminal service not available for terminal_id: {terminal_id}")
+        await websocket.close(code=1011, reason="Terminal service not available")
+        return
+    
+    try:
+        # Connect terminal using TerminalManager
+        master_fd, proc = await terminal_manager.connect_terminal(websocket, terminal_id)
+        logger.info(f"[DEBUG] Terminal connected for terminal_id: {terminal_id}")
+        
+        # Handle WebSocket communication
+        async def read_from_terminal():
+            logger.info(f"[DEBUG] Starting read_from_terminal task for terminal_id: {terminal_id}")
+            if terminal_manager:
+                await terminal_manager.read_from_terminal(websocket, master_fd)
+        
+        async def write_to_terminal():
+            logger.info(f"[DEBUG] Starting write_to_terminal task for terminal_id: {terminal_id}")
+            if terminal_manager:
+                await terminal_manager.write_to_terminal(websocket, master_fd)
+        
+        # Wait for tasks to complete
+        await asyncio.gather(read_from_terminal(), write_to_terminal(), return_exceptions=True)
+        logger.info(f"[DEBUG] Terminal tasks completed for terminal_id: {terminal_id}")
+        
+    except Exception as e:
+        logger.error(f"[DEBUG] Terminal WebSocket error for terminal_id {terminal_id}: {e}")
+    finally:
+        if terminal_manager:
+            logger.info(f"[DEBUG] Disconnecting terminal {terminal_id}")
+            terminal_manager.disconnect_terminal(terminal_id)
+
 # Enhanced WebSocket endpoint (now the primary /ws endpoint)
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -753,44 +791,6 @@ async def legacy_websocket_endpoint(websocket: WebSocket):
         logger.info("WebSocket disconnected")
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
-
-# Terminal WebSocket endpoint
-@app.websocket("/ws/terminal/{terminal_id}")
-async def terminal_websocket_endpoint(websocket: WebSocket, terminal_id: str):
-    """Terminal WebSocket endpoint."""
-    logger.info(f"[DEBUG] Terminal WebSocket connection attempt for terminal_id: {terminal_id}")
-    
-    if not TERMINAL_AVAILABLE or terminal_manager is None:
-        logger.error(f"[DEBUG] Terminal service not available for terminal_id: {terminal_id}")
-        await websocket.close(code=1011, reason="Terminal service not available")
-        return
-    
-    try:
-        # Connect terminal using TerminalManager
-        master_fd, proc = await terminal_manager.connect_terminal(websocket, terminal_id)
-        logger.info(f"[DEBUG] Terminal connected for terminal_id: {terminal_id}")
-        
-        # Handle WebSocket communication
-        async def read_from_terminal():
-            logger.info(f"[DEBUG] Starting read_from_terminal task for terminal_id: {terminal_id}")
-            if terminal_manager:
-                await terminal_manager.read_from_terminal(websocket, master_fd)
-        
-        async def write_to_terminal():
-            logger.info(f"[DEBUG] Starting write_to_terminal task for terminal_id: {terminal_id}")
-            if terminal_manager:
-                await terminal_manager.write_to_terminal(websocket, master_fd)
-        
-        # Wait for tasks to complete
-        await asyncio.gather(read_from_terminal(), write_to_terminal(), return_exceptions=True)
-        logger.info(f"[DEBUG] Terminal tasks completed for terminal_id: {terminal_id}")
-        
-    except Exception as e:
-        logger.error(f"[DEBUG] Terminal WebSocket error for terminal_id {terminal_id}: {e}")
-    finally:
-        if terminal_manager:
-            logger.info(f"[DEBUG] Disconnecting terminal {terminal_id}")
-            terminal_manager.disconnect_terminal(terminal_id)
 
 # Custom Agents API endpoints
 @app.get("/api/custom-agents")

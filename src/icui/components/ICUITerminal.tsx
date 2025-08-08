@@ -342,12 +342,8 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
         console.log(`[ICUITerminal Enhanced] Connected to terminal ${terminalId.current}`);
         setIsConnected(true);
         reconnectAttempts.current = 0;
-        
-        terminal.current?.write('\r\n\x1b[32mConnected to backend!\x1b[0m\r\n');
         terminal.current?.clear();
-        terminal.current?.write('ICUITerminal Enhanced - Backend Connected!\r\n');
         terminal.current?.write('Terminal ID: ' + terminalId.current + '\r\n');
-        terminal.current?.write('Ready for commands...\r\n');
         
         // Don't automatically cd to workspace - let the backend terminal start in the correct directory
         // The backend terminal_startup.sh or backend terminal.py should handle workspace directory setup
@@ -406,8 +402,12 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
 
     terminal.current.onData((data) => {
       if (websocket.current?.readyState === WebSocket.OPEN) {
-        websocket.current.send(data);
-        onTerminalOutput?.(data);
+        try {
+          websocket.current.send(data);
+          onTerminalOutput?.(data);
+        } catch (sendError) {
+          console.error('❌ WebSocket send error:', sendError);
+        }
       } else {
         terminal.current?.write("\r\n\x1b[31mTerminal disconnected - attempting reconnection...\x1b[0m\r\n");
         if (reconnectAttempts.current < maxReconnectAttempts) {
