@@ -59,7 +59,11 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isConnected, setIsConnected] = useState(false);
-  const [currentPath, setCurrentPath] = useState<string>(getWorkspaceRoot());
+  
+  // Initialize with workspace root
+  const initialWorkspaceRoot = getWorkspaceRoot();
+  
+  const [currentPath, setCurrentPath] = useState<string>(initialWorkspaceRoot);
   const [isPathLocked, setIsPathLocked] = useState(true); // New state for path lock
   const [editablePath, setEditablePath] = useState<string>(''); // State for editable path
   const [showHiddenFiles, setShowHiddenFiles] = useState(explorerPreferences.getShowHiddenFiles()); // Show hidden files toggle

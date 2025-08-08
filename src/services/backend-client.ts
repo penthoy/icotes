@@ -587,30 +587,47 @@ export class BackendClient {
   }
 }
 
-// Default configuration
-const getDefaultConfig = (): BackendConfig => {
-  // Use Vite environment variables if available, otherwise construct dynamically
-  const websocketUrl = import.meta.env.VITE_WS_URL || 
-    (typeof window !== 'undefined' 
-      ? `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`
-      : 'ws://localhost:8000/ws');
+import { configService, getCurrentConfig } from './config-service';
 
-  const httpBaseUrl = import.meta.env.VITE_API_URL || 
-    (typeof window !== 'undefined' 
-      ? `${window.location.protocol}//${window.location.host}`
-      : 'http://localhost:8000');
+// Default configuration with dynamic config support
+const getDefaultConfig = async (): Promise<BackendConfig> => {
+  try {
+    // First try to get dynamic configuration from the backend
+    const config = await configService.getConfig();
+    console.log('🔧 Using dynamic config for BackendClient:', config);
+    
+    return {
+      websocket_url: config.ws_url,
+      http_base_url: config.api_url,
+      reconnect_attempts: 5,
+      reconnect_delay: 1000,
+      request_timeout: 10000,
+      heartbeat_interval: 30000
+    };
+  } catch (error) {
+    console.warn('⚠️  Failed to get dynamic config for BackendClient, using fallbacks:', error);
+    
+    // Fallback to environment variables or dynamic detection
+    const websocketUrl = import.meta.env.VITE_WS_URL || 
+      (typeof window !== 'undefined' 
+        ? `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`
+        : 'ws://localhost:8000/ws');
 
-  return {
-    websocket_url: websocketUrl,
-    http_base_url: httpBaseUrl,
-    reconnect_attempts: 5,
-    reconnect_delay: 1000,
-    request_timeout: 10000,
-    heartbeat_interval: 30000
-  };
+    const httpBaseUrl = import.meta.env.VITE_API_URL || 
+      (typeof window !== 'undefined' 
+        ? `${window.location.protocol}//${window.location.host}/api`
+        : 'http://localhost:8000/api');
+
+    return {
+      websocket_url: websocketUrl,
+      http_base_url: httpBaseUrl,
+      reconnect_attempts: 5,
+      reconnect_delay: 1000,
+      request_timeout: 10000,
+      heartbeat_interval: 30000
+    };
+  }
 };
-
-const defaultConfig = getDefaultConfig();
 
 // Singleton instance
 let backendClient: BackendClient | null = null;
@@ -618,10 +635,12 @@ let backendClient: BackendClient | null = null;
 /**
  * Get the singleton backend client instance
  */
-export function getBackendClient(config?: Partial<BackendConfig>): BackendClient {
+export async function getBackendClient(config?: Partial<BackendConfig>): Promise<BackendClient> {
   if (!backendClient) {
+    const defaultConfig = await getDefaultConfig();
     const finalConfig = { ...defaultConfig, ...config };
     backendClient = new BackendClient(finalConfig);
+    console.log('🔄 BackendClient initialized with config:', finalConfig);
   }
   return backendClient;
 }

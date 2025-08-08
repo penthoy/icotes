@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  icotes-app:
+    image: penthoy/icotes:latest
+    ports:
+      - "8000:8000"
+    environment:
+      - SAAS_MODE=true
+      - INSTANCE_ID=compose-instance
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+          cpus: '1.0'
+        reservations:
+          memory: 256m
+          cpus: '0.25'
+
+  icotes-instance-1:
+    image: penthoy/icotes:latest
+    ports:
+      - "8003:8000"
+    environment:
+      - SAAS_MODE=true
+      - INSTANCE_ID=instance-1
+      - API_KEY=key-123
+    depends_on:
+      - icotes-app
+    restart: unless-stopped
+    
+  icotes-instance-2:
+    image: penthoy/icotes:latest
+    ports:
+      - "8004:8000"
+    environment:
+      - SAAS_MODE=true
+      - INSTANCE_ID=instance-2
+      - API_KEY=key-456
+    depends_on:
+      - icotes-app
+    restart: unless-stopped
+
+networks:
+  default:
+    driver: bridge

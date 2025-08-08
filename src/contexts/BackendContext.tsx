@@ -40,13 +40,14 @@ const defaultBackendConfig = getDefaultBackendConfig();
 
 export interface BackendContextType {
   // Services
-  backendClient: ReturnType<typeof getBackendClient>;
+  backendClient: any | null; // Will be null until initialized
   webSocketService: ReturnType<typeof getWebSocketService>;
   
   // Connection state
   connectionStatus: ConnectionStatus;
   isConnected: boolean;
   isConnecting: boolean;
+  isClientReady: boolean;
   
   // Configuration
   config: BackendConfig;
@@ -80,8 +81,26 @@ export const BackendContextProvider: React.FC<BackendContextProviderProps> = ({
   const config = { ...defaultBackendConfig, ...customConfig };
   
   // Initialize services
-  const [backendClient] = useState(() => getBackendClient(config));
+  const [backendClient, setBackendClient] = useState<any>(null);
+  const [isClientReady, setIsClientReady] = useState(false);
   const [webSocketService] = useState(() => getWebSocketService(config));
+  
+  // Initialize backend client asynchronously
+  useEffect(() => {
+    const initClient = async () => {
+      try {
+        const client = await getBackendClient(config);
+        setBackendClient(client);
+        setIsClientReady(true);
+        console.log('✅ BackendClient initialized in BackendContext');
+      } catch (error) {
+        console.error('❌ Failed to initialize BackendClient in context:', error);
+        setError('Failed to initialize backend client');
+      }
+    };
+    
+    initClient();
+  }, [config]);
   
   // State
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected');
@@ -177,6 +196,7 @@ export const BackendContextProvider: React.FC<BackendContextProviderProps> = ({
     connectionStatus,
     isConnected,
     isConnecting,
+    isClientReady,
     
     // Configuration
     config,

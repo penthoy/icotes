@@ -11,6 +11,7 @@ import { EnhancedWebSocketService, ConnectionOptions, MessageOptions } from '../
 import { WebSocketMigrationHelper } from '../../services/websocket-migration';
 import { ConnectionStatus } from '../../types/backend-types';
 import { log } from '../../services/frontend-logger';
+import { configService } from '../../services/config-service';
 
 export interface ICUIFile {
   id: string;
@@ -53,7 +54,8 @@ export class EnhancedICUIBackendService extends EventEmitter {
   private _initialized = false;
   
   // Backend configuration
-  private baseUrl: string;
+  private baseUrl: string = '';
+  private websocketUrl: string = '';
   
   // Health monitoring
   private healthStatus: any = null;
@@ -72,39 +74,69 @@ export class EnhancedICUIBackendService extends EventEmitter {
   constructor(config?: Partial<EnhancedBackendConfig>) {
     super();
     
-    // Initialize baseUrl for REST API calls
-    // Use the same protocol as the current page to avoid mixed content issues
-    const protocol = window.location.protocol; // 'http:' or 'https:'
-    const hostname = window.location.hostname;
-    const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
-    const isDirectIP = /^\d+\.\d+\.\d+\.\d+$/.test(hostname); // Check if it's a direct IP address
-    
-    if (isLocalhost) {
-      // Local development
-      this.baseUrl = `${protocol}//localhost:8000`;
-    } else if (isDirectIP) {
-      // Direct IP access (like 192.168.x.x)
-      this.baseUrl = `${protocol}//${hostname}:8000`;
-    } else {
-      // Domain access (like tunnels or custom domains) - use same base without port
-      this.baseUrl = `${protocol}//${hostname}`;
-    }
-    
-    // console.log('[EnhancedICUIBackendService] Backend URL:', this.baseUrl);
-    
     if (config) {
       this.config = { ...this.config, ...config };
     }
     
-    this.initializeEnhancedService();
+    // Initialize URLs dynamically
+    this.initializeUrls().then(() => {
+      this.initializeEnhancedService();
+    });
+  }
+
+  /**
+   * Initialize URLs using dynamic configuration
+   */
+  private async initializeUrls(): Promise<void> {
+    try {
+      const dynamicConfig = await configService.getConfig();
+      this.baseUrl = dynamicConfig.base_url;  // Use base_url, not api_url
+      this.websocketUrl = dynamicConfig.ws_url;
+      console.log('🔧 EnhancedICUIBackendService using dynamic URLs:', {
+        baseUrl: this.baseUrl,
+        websocketUrl: this.websocketUrl
+      });
+    } catch (error) {
+      console.warn('⚠️  Failed to get dynamic config for EnhancedICUIBackendService, using fallbacks:', error);
+      
+      // Use environment variables or window location as fallback
+      const envBackendUrl = import.meta.env.VITE_BACKEND_URL;
+      const envWsUrl = import.meta.env.VITE_WS_URL;
+      
+      if (envBackendUrl && envWsUrl) {
+        this.baseUrl = envBackendUrl;
+        this.websocketUrl = envWsUrl;
+      } else {
+        // Final fallback to window location
+        const protocol = window.location.protocol;
+        const host = window.location.host;
+        const wsProtocol = protocol === 'https:' ? 'wss:' : 'ws:';
+        
+        this.baseUrl = `${protocol}//${host}`;  // Don't include /api here
+        this.websocketUrl = `${wsProtocol}//${host}/ws`;
+      }
+      
+      console.log('🔄 EnhancedICUIBackendService using fallback URLs:', {
+        baseUrl: this.baseUrl,
+        websocketUrl: this.websocketUrl
+      });
+    }
   }
 
   /**
    * Initialize enhanced WebSocket service
    */
   private initializeEnhancedService(): void {
+    // Only initialize if URLs are available
+    if (!this.baseUrl || !this.websocketUrl) {
+      console.log('🔄 EnhancedICUIBackendService URLs not ready, delaying initialization');
+      return;
+    }
+
     // Configure enhanced service for backend operations
     this.enhancedService = new EnhancedWebSocketService({
+      websocket_url: this.websocketUrl,
+      http_base_url: this.baseUrl,
       enableMessageQueue: this.config.enableMessageQueue,
       enableHealthMonitoring: this.config.enableHealthMonitoring,
       enableAutoRecovery: this.config.enableAutoRecovery,
@@ -115,6 +147,11 @@ export class EnhancedICUIBackendService extends EventEmitter {
         maxWaitTime: this.config.batchFileOperations ? 100 : 0,
         enableCompression: true
       }
+    });
+
+    console.log('✅ EnhancedWebSocketService initialized with URLs:', {
+      websocket_url: this.websocketUrl,
+      http_base_url: this.baseUrl
     });
 
     // Set up migration helper
@@ -180,6 +217,18 @@ export class EnhancedICUIBackendService extends EventEmitter {
   private async ensureInitialized(): Promise<void> {
     if (!this._initialized) {
       log.info('EnhancedICUIBackendService', 'Auto-initializing enhanced service');
+      
+      // First, ensure we have config and URLs
+      if (!this.baseUrl || !this.websocketUrl) {
+        await this.initializeUrls();
+      }
+      
+      // Then initialize the enhanced service if not already done
+      if (!this.enhancedService) {
+        this.initializeEnhancedService();
+      }
+      
+      // Finally, initialize the connection
       await this.initializeConnection();
       this._initialized = true;
     }

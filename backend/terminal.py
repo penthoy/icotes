@@ -14,6 +14,8 @@ import struct
 import subprocess
 import termios
 import fcntl
+import getpass
+import pwd
 from typing import Dict, Any
 from fastapi import WebSocket
 
@@ -30,131 +32,135 @@ class TerminalManager:
         """Create a new terminal session with PTY support"""
         try:
             await websocket.accept()
-            
-            # Debug logging for production troubleshooting
-            logger.info(f"WebSocket client: {websocket.client}")
-            logger.info(f"WebSocket headers: {websocket.headers}")
-            
-            # Create a new terminal session
-            logger.info(f"Creating PTY for terminal {terminal_id}")
+            logger.info(f"[TERM] Connection start terminal_id={terminal_id} client={websocket.client}")
+            logger.info(f"[TERM] Headers: {dict(websocket.headers)}")
+
+            # Create PTY
             master_fd, slave_fd = pty.openpty()
-            logger.info(f"PTY created: master_fd={master_fd}, slave_fd={slave_fd}")
+            logger.info(f"[TERM] PTY created master={master_fd} slave={slave_fd}")
+
+            # Detect docker (keep extremely simple now)
+            is_docker = os.path.exists('/.dockerenv') or os.environ.get('container') == 'docker'
+            logger.info(f"[TERM] Docker detected={is_docker}")
+
+            # Determine workspace root from environment variable or default
+            workspace_root = os.environ.get('WORKSPACE_ROOT')
+            if not workspace_root:
+                if is_docker:
+                    # In Docker, default to /app/workspace
+                    workspace_root = '/app/workspace'
+                else:
+                    # In development, default to ~/workspace or project workspace
+                    project_root = os.path.dirname(os.path.abspath(__file__ + '/../..'))
+                    workspace_root = os.path.join(project_root, 'workspace')
+                    # Fallback to home directory if workspace doesn't exist
+                    if not os.path.exists(workspace_root):
+                        workspace_root = os.path.expanduser('~')
             
-            # Set terminal size (default to 80x24 if not specified)
-            try:
-                fcntl.ioctl(slave_fd, termios.TIOCSWINSZ, struct.pack('HHHH', 24, 80, 0, 0))
-            except Exception as e:
-                logger.warning(f"Could not set terminal size: {e}")
-            
-            # Set terminal attributes for maximum responsiveness and low latency
-            try:
-                attrs = termios.tcgetattr(slave_fd)
-                # Disable canonical mode for character-by-character input
-                attrs[3] &= ~termios.ICANON  # Disable canonical mode
-                attrs[3] |= termios.ISIG  # Enable signal processing (keep Ctrl+C, etc.)
-                # Removed line disabling kernel echo; we will now rely on the backend PTY to echo characters
-                # attrs[3] &= ~termios.ECHO
-                # Set input/output processing for low latency
-                attrs[0] |= termios.ICRNL  # Map CR to NL on input
-                attrs[1] |= termios.ONLCR  # Map NL to CR-NL on output
-                # Configure for immediate response with zero latency
-                attrs[6][termios.VMIN] = 1  # Minimum characters (1 for immediate processing)
-                attrs[6][termios.VTIME] = 0  # Timeout (0 for immediate return)
-                termios.tcsetattr(slave_fd, termios.TCSANOW, attrs)
-            except Exception as e:
-                logger.warning(f"Could not set terminal attributes: {e}")
-            
-            # Set environment variables for proper login shell behavior
-            env = os.environ.copy()
-            
-            # Get current working directory for icotes paths
-            current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            clipboard_path = os.path.join(current_dir, 'icotes-clipboard')
-            startup_script = os.path.join(current_dir, 'backend', 'terminal_startup.sh')
-            # CRITICAL FIX: Use custom inputrc for proper arrow key handling
-            inputrc_path = os.path.join(current_dir, 'backend', '.inputrc')
-            
-            env.update({
-                'TERM': 'xterm-256color',  # Critical for colors and many commands
-                'SHELL': '/bin/bash',
-                'HOME': os.path.expanduser('~'),
-                'PATH': env.get('PATH', '/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin'),
-                'LANG': 'C.UTF-8',
-                'LC_ALL': 'C.UTF-8',
-                'PS1': '\\[\\033[01;32m\\]\\u@\\h\\[\\033[00m\\]:\\[\\033[01;34m\\]\\w\\[\\033[00m\\]\\$ ',
-                'USER': env.get('USER', os.getlogin() if hasattr(os, 'getlogin') else 'app'),
-                'LOGNAME': env.get('LOGNAME', os.getlogin() if hasattr(os, 'getlogin') else 'app'),
-                # Force loading of user's profile and aliases
-                'BASH_ENV': os.path.expanduser('~/.bashrc'),
-                # Add icotes clipboard path for immediate availability
-                'ICOTES_CLIPBOARD_PATH': clipboard_path,
-                # Set startup script for terminal initialization
-                'ICOTES_STARTUP_SCRIPT': startup_script,
-                # CRITICAL FIX: Use custom inputrc with arrow key bindings
-                'INPUTRC': inputrc_path,
-            })
-            
-            # Find bash executable
-            bash_path = None
-            for path in ['/bin/bash', '/usr/bin/bash', '/usr/local/bin/bash']:
-                if os.path.exists(path):
-                    bash_path = path
-                    break
-            
-            if not bash_path:
-                raise Exception("Bash executable not found")
-                
-            logger.info(f"Using bash at: {bash_path}")
-            logger.info(f"Starting login shell with TERM={env.get('TERM')}")
-            
-            # Start bash as a login shell (-l) and interactive (-i)
-            # This ensures all startup files are loaded and aliases are available
-            def preexec():
-                # Set the process group and controlling terminal
-                os.setsid()
-                # Set the controlling terminal
+            # Ensure workspace directory exists and is accessible
+            if not os.path.exists(workspace_root):
+                logger.warning(f"[TERM] Workspace root {workspace_root} doesn't exist, creating it")
                 try:
-                    import fcntl
-                    fcntl.ioctl(slave_fd, termios.TIOCSCTTY, 0)
-                except:
-                    pass
+                    os.makedirs(workspace_root, exist_ok=True)
+                except Exception as e:
+                    logger.error(f"[TERM] Failed to create workspace root {workspace_root}: {e}")
+                    # Fallback to home directory
+                    workspace_root = os.path.expanduser('~') if not is_docker else '/app/backend'
             
-            # After determining startup_script, ensure it is a valid, readable file before passing it to bash. This prevents cases where an empty
-            # or invalid string (e.g. "--") could be interpreted by bash as a CLI argument and cause it to exit with the
-            # "--: invalid option" error that was reported from the frontend terminal.
-            if os.path.isfile(startup_script):
-                bash_args = [bash_path, "--rcfile", startup_script, "-i"]
+            logger.info(f"[TERM] Using workspace root: {workspace_root}")
+
+            # If docker: use minimal safe path that we verified manually works
+            if is_docker:
+                try:
+                    logger.info("[TERM][DOCKER] Using improved spawn path with controlling TTY & login shell")
+                    # Determine proper HOME so bash can load rc files (aliases like ll)
+                    try:
+                        home_dir = pwd.getpwuid(os.getuid()).pw_dir
+                    except Exception:
+                        home_dir = os.environ.get('HOME', '/root')
+                    env = os.environ.copy()
+                    env.setdefault('TERM', 'xterm-256color')
+                    env['HOME'] = home_dir
+                    # Preexec to create new session & set controlling tty to enable job control
+                    def preexec():
+                        try:
+                            os.setsid()
+                        except Exception:
+                            pass
+                        try:
+                            fcntl.ioctl(slave_fd, termios.TIOCSCTTY, 0)
+                        except Exception:
+                            # If this fails we will just run without job control
+                            pass
+                    # Use login + interactive shell so /etc/profile & bashrc load (provides aliases like ll)
+                    proc = subprocess.Popen(
+                        ['/bin/bash', '-il'],
+                        stdin=slave_fd,
+                        stdout=slave_fd,
+                        stderr=slave_fd,
+                        preexec_fn=preexec,
+                        env=env,
+                        cwd=workspace_root  # Use workspace root instead of hardcoded /app/backend
+                    )
+                    logger.info(f"[TERM][DOCKER] Bash started pid={proc.pid} home={home_dir} cwd={workspace_root}")
+                except Exception:
+                    logger.exception("[TERM][DOCKER] Improved spawn failed, falling back to minimal path")
+                    try:
+                        proc = subprocess.Popen(
+                            ['/bin/bash', '-i'],
+                            stdin=slave_fd,
+                            stdout=slave_fd,
+                            stderr=slave_fd,
+                            preexec_fn=None,
+                            env={'TERM': 'xterm-256color', 'HOME': '/home/icotes', 'PATH': os.environ.get('PATH', '/usr/local/bin:/usr/bin:/bin')},
+                            cwd=workspace_root,  # Use workspace root instead of hardcoded /app/backend
+                            start_new_session=False
+                        )
+                    except Exception:
+                        logger.exception("[TERM][DOCKER] Minimal fallback spawn failed")
+                        raise
             else:
-                # Fallback to a plain interactive shell – we still pass -l so that the user's normal
-                # startup files ( /etc/profile, ~/.bash_profile, ~/.bashrc ) are loaded.
-                logger.warning(f"Startup script '{startup_script}' not found – launching bash without --rcfile")
-                bash_args = [bash_path, "-il"]  # -i interactive, -l login
+                # Non-docker (retain richer configuration)
+                try:
+                    fcntl.ioctl(slave_fd, termios.TIOCSWINSZ, struct.pack('HHHH', 24, 80, 0, 0))
+                except Exception:
+                    logger.exception("[TERM] Failed to set window size (non-docker)")
+                try:
+                    attrs = termios.tcgetattr(slave_fd)
+                    attrs[3] &= ~termios.ICANON
+                    attrs[3] |= termios.ISIG | termios.ECHO
+                    attrs[6][termios.VMIN] = 1
+                    attrs[6][termios.VTIME] = 0
+                    termios.tcsetattr(slave_fd, termios.TCSANOW, attrs)
+                except Exception:
+                    logger.exception("[TERM] Failed to set term attrs (non-docker)")
+                def preexec():
+                    os.setsid()
+                    try:
+                        fcntl.ioctl(slave_fd, termios.TIOCSCTTY, 0)
+                    except Exception:
+                        pass
+                proc = subprocess.Popen(
+                    ['/bin/bash', '-il'],
+                    stdin=slave_fd,
+                    stdout=slave_fd,
+                    stderr=slave_fd,
+                    preexec_fn=preexec,
+                    env=os.environ.copy() | {'TERM': 'xterm-256color'},
+                    cwd=workspace_root  # Use workspace root instead of expanduser('~')
+                )
+                logger.info(f"[TERM] Bash started pid={proc.pid} cwd={workspace_root}")
 
-            logger.info(f"Starting bash with args: {bash_args}")
-
-            # Spawn bash process using the constructed arguments
-            proc = subprocess.Popen(
-                bash_args,
-                stdin=slave_fd,
-                stdout=slave_fd,
-                stderr=slave_fd,
-                preexec_fn=preexec,
-                env=env,
-                cwd=os.path.expanduser('~')
-            )
-            logger.info(f"Bash process started with PID: {proc.pid}")
-            
-            # Close slave fd in parent process
+            # Close slave in parent
             os.close(slave_fd)
-            
-            # Set master fd to non-blocking for better performance
+
+            # Non-blocking master
             try:
                 flags = fcntl.fcntl(master_fd, fcntl.F_GETFL)
                 fcntl.fcntl(master_fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
-            except Exception as e:
-                logger.warning(f"Could not set master fd to non-blocking: {e}")
-            
-            # Store terminal connection info
+            except Exception:
+                logger.exception("[TERM] Failed to set non-blocking master fd")
+
             self.terminal_connections[terminal_id] = {
                 'websocket': websocket,
                 'master_fd': master_fd,
@@ -162,12 +168,10 @@ class TerminalManager:
                 'read_task': None,
                 'write_task': None
             }
-            
-            logger.info(f"Terminal connection established: {terminal_id}")
+            logger.info(f"[TERM] Terminal ready terminal_id={terminal_id}")
             return master_fd, proc
-            
         except Exception as e:
-            logger.error(f"Error creating terminal session: {e}")
+            logger.exception(f"[TERM] Error creating terminal session id={terminal_id}")
             raise e
 
     def disconnect_terminal(self, terminal_id: str):
@@ -262,16 +266,21 @@ class TerminalManager:
                 
                 # Regular terminal input - write directly for maximum performance
                 try:
-                    os.write(master_fd, data.encode('utf-8'))
-                except BlockingIOError:
+                    bytes_written = os.write(master_fd, data.encode('utf-8'))
+                except BlockingIOError as e:
                     # Handle non-blocking write with minimal backoff for responsiveness
                     await asyncio.sleep(0.001)  # 1ms backoff for maximum responsiveness
                     try:
-                        os.write(master_fd, data.encode('utf-8'))
-                    except:
+                        bytes_written = os.write(master_fd, data.encode('utf-8'))
+                    except Exception as retry_error:
+                        logger.error(f"Retry failed: {retry_error}")
                         pass
+                except OSError as e:
+                    logger.error(f"OSError writing to terminal: {e}")
+                except Exception as e:
+                    logger.error(f"Unexpected error writing to terminal: {e}")
             except Exception as e:
-                logger.error(f"Error writing to terminal: {e}")
+                logger.error(f"Error in write_to_terminal loop: {e}")
                 break
 
     def get_terminal_health(self) -> Dict[str, Any]:
@@ -306,4 +315,4 @@ class TerminalManager:
 
 
 # Global terminal manager instance
-terminal_manager = TerminalManager() 
+terminal_manager = TerminalManager()
