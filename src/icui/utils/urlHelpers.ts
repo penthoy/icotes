@@ -35,10 +35,30 @@ export function constructBackendUrl(): string {
 }
 
 /**
- * Converts HTTP URL to WebSocket URL
+ * Converts HTTP URL to WebSocket URL with intelligent protocol detection
+ * SAAS FIX: Ensures wss:// is used when page is loaded over HTTPS
  */
 export function httpToWsUrl(httpUrl: string): string {
-  return httpUrl.replace(/^http/, 'ws');
+  // Parse the URL to understand its components
+  const url = new URL(httpUrl);
+  
+  // Determine the correct WebSocket protocol based on current page security
+  const currentProtocol = window.location.protocol;
+  const shouldUseSecure = currentProtocol === 'https:';
+  
+  // Force secure WebSocket if page is HTTPS, regardless of input URL protocol
+  if (shouldUseSecure) {
+    url.protocol = 'wss:';
+  } else {
+    // Use ws: for non-secure pages
+    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  }
+  
+  // Debug logging (optional)
+  if ((import.meta as any).env?.VITE_DEBUG_PROTOCOL === 'true') {
+    console.log(`🔒 Protocol conversion: page=${currentProtocol}, input=${httpUrl}, output=${url.toString()}`);
+  }
+  return url.toString();
 }
 
 /**

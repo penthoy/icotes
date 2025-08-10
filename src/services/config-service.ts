@@ -24,6 +24,18 @@ class ConfigService {
   private config: FrontendConfig | null = null;
   private loading: Promise<FrontendConfig> | null = null;
 
+  private normalizeWsUrl(wsUrl: string): string {
+    try {
+      const url = new URL(wsUrl);
+      if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
+        url.protocol = 'wss:';
+      }
+      return `${url.protocol}//${url.host}${url.pathname}${url.search}`;
+    } catch {
+      return wsUrl;
+    }
+  }
+
   async getConfig(): Promise<FrontendConfig> {
     // Return cached config if available
     if (this.config) {
@@ -69,7 +81,11 @@ class ConfigService {
       }
 
       const config = await response.json();
-      console.log('✅ Dynamic configuration loaded:', config);
+      if ((import.meta as any).env?.VITE_DEBUG_PROTOCOL === 'true') {
+        console.log('✅ Dynamic configuration loaded:', config);
+      }
+      // Normalize ws protocol based on current page
+      config.ws_url = this.normalizeWsUrl(config.ws_url);
       return config;
     } catch (error) {
       if (error.name === 'AbortError') {
@@ -105,8 +121,12 @@ class ConfigService {
         const apiUrlObj = new URL(envApiUrl);
         base_url = envBackendUrl || `${apiUrlObj.protocol}//${apiUrlObj.host}`;
         api_url = envApiUrl;
-        ws_url = envWsUrl;
-        console.log('✅ Using environment variables for development:', { base_url, api_url, ws_url });
+        
+        // SAAS PROTOCOL FIX: Ensure WebSocket uses correct protocol
+        ws_url = this.normalizeWsUrl(envWsUrl);
+        if ((import.meta as any).env?.VITE_DEBUG_PROTOCOL === 'true') {
+          console.log('✅ Using environment variables for development:', { base_url, api_url, ws_url });
+        }
       } catch (error) {
         console.warn('⚠️  Invalid environment variable URLs, falling back to dynamic detection:', error);
         // Fall through to dynamic detection
@@ -146,7 +166,12 @@ class ConfigService {
 
     const protocol = window.location.protocol;
     const host = window.location.host;
+    // SAAS PROTOCOL FIX: Ensure WebSocket uses secure protocol when page is HTTPS
     const wsProtocol = protocol === 'https:' ? 'wss:' : 'ws:';
+    
+    if ((import.meta as any).env?.VITE_DEBUG_PROTOCOL === 'true') {
+      console.log(`🔒 Dynamic URL protocol detection: page=${protocol}, ws=${wsProtocol}`);
+    }
     
     return {
       base_url: `${protocol}//${host}`,

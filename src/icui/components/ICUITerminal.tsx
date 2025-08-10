@@ -313,7 +313,17 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
         
         // Parse the WebSocket URL to get base URL and construct terminal URL
         const url = new URL(wsBaseUrl);
-        const baseUrl = `${url.protocol}//${url.host}`;
+        
+        // SAAS PROTOCOL FIX: Auto-detect protocol based on current page
+        const currentProtocol = window.location.protocol;
+        const shouldUseSecure = currentProtocol === 'https:';
+        const finalProtocol = shouldUseSecure ? 'wss:' : url.protocol;
+        
+        if ((import.meta as any).env?.VITE_DEBUG_PROTOCOL === 'true') {
+          console.log(`🔒 ICUITerminal protocol detection: page=${currentProtocol}, config=${url.protocol}, final=${finalProtocol}`);
+        }
+        
+        const baseUrl = `${finalProtocol}//${url.host}`;
         const wsUrl = `${baseUrl}/ws/terminal/${terminalId.current}`;
         
         console.log(`[ICUITerminal Enhanced] Connecting to: ${wsUrl}`);
@@ -326,8 +336,21 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
         const envWsUrl = (import.meta as any).env?.VITE_WS_URL as string | undefined;
         let wsUrl: string;
         if (envWsUrl && envWsUrl.trim() !== '') {
-          // VITE_WS_URL already includes /ws, so just append the terminal path
-          wsUrl = `${envWsUrl}/terminal/${terminalId.current}`;
+          try {
+            // SAAS PROTOCOL FIX: Parse and fix protocol for environment URL too
+            const envUrl = new URL(envWsUrl);
+            const currentProtocol = window.location.protocol;
+            const shouldUseSecure = currentProtocol === 'https:';
+            const finalProtocol = shouldUseSecure ? 'wss:' : envUrl.protocol;
+            
+            if ((import.meta as any).env?.VITE_DEBUG_PROTOCOL === 'true') {
+              console.log(`🔒 ICUITerminal fallback protocol: page=${currentProtocol}, env=${envUrl.protocol}, final=${finalProtocol}`);
+            }
+            wsUrl = `${finalProtocol}//${envUrl.host}${envUrl.pathname}/terminal/${terminalId.current}`;
+          } catch {
+            // If parsing fails, fall back to simple construction
+            wsUrl = `${envWsUrl}/terminal/${terminalId.current}`;
+          }
         } else {
           const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
           const host = window.location.host;

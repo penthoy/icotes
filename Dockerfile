@@ -1,4 +1,9 @@
 # Multi-stage Dockerfile for iCotes
+# Build arguments for metadata
+ARG BUILD_VERSION=1.0.3
+ARG BUILD_DATE
+ARG GIT_COMMIT
+
 # Stage 1: Build frontend
 FROM node:18-alpine AS frontend-builder
 
@@ -47,6 +52,21 @@ RUN pip install --no-cache-dir python-jose[cryptography]
 
 # Stage 3: Final production image
 FROM python:3.12-slim
+
+# Add build metadata as labels
+ARG BUILD_VERSION
+ARG BUILD_DATE
+ARG GIT_COMMIT
+LABEL version="${BUILD_VERSION}" \
+      build_date="${BUILD_DATE}" \
+      git_commit="${GIT_COMMIT}" \
+      org.opencontainers.image.title="iCotes" \
+      org.opencontainers.image.description="Interactive Code Execution and Terminal Environment with SaaS support" \
+      org.opencontainers.image.version="${BUILD_VERSION}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.revision="${GIT_COMMIT}" \
+      org.opencontainers.image.vendor="penthoy" \
+      org.opencontainers.image.url="https://github.com/penthoy/icotes"
 
 # Install system dependencies and tini for proper PID 1 handling
 # CRITICAL FIX: Add procps for PTY support
@@ -125,7 +145,10 @@ ENV PORT=8000 \
     VITE_WORKSPACE_ROOT=/app/workspace \
     LANG=en_US.UTF-8 \
     LC_ALL=en_US.UTF-8 \
-    TERM=xterm-256color
+    TERM=xterm-256color \
+    BUILD_VERSION=${BUILD_VERSION} \
+    BUILD_DATE=${BUILD_DATE} \
+    GIT_COMMIT=${GIT_COMMIT}
 
 # Expose the application port
 EXPOSE 8000
