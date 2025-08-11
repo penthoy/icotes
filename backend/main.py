@@ -245,23 +245,9 @@ def _sanitize_return_to(url_str: str) -> Optional[str]:
         return None
 
 def _build_unauth_redirect(request: Request) -> RedirectResponse:
-    # Always send unauthenticated users to the main site, not this session subdomain
+    # Always send unauthenticated users straight to the main site, not this session subdomain
     base = _get_home_redirect_base()
-    current_clean = _sanitize_return_to(str(request.url))
-    # If cleaning failed, fall back to the origin without query
-    if not current_clean:
-        # Rebuild https://{host}{path}
-        host = request.headers.get("host") or urlparse(str(request.url)).netloc
-        path = urlparse(str(request.url)).path or "/"
-        current_clean = f"https://{host}{path}"
-    # Build target with a single return_to
-    sep = '&' if ('?' in base) else '?'
-    location = f"{base}{sep}return_to={urlencode({'': current_clean})[1:]}"
-    # If somehow the location equals the current URL, avoid redirect loop by serving index
-    if location == str(request.url):
-        logger.warning("Computed redirect equals current URL; serving index fallback to avoid loop")
-        return _serve_index_fallback()
-    redirect = RedirectResponse(url=location, status_code=303)
+    redirect = RedirectResponse(url=base, status_code=303)
     redirect.headers['Cache-Control'] = 'no-store'
     redirect.headers['X-Robots-Tag'] = 'noindex'
     return redirect
@@ -1244,11 +1230,10 @@ async def serve_react_app(request: Request):
                     # Validate handoff token
                     payload = auth_manager.validate_handoff_token(token_from_query)
                     # Mint session cookie using the same token (or re-sign if desired)
-                    # Clean URL: strip the token query param
-                    clean_url = str(request.url.remove_query_params(token_param))
-                    redirect = RedirectResponse(url=clean_url, status_code=303)
+                    # Clean URL: redirect to root path to remove token from URL
+                    redirect = RedirectResponse(url="/", status_code=303)
                     _issue_auth_cookie(redirect, token_from_query)
-                    logger.info(f"SaaS handoff success for user {payload.get('sub')} -> issuing host-only cookie and redirecting")
+                    logger.info(f"SaaS handoff success for user {payload.get('sub')} -> issuing host-only cookie and redirecting to clean root")
                     return redirect
                 except HTTPException as e:
                     # Invalid handoff token → 401 JSON to avoid loops
@@ -1256,11 +1241,7 @@ async def serve_react_app(request: Request):
             else:
                 # 3) No cookie and no handoff token
                 if _is_browser_navigation(request) and _is_html_route(""):
-                    # If we've already been redirected once (has return_to), serve index to avoid loops
-                    if 'return_to' in request.query_params:
-                        logger.info("Unauthenticated root with return_to detected - serving index to avoid redirect loop")
-                        return _serve_index_fallback()
-                    logger.info("Unauthenticated browser navigation to root - redirecting to home page")
+                    logger.info("Unauthenticated browser navigation to root - redirecting to home page (no index fallback)")
                     return _build_unauth_redirect(request)
                 return JSONResponse(status_code=401, content={"error": "unauthenticated", "detail": "Missing auth cookie and handoff token"})
     
@@ -1305,20 +1286,16 @@ async def serve_react_app_catchall(path: str, request: Request):
             if token_from_query:
                 try:
                     payload = auth_manager.validate_handoff_token(token_from_query)
-                    clean_url = str(request.url.remove_query_params(token_param))
-                    redirect = RedirectResponse(url=clean_url, status_code=303)
+                    # For catch-all routes, redirect to root to ensure clean URL
+                    redirect = RedirectResponse(url="/", status_code=303)
                     _issue_auth_cookie(redirect, token_from_query)
-                    logger.info(f"SaaS handoff success for user {payload.get('sub')} on path {path}")
+                    logger.info(f"SaaS handoff success for user {payload.get('sub')} on path {path} - redirecting to clean root")
                     return redirect
                 except HTTPException as e:
                     return JSONResponse(status_code=401, content={"error": "invalid_token", "detail": e.detail})
             else:
                 if _is_browser_navigation(request) and _is_html_route(path):
-                    # If already redirected once (has return_to), serve index to stop loops
-                    if 'return_to' in request.query_params:
-                        logger.info(f"Unauthenticated navigation to '{path}' with return_to - serving index to avoid loop")
-                        return _serve_index_fallback()
-                    logger.info(f"Unauthenticated browser navigation to '{path}' - redirecting to home page")
+                    logger.info(f"Unauthenticated browser navigation to '{path}' - redirecting to home page (no index fallback)")
                     return _build_unauth_redirect(request)
                 return JSONResponse(status_code=401, content={"error": "unauthenticated", "detail": "Missing auth cookie and handoff token"})
     
