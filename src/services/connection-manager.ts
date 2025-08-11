@@ -324,7 +324,18 @@ export class ConnectionManager extends EventEmitter {
       
       // Parse the WebSocket URL to get base URL
       const url = new URL(wsUrl);
-      const baseUrl = `${url.protocol}//${url.host}`;
+      
+      // SAAS PROTOCOL FIX: Auto-detect protocol based on current page
+      // If the page is loaded over HTTPS, force WSS regardless of config
+      const currentProtocol = window.location.protocol;
+      const shouldUseSecure = currentProtocol === 'https:';
+      const finalProtocol = shouldUseSecure ? 'wss:' : url.protocol;
+      
+      if ((import.meta as any).env?.VITE_DEBUG_PROTOCOL === 'true') {
+        console.log(`🔒 Protocol detection: page=${currentProtocol}, config=${url.protocol}, final=${finalProtocol}`);
+      }
+      
+      const baseUrl = `${finalProtocol}//${url.host}`;
       
       switch (serviceType) {
         case 'terminal':
@@ -343,12 +354,26 @@ export class ConnectionManager extends EventEmitter {
       // Fallback to environment variables (for compatibility)
       const envWsUrl = (import.meta as any).env?.VITE_WS_URL as string | undefined;
       
-      // Build base URL
+      // Build base URL with protocol detection
       let baseUrl: string;
       if (envWsUrl) {
-        // VITE_WS_URL should be like 'ws://host:port/ws', extract the base
-        const url = new URL(envWsUrl);
-        baseUrl = `${url.protocol}//${url.host}`;
+        try {
+          // VITE_WS_URL should be like 'ws://host:port/ws', extract the base
+          const url = new URL(envWsUrl);
+          
+          // SAAS PROTOCOL FIX: Auto-detect protocol for fallback too
+          const currentProtocol = window.location.protocol;
+          const shouldUseSecure = currentProtocol === 'https:';
+          const finalProtocol = shouldUseSecure ? 'wss:' : url.protocol;
+          
+          if ((import.meta as any).env?.VITE_DEBUG_PROTOCOL === 'true') {
+            console.log(`🔒 Fallback protocol detection: page=${currentProtocol}, env=${url.protocol}, final=${finalProtocol}`);
+          }
+          baseUrl = `${finalProtocol}//${url.host}`;
+        } catch {
+          // If URL parsing fails, fall back to location-based construction
+          baseUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`;
+        }
       } else {
         // Fallback to constructing from current location
         baseUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`;

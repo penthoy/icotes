@@ -18,11 +18,18 @@ class AuthenticationManager:
     def __init__(self):
         self.auth_mode = os.getenv('AUTH_MODE', 'standalone').lower()
         self.jwt_secret = os.getenv('SUPABASE_JWT_SECRET')
-        self.jwt_algorithm = 'HS256'
+        self.jwt_algorithm = os.getenv('JWT_ALGORITHM', 'HS256')
+        self.jwt_audience = os.getenv('JWT_AUDIENCE', 'authenticated')
+        self.cookie_name = os.getenv('COOKIE_NAME', 'auth_token')
+        
+        # SaaS session handoff configuration
+        self.session_jwt_secret = os.getenv('SAAS_SESSION_JWT_SECRET') or self.jwt_secret
+        self.session_jwt_audience = os.getenv('SESSION_JWT_AUDIENCE', 'webapp-saas')
+        self.session_jwt_issuer = os.getenv('SESSION_JWT_ISSUER', 'orchestrator')
         
         # Validate SaaS mode configuration
-        if self.auth_mode == 'saas' and not self.jwt_secret:
-            raise ValueError("SUPABASE_JWT_SECRET is required when AUTH_MODE=saas")
+        if self.auth_mode == 'saas' and not self.jwt_secret and not self.session_jwt_secret:
+            raise ValueError("A JWT secret is required when AUTH_MODE=saas (SUPABASE_JWT_SECRET or SAAS_SESSION_JWT_SECRET)")
             
         logger.info(f"Authentication initialized in {self.auth_mode} mode")
     
@@ -34,18 +41,49 @@ class AuthenticationManager:
         """Check if running in standalone mode."""
         return self.auth_mode == 'standalone'
     
+    def _decode_with_secret(self, token: str, secret: str, *, verify_aud: bool = False, expected_aud: Optional[str] = None, expected_iss: Optional[str] = None) -> Dict[str, Any]:
+        """Decode a JWT with the provided secret and optional audience/issuer checks."""
+        try:
+            payload = jwt.decode(
+                token,
+                secret,
+                algorithms=[self.jwt_algorithm],
+                options={"verify_aud": verify_aud},
+                audience=expected_aud if verify_aud else None,
+                issuer=expected_iss if expected_iss else None,
+            )
+            # Expiry check (defensive; jose already verifies exp/nbf if present)
+            exp = payload.get('exp')
+            if exp:
+                exp_datetime = datetime.fromtimestamp(exp, tz=timezone.utc)
+                if datetime.now(timezone.utc) > exp_datetime:
+                    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has expired")
+            return payload
+        except JWTError as e:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Invalid authentication token: {e}")
+    
+    def validate_handoff_token(self, token: str) -> Dict[str, Any]:
+        """Validate a short-lived orchestrator handoff token.
+        Enforces issuer/audience and standard time checks. Uses SAAS_SESSION_JWT_SECRET when provided,
+        otherwise falls back to SUPABASE_JWT_SECRET by agreement.
+        """
+        if not token:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Handoff token required")
+        secret = self.session_jwt_secret
+        if not secret:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Handoff secret not configured")
+        return self._decode_with_secret(
+            token,
+            secret,
+            verify_aud=True,
+            expected_aud=self.session_jwt_audience,
+            expected_iss=self.session_jwt_issuer,
+        )
+    
     def validate_jwt_token(self, token: str) -> Dict[str, Any]:
         """
-        Validate JWT token and return user information.
-        
-        Args:
-            token: JWT token string
-            
-        Returns:
-            Dict containing user information
-            
-        Raises:
-            HTTPException: If token is invalid or expired
+        Validate JWT token from cookie and return user information.
+        Tries SUPABASE_JWT_SECRET first; if that fails and a session secret is configured, tries that as well.
         """
         if not token:
             raise HTTPException(
@@ -53,65 +91,53 @@ class AuthenticationManager:
                 detail="Authentication token is required"
             )
         
-        try:
-            # Decode and validate JWT token
-            # Disable audience validation for flexibility
-            payload = jwt.decode(
-                token,
-                self.jwt_secret,
-                algorithms=[self.jwt_algorithm],
-                options={"verify_aud": False}
-            )
-            
-            # Check token expiration
-            exp = payload.get('exp')
-            if exp:
-                exp_datetime = datetime.fromtimestamp(exp, tz=timezone.utc)
-                if datetime.now(timezone.utc) > exp_datetime:
-                    raise HTTPException(
-                        status_code=status.HTTP_401_UNAUTHORIZED,
-                        detail="Token has expired"
-                    )
-            
-            # Extract user information
-            user_info = {
-                'user_id': payload.get('sub'),
-                'email': payload.get('email'),
-                'role': payload.get('role', 'user'),
-                'exp': payload.get('exp'),
-                'iat': payload.get('iat'),
-                'raw_payload': payload
-            }
-            
-            logger.debug(f"Token validated for user: {user_info['user_id']}")
-            return user_info
-            
-        except JWTError as e:
-            logger.warning(f"JWT validation failed: {e}")
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid authentication token"
-            )
+        last_error: Optional[Exception] = None
+        
+        # Try Supabase token validation
+        if self.jwt_secret:
+            try:
+                payload = self._decode_with_secret(token, self.jwt_secret, verify_aud=False)
+                return {
+                    'user_id': payload.get('sub'),
+                    'email': payload.get('email'),
+                    'role': payload.get('role', 'user'),
+                    'exp': payload.get('exp'),
+                    'iat': payload.get('iat'),
+                    'raw_payload': payload
+                }
+            except HTTPException as e:
+                last_error = e
+        
+        # Fallback to session secret (cookie minted by webapp during handoff)
+        if self.session_jwt_secret:
+            try:
+                payload = self._decode_with_secret(token, self.session_jwt_secret, verify_aud=False)
+                return {
+                    'user_id': payload.get('sub'),
+                    'email': payload.get('email'),
+                    'role': payload.get('role', 'user'),
+                    'exp': payload.get('exp'),
+                    'iat': payload.get('iat'),
+                    'raw_payload': payload
+                }
+            except HTTPException as e:
+                last_error = e
+        
+        # If all validations failed
+        logger.warning(f"JWT validation failed: {last_error}")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authentication token")
     
     def get_user_from_request(self, request: Request) -> Optional[Dict[str, Any]]:
         """
         Extract and validate user from request.
-        
-        Args:
-            request: FastAPI Request object
-            
-        Returns:
-            User information dict if authenticated, None if standalone mode
-            
-        Raises:
-            HTTPException: If SaaS mode and authentication fails
+        Returns None in standalone mode. Raises if SaaS mode and missing/invalid.
         """
         if self.is_standalone_mode():
             # In standalone mode, no authentication required
             return None
         
-        # SaaS mode - extract JWT from auth_token cookie
-        auth_token = request.cookies.get('auth_token')
+        # SaaS mode - extract JWT from configured cookie
+        auth_token = request.cookies.get(self.cookie_name)
         
         if not auth_token:
             raise HTTPException(
@@ -122,35 +148,18 @@ class AuthenticationManager:
         return self.validate_jwt_token(auth_token)
     
     def require_authentication(self, request: Request) -> Optional[Dict[str, Any]]:
-        """
-        Dependency function to require authentication for endpoints.
-        
-        Args:
-            request: FastAPI Request object
-            
-        Returns:
-            User information if authenticated, None if standalone mode
-            
-        Raises:
-            HTTPException: If authentication fails
-        """
+        """Dependency function to require authentication for endpoints."""
         return self.get_user_from_request(request)
 
 # Global authentication manager instance
 auth_manager = AuthenticationManager()
 
 def get_current_user(request: Request) -> Optional[Dict[str, Any]]:
-    """
-    FastAPI dependency to get current user.
-    Returns None in standalone mode, user info in SaaS mode.
-    """
+    """FastAPI dependency to get current user. Returns None in standalone mode, user info in SaaS mode."""
     return auth_manager.require_authentication(request)
 
 def get_optional_user(request: Request) -> Optional[Dict[str, Any]]:
-    """
-    FastAPI dependency to optionally get current user.
-    Never raises exceptions, returns None if not authenticated.
-    """
+    """FastAPI dependency to optionally get current user. Never raises exceptions, returns None if not authenticated."""
     try:
         return auth_manager.get_user_from_request(request)
     except HTTPException:

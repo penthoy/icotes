@@ -608,15 +608,38 @@ const getDefaultConfig = async (): Promise<BackendConfig> => {
     console.warn('⚠️  Failed to get dynamic config for BackendClient, using fallbacks:', error);
     
     // Fallback to environment variables or dynamic detection
-    const websocketUrl = import.meta.env.VITE_WS_URL || 
-      (typeof window !== 'undefined' 
-        ? `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`
-        : 'ws://localhost:8000/ws');
-
-    const httpBaseUrl = import.meta.env.VITE_API_URL || 
-      (typeof window !== 'undefined' 
-        ? `${window.location.protocol}//${window.location.host}/api`
-        : 'http://localhost:8000/api');
+    let websocketUrl = import.meta.env.VITE_WS_URL;
+    let httpBaseUrl = import.meta.env.VITE_API_URL;
+    
+    // SAAS PROTOCOL FIX: Handle environment variable protocol conversion
+    if (websocketUrl && typeof window !== 'undefined') {
+      try {
+        const wsUrl = new URL(websocketUrl);
+        const currentProtocol = window.location.protocol;
+        const shouldUseSecure = currentProtocol === 'https:';
+        const finalProtocol = shouldUseSecure ? 'wss:' : wsUrl.protocol;
+        
+        websocketUrl = `${finalProtocol}//${wsUrl.host}${wsUrl.pathname}${wsUrl.search}`;
+        if ((import.meta as any).env?.VITE_DEBUG_PROTOCOL === 'true') {
+          console.log(`🔒 BackendClient fallback protocol: page=${currentProtocol}, env=${wsUrl.protocol}, final=${finalProtocol}`);
+        }
+      } catch {
+        // If parsing fails, keep original value
+      }
+    }
+    
+    // Final fallback to dynamic detection
+    if (!websocketUrl && typeof window !== 'undefined') {
+      websocketUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`;
+    } else if (!websocketUrl) {
+      websocketUrl = 'ws://localhost:8000/ws';
+    }
+    
+    if (!httpBaseUrl && typeof window !== 'undefined') {
+      httpBaseUrl = `${window.location.protocol}//${window.location.host}/api`;
+    } else if (!httpBaseUrl) {
+      httpBaseUrl = 'http://localhost:8000/api';
+    }
 
     return {
       websocket_url: websocketUrl,

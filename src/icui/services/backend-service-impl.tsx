@@ -105,7 +105,20 @@ export class EnhancedICUIBackendService extends EventEmitter {
       
       if (envBackendUrl && envWsUrl) {
         this.baseUrl = envBackendUrl;
-        this.websocketUrl = envWsUrl;
+        // SAAS PROTOCOL FIX: Ensure WebSocket URL uses correct protocol
+        try {
+          const wsUrl = new URL(envWsUrl);
+          const currentProtocol = window.location.protocol;
+          const shouldUseSecure = currentProtocol === 'https:';
+          const finalProtocol = shouldUseSecure ? 'wss:' : wsUrl.protocol;
+          
+          this.websocketUrl = `${finalProtocol}//${wsUrl.host}${wsUrl.pathname}${wsUrl.search}`;
+          if ((import.meta as any).env?.VITE_DEBUG_PROTOCOL === 'true') {
+            console.log(`🔒 WebSocket protocol conversion: page=${currentProtocol}, env=${wsUrl.protocol}, final=${finalProtocol}`);
+          }
+        } catch {
+          this.websocketUrl = envWsUrl; // Fallback to original if parsing fails
+        }
       } else {
         // Final fallback to window location
         const protocol = window.location.protocol;
