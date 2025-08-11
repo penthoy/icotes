@@ -1218,31 +1218,11 @@ async def chat_websocket(websocket: WebSocket):
         await websocket.close(code=1011, reason="Internal server error")
 
 
-
 # Serve React app for production
 @app.get("/")
 async def serve_react_app(request: Request):
     """Serve React app for production with SaaS authentication check and handoff token support."""
     # SaaS mode: Check authentication before serving app
-    if ICPY_AVAILABLE and auth_manager.is_saas_mode():
-        cookie_name = os.getenv('COOKIE_NAME', 'auth_token')
-        token_param = os.getenv('TOKEN_QUERY_PARAM', 't')
-        auth_token = request.cookies.get(cookie_name)
-        
-        # 1) If we already have a valid cookie, continue
-        if auth_token:
-            try:
-                _ = auth_manager.validate_jwt_token(auth_token)
-            except HTTPException:
-                auth_token = None  # Treat as missing/invalid
-        
-        # 2) If missing/invalid cookie, check for one-time handoff token in query
-        if not auth_token:
-            token_from_query = request.query_params.get(token_param)
-            if token_from_query:
-                try:
-                    # Validate handoff token
-                    payload = auth_manager.validate_handoff_token(token_from_query)
                     # Mint session cookie using the same token (or re-sign if desired)
                     # Clean URL: strip the token query param
                     clean_url = str(request.url.remove_query_params(token_param))
