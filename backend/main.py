@@ -221,7 +221,8 @@ def _is_browser_navigation(request: Request) -> bool:
 
 def _sanitize_return_to(url_str: str) -> Optional[str]:
     try:
-        token_param = os.getenv('TOKEN_QUERY_PARAM', 't')
+        # Updated to support new landing/orchestrator authentication flow
+        token_param = os.getenv('TOKEN_QUERY_PARAM', 'token')  # Changed default from 't' to 'token'
         app_domain = os.getenv('APP_DOMAIN', 'icotes.com')
         u = urlparse(url_str)
         # Allow only http/https and enforce host allowlist (app_domain or its subdomains)
@@ -527,6 +528,48 @@ async def user_profile(request: Request, user: Dict[str, Any] = Depends(get_curr
             "token_expires_at": user.get("exp")
         }
     }
+
+# Debug endpoint for testing authentication tokens (SaaS mode only)
+@app.get("/auth/debug/test-token")
+async def debug_test_token(request: Request):
+    """Debug endpoint to test authentication token validation. For development/testing only."""
+    if not ICPY_AVAILABLE or auth_manager.is_standalone_mode():
+        raise HTTPException(status_code=404, detail="Debug endpoints not available in standalone mode")
+    
+    token = request.query_params.get('token')
+    source = request.query_params.get('src', 'test')
+    
+    if not token:
+        return {
+            "error": "missing_token", 
+            "message": "Please provide token as query parameter",
+            "example": "/auth/debug/test-token?token=your_jwt_here&src=test"
+        }
+    
+    try:
+        # Test token validation
+        payload = auth_manager.validate_jwt_token(token)
+        return {
+            "success": True,
+            "source": source,
+            "token_valid": True,
+            "user": {
+                "id": payload.get('sub'),
+                "email": payload.get('email'),
+                "role": payload.get('role', 'user'),
+                "issued_at": payload.get('iat'),
+                "expires_at": payload.get('exp')
+            },
+            "payload": payload if os.getenv('CONTAINER_DEBUG_AUTH') else None
+        }
+    except HTTPException as e:
+        return {
+            "success": False,
+            "source": source,
+            "token_valid": False,
+            "error": e.detail,
+            "status_code": e.status_code
+        }
 
 # ========================================
 # ICPY API Integration Complete
@@ -1212,7 +1255,8 @@ async def serve_react_app(request: Request):
     # SaaS mode: Check authentication before serving app
     if ICPY_AVAILABLE and auth_manager.is_saas_mode():
         cookie_name = os.getenv('COOKIE_NAME', 'auth_token')
-        token_param = os.getenv('TOKEN_QUERY_PARAM', 't')
+        # Updated to support new landing/orchestrator authentication flow
+        token_param = os.getenv('TOKEN_QUERY_PARAM', 'token')  # Changed default from 't' to 'token'
         auth_token = request.cookies.get(cookie_name)
         
         # 1) If we already have a valid cookie, continue
@@ -1222,28 +1266,39 @@ async def serve_react_app(request: Request):
             except HTTPException:
                 auth_token = None  # Treat as missing/invalid
         
-        # 2) If missing/invalid cookie, check for one-time handoff token in query
+        # 2) If missing/invalid cookie, check for authentication token in query
         if not auth_token:
             token_from_query = request.query_params.get(token_param)
+            source = request.query_params.get('src', 'direct')  # Get authentication source
+            
+            # Debug logging
+            if os.getenv('CONTAINER_DEBUG_AUTH'):
+                logger.info(f"[auth] Token received: {bool(token_from_query)}")
+                logger.info(f"[auth] Source: {source}")
+                logger.info(f"[auth] User Agent: {request.headers.get('User-Agent')}")
+            
             if token_from_query:
                 try:
-                    # Validate handoff token
-                    payload = auth_manager.validate_handoff_token(token_from_query)
-                    # Mint session cookie using the same token (or re-sign if desired)
+                    # Validate JWT token from landing/orchestrator (using standard JWT validation)
+                    payload = auth_manager.validate_jwt_token(token_from_query)
+                    # Mint session cookie using the same token
                     # Clean URL: redirect to root path to remove token from URL
                     redirect = RedirectResponse(url="/", status_code=303)
                     _issue_auth_cookie(redirect, token_from_query)
-                    logger.info(f"SaaS handoff success for user {payload.get('sub')} -> issuing host-only cookie and redirecting to clean root")
+                    
+                    user_id = payload.get('sub', 'unknown')
+                    logger.info(f"[container] Auto-authenticated user {user_id} from {source} -> issuing host-only cookie and redirecting to clean root")
                     return redirect
                 except HTTPException as e:
-                    # Invalid handoff token → 401 JSON to avoid loops
+                    # Invalid authentication token → 401 JSON to avoid loops
+                    logger.warning(f"[container] Invalid authentication token from {source}: {e.detail}")
                     return JSONResponse(status_code=401, content={"error": "invalid_token", "detail": e.detail})
             else:
-                # 3) No cookie and no handoff token
+                # 3) No cookie and no authentication token
                 if _is_browser_navigation(request) and _is_html_route(""):
-                    logger.info("Unauthenticated browser navigation to root - redirecting to home page (no index fallback)")
+                    logger.info("[container] Unauthenticated browser navigation to root - redirecting to home page")
                     return _build_unauth_redirect(request)
-                return JSONResponse(status_code=401, content={"error": "unauthenticated", "detail": "Missing auth cookie and handoff token"})
+                return JSONResponse(status_code=401, content={"error": "unauthenticated", "detail": "Missing auth cookie and authentication token"})
     
     # Serve the React app (authenticated user or standalone mode, or unauth fallback)
     dist_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "dist")
@@ -1271,7 +1326,8 @@ async def serve_react_app_catchall(path: str, request: Request):
     
     if ICPY_AVAILABLE and auth_manager.is_saas_mode():
         cookie_name = os.getenv('COOKIE_NAME', 'auth_token')
-        token_param = os.getenv('TOKEN_QUERY_PARAM', 't')
+        # Updated to support new landing/orchestrator authentication flow
+        token_param = os.getenv('TOKEN_QUERY_PARAM', 'token')  # Changed default from 't' to 'token'
         auth_token = request.cookies.get(cookie_name)
         
         # Validate existing cookie if present
@@ -1283,21 +1339,33 @@ async def serve_react_app_catchall(path: str, request: Request):
         
         if not auth_token:
             token_from_query = request.query_params.get(token_param)
+            source = request.query_params.get('src', 'direct')  # Get authentication source
+            
+            # Debug logging
+            if os.getenv('CONTAINER_DEBUG_AUTH'):
+                logger.info(f"[auth] Token received on path '{path}': {bool(token_from_query)}")
+                logger.info(f"[auth] Source: {source}")
+                logger.info(f"[auth] User Agent: {request.headers.get('User-Agent')}")
+            
             if token_from_query:
                 try:
-                    payload = auth_manager.validate_handoff_token(token_from_query)
+                    # Validate JWT token from landing/orchestrator (using standard JWT validation)
+                    payload = auth_manager.validate_jwt_token(token_from_query)
                     # For catch-all routes, redirect to root to ensure clean URL
                     redirect = RedirectResponse(url="/", status_code=303)
                     _issue_auth_cookie(redirect, token_from_query)
-                    logger.info(f"SaaS handoff success for user {payload.get('sub')} on path {path} - redirecting to clean root")
+                    
+                    user_id = payload.get('sub', 'unknown')
+                    logger.info(f"[container] Auto-authenticated user {user_id} from {source} on path {path} - redirecting to clean root")
                     return redirect
                 except HTTPException as e:
+                    logger.warning(f"[container] Invalid authentication token from {source} on path {path}: {e.detail}")
                     return JSONResponse(status_code=401, content={"error": "invalid_token", "detail": e.detail})
             else:
                 if _is_browser_navigation(request) and _is_html_route(path):
-                    logger.info(f"Unauthenticated browser navigation to '{path}' - redirecting to home page (no index fallback)")
+                    logger.info(f"[container] Unauthenticated browser navigation to '{path}' - redirecting to home page")
                     return _build_unauth_redirect(request)
-                return JSONResponse(status_code=401, content={"error": "unauthenticated", "detail": "Missing auth cookie and handoff token"})
+                return JSONResponse(status_code=401, content={"error": "unauthenticated", "detail": "Missing auth cookie and authentication token"})
     
     dist_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "dist")
     file_path = os.path.join(dist_path, path)
