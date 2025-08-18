@@ -132,7 +132,12 @@ def get_available_custom_agents() -> List[str]:
                             logger.warning(f"Failed to run registry discovery in running loop: {e}")
                     else:
                         # No running loop, safe to use run_until_complete
-                        agents = loop.run_until_complete(registry.discover_and_load())
+                        # Cannot run async code synchronously if event loop is running
+                        logger.warning("Cannot initialize registry: event loop is already running. Falling back to static registry.")
+                        return build_agent_registry().keys()
+                    else:
+                        # No running loop, safe to use asyncio.run
+                        agents = asyncio.run(registry.discover_and_load())
                         if agents:
                             current_agents = agents
                 except Exception as init_error:
