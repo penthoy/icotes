@@ -334,10 +334,10 @@ Be helpful, practical, and focus on creating working solutions."""
         # Start the conversation loop for tool calls
         while True:
             stream = client.chat.completions.create(
-                model="gpt-4o-mini",
+                model="gpt-5-mini",
                 messages=messages,
-                temperature=0.7,
-                max_tokens=2000,
+                #temperature=0.7,
+                max_completion_tokens=2000,
                 tools=get_tools(),
                 tool_choice="auto",
                 stream=True

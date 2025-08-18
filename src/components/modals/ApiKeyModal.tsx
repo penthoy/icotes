@@ -28,10 +28,12 @@ interface ApiKeyModalProps {
 const API_KEY_GROUPS = {
   'AI Models': [
     { key: 'OPENAI_API_KEY', label: 'OpenAI API Key', placeholder: 'sk-...', description: 'Required for OpenAI GPT models' },
+    { key: 'ANTHROPIC_API_KEY', label: 'Anthropic API Key', placeholder: 'sk-ant-...', description: 'For Claude models by Anthropic' },
     { key: 'OPENROUTER_API_KEY', label: 'OpenRouter API Key', placeholder: 'sk-or-...', description: 'Access multiple AI models via OpenRouter' },
     { key: 'GOOGLE_API_KEY', label: 'Google API Key', placeholder: 'AIza...', description: 'For Google Gemini models' },
     { key: 'DEEPSEEK_API_KEY', label: 'DeepSeek API Key', placeholder: 'sk-...', description: 'For DeepSeek AI models' },
     { key: 'GROQ_API_KEY', label: 'Groq API Key', placeholder: 'gsk_...', description: 'For fast inference with Groq' },
+    { key: 'CEREBRAS_API_KEY', label: 'Cerebras API Key', placeholder: 'csk-...', description: 'For Cerebras AI models' },
     { key: 'DASHSCOPE_API_KEY', label: 'DashScope API Key', placeholder: 'sk-...', description: 'For Alibaba Cloud AI models' },
   ],
   'Services': [

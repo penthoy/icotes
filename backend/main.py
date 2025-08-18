@@ -1147,10 +1147,12 @@ async def get_api_keys_status_endpoint(request: Request):
         # Define the API keys we support
         api_keys = [
             'OPENAI_API_KEY',
+            'ANTHROPIC_API_KEY',
             'OPENROUTER_API_KEY', 
             'GOOGLE_API_KEY',
             'DEEPSEEK_API_KEY',
             'GROQ_API_KEY',
+            'CEREBRAS_API_KEY',
             'DASHSCOPE_API_KEY',
             'MAILERSEND_API_KEY',
             'PUSHOVER_USER',
