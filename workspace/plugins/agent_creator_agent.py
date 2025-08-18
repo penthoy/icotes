@@ -14,6 +14,7 @@ Enhanced with tool integration capabilities for file operations.
 import json
 import os
 import logging
+import asyncio
 from typing import Dict, List, Any, AsyncGenerator
 
 # Configure logging
@@ -62,11 +63,13 @@ def get_tools():
         # Use the tool registry to get all available tools
         try:
             registry = get_tool_registry()
-            for tool in registry.get_all_tools():
+            for tool in registry.all():
                 tools.append({
                     "type": "function", 
                     "function": tool.to_openai_function()
                 })
+            logger.info(f"Loaded {len(tools)} tools from registry")
+            return tools
         except Exception as e:
             logger.warning(f"Failed to load tools from registry: {e}")
     
@@ -205,7 +208,8 @@ def get_tools():
         }
     ]
     
-    return tools if TOOLS_AVAILABLE else core_tools
+    logger.info(f"Using fallback tools: {len(core_tools)} tools available")
+    return core_tools
 
 async def execute_tool_call(tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -221,14 +225,13 @@ async def execute_tool_call(tool_name: str, arguments: Dict[str, Any]) -> Dict[s
     if TOOLS_AVAILABLE:
         try:
             registry = get_tool_registry()
-            tool = registry.get_tool(tool_name)
+            tool = registry.get(tool_name)
             if tool:
                 result = await tool.execute(**arguments)
                 return {
                     "success": result.success,
                     "data": result.data,
-                    "error": result.error,
-                    "metadata": result.metadata
+                    "error": result.error
                 }
             else:
                 return {
@@ -342,7 +345,7 @@ Be helpful, practical, and focus on creating working solutions."""
             
             logger.info("AgentCreator: Starting OpenAI stream iteration")
             collected_chunks = []
-            collected_tool_calls = []
+            collected_tool_calls = {}  # Use dict to accumulate tool calls by index
             finish_reason = None
             
             for chunk in stream:
@@ -356,11 +359,31 @@ Be helpful, practical, and focus on creating working solutions."""
                     collected_chunks.append(content)
                     yield content
                 
-                # Handle tool calls
+                # Handle tool calls (streaming format - they come in chunks)
                 if hasattr(chunk.choices[0].delta, 'tool_calls') and chunk.choices[0].delta.tool_calls:
-                    for tool_call in chunk.choices[0].delta.tool_calls:
-                        if tool_call.function:
-                            collected_tool_calls.append(tool_call)
+                    for tool_call_delta in chunk.choices[0].delta.tool_calls:
+                        index = tool_call_delta.index
+                        
+                        # Initialize tool call if not exists
+                        if index not in collected_tool_calls:
+                            collected_tool_calls[index] = {
+                                'id': '',
+                                'type': 'function',
+                                'function': {
+                                    'name': '',
+                                    'arguments': ''
+                                }
+                            }
+                        
+                        # Accumulate tool call data
+                        if tool_call_delta.id:
+                            collected_tool_calls[index]['id'] = tool_call_delta.id
+                        
+                        if tool_call_delta.function:
+                            if tool_call_delta.function.name:
+                                collected_tool_calls[index]['function']['name'] = tool_call_delta.function.name
+                            if tool_call_delta.function.arguments:
+                                collected_tool_calls[index]['function']['arguments'] += tool_call_delta.function.arguments
             
             # If no tool calls, we're done
             if finish_reason != "tool_calls" or not collected_tool_calls:
@@ -369,33 +392,62 @@ Be helpful, practical, and focus on creating working solutions."""
             # Process tool calls
             yield "\n\n🔧 **Executing tools...**\n"
             
+            # Convert collected tool calls to list format
+            tool_calls_list = []
+            for index in sorted(collected_tool_calls.keys()):
+                tc = collected_tool_calls[index]
+                tool_calls_list.append({
+                    "id": tc['id'],
+                    "type": "function",
+                    "function": {
+                        "name": tc['function']['name'],
+                        "arguments": tc['function']['arguments']
+                    }
+                })
+            
             # Add assistant message with tool calls to conversation
             assistant_message = {
                 "role": "assistant",
                 "content": "".join(collected_chunks),
-                "tool_calls": [
-                    {
-                        "id": tc.id,
-                        "type": "function",
-                        "function": {
-                            "name": tc.function.name,
-                            "arguments": tc.function.arguments
-                        }
-                    } for tc in collected_tool_calls
-                ]
+                "tool_calls": tool_calls_list
             }
             messages.append(assistant_message)
             
             # Execute each tool call
-            for tool_call in collected_tool_calls:
+            for tc in tool_calls_list:
                 try:
-                    tool_name = tool_call.function.name
-                    arguments = json.loads(tool_call.function.arguments)
+                    tool_name = tc['function']['name']
+                    arguments_str = tc['function']['arguments']
+                    
+                    # Validate that we have a tool name
+                    if not tool_name:
+                        yield f"❌ **Error**: Tool name is empty\n"
+                        continue
+                        
+                    # Parse arguments safely
+                    try:
+                        arguments = json.loads(arguments_str) if arguments_str else {}
+                    except json.JSONDecodeError as e:
+                        yield f"❌ **Error**: Invalid JSON arguments for {tool_name}: {str(e)}\n"
+                        continue
                     
                     yield f"\n📋 **{tool_name}**: {arguments}\n"
                     
-                    # Execute the tool
-                    result = await execute_tool_call(tool_name, arguments)
+                    # Execute the tool safely
+                    try:
+                        # Check if we're already in an event loop
+                        try:
+                            loop = asyncio.get_running_loop()
+                            # We're in an async context, create a new thread
+                            import concurrent.futures
+                            with concurrent.futures.ThreadPoolExecutor() as executor:
+                                future = executor.submit(asyncio.run, execute_tool_call(tool_name, arguments))
+                                result = future.result()
+                        except RuntimeError:
+                            # No running loop, safe to use asyncio.run
+                            result = asyncio.run(execute_tool_call(tool_name, arguments))
+                    except Exception as e:
+                        result = {"success": False, "error": str(e)}
                     
                     if result["success"]:
                         yield f"✅ **Success**: {result.get('data', 'Operation completed')}\n"
@@ -405,7 +457,7 @@ Be helpful, practical, and focus on creating working solutions."""
                     # Add tool result to conversation
                     tool_message = {
                         "role": "tool",
-                        "tool_call_id": tool_call.id,
+                        "tool_call_id": tc['id'],
                         "content": json.dumps(result)
                     }
                     messages.append(tool_message)
@@ -418,7 +470,7 @@ Be helpful, practical, and focus on creating working solutions."""
                     # Add error to conversation
                     tool_message = {
                         "role": "tool", 
-                        "tool_call_id": tool_call.id,
+                        "tool_call_id": tc.get('id', 'unknown'),
                         "content": json.dumps({"success": False, "error": str(e)})
                     }
                     messages.append(tool_message)
