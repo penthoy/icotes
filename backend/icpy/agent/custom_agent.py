@@ -120,7 +120,16 @@ def get_available_custom_agents() -> List[str]:
                             future = executor.submit(init_registry)
                             agents = future.result(timeout=5)  # 5 second timeout
                             if agents:
+                        # Use run_coroutine_threadsafe to schedule on the running loop
+                        future = asyncio.run_coroutine_threadsafe(
+                            registry.discover_and_load(), loop
+                        )
+                        try:
+                            agents = future.result(timeout=5)  # 5 second timeout
+                            if agents:
                                 current_agents = agents
+                        except Exception as e:
+                            logger.warning(f"Failed to run registry discovery in running loop: {e}")
                     else:
                         # No running loop, safe to use run_until_complete
                         agents = loop.run_until_complete(registry.discover_and_load())
