@@ -1,42 +1,47 @@
-# from dotenv import load_dotenv
-# load_dotenv(override=True)
-# import requests
+"""
+Personal Agent - Tool Use Proof of Concept
+
+This is a demonstration agent showcasing tool use capabilities.
+It serves as a POC for how agents can use tools and will be replaced
+by real tool use agents in the future.
+"""
 
 import json
 import os
 
 from .clients import get_openai_client
-from .tools.pdfreader_tools import get_pdf_reader
 from .tools.pushover_tools import push
 
 
 def record_user_details(email, name="Name not provided", notes="not provided"):
-    push(f"Recording interest from {name} with email {email} and notes {notes}")
-    return {"recorded": "ok"}
+    """Record user contact details when they express interest in getting in touch"""
+    push(f"[DEMO] Recording contact from {name} (email: {email}) - Notes: {notes}")
+    return {"status": "recorded", "message": f"Contact information saved for {name}"}
 
 def record_unknown_question(question):
-    push(f"Recording {question} asked that I couldn't answer")
-    return {"recorded": "ok"}
+    """Log questions that the agent cannot answer for future improvement"""
+    push(f"[DEMO] Unknown question logged: {question}")
+    return {"status": "logged", "message": "Question has been recorded for review"}
 
 def get_tools():
+    """Define the tools available to the Personal Assistant demo agent"""
     record_user_details_json = {
         "name": "record_user_details",
-        "description": "Use this tool to record that a user is interested in being in touch and provided an email address",
+        "description": "Record user contact information when they express interest in getting in touch or want to be contacted",
         "parameters": {
             "type": "object",
             "properties": {
                 "email": {
                     "type": "string",
-                    "description": "The email address of this user"
+                    "description": "The user's email address"
                 },
                 "name": {
                     "type": "string",
-                    "description": "The user's name, if they provided it"
-                }
-                ,
+                    "description": "The user's name, if provided"
+                },
                 "notes": {
                     "type": "string",
-                    "description": "Any additional information about the conversation that's worth recording to give context"
+                    "description": "Any relevant context or notes about the user's interest or conversation"
                 }
             },
             "required": ["email"],
@@ -46,22 +51,24 @@ def get_tools():
 
     record_unknown_question_json = {
         "name": "record_unknown_question",
-        "description": "Always use this tool to record any question that couldn't be answered as you didn't know the answer",
+        "description": "Log any question that you cannot answer for future improvement and review",
         "parameters": {
             "type": "object",
             "properties": {
                 "question": {
                     "type": "string",
-                    "description": "The question that couldn't be answered"
-                },
+                    "description": "The question that could not be answered"
+                }
             },
             "required": ["question"],
             "additionalProperties": False
         }
     }
 
-    tools = [{"type": "function", "function": record_user_details_json},
-            {"type": "function", "function": record_unknown_question_json}]
+    tools = [
+        {"type": "function", "function": record_user_details_json},
+        {"type": "function", "function": record_unknown_question_json}
+    ]
     return tools
 
 # This function can take a list of tool calls, and run them. This is the IF statement!!
@@ -97,19 +104,25 @@ def handle_tool_calls(tool_calls):
     return results
 
 
-def get_system_prompt(name="Tao Zhang", linkedin=None):
-    if linkedin is None:
-        linkedin = get_pdf_reader(os.path.join(os.path.dirname(__file__), "tools", "tazhang_linkedin.pdf"))
-    system_prompt = f"You are acting as {name}. You are answering questions on {name}'s website, \
-    particularly questions related to {name}'s career, background, skills and experience. \
-    Your responsibility is to represent {name} for interactions on the website as faithfully as possible. \
-    You are given a summary of {name}'s background and LinkedIn profile which you can use to answer questions. \
-    Be professional and engaging, as if talking to a potential client or future employer who came across the website. \
-    If you don't know the answer to any question, use your record_unknown_question tool to record the question that you couldn't answer, even if it's about something trivial or unrelated to career. \
-    If the user is engaging in discussion, try to steer them towards getting in touch via email; ask for their email and record it using your record_user_details tool. "
+def get_system_prompt():
+    """Get the system prompt for the Personal Assistant demo agent"""
+    system_prompt = """You are a Personal Assistant AI, designed to demonstrate tool use capabilities.
 
-    system_prompt += f"\n\n## LinkedIn Profile:\n{linkedin}\n\n"
-    system_prompt += f"With this context, please chat with the user, always staying in character as {name}."
+This is a proof-of-concept agent that showcases how AI agents can use tools to:
+1. Record user contact information when they express interest
+2. Log questions that you cannot answer for future improvement
+
+Key behaviors:
+- Be helpful and professional in your responses
+- When users show interest in getting in touch, ask for their email and use the record_user_details tool
+- If you encounter questions you cannot answer, use the record_unknown_question tool to log them
+- Try to be engaging and demonstrate the tool use capabilities naturally in conversation
+
+Available tools:
+- record_user_details: Records user contact information
+- record_unknown_question: Logs questions you cannot answer
+
+This is a demonstration agent and will be replaced by more sophisticated tool use agents in the future."""
     
     return system_prompt
 
@@ -207,7 +220,9 @@ def chat(message, history):
             done = True
 
 if __name__ == "__main__":
-    result = chat("what is your name?", "[]")
-    print(result)
-    
-#gr.ChatInterface(chat, type="messages").launch(server_name="0.0.0.0", server_port=7863, pwa=True)
+    # Test the tool use demo agent
+    print("Testing Personal Assistant tool use demo...")
+    result = chat("Hi, I'm interested in learning more about tool use capabilities. Can you help?", "[]")
+    for chunk in result:
+        print(chunk, end='', flush=True)
+    print("\n")

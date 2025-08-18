@@ -252,11 +252,17 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
       const client = getClient();
       await client.clearMessages();
       setMessages([]);
+      
+      // Reload message history to ensure UI is synchronized with backend
+      if (persistence) {
+        const history = await client.getMessageHistory(maxMessages);
+        setMessages(history);
+      }
     } catch (error) {
       console.error('Failed to clear messages:', error);
       notificationService.error('Failed to clear messages');
     }
-  }, [getClient]);
+  }, [getClient, persistence, maxMessages]);
 
   // Update configuration
   const updateConfig = useCallback(async (newConfig: Partial<ChatConfig>) => {

@@ -371,9 +371,8 @@ class FileSystemService:
         self.event_handler = FileSystemEventHandler(self)
         self.watched_paths: Set[str] = set()
         
-        # File indexing and caching
+        # File indexing
         self.file_index: Dict[str, FileInfo] = {}
-        self.content_cache: Dict[str, str] = {}
         self.search_index: Dict[str, Set[str]] = defaultdict(set)  # word -> file_paths
         
         # Statistics
@@ -386,9 +385,7 @@ class FileSystemService:
             'files_copied': 0,
             'searches_performed': 0,
             'total_bytes_read': 0,
-            'total_bytes_written': 0,
-            'cache_hits': 0,
-            'cache_misses': 0
+            'total_bytes_written': 0
         }
         
         # File type mappings
@@ -443,9 +440,8 @@ class FileSystemService:
         # Stop file watching
         await self._stop_file_watching()
         
-        # Clear caches
+        # Clear indices
         self.file_index.clear()
-        self.content_cache.clear()
         self.search_index.clear()
         
         logger.info("FileSystemService shutdown complete")
@@ -481,7 +477,6 @@ class FileSystemService:
         
         # Clear existing indices
         self.file_index.clear()
-        self.content_cache.clear()
         self.search_index.clear()
         
         # Rebuild the index
@@ -662,21 +657,11 @@ class FileSystemService:
                 logger.warning(f"File too large to read: {file_path}")
                 return None
             
-            # Check cache first
-            if file_path in self.content_cache:
-                self.stats['cache_hits'] += 1
-                return self.content_cache[file_path]
-            
             async with aiofiles.open(file_path, 'r', encoding=encoding) as f:
                 content = await f.read()
                 
-                # Cache content if it's not too large
-                if len(content) < 1024 * 1024:  # 1MB cache limit
-                    self.content_cache[file_path] = content
-                
                 self.stats['files_read'] += 1
                 self.stats['total_bytes_read'] += len(content.encode(encoding))
-                self.stats['cache_misses'] += 1
                 
                 # Publish event
                 await self.message_broker.publish('fs.file_read', {
@@ -719,9 +704,6 @@ class FileSystemService:
             
             async with aiofiles.open(file_path, 'w', encoding=encoding) as f:
                 await f.write(content)
-            
-            # Update cache
-            self.content_cache[file_path] = content
             
             # Update file index
             file_info = await self.get_file_info(file_path)
@@ -819,10 +801,7 @@ class FileSystemService:
             else:
                 os.remove(file_path)
             
-            # Update caches
-            if file_path in self.content_cache:
-                del self.content_cache[file_path]
-            
+            # Update file index
             if file_path in self.file_index:
                 del self.file_index[file_path]
             
@@ -865,10 +844,7 @@ class FileSystemService:
             
             shutil.move(src_path, dest_path)
             
-            # Update caches
-            if src_path in self.content_cache:
-                self.content_cache[dest_path] = self.content_cache.pop(src_path)
-            
+            # Update indices
             if src_path in self.file_index:
                 file_info = self.file_index.pop(src_path)
                 file_info.path = dest_path
@@ -1158,7 +1134,6 @@ class FileSystemService:
         return {
             **self.stats,
             'indexed_files': len(self.file_index),
-            'cached_files': len(self.content_cache),
             'watched_paths': len(self.watched_paths),
             'search_index_size': len(self.search_index),
             'root_path': self.root_path,
@@ -1166,11 +1141,7 @@ class FileSystemService:
             'timestamp': time.time()
         }
 
-    async def clear_cache(self):
-        """Clear content cache only."""
-        self.content_cache.clear()
-        
-        logger.info("File system content cache cleared")
+
 
     async def validate_path(self, path: str) -> bool:
         """Validate if a path is safe to access.

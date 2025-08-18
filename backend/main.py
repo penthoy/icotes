@@ -221,7 +221,8 @@ def _is_browser_navigation(request: Request) -> bool:
 
 def _sanitize_return_to(url_str: str) -> Optional[str]:
     try:
-        token_param = os.getenv('TOKEN_QUERY_PARAM', 't')
+        # Updated to support new landing/orchestrator authentication flow
+        token_param = os.getenv('TOKEN_QUERY_PARAM', 'token')  # Changed default from 't' to 'token'
         app_domain = os.getenv('APP_DOMAIN', 'icotes.com')
         u = urlparse(url_str)
         # Allow only http/https and enforce host allowlist (app_domain or its subdomains)
@@ -430,18 +431,34 @@ async def healthz():
 async def get_frontend_config(request: Request):
     """
     Provide dynamic configuration for the frontend based on the request host.
-    In development mode, prioritize environment variables.
-    In Docker mode, use dynamic host detection.
+    Prioritizes dynamic host detection for Cloudflare tunnel compatibility.
+    Falls back to environment variables only when hosts match.
     """
     import os
     
-    # Check for development environment variables first
+    # Get the host from the request
+    host = request.headers.get("host", "localhost:8000")
+    
+    # Check for development environment variables
     env_backend_url = os.getenv('VITE_BACKEND_URL')
     env_api_url = os.getenv('VITE_API_URL') 
     env_ws_url = os.getenv('VITE_WS_URL')
     
+    # Check if the request host matches the environment configuration
+    use_env_config = False
     if env_backend_url and env_api_url and env_ws_url:
-        # Development mode: use environment variables
+        try:
+            env_host = env_backend_url.replace('http://', '').replace('https://', '').split('/')[0]
+            if host == env_host:
+                use_env_config = True
+                logger.info(f"Request host {host} matches environment host {env_host}, using environment config")
+            else:
+                logger.info(f"Request host {host} differs from environment host {env_host}, using dynamic detection for Cloudflare tunnel compatibility")
+        except Exception as e:
+            logger.warning(f"Error parsing environment URL {env_backend_url}: {e}")
+    
+    if use_env_config:
+        # Development mode with matching host: use environment variables
         config = {
             "base_url": env_backend_url,
             "api_url": env_api_url,
@@ -457,9 +474,7 @@ async def get_frontend_config(request: Request):
         logger.info(f"Using environment-based config: {config}")
         return config
     
-    # Docker mode: dynamic host detection
-    # Get the host from the request
-    host = request.headers.get("host", "localhost:8000")
+    # Dynamic host detection mode (used for Cloudflare tunnels, Docker, and mismatched hosts)
     
     # Determine protocol (HTTP vs HTTPS)
     # Check for forwarded proto first (reverse proxy), then connection
@@ -527,6 +542,48 @@ async def user_profile(request: Request, user: Dict[str, Any] = Depends(get_curr
             "token_expires_at": user.get("exp")
         }
     }
+
+# Debug endpoint for testing authentication tokens (SaaS mode only)
+@app.get("/auth/debug/test-token")
+async def debug_test_token(request: Request):
+    """Debug endpoint to test authentication token validation. For development/testing only."""
+    if not ICPY_AVAILABLE or auth_manager.is_standalone_mode():
+        raise HTTPException(status_code=404, detail="Debug endpoints not available in standalone mode")
+    
+    token = request.query_params.get('token')
+    source = request.query_params.get('src', 'test')
+    
+    if not token:
+        return {
+            "error": "missing_token", 
+            "message": "Please provide token as query parameter",
+            "example": "/auth/debug/test-token?token=your_jwt_here&src=test"
+        }
+    
+    try:
+        # Test token validation
+        payload = auth_manager.validate_jwt_token(token)
+        return {
+            "success": True,
+            "source": source,
+            "token_valid": True,
+            "user": {
+                "id": payload.get('sub'),
+                "email": payload.get('email'),
+                "role": payload.get('role', 'user'),
+                "issued_at": payload.get('iat'),
+                "expires_at": payload.get('exp')
+            },
+            "payload": payload if os.getenv('CONTAINER_DEBUG_AUTH') else None
+        }
+    except HTTPException as e:
+        return {
+            "success": False,
+            "source": source,
+            "token_valid": False,
+            "error": e.detail,
+            "status_code": e.status_code
+        }
 
 # ========================================
 # ICPY API Integration Complete
@@ -909,6 +966,244 @@ async def get_custom_agents():
         logger.error(f"Error getting custom agents: {e}")
         return {"success": False, "error": str(e), "agents": []}
 
+@app.get("/api/custom-agents/configured")
+async def get_configured_custom_agents():
+    """Get list of custom agents with their display configuration from workspace."""
+    try:
+        logger.info("Configured custom agents endpoint called")
+        from icpy.agent.custom_agent import get_configured_custom_agents
+        from icpy.services.agent_config_service import get_agent_config_service
+        
+        configured_agents = get_configured_custom_agents()
+        logger.info(f"Retrieved {len(configured_agents)} configured agents")
+        
+        # Also get settings and categories including default agent
+        config_service = get_agent_config_service()
+        config = config_service.load_config()
+        settings = config.get("settings", {})
+        categories = config.get("categories", {})
+        
+        return {
+            "success": True, 
+            "agents": configured_agents,
+            "settings": settings,
+            "categories": categories,
+            "message": f"Retrieved {len(configured_agents)} configured agents"
+        }
+    except ImportError as e:
+        logger.warning(f"Agent config service not available: {e}")
+        # Fallback to basic agent list
+        agents = get_available_custom_agents()
+        fallback_agents = [{"name": agent, "displayName": agent, "description": "", "category": "General", "order": 999, "icon": "🤖"} for agent in agents]
+        return {"success": True, "agents": fallback_agents}
+    except Exception as e:
+        logger.error(f"Error getting configured custom agents: {e}")
+        return {"success": False, "error": str(e), "agents": []}
+
+@app.post("/api/custom-agents/reload")
+async def reload_custom_agents_endpoint(request: Request):
+    """Reload all custom agents and return updated list."""
+    try:
+        # Check authentication in SaaS mode
+        if auth_manager.is_saas_mode():
+            user = get_optional_user(request)
+            if not user:
+                raise HTTPException(status_code=401, detail="Authentication required")
+            # TODO: Add admin role check if needed
+            logger.info(f"Agent reload requested by user: {user.get('sub', 'unknown')}")
+        else:
+            logger.info("Agent reload requested in standalone mode")
+        
+        # Import reload function
+        from icpy.agent.custom_agent import reload_custom_agents
+        
+        # Perform reload
+        reloaded_agents = await reload_custom_agents()
+        
+        logger.info(f"Agent reload complete. Available agents: {reloaded_agents}")
+        
+        # Send WebSocket notification to connected clients
+        try:
+            if ICPY_AVAILABLE:
+                message_broker = await get_message_broker()
+                await message_broker.publish(
+                    topic="agents.reloaded",
+                    payload={
+                        "type": "agents_reloaded",
+                        "agents": reloaded_agents,
+                        "timestamp": time.time(),
+                        "message": f"Reloaded {len(reloaded_agents)} agents"
+                    }
+                )
+                logger.info("WebSocket notification sent for agent reload")
+        except Exception as e:
+            logger.warning(f"Failed to send WebSocket notification: {e}")
+        
+        return {"success": True, "agents": reloaded_agents, "message": f"Reloaded {len(reloaded_agents)} agents"}
+        
+    except ImportError as e:
+        logger.error(f"Hot reload system not available: {e}")
+        return {"success": False, "error": "Hot reload system not available", "agents": []}
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions (like 401)
+    except Exception as e:
+        logger.error(f"Error reloading custom agents: {e}")
+        return {"success": False, "error": str(e), "agents": []}
+
+@app.post("/api/environment/reload")
+async def reload_environment_endpoint(request: Request):
+    """Reload environment variables for all agents."""
+    try:
+        # Check authentication in SaaS mode
+        if auth_manager.is_saas_mode():
+            user = get_optional_user(request)
+            if not user:
+                raise HTTPException(status_code=401, detail="Authentication required")
+            logger.info(f"Environment reload requested by user: {user.get('sub', 'unknown')}")
+        else:
+            logger.info("Environment reload requested in standalone mode")
+        
+        # Import reload function
+        from icpy.agent.custom_agent import reload_agent_environment
+        
+        # Perform environment reload
+        success = await reload_agent_environment()
+        
+        if success:
+            logger.info("Environment reload successful")
+            return {"success": True, "message": "Environment variables reloaded successfully"}
+        else:
+            logger.warning("Environment reload failed")
+            return {"success": False, "error": "Environment reload failed"}
+            
+    except ImportError as e:
+        logger.error(f"Hot reload system not available: {e}")
+        return {"success": False, "error": "Hot reload system not available"}
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions (like 401)
+    except Exception as e:
+        logger.error(f"Error reloading environment: {e}")
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/environment/update-keys")
+async def update_api_keys_endpoint(request: Request):
+    """Update API keys in environment variables with hot reload."""
+    try:
+        # Check authentication in SaaS mode
+        if auth_manager.is_saas_mode():
+            user = get_optional_user(request)
+            if not user:
+                raise HTTPException(status_code=401, detail="Authentication required")
+            logger.info(f"API key update requested by user: {user.get('sub', 'unknown')}")
+        else:
+            logger.info("API key update requested in standalone mode")
+        
+        # Get request body
+        body = await request.json()
+        api_keys = body.get('api_keys', {})
+        
+        if not api_keys:
+            return {"success": False, "error": "No API keys provided"}
+        
+        # Update environment variables directly
+        updated_keys = {}
+        for key, value in api_keys.items():
+            if value and value.strip():  # Only update non-empty values
+                os.environ[key] = value.strip()
+                updated_keys[key] = True
+                logger.info(f"Updated environment variable: {key}")
+        
+        # Reload environment for agents
+        try:
+            from icpy.agent.custom_agent import reload_agent_environment
+            await reload_agent_environment()
+        except Exception as reload_error:
+            logger.warning(f"Failed to reload agent environment: {reload_error}")
+        
+        logger.info(f"API keys updated: {list(updated_keys.keys())}")
+        
+        return {
+            "success": True, 
+            "updated_keys": list(updated_keys.keys()), 
+            "message": f"Updated {len(updated_keys)} API keys and reloaded environment"
+        }
+        
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions (like 401)
+    except Exception as e:
+        logger.error(f"Error updating API keys: {e}")
+        return {"success": False, "error": str(e)}
+
+@app.get("/api/environment/keys")
+async def get_api_keys_status_endpoint(request: Request):
+    """Get the status of API keys (whether they are set or not, without revealing values)."""
+    try:
+        # Check authentication in SaaS mode
+        if auth_manager.is_saas_mode():
+            user = get_optional_user(request)
+            if not user:
+                raise HTTPException(status_code=401, detail="Authentication required")
+        
+        # Define the API keys we support
+        api_keys = [
+            'OPENAI_API_KEY',
+            'OPENROUTER_API_KEY', 
+            'GOOGLE_API_KEY',
+            'DEEPSEEK_API_KEY',
+            'GROQ_API_KEY',
+            'DASHSCOPE_API_KEY',
+            'MAILERSEND_API_KEY',
+            'PUSHOVER_USER',
+            'PUSHOVER_TOKEN'
+        ]
+        
+        # Check which keys are set (without revealing values)
+        key_status = {}
+        for key in api_keys:
+            value = os.getenv(key)
+            if value:
+                # Show first 4 chars and mask the rest
+                masked = value[:4] + '*' * (len(value) - 4) if len(value) > 4 else '*' * len(value)
+                key_status[key] = {
+                    "is_set": True,
+                    "masked_value": masked,
+                    "length": len(value)
+                }
+            else:
+                key_status[key] = {
+                    "is_set": False,
+                    "masked_value": "",
+                    "length": 0
+                }
+        
+        return {"success": True, "keys": key_status}
+        
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions (like 401)
+    except Exception as e:
+        logger.error(f"Error getting API key status: {e}")
+        return {"success": False, "error": str(e)}
+
+@app.get("/api/custom-agents/{agent_name}/info")
+async def get_custom_agent_info(agent_name: str):
+    """Get information about a specific custom agent."""
+    try:
+        logger.info(f"Agent info requested for: {agent_name}")
+        
+        # Import info function
+        from icpy.agent.custom_agent import get_agent_info
+        
+        info = get_agent_info(agent_name)
+        
+        return {"success": True, "agent_info": info}
+        
+    except ImportError as e:
+        logger.warning(f"Agent info system not available: {e}")
+        return {"success": False, "error": "Agent info system not available"}
+    except Exception as e:
+        logger.error(f"Error getting agent info for {agent_name}: {e}")
+        return {"success": False, "error": str(e)}
+
 # Health check endpoint
 @app.get("/health")
 async def health_check():
@@ -1212,7 +1507,8 @@ async def serve_react_app(request: Request):
     # SaaS mode: Check authentication before serving app
     if ICPY_AVAILABLE and auth_manager.is_saas_mode():
         cookie_name = os.getenv('COOKIE_NAME', 'auth_token')
-        token_param = os.getenv('TOKEN_QUERY_PARAM', 't')
+        # Updated to support new landing/orchestrator authentication flow
+        token_param = os.getenv('TOKEN_QUERY_PARAM', 'token')  # Changed default from 't' to 'token'
         auth_token = request.cookies.get(cookie_name)
         
         # 1) If we already have a valid cookie, continue
@@ -1222,28 +1518,39 @@ async def serve_react_app(request: Request):
             except HTTPException:
                 auth_token = None  # Treat as missing/invalid
         
-        # 2) If missing/invalid cookie, check for one-time handoff token in query
+        # 2) If missing/invalid cookie, check for authentication token in query
         if not auth_token:
             token_from_query = request.query_params.get(token_param)
+            source = request.query_params.get('src', 'direct')  # Get authentication source
+            
+            # Debug logging
+            if os.getenv('CONTAINER_DEBUG_AUTH'):
+                logger.info(f"[auth] Token received: {bool(token_from_query)}")
+                logger.info(f"[auth] Source: {source}")
+                logger.info(f"[auth] User Agent: {request.headers.get('User-Agent')}")
+            
             if token_from_query:
                 try:
-                    # Validate handoff token
-                    payload = auth_manager.validate_handoff_token(token_from_query)
-                    # Mint session cookie using the same token (or re-sign if desired)
+                    # Validate JWT token from landing/orchestrator (using standard JWT validation)
+                    payload = auth_manager.validate_jwt_token(token_from_query)
+                    # Mint session cookie using the same token
                     # Clean URL: redirect to root path to remove token from URL
                     redirect = RedirectResponse(url="/", status_code=303)
                     _issue_auth_cookie(redirect, token_from_query)
-                    logger.info(f"SaaS handoff success for user {payload.get('sub')} -> issuing host-only cookie and redirecting to clean root")
+                    
+                    user_id = payload.get('sub', 'unknown')
+                    logger.info(f"[container] Auto-authenticated user {user_id} from {source} -> issuing host-only cookie and redirecting to clean root")
                     return redirect
                 except HTTPException as e:
-                    # Invalid handoff token → 401 JSON to avoid loops
+                    # Invalid authentication token → 401 JSON to avoid loops
+                    logger.warning(f"[container] Invalid authentication token from {source}: {e.detail}")
                     return JSONResponse(status_code=401, content={"error": "invalid_token", "detail": e.detail})
             else:
-                # 3) No cookie and no handoff token
+                # 3) No cookie and no authentication token
                 if _is_browser_navigation(request) and _is_html_route(""):
-                    logger.info("Unauthenticated browser navigation to root - redirecting to home page (no index fallback)")
+                    logger.info("[container] Unauthenticated browser navigation to root - redirecting to home page")
                     return _build_unauth_redirect(request)
-                return JSONResponse(status_code=401, content={"error": "unauthenticated", "detail": "Missing auth cookie and handoff token"})
+                return JSONResponse(status_code=401, content={"error": "unauthenticated", "detail": "Missing auth cookie and authentication token"})
     
     # Serve the React app (authenticated user or standalone mode, or unauth fallback)
     dist_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "dist")
@@ -1271,7 +1578,8 @@ async def serve_react_app_catchall(path: str, request: Request):
     
     if ICPY_AVAILABLE and auth_manager.is_saas_mode():
         cookie_name = os.getenv('COOKIE_NAME', 'auth_token')
-        token_param = os.getenv('TOKEN_QUERY_PARAM', 't')
+        # Updated to support new landing/orchestrator authentication flow
+        token_param = os.getenv('TOKEN_QUERY_PARAM', 'token')  # Changed default from 't' to 'token'
         auth_token = request.cookies.get(cookie_name)
         
         # Validate existing cookie if present
@@ -1283,21 +1591,33 @@ async def serve_react_app_catchall(path: str, request: Request):
         
         if not auth_token:
             token_from_query = request.query_params.get(token_param)
+            source = request.query_params.get('src', 'direct')  # Get authentication source
+            
+            # Debug logging
+            if os.getenv('CONTAINER_DEBUG_AUTH'):
+                logger.info(f"[auth] Token received on path '{path}': {bool(token_from_query)}")
+                logger.info(f"[auth] Source: {source}")
+                logger.info(f"[auth] User Agent: {request.headers.get('User-Agent')}")
+            
             if token_from_query:
                 try:
-                    payload = auth_manager.validate_handoff_token(token_from_query)
+                    # Validate JWT token from landing/orchestrator (using standard JWT validation)
+                    payload = auth_manager.validate_jwt_token(token_from_query)
                     # For catch-all routes, redirect to root to ensure clean URL
                     redirect = RedirectResponse(url="/", status_code=303)
                     _issue_auth_cookie(redirect, token_from_query)
-                    logger.info(f"SaaS handoff success for user {payload.get('sub')} on path {path} - redirecting to clean root")
+                    
+                    user_id = payload.get('sub', 'unknown')
+                    logger.info(f"[container] Auto-authenticated user {user_id} from {source} on path {path} - redirecting to clean root")
                     return redirect
                 except HTTPException as e:
+                    logger.warning(f"[container] Invalid authentication token from {source} on path {path}: {e.detail}")
                     return JSONResponse(status_code=401, content={"error": "invalid_token", "detail": e.detail})
             else:
                 if _is_browser_navigation(request) and _is_html_route(path):
-                    logger.info(f"Unauthenticated browser navigation to '{path}' - redirecting to home page (no index fallback)")
+                    logger.info(f"[container] Unauthenticated browser navigation to '{path}' - redirecting to home page")
                     return _build_unauth_redirect(request)
-                return JSONResponse(status_code=401, content={"error": "unauthenticated", "detail": "Missing auth cookie and handoff token"})
+                return JSONResponse(status_code=401, content={"error": "unauthenticated", "detail": "Missing auth cookie and authentication token"})
     
     dist_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "dist")
     file_path = os.path.join(dist_path, path)
