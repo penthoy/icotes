@@ -25,7 +25,11 @@ AGENT_AUTHOR = "Hot Reload System"
 # Import OpenAI client
 try:
     import sys
-    sys.path.append('/home/penthoy/icotes/backend')
+    backend_path = os.environ.get("ICOTES_BACKEND_PATH")
+    if not backend_path:
+        # Default to ../backend relative to this file
+        backend_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "backend"))
+    sys.path.append(backend_path)
     from icpy.agent.clients import get_openai_client
     OPENAI_AVAILABLE = True
 except ImportError as e:
