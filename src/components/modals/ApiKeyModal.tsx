@@ -233,16 +233,6 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose }) => 
           </div>
         ) : (
           <div className="space-y-6">
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <div className="flex items-start space-x-3">
-                <AlertCircle className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
-                <div className="text-sm text-blue-800">
-                  <p className="font-medium mb-1">Hot Reload Enabled</p>
-                  <p>API keys are updated in real-time without server restart. Only enter keys you want to update or add.</p>
-                </div>
-              </div>
-            </div>
-
             <Tabs defaultValue="ai-models" className="w-full">
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="ai-models">AI Models</TabsTrigger>
