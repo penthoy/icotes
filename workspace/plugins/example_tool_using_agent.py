@@ -144,7 +144,7 @@ def chat(message, history):
         yield "**3. Create File Tool**\n"
         result = run_tool_safely("create_file", {
             "filePath": "test_tool_demo.txt",
-            "content": "This file was created by the ExampleToolUser agent!\nTimestamp: " + str(hash(message))
+            "content": "This file was created by the ExampleToolUser agent!\nTimestamp: " + datetime.datetime.now().isoformat()
         })
         if result["success"]:
             yield "✅ Created test_tool_demo.txt\n\n"
