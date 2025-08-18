@@ -134,7 +134,6 @@ class ReadFileTool(BaseTool):
             
             if content is None:
                 return ToolResult(success=False, error="Failed to read file")
-            
             # Extract line range if specified
             if start_line is not None or end_line is not None:
                 lines = content.split('\n')
