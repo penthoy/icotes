@@ -7,11 +7,11 @@
       "displayName": "Agent Creator",
       "description": "An AI agent that helps you create other custom agents",
       "category": "Development",
-      "order": 1,
+      "order": 2,
       "icon": "🧠"
     },
     "PersonalAgent": {
-      "enabled": true,
+      "enabled": false,
       "displayName": "Personal Assistant (Tool Demo)",
       "description": "Proof-of-concept agent demonstrating tool use capabilities",
       "category": "Development",
@@ -23,7 +23,7 @@
       "displayName": "OpenAI Demo",
       "description": "OpenAI-powered demonstration agent",
       "category": "AI Models",
-      "order": 3,
+      "order": 1,
       "icon": "🤖"
     },
     "OpenRouterAgent": {
@@ -46,21 +46,21 @@
   "categories": {
     "Development": {
       "icon": "\ud83d\udee0\ufe0f",
-      "order": 1
+      "order": 2
     },
     "General": {
       "icon": "\ud83d\udcac",
-      "order": 2
+      "order": 3
     },
     "AI Models": {
       "icon": "\ud83e\udde0",
-      "order": 3
+      "order": 1
     }
   },
   "settings": {
     "showCategories": true,
     "showDescriptions": true,
-    "defaultAgent": "AgentCreator",
+    "defaultAgent": "OpenAIDemoAgent",
     "autoReloadOnChange": true
   }
 }

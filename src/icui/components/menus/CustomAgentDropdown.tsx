@@ -11,6 +11,7 @@ import { RefreshCw, Settings } from 'lucide-react';
 import { useConfiguredAgents, ConfiguredAgent } from '@/hooks/useConfiguredAgents';
 import { useAgentWebSocket } from '@/hooks/useAgentWebSocket';
 import { toast } from '@/components/ui/use-toast';
+import { ApiKeyModal } from '@/components/modals/ApiKeyModal';
 
 interface CustomAgentDropdownProps {
   selectedAgent: string;
@@ -40,6 +41,7 @@ export const CustomAgentDropdown: React.FC<CustomAgentDropdownProps> = ({
 }) => {
   const { agents, settings, isLoading, error, refetch, getAgentsByCategory, getSortedCategories } = useConfiguredAgents();
   const [isReloading, setIsReloading] = useState(false);
+  const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
 
   // WebSocket auto-refresh
   const { isConnected } = useAgentWebSocket({
@@ -283,14 +285,16 @@ export const CustomAgentDropdown: React.FC<CustomAgentDropdownProps> = ({
         variant="ghost"
         size="sm"
         className="h-7 w-7 p-0 hover:bg-gray-100 dark:hover:bg-gray-600"
-        title="Configure agents (opens .icotes/agents.json)"
-        onClick={() => {
-          // TODO: Open the agents.json file in the editor
-          console.log('🔧 Open agent configuration (TODO: implement file opening)');
-        }}
+        title="Configure API keys"
+        onClick={() => setIsApiKeyModalOpen(true)}
       >
         <Settings className="h-3 w-3" />
       </Button>
+      
+      <ApiKeyModal 
+        isOpen={isApiKeyModalOpen} 
+        onClose={() => setIsApiKeyModalOpen(false)} 
+      />
     </div>
   );
 }; 

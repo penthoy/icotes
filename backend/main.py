@@ -1085,6 +1085,105 @@ async def reload_environment_endpoint(request: Request):
         logger.error(f"Error reloading environment: {e}")
         return {"success": False, "error": str(e)}
 
+@app.post("/api/environment/update-keys")
+async def update_api_keys_endpoint(request: Request):
+    """Update API keys in environment variables with hot reload."""
+    try:
+        # Check authentication in SaaS mode
+        if auth_manager.is_saas_mode():
+            user = get_optional_user(request)
+            if not user:
+                raise HTTPException(status_code=401, detail="Authentication required")
+            logger.info(f"API key update requested by user: {user.get('sub', 'unknown')}")
+        else:
+            logger.info("API key update requested in standalone mode")
+        
+        # Get request body
+        body = await request.json()
+        api_keys = body.get('api_keys', {})
+        
+        if not api_keys:
+            return {"success": False, "error": "No API keys provided"}
+        
+        # Update environment variables directly
+        updated_keys = {}
+        for key, value in api_keys.items():
+            if value and value.strip():  # Only update non-empty values
+                os.environ[key] = value.strip()
+                updated_keys[key] = True
+                logger.info(f"Updated environment variable: {key}")
+        
+        # Reload environment for agents
+        try:
+            from icpy.agent.custom_agent import reload_agent_environment
+            await reload_agent_environment()
+        except Exception as reload_error:
+            logger.warning(f"Failed to reload agent environment: {reload_error}")
+        
+        logger.info(f"API keys updated: {list(updated_keys.keys())}")
+        
+        return {
+            "success": True, 
+            "updated_keys": list(updated_keys.keys()), 
+            "message": f"Updated {len(updated_keys)} API keys and reloaded environment"
+        }
+        
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions (like 401)
+    except Exception as e:
+        logger.error(f"Error updating API keys: {e}")
+        return {"success": False, "error": str(e)}
+
+@app.get("/api/environment/keys")
+async def get_api_keys_status_endpoint(request: Request):
+    """Get the status of API keys (whether they are set or not, without revealing values)."""
+    try:
+        # Check authentication in SaaS mode
+        if auth_manager.is_saas_mode():
+            user = get_optional_user(request)
+            if not user:
+                raise HTTPException(status_code=401, detail="Authentication required")
+        
+        # Define the API keys we support
+        api_keys = [
+            'OPENAI_API_KEY',
+            'OPENROUTER_API_KEY', 
+            'GOOGLE_API_KEY',
+            'DEEPSEEK_API_KEY',
+            'GROQ_API_KEY',
+            'DASHSCOPE_API_KEY',
+            'MAILERSEND_API_KEY',
+            'PUSHOVER_USER',
+            'PUSHOVER_TOKEN'
+        ]
+        
+        # Check which keys are set (without revealing values)
+        key_status = {}
+        for key in api_keys:
+            value = os.getenv(key)
+            if value:
+                # Show first 4 chars and mask the rest
+                masked = value[:4] + '*' * (len(value) - 4) if len(value) > 4 else '*' * len(value)
+                key_status[key] = {
+                    "is_set": True,
+                    "masked_value": masked,
+                    "length": len(value)
+                }
+            else:
+                key_status[key] = {
+                    "is_set": False,
+                    "masked_value": "",
+                    "length": 0
+                }
+        
+        return {"success": True, "keys": key_status}
+        
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions (like 401)
+    except Exception as e:
+        logger.error(f"Error getting API key status: {e}")
+        return {"success": False, "error": str(e)}
+
 @app.get("/api/custom-agents/{agent_name}/info")
 async def get_custom_agent_info(agent_name: str):
     """Get information about a specific custom agent."""
