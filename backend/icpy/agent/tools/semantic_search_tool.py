@@ -14,7 +14,6 @@ logger = logging.getLogger(__name__)
 
 
 
-
 class SemanticSearchTool(BaseTool):
     """Tool for searching code using ripgrep"""
     
