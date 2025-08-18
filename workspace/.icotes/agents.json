@@ -12,11 +12,11 @@
     },
     "PersonalAgent": {
       "enabled": true,
-      "displayName": "Personal Assistant",
-      "description": "Personal AI assistant with tools and integrations",
-      "category": "General",
-      "order": 2,
-      "icon": "👤"
+      "displayName": "Personal Assistant (Tool Demo)",
+      "description": "Proof-of-concept agent demonstrating tool use capabilities",
+      "category": "Development",
+      "order": 5,
+      "icon": "🛠️"
     },
     "OpenAIDemoAgent": {
       "enabled": true,
