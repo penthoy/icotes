@@ -336,7 +336,6 @@ Be helpful, practical, and focus on creating working solutions."""
             stream = client.chat.completions.create(
                 model="gpt-5-mini",
                 messages=messages,
-                #temperature=0.7,
                 max_completion_tokens=2000,
                 tools=get_tools(),
                 tool_choice="auto",
