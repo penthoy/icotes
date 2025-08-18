@@ -58,7 +58,7 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose }) => 
     setIsLoading(true);
     try {
       const config = await configService.getConfig();
-      const baseUrl = config.api_url || config.base_url;
+      const baseUrl = config.base_url;
       
       const response = await fetch(`${baseUrl}/api/environment/keys`);
       const data = await response.json();
@@ -117,7 +117,7 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose }) => 
       }
 
       const config = await configService.getConfig();
-      const baseUrl = config.api_url || config.base_url;
+      const baseUrl = config.base_url;
       
       const response = await fetch(`${baseUrl}/api/environment/update-keys`, {
         method: 'POST',
