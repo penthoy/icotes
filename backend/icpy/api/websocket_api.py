@@ -161,6 +161,7 @@ class WebSocketAPI:
         await self.message_broker.subscribe('workspace.*', self._handle_workspace_event)
         await self.message_broker.subscribe('fs.*', self._handle_filesystem_event)
         await self.message_broker.subscribe('terminal.*', self._handle_terminal_event)
+        await self.message_broker.subscribe('agents.*', self._handle_agent_event)
         
         # Start background tasks
         asyncio.create_task(self._cleanup_connections_task())
@@ -881,6 +882,24 @@ class WebSocketAPI:
             
         except Exception as e:
             logger.error(f"Error handling terminal event {message.topic}: {e}")
+
+    async def _handle_agent_event(self, message):
+        """Handle agent-related events."""
+        try:
+            logger.info(f"[WebSocketAPI] Handling agent event: {message.topic} - {message.payload}")
+            
+            # Broadcast agent events to all connected clients
+            await self.broadcast_message({
+                'type': 'agent_event',
+                'event': message.topic,
+                'data': message.payload,
+                'timestamp': time.time()
+            })
+            
+            logger.info(f"[WebSocketAPI] Agent event broadcasted: {message.topic}")
+            
+        except Exception as e:
+            logger.error(f"Error handling agent event {message.topic}: {e}")
 
     async def _broadcast_to_subscribers(self, topic_pattern: str, data: Dict[str, Any]):
         """Broadcast message to connections subscribed to a topic pattern."""

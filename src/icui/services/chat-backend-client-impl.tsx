@@ -462,9 +462,20 @@ export class EnhancedChatBackendClient {
   async clearMessages(): Promise<void> {
     try {
       // Use HTTP API to clear message history - use POST to /api/chat/clear like deprecated client
-      let baseUrl = (window as any).__ICUI_API_URL__ || 
-                    (import.meta as any).env?.VITE_API_URL || 
-                    `${window.location.protocol}//${window.location.host}`;
+      
+      // Use config service for dynamic API URL resolution (prioritizes backend /api/config)
+      let baseUrl: string;
+      try {
+        const config = await configService.getConfig();
+        baseUrl = config.api_url || config.base_url;
+      } catch (error) {
+        console.warn('[EnhancedChatBackendClient] Failed to get config, using fallbacks:', error);
+        // Fallback to environment variables
+        baseUrl = (window as any).__ICUI_API_URL__ || 
+                  (import.meta as any).env?.VITE_API_URL || 
+                  (import.meta as any).env?.VITE_BACKEND_URL ||
+                  `${window.location.protocol}//${window.location.host}`;
+      }
       
       // Remove trailing /api if present to avoid double /api in URL
       if (baseUrl.endsWith('/api')) {

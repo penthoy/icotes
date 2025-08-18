@@ -431,18 +431,34 @@ async def healthz():
 async def get_frontend_config(request: Request):
     """
     Provide dynamic configuration for the frontend based on the request host.
-    In development mode, prioritize environment variables.
-    In Docker mode, use dynamic host detection.
+    Prioritizes dynamic host detection for Cloudflare tunnel compatibility.
+    Falls back to environment variables only when hosts match.
     """
     import os
     
-    # Check for development environment variables first
+    # Get the host from the request
+    host = request.headers.get("host", "localhost:8000")
+    
+    # Check for development environment variables
     env_backend_url = os.getenv('VITE_BACKEND_URL')
     env_api_url = os.getenv('VITE_API_URL') 
     env_ws_url = os.getenv('VITE_WS_URL')
     
+    # Check if the request host matches the environment configuration
+    use_env_config = False
     if env_backend_url and env_api_url and env_ws_url:
-        # Development mode: use environment variables
+        try:
+            env_host = env_backend_url.replace('http://', '').replace('https://', '').split('/')[0]
+            if host == env_host:
+                use_env_config = True
+                logger.info(f"Request host {host} matches environment host {env_host}, using environment config")
+            else:
+                logger.info(f"Request host {host} differs from environment host {env_host}, using dynamic detection for Cloudflare tunnel compatibility")
+        except Exception as e:
+            logger.warning(f"Error parsing environment URL {env_backend_url}: {e}")
+    
+    if use_env_config:
+        # Development mode with matching host: use environment variables
         config = {
             "base_url": env_backend_url,
             "api_url": env_api_url,
@@ -458,9 +474,7 @@ async def get_frontend_config(request: Request):
         logger.info(f"Using environment-based config: {config}")
         return config
     
-    # Docker mode: dynamic host detection
-    # Get the host from the request
-    host = request.headers.get("host", "localhost:8000")
+    # Dynamic host detection mode (used for Cloudflare tunnels, Docker, and mismatched hosts)
     
     # Determine protocol (HTTP vs HTTPS)
     # Check for forwarded proto first (reverse proxy), then connection
@@ -951,6 +965,145 @@ async def get_custom_agents():
     except Exception as e:
         logger.error(f"Error getting custom agents: {e}")
         return {"success": False, "error": str(e), "agents": []}
+
+@app.get("/api/custom-agents/configured")
+async def get_configured_custom_agents():
+    """Get list of custom agents with their display configuration from workspace."""
+    try:
+        logger.info("Configured custom agents endpoint called")
+        from icpy.agent.custom_agent import get_configured_custom_agents
+        from icpy.services.agent_config_service import get_agent_config_service
+        
+        configured_agents = get_configured_custom_agents()
+        logger.info(f"Retrieved {len(configured_agents)} configured agents")
+        
+        # Also get settings and categories including default agent
+        config_service = get_agent_config_service()
+        config = config_service.load_config()
+        settings = config.get("settings", {})
+        categories = config.get("categories", {})
+        
+        return {
+            "success": True, 
+            "agents": configured_agents,
+            "settings": settings,
+            "categories": categories,
+            "message": f"Retrieved {len(configured_agents)} configured agents"
+        }
+    except ImportError as e:
+        logger.warning(f"Agent config service not available: {e}")
+        # Fallback to basic agent list
+        agents = get_available_custom_agents()
+        fallback_agents = [{"name": agent, "displayName": agent, "description": "", "category": "General", "order": 999, "icon": "🤖"} for agent in agents]
+        return {"success": True, "agents": fallback_agents}
+    except Exception as e:
+        logger.error(f"Error getting configured custom agents: {e}")
+        return {"success": False, "error": str(e), "agents": []}
+
+@app.post("/api/custom-agents/reload")
+async def reload_custom_agents_endpoint(request: Request):
+    """Reload all custom agents and return updated list."""
+    try:
+        # Check authentication in SaaS mode
+        if auth_manager.is_saas_mode():
+            user = get_optional_user(request)
+            if not user:
+                raise HTTPException(status_code=401, detail="Authentication required")
+            # TODO: Add admin role check if needed
+            logger.info(f"Agent reload requested by user: {user.get('sub', 'unknown')}")
+        else:
+            logger.info("Agent reload requested in standalone mode")
+        
+        # Import reload function
+        from icpy.agent.custom_agent import reload_custom_agents
+        
+        # Perform reload
+        reloaded_agents = await reload_custom_agents()
+        
+        logger.info(f"Agent reload complete. Available agents: {reloaded_agents}")
+        
+        # Send WebSocket notification to connected clients
+        try:
+            if ICPY_AVAILABLE:
+                message_broker = await get_message_broker()
+                await message_broker.publish(
+                    topic="agents.reloaded",
+                    payload={
+                        "type": "agents_reloaded",
+                        "agents": reloaded_agents,
+                        "timestamp": time.time(),
+                        "message": f"Reloaded {len(reloaded_agents)} agents"
+                    }
+                )
+                logger.info("WebSocket notification sent for agent reload")
+        except Exception as e:
+            logger.warning(f"Failed to send WebSocket notification: {e}")
+        
+        return {"success": True, "agents": reloaded_agents, "message": f"Reloaded {len(reloaded_agents)} agents"}
+        
+    except ImportError as e:
+        logger.error(f"Hot reload system not available: {e}")
+        return {"success": False, "error": "Hot reload system not available", "agents": []}
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions (like 401)
+    except Exception as e:
+        logger.error(f"Error reloading custom agents: {e}")
+        return {"success": False, "error": str(e), "agents": []}
+
+@app.post("/api/environment/reload")
+async def reload_environment_endpoint(request: Request):
+    """Reload environment variables for all agents."""
+    try:
+        # Check authentication in SaaS mode
+        if auth_manager.is_saas_mode():
+            user = get_optional_user(request)
+            if not user:
+                raise HTTPException(status_code=401, detail="Authentication required")
+            logger.info(f"Environment reload requested by user: {user.get('sub', 'unknown')}")
+        else:
+            logger.info("Environment reload requested in standalone mode")
+        
+        # Import reload function
+        from icpy.agent.custom_agent import reload_agent_environment
+        
+        # Perform environment reload
+        success = await reload_agent_environment()
+        
+        if success:
+            logger.info("Environment reload successful")
+            return {"success": True, "message": "Environment variables reloaded successfully"}
+        else:
+            logger.warning("Environment reload failed")
+            return {"success": False, "error": "Environment reload failed"}
+            
+    except ImportError as e:
+        logger.error(f"Hot reload system not available: {e}")
+        return {"success": False, "error": "Hot reload system not available"}
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions (like 401)
+    except Exception as e:
+        logger.error(f"Error reloading environment: {e}")
+        return {"success": False, "error": str(e)}
+
+@app.get("/api/custom-agents/{agent_name}/info")
+async def get_custom_agent_info(agent_name: str):
+    """Get information about a specific custom agent."""
+    try:
+        logger.info(f"Agent info requested for: {agent_name}")
+        
+        # Import info function
+        from icpy.agent.custom_agent import get_agent_info
+        
+        info = get_agent_info(agent_name)
+        
+        return {"success": True, "agent_info": info}
+        
+    except ImportError as e:
+        logger.warning(f"Agent info system not available: {e}")
+        return {"success": False, "error": "Agent info system not available"}
+    except Exception as e:
+        logger.error(f"Error getting agent info for {agent_name}: {e}")
+        return {"success": False, "error": str(e)}
 
 # Health check endpoint
 @app.get("/health")

@@ -26,7 +26,7 @@ import {
   MessageOptions,
   notificationService 
 } from '../index';
-import { useCustomAgents } from '../../hooks/useCustomAgents';
+import { useConfiguredAgents } from '../../hooks/useConfiguredAgents';
 import { CustomAgentDropdown } from './menus/CustomAgentDropdown';
 
 interface ICUIChatProps {
@@ -66,7 +66,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [inputValue, setInputValue] = useState('');
-  const [selectedAgent, setSelectedAgent] = useState('OpenAIDemoAgent'); // Default agent selection
+  const [selectedAgent, setSelectedAgent] = useState(''); // Default agent will be set by CustomAgentDropdown
   const [isDarkTheme, setIsDarkTheme] = useState(false);
   const [isComposing, setIsComposing] = useState(false);
 
@@ -91,7 +91,8 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
   });
 
   // Get available custom agents
-  const { agents: customAgents, isLoading: agentsLoading, error: agentsError } = useCustomAgents();
+  const { agents: configuredAgents, isLoading: agentsLoading, error: agentsError } = useConfiguredAgents();
+  const customAgents = configuredAgents.map(agent => agent.name);
 
   // Use theme detection (following ICUITerminal pattern)
   const { isDark } = useTheme();
@@ -450,6 +451,8 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
               onAgentChange={setSelectedAgent}
               disabled={false}
               className="flex-shrink-0"
+              showCategories={true}
+              showDescriptions={true}
             />
             <button
               onClick={() => handleSendMessage()}

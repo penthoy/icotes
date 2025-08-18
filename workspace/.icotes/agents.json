@@ -1,0 +1,66 @@
+{
+  "$schema": "https://icotes.com/schemas/agents.json",
+  "version": "1.0",
+  "agents": {
+    "AgentCreator": {
+      "enabled": true,
+      "displayName": "Agent Creator",
+      "description": "An AI agent that helps you create other custom agents",
+      "category": "Development",
+      "order": 1,
+      "icon": "🧠"
+    },
+    "PersonalAgent": {
+      "enabled": true,
+      "displayName": "Personal Assistant",
+      "description": "Personal AI assistant with tools and integrations",
+      "category": "General",
+      "order": 2,
+      "icon": "👤"
+    },
+    "OpenAIDemoAgent": {
+      "enabled": true,
+      "displayName": "OpenAI Demo",
+      "description": "OpenAI-powered demonstration agent",
+      "category": "AI Models",
+      "order": 3,
+      "icon": "🤖"
+    },
+    "OpenRouterAgent": {
+      "enabled": true,
+      "displayName": "OpenRouter",
+      "description": "Multi-model AI agent via OpenRouter",
+      "category": "AI Models",
+      "order": 4,
+      "icon": "🌐"
+    },
+    "Qwen3CoderAgent": {
+      "enabled": false,
+      "displayName": "Qwen3CoderAgent",
+      "description": "Auto-discovered agent: Qwen3CoderAgent",
+      "category": "General",
+      "order": 999,
+      "icon": "💻"
+    }
+  },
+  "categories": {
+    "Development": {
+      "icon": "\ud83d\udee0\ufe0f",
+      "order": 1
+    },
+    "General": {
+      "icon": "\ud83d\udcac",
+      "order": 2
+    },
+    "AI Models": {
+      "icon": "\ud83e\udde0",
+      "order": 3
+    }
+  },
+  "settings": {
+    "showCategories": true,
+    "showDescriptions": true,
+    "defaultAgent": "AgentCreator",
+    "autoReloadOnChange": true
+  }
+}

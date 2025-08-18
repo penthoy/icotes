@@ -266,7 +266,19 @@ class ChatService:
         # Only AI responses should be broadcasted
         
         # Process with appropriate agent based on type
-        if agent_type and agent_type.lower() in ['personalagent', 'openaidemoagent', 'openrouteragent']:
+        # Check if agent_type is a custom agent (dynamic check)
+        is_custom_agent = False
+        if agent_type:
+            try:
+                from icpy.agent.custom_agent import get_available_custom_agents
+                available_custom_agents = get_available_custom_agents()
+                is_custom_agent = agent_type in available_custom_agents
+            except Exception as e:
+                logger.warning(f"Failed to check custom agents: {e}")
+                # Fallback to hardcoded list for backward compatibility
+                is_custom_agent = agent_type.lower() in ['personalagent', 'openaidemoagent', 'openrouteragent', 'agentcreator', 'qwen3coderagent']
+        
+        if is_custom_agent:
             # Route to custom agent
             await self._process_with_custom_agent(message, agent_type)
         else:
