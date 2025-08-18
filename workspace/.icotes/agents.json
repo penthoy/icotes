@@ -8,7 +8,7 @@
       "description": "An AI agent that helps you create other custom agents",
       "category": "Development",
       "order": 2,
-      "icon": "🧠"
+      "icon": "\ud83e\udde0"
     },
     "PersonalAgent": {
       "enabled": false,
@@ -16,7 +16,7 @@
       "description": "Proof-of-concept agent demonstrating tool use capabilities",
       "category": "Development",
       "order": 5,
-      "icon": "🛠️"
+      "icon": "\ud83d\udee0\ufe0f"
     },
     "OpenAIDemoAgent": {
       "enabled": true,
@@ -24,7 +24,7 @@
       "description": "OpenAI-powered demonstration agent",
       "category": "AI Models",
       "order": 1,
-      "icon": "🤖"
+      "icon": "\ud83e\udd16"
     },
     "OpenRouterAgent": {
       "enabled": true,
@@ -32,7 +32,7 @@
       "description": "Multi-model AI agent via OpenRouter",
       "category": "AI Models",
       "order": 4,
-      "icon": "🌐"
+      "icon": "\ud83c\udf10"
     },
     "Qwen3CoderAgent": {
       "enabled": false,
@@ -40,7 +40,14 @@
       "description": "Auto-discovered agent: Qwen3CoderAgent",
       "category": "General",
       "order": 999,
-      "icon": "💻"
+      "icon": "\ud83d\udcbb"
+    },
+    "ExampleToolUser": {
+      "enabled": true,
+      "displayName": "ExampleToolUser",
+      "description": "Auto-discovered agent: ExampleToolUser",
+      "category": "General",
+      "order": 999
     }
   },
   "categories": {

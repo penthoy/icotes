@@ -186,7 +186,8 @@ def get_environment_manager() -> EnvironmentManager:
         # Track common API keys
         common_keys = [
             'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'OPENROUTER_API_KEY',
-            'GROQ_API_KEY', 'DEEPSEEK_API_KEY', 'GOOGLE_API_KEY'
+            'GROQ_API_KEY', 'DEEPSEEK_API_KEY', 'GOOGLE_API_KEY', 'CEREBRAS_API_KEY',
+            'DASHSCOPE_API_KEY', 'MAILERSEND_API_KEY', 'PUSHOVER_USER', 'PUSHOVER_TOKEN'
         ]
         for key in common_keys:
             _global_env_manager.track_environment_variable(key)

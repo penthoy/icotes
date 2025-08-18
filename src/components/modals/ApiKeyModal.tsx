@@ -28,10 +28,12 @@ interface ApiKeyModalProps {
 const API_KEY_GROUPS = {
   'AI Models': [
     { key: 'OPENAI_API_KEY', label: 'OpenAI API Key', placeholder: 'sk-...', description: 'Required for OpenAI GPT models' },
+    { key: 'ANTHROPIC_API_KEY', label: 'Anthropic API Key', placeholder: 'sk-ant-...', description: 'For Claude models by Anthropic' },
     { key: 'OPENROUTER_API_KEY', label: 'OpenRouter API Key', placeholder: 'sk-or-...', description: 'Access multiple AI models via OpenRouter' },
     { key: 'GOOGLE_API_KEY', label: 'Google API Key', placeholder: 'AIza...', description: 'For Google Gemini models' },
     { key: 'DEEPSEEK_API_KEY', label: 'DeepSeek API Key', placeholder: 'sk-...', description: 'For DeepSeek AI models' },
     { key: 'GROQ_API_KEY', label: 'Groq API Key', placeholder: 'gsk_...', description: 'For fast inference with Groq' },
+    { key: 'CEREBRAS_API_KEY', label: 'Cerebras API Key', placeholder: 'csk-...', description: 'For Cerebras AI models' },
     { key: 'DASHSCOPE_API_KEY', label: 'DashScope API Key', placeholder: 'sk-...', description: 'For Alibaba Cloud AI models' },
   ],
   'Services': [
@@ -58,7 +60,7 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose }) => 
     setIsLoading(true);
     try {
       const config = await configService.getConfig();
-      const baseUrl = config.api_url || config.base_url;
+      const baseUrl = config.base_url;
       
       const response = await fetch(`${baseUrl}/api/environment/keys`);
       const data = await response.json();
@@ -117,7 +119,7 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose }) => 
       }
 
       const config = await configService.getConfig();
-      const baseUrl = config.api_url || config.base_url;
+      const baseUrl = config.base_url;
       
       const response = await fetch(`${baseUrl}/api/environment/update-keys`, {
         method: 'POST',
@@ -231,16 +233,6 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose }) => 
           </div>
         ) : (
           <div className="space-y-6">
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <div className="flex items-start space-x-3">
-                <AlertCircle className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
-                <div className="text-sm text-blue-800">
-                  <p className="font-medium mb-1">Hot Reload Enabled</p>
-                  <p>API keys are updated in real-time without server restart. Only enter keys you want to update or add.</p>
-                </div>
-              </div>
-            </div>
-
             <Tabs defaultValue="ai-models" className="w-full">
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="ai-models">AI Models</TabsTrigger>
