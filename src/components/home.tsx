@@ -25,6 +25,7 @@ import Layout from './Layout';
 import ICUIExplorer from '../icui/components/ICUIExplorer';
 import ICUITerminal from '../icui/components/ICUITerminal';
 import ICUIEditor, { ICUIEditorRef } from '../icui/components/ICUIEditor';
+import ICUIChatHistory from '../icui/components/ICUIChatHistory';
 
 import type { ICUILayoutConfig } from '../icui/components/ICUILayout';
 import type { ICUIPanel } from '../icui/components/ICUIPanelArea';
@@ -158,6 +159,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
     { id: 'editor', name: 'Code Editor', icon: '📝', description: 'Code editor with syntax highlighting' },
     { id: 'terminal', name: 'Terminal', icon: '💻', description: 'Integrated terminal' },
     { id: 'chat', name: 'AI Assistant', icon: '🤖', description: 'AI-powered code assistant' },
+    { id: 'chat-history', name: 'Chat History', icon: '💬', description: 'Manage chat sessions and history' },
     { id: 'output', name: 'Output', icon: '📤', description: 'Build and execution output' },
     { id: 'debug', name: 'Debug Console', icon: '🐛', description: 'Debug console and variables' },
   ];
@@ -192,11 +194,16 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
     <ICUIChat className="h-full" />
   ), []);
 
+  const chatHistoryInstance = useMemo(() => (
+    <ICUIChatHistory className="h-full" />
+  ), []);
+
   // Memoized panel content creators to prevent recreation on layout changes
   const createExplorerContent = useCallback(() => explorerInstance, [explorerInstance]);
   const createEditorContent = useCallback(() => editorInstance, [editorInstance]);
   const createTerminalContent = useCallback(() => terminalInstance, [terminalInstance]);
   const createChatContent = useCallback(() => chatInstance, [chatInstance]);
+  const createChatHistoryContent = useCallback(() => chatHistoryInstance, [chatHistoryInstance]);
 
   // Handle panel addition
   const handlePanelAdd = useCallback((panelType: ICUIPanelType, areaId: string) => {
@@ -217,6 +224,9 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
         break;
       case 'chat':
         content = createChatContent();
+        break;
+      case 'chat-history':
+        content = createChatHistoryContent();
         break;
       case 'output':
         content = <div className="h-full p-4" style={{ backgroundColor: 'var(--icui-bg-primary)', color: 'var(--icui-text-primary)' }}>Output Panel - Build and execution output will appear here</div>;

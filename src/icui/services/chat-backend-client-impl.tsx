@@ -383,7 +383,7 @@ export class EnhancedChatBackendClient {
   /**
    * Get message history (legacy compatibility)
    */
-  async getMessageHistory(maxMessages?: number): Promise<ChatMessage[]> {
+  async getMessageHistory(maxMessages?: number, sessionId?: string): Promise<ChatMessage[]> {
     try {
       // Use HTTP API to get message history from chat.db
       const limit = maxMessages || 50;
@@ -407,8 +407,10 @@ export class EnhancedChatBackendClient {
         baseUrl = baseUrl.slice(0, -4);
       }
       
-      const url = `${baseUrl}/api/chat/messages?limit=${limit}&offset=0`;
-      // console.log('[EnhancedChatBackendClient] Fetching message history from:', url);
+      const params = new URLSearchParams({ limit: String(limit), offset: '0' });
+      const effectiveSession = sessionId || this.currentSessionId;
+      if (effectiveSession) params.set('session_id', effectiveSession);
+      const url = `${baseUrl}/api/chat/messages?${params.toString()}`;
       
       const response = await fetch(url);
       
@@ -418,8 +420,6 @@ export class EnhancedChatBackendClient {
       }
       
       const result = await response.json();
-      // console.log('[EnhancedChatBackendClient] Message history result:', result);
-      
       const messages = result.data || [];
       
       return messages.map((msg: any) => ({
@@ -482,7 +482,11 @@ export class EnhancedChatBackendClient {
         baseUrl = baseUrl.slice(0, -4);
       }
       
-      const url = `${baseUrl}/api/chat/clear`;
+      const params = new URLSearchParams();
+      if (this.currentSessionId) {
+        params.set('session_id', this.currentSessionId);
+      }
+      const url = `${baseUrl}/api/chat/clear?${params.toString()}`;
       // console.log('[EnhancedChatBackendClient] Clearing messages at:', url);
       
       const response = await fetch(url, {
@@ -605,6 +609,22 @@ export class EnhancedChatBackendClient {
       } else if (data.type === 'error') {
         // console.log('[EnhancedChatBackendClient] Handling error message');
         this.handleErrorMessage(data);
+      } else if (data.type === 'connected' && (data.session_id || data.sessionId)) {
+        // Capture session id on handshake
+        const sessionId = data.session_id || data.sessionId;
+        if (sessionId && !this.currentSessionId) {
+          this.currentSessionId = String(sessionId);
+        }
+        this.notifyStatus({
+          connected: true,
+          timestamp: new Date(),
+          chat: { sessionId: this.currentSessionId || String(sessionId) }
+        });
+      } else if (data.type === 'config' && data.config?.session_id) {
+        // Some backends send session id with config
+        if (!this.currentSessionId) {
+          this.currentSessionId = String(data.config.session_id);
+        }
       } else {
         // console.log('[EnhancedChatBackendClient] Unknown message type:', data.type, 'full data:', data);
       }

@@ -44,6 +44,7 @@ export interface UseChatMessagesReturn {
   updateConfig: (config: Partial<ChatConfig>) => Promise<void>;
   connect: () => Promise<boolean>;
   disconnect: () => void;
+  reloadMessages: (sessionId?: string) => Promise<void>;
   
   // Agent operations
   createAgent: (template: string, config?: any) => Promise<string>;
@@ -138,7 +139,7 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
       
       // Load message history if persistence is enabled
       if (persistence) {
-        const history = await client.getMessageHistory(maxMessages);
+        const history = await client.getMessageHistory(maxMessages, client.currentSession);
         setMessages(history);
       }
       
@@ -264,6 +265,32 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
     }
   }, [getClient, persistence, maxMessages]);
 
+  // Reload messages for a specific session
+  const reloadMessages = useCallback(async (sessionId?: string) => {
+    try {
+      setIsLoading(true);
+      const client = getClient();
+      
+      // If sessionId is provided, ensure the client's current session is updated
+      if (sessionId) {
+        client.setCurrentSession(sessionId);
+      }
+      
+      const effectiveSessionId = sessionId || client.currentSession;
+      const history = await client.getMessageHistory(maxMessages, effectiveSessionId);
+      
+      // Temporary debug log to verify session persistence
+      console.log(`[Session Debug] Loaded ${history.length} messages for session: ${effectiveSessionId}`);
+      
+      setMessages(history);
+    } catch (error) {
+      console.error('Failed to reload messages:', error);
+      notificationService.error('Failed to reload messages');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [getClient, maxMessages]);
+
   // Update configuration
   const updateConfig = useCallback(async (newConfig: Partial<ChatConfig>) => {
     try {
@@ -345,6 +372,7 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
     updateConfig,
     connect,
     disconnect,
+    reloadMessages,
     
     // Agent operations
     createAgent,
