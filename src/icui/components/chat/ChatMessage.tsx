@@ -21,6 +21,7 @@ import { useTheme } from '../../hooks/useTheme';
 import { ToolCallData } from './ToolCallWidget';
 import { visit } from 'unist-util-visit';
 import { getWidgetForTool } from '../../services/widgetRegistry';
+import { gpt5Helper } from './modelhelper';
 
 interface ChatMessageProps {
   message: ChatMessageType;
@@ -60,199 +61,13 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', high
     };
   }, [highlightQuery]);
 
-  // Parse tool calls from message content
+  // Use GPT-5 model helper for text processing
+  const stripAllToolText = gpt5Helper.stripAllToolText.bind(gpt5Helper);
+
+  // Use GPT-5 model helper for parsing tool calls
   const parseToolCalls = useCallback((content: string): { content: string; toolCalls: ToolCallData[] } => {
-    // Prefer toolCalls provided by backend in metadata
-    const metaToolCalls: ToolCallMeta[] | undefined = message.metadata?.toolCalls;
-    if (metaToolCalls && metaToolCalls.length > 0) {
-      const toolCalls: ToolCallData[] = metaToolCalls.map(tc => ({
-        id: tc.id,
-        toolName: tc.toolName,
-        category: (tc.category as any) || 'custom',
-        status: (tc.status as any) || 'running',
-        progress: typeof tc.progress === 'number' ? tc.progress : undefined,
-        input: tc.input,
-        output: tc.output,
-        error: tc.error,
-        startTime: tc.startedAt ? new Date(tc.startedAt) : undefined,
-        endTime: tc.endedAt ? new Date(tc.endedAt) : undefined,
-        metadata: tc.metadata
-      }));
-      return { content, toolCalls };
-    }
-
-    // Clean up content first to prevent flashing
-    let cleanContent = content;
-
-    // Remove escape sequences and clean up formatting
-    cleanContent = cleanContent
-      .replace(/\\n\\n/g, '\n')
-      .replace(/\\n/g, '\n')
-      .replace(/\\"/g, '"')
-      .replace(/\\"\\n/g, '\n')
-      .replace(/logger\.(info|error|debug)\([^)]*\)/g, '')
-      .trim();
-
-    // Helper: try to parse python-like dicts to JSON
-    const tryParseArgs = (text: string): any => {
-      try {
-        // Quick path: valid JSON
-        return JSON.parse(text);
-      } catch {}
-      try {
-        // Replace single quotes with double quotes and quote bare keys
-        const quotedKeys = text
-          .replace(/([\{,]\s*)([A-Za-z_][A-Za-z0-9_]*)(\s*):/g, '$1"$2"$3')
-          .replace(/'/g, '"');
-        return JSON.parse(quotedKeys);
-      } catch {
-        // Fallback: extract common fields from python-like dict string
-        const fallback: any = { raw: text };
-        const filePathMatch = text.match(/["']filePath["']\s*:\s*["']([^"']+)["']/);
-        if (filePathMatch) fallback.filePath = filePathMatch[1];
-        const startLineMatch = text.match(/["']startLine["']\s*:\s*(\d+)/);
-        if (startLineMatch) fallback.startLine = parseInt(startLineMatch[1], 10);
-        const endLineMatch = text.match(/["']endLine["']\s*:\s*(\d+)/);
-        if (endLineMatch) fallback.endLine = parseInt(endLineMatch[1], 10);
-        return fallback;
-      }
-    };
-
-    // Enhanced pattern matching for tool execution blocks
-    const toolExecutionPattern = /🔧\s*\*\*Executing tools\.\.\.\*\*\s*\n([\s\S]*?)🔧\s*\*\*Tool execution complete\. Continuing\.\.\.\*\*/g;
-    const toolCalls: ToolCallData[] = [];
-    let match;
-    let toolCallIndex = 0;
-
-    // First, check for standalone "🔧 **Executing tools...**" without completion
-    const standaloneExecutingPattern = /🔧\s*\*\*Executing tools\.\.\.\*\*(?!\s*\n[\s\S]*?🔧\s*\*\*Tool execution complete)/g;
-    const standaloneMatches = Array.from(cleanContent.matchAll(standaloneExecutingPattern));
-
-    // Only show progress widget for truly active executions (streaming messages)
-    const isActiveStream = message.metadata?.isStreaming && !message.metadata?.streamComplete;
-
-    if (standaloneMatches.length > 0 && isActiveStream) {
-      // Create a progress widget for active tool execution
-      const progressToolCall: ToolCallData = {
-        id: `progress-${message.id}`,
-        toolName: 'progress',
-        category: 'custom',
-        status: 'running',
-        progress: undefined,
-        input: { action: 'Executing tools...' },
-        output: undefined,
-        startTime: message.timestamp ? new Date(message.timestamp) : new Date(),
-        endTime: undefined,
-        metadata: {
-          isProgress: true,
-          originalText: standaloneMatches[0][0]
-        }
-      };
-      toolCalls.push(progressToolCall);
-    }
-
-    // Remove standalone executing indicators from content
-    cleanContent = cleanContent.replace(standaloneExecutingPattern, '').trim();
-
-    while ((match = toolExecutionPattern.exec(content)) !== null) {
-      const toolBlock = match[1];
-      const toolId = `tool-${message.id}-${toolCallIndex++}`;
-
-      // Parse individual tool calls within the block - updated pattern for actual format
-      const individualToolPattern = /📋\s*\*\*([^:]+)\*\*:\s*(\{[^}]*\}|\{[\s\S]*?\}|[^\n]*)\s*\n(✅\s*\*\*Success\*\*:\s*([\s\S]*?)(?=\n\n|📋|\n🔧|$)|❌\s*\*\*Error\*\*:\s*([\s\S]*?)(?=\n\n|📋|\n🔧|$))/g;
-
-      let toolMatch;
-      while ((toolMatch = individualToolPattern.exec(toolBlock)) !== null) {
-        const toolName = toolMatch[1].trim();
-        const inputText = toolMatch[2].trim();
-        const isSuccess = toolMatch[0].includes('✅ **Success**');
-        const resultText = isSuccess ? toolMatch[4] : toolMatch[5];
-
-        // Parse input parameters (support both JSON and python-like dict)
-        const input: any = inputText ? tryParseArgs(inputText) : {};
-
-        // Parse the result/output for different tool types
-        let parsedOutput: any = resultText?.trim();
-        let parsedError: any = !isSuccess ? resultText?.trim() : undefined;
-
-        if (isSuccess && parsedOutput) {
-          try {
-            // Try to parse as JSON first
-            const jsonResult = JSON.parse(parsedOutput);
-            parsedOutput = jsonResult;
-          } catch {
-            // For read_file, check if it's a structured response
-            if (toolName.includes('read_file') && parsedOutput.includes('content')) {
-              try {
-                // Extract content from structured response
-                const contentMatch = parsedOutput.match(/'content':\s*'([\s\S]*?)',\s*'filePath'/);
-                if (contentMatch) {
-                  parsedOutput = {
-                    content: contentMatch[1].replace(/\\n/g, '\n').replace(/\\'/g, "'"),
-                    filePath: input.filePath || 'unknown'
-                  };
-                }
-              } catch {
-                // Keep as string if parsing fails
-              }
-            } else if (toolName.includes('semantic_search') && parsedOutput.startsWith('[')) {
-              try {
-                // Parse array results
-                parsedOutput = JSON.parse(parsedOutput.replace(/'/g, '"'));
-              } catch {
-                // Keep as string
-              }
-            }
-          }
-        }
-
-        // Determine tool category and widget type
-        let category: 'file' | 'code' | 'data' | 'network' | 'custom' = 'custom';
-        let mappedToolName = toolName.toLowerCase().replace(/[^a-z0-9_]/g, '_');
-
-        if (toolName.includes('read_file') || toolName.includes('create_file') || toolName.includes('replace_string')) {
-          category = 'file';
-          mappedToolName = 'file_edit';
-        } else if (toolName.includes('run_in_terminal') || toolName.includes('execute') || toolName.includes('command')) {
-          category = 'code';
-          mappedToolName = 'code_execution';
-        } else if (toolName.includes('semantic_search') || toolName.includes('search')) {
-          category = 'data';
-          mappedToolName = 'semantic_search';
-        }
-
-        const toolCall: ToolCallData = {
-          id: `${toolId}-${toolName.replace(/[^a-zA-Z0-9]/g, '')}`,
-          toolName: mappedToolName,
-          category,
-          status: isSuccess ? 'success' : 'error',
-          progress: isSuccess ? 100 : 0,
-          input,
-          output: parsedOutput,
-          error: parsedError,
-          startTime: message.timestamp ? new Date(message.timestamp) : new Date(),
-          endTime: message.timestamp ? new Date(message.timestamp) : new Date(),
-          metadata: {
-            originalToolName: toolName,
-            executionBlock: toolBlock.trim()
-          }
-        };
-
-        toolCalls.push(toolCall);
-      }
-    }
-
-    // Remove tool execution blocks from content but keep the rest
-    cleanContent = content.replace(toolExecutionPattern, '').trim();
-
-    // Also remove standalone "🔧 **Executing tools...**" indicators
-    cleanContent = cleanContent.replace(/🔧\s*\*\*Executing tools\.\.\.\*\*\s*\n?/g, '').trim();
-
-    return {
-      content: cleanContent,
-      toolCalls
-    };
-  }, [message.id, message.metadata]);
+    return gpt5Helper.parseToolCalls(content, message);
+  }, [message]);
 
   // Format timestamp helper
   const formatTimestamp = useCallback((timestamp: string | Date) => {

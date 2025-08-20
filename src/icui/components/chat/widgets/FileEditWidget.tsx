@@ -15,6 +15,7 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { useTheme } from '../../../hooks/useTheme';
 import { ToolCallData } from '../ToolCallWidget';
+import { gpt5Helper } from '../modelhelper';
 
 export interface FileEditWidgetProps {
   toolCall: ToolCallData;
@@ -53,53 +54,12 @@ const FileEditWidget: React.FC<FileEditWidgetProps> = ({
   const [copiedState, setCopiedState] = useState<string | null>(null);
   const { isDark } = useTheme();
 
-  // Parse file edit data from tool call
+  // Parse file edit data using GPT-5 helper
   const fileEditData = useMemo((): FileEditData => {
-    const input = toolCall.input || {};
-    const output = toolCall.output || {};
-    
-    // Enhanced file path extraction - try multiple possible keys
-    let filePath = input.filePath || input.file_path || input.path || 
-                   output.filePath || output.file_path || output.path;
-    
-    // For create_file, the path might be in different locations
-    if (!filePath && toolCall.metadata?.originalToolName === 'create_file') {
-      filePath = input.filePath || input.file_path || input.path;
-    }
-    
-    // For read_file, check common parameter names
-    if (!filePath && toolCall.metadata?.originalToolName === 'read_file') {
-      filePath = input.filePath || input.file_path || input.path;
-    }
-    
-    // Fallback to any string that looks like a path
-    if (!filePath) {
-      const allValues = Object.values({ ...input, ...output });
-      filePath = allValues.find((val: any) => 
-        typeof val === 'string' && (val.includes('/') || val.includes('\\') || val.endsWith('.py') || val.endsWith('.md') || val.endsWith('.txt'))
-      ) as string;
-    }
-    
-    if (!filePath) {
-      filePath = 'Unknown file';
-    }
-
-    const originalToolName = toolCall.metadata?.originalToolName || toolCall.toolName;
-    const operation = originalToolName === 'create_file' ? 'create' : 
-                     originalToolName === 'read_file' ? 'read' :
-                     originalToolName === 'replace_string_in_file' ? 'update' : 'update';
-
+    const data = gpt5Helper.parseFileEditData(toolCall);
     return {
-      filePath,
-      originalContent: input.original_content || output.original_content,
-      modifiedContent: input.content || output.content || output.modified_content,
-      diff: output.diff,
-      language: getLanguageFromPath(filePath || ''),
-      timestamp: toolCall.endTime ? new Date(toolCall.endTime).toLocaleString() : undefined,
-      operation: operation as any,
-      lineNumbers: output.line_numbers,
-      startLine: input.startLine,
-      endLine: input.endLine
+      ...data,
+      language: getLanguageFromPath(data.filePath || '')
     };
   }, [toolCall]);
 
@@ -302,6 +262,7 @@ const FileEditWidget: React.FC<FileEditWidgetProps> = ({
 
         {/* Tool name chip */}
         <span className="icui-chip">{toolCall.metadata?.originalToolName || toolCall.toolName}</span>
+        {toolCall.status === 'running' && <span className="icui-spinner" aria-label="running" />}
 
         {/* Status icon */}
         <div className={`flex-shrink-0 ${statusInfo.color}`}>

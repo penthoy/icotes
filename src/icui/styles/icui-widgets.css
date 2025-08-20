@@ -106,4 +106,19 @@
 	border-radius: 6px;
 	padding: 10px;
 	font-size: 13px;
+}
+
+/* New: spinner for running state */
+.icui-spinner {
+	width: 12px;
+	height: 12px;
+	border: 2px solid var(--icui-border-subtle);
+	border-top-color: var(--icui-accent);
+	border-radius: 999px;
+	animation: icui-spin 0.9s linear infinite;
+}
+
+@keyframes icui-spin {
+	from { transform: rotate(0deg); }
+	to { transform: rotate(360deg); }
 } 

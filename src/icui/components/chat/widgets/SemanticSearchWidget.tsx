@@ -7,6 +7,7 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import { Search, ChevronDown, ChevronRight } from 'lucide-react';
 import { ToolCallData } from '../ToolCallWidget';
+import { gpt5Helper } from '../modelhelper';
 
 export interface SemanticSearchWidgetProps {
   toolCall: ToolCallData;
@@ -30,59 +31,9 @@ const SemanticSearchWidget: React.FC<SemanticSearchWidgetProps> = ({
 }) => {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
 
-  // Parse search results
+  // Parse search data using GPT-5 helper
   const searchData = useMemo(() => {
-    const input = toolCall.input || {};
-    const output = toolCall.output || {};
-    
-    let results: SearchResult[] = [];
-    let resultCount = 0;
-    
-    // Handle different output formats
-    if (Array.isArray(output)) {
-      // Direct array
-      results = output.map((item: any) => ({
-        file: item.file || 'Unknown file',
-        line: item.line,
-        snippet: item.snippet || ''
-      }));
-    } else if (output.result) {
-      try {
-        const parsed = JSON.parse(output.result);
-        if (Array.isArray(parsed)) {
-          results = parsed.map((item: any) => ({
-            file: item.file || 'Unknown file',
-            line: item.line,
-            snippet: item.snippet || ''
-          }));
-        }
-      } catch {
-        // If parsing fails, show simple text
-      }
-    } else if (typeof output === 'string' && output.startsWith('[')) {
-      try {
-        const parsed = JSON.parse(output.replace(/'/g, '"'));
-        if (Array.isArray(parsed)) {
-          results = parsed.map((item: any) => ({
-            file: item.file || 'Unknown file',
-            line: item.line,
-            snippet: item.snippet || ''
-          }));
-        }
-      } catch {
-        // Keep as empty if parsing fails
-      }
-    }
-    
-    resultCount = results.length;
-    
-    return {
-      query: input.query || '',
-      scope: input.scope || '',
-      fileTypes: input.fileTypes || [],
-      results,
-      resultCount
-    };
+    return gpt5Helper.parseSemanticSearchData(toolCall);
   }, [toolCall]);
 
   // Toggle expansion
@@ -115,6 +66,7 @@ const SemanticSearchWidget: React.FC<SemanticSearchWidgetProps> = ({
         </div>
 
         <span className="icui-chip">{toolCall.metadata?.originalToolName || toolCall.toolName}</span>
+        {toolCall.status === 'running' && <span className="icui-spinner" aria-label="running" />}
         <span className="icui-widget__title">Search Results</span>
         <span className="icui-widget__meta">
           {searchData.resultCount} result{searchData.resultCount !== 1 ? 's' : ''}

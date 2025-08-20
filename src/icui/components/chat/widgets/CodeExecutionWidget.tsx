@@ -15,6 +15,7 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { useTheme } from '../../../hooks/useTheme';
 import { ToolCallData } from '../ToolCallWidget';
+import { gpt5Helper } from '../modelhelper';
 
 export interface CodeExecutionWidgetProps {
   toolCall: ToolCallData;
@@ -48,60 +49,9 @@ const CodeExecutionWidget: React.FC<CodeExecutionWidgetProps> = ({
   const [copiedState, setCopiedState] = useState<string | null>(null);
   const { isDark } = useTheme();
 
-  // Parse code execution data from tool call
+  // Parse code execution data using GPT-5 helper
   const executionData = useMemo((): CodeExecutionData => {
-    const input = toolCall.input || {};
-    const output = toolCall.output || {};
-    
-    let code = '';
-    let executionOutput = '';
-    let error = '';
-    let stackTrace = '';
-    
-    // Extract code from input
-    if (input.command) {
-      code = input.command;
-    } else if (input.code) {
-      code = input.code;
-    } else if (input.script) {
-      code = input.script;
-    }
-    
-    // Extract output from various formats
-    if (output) {
-      if (typeof output === 'string') {
-        executionOutput = output;
-      } else if (output.output) {
-        executionOutput = output.output;
-      } else if (output.stdout) {
-        executionOutput = output.stdout;
-      } else if (output.result) {
-        executionOutput = output.result;
-      }
-      
-      // Extract error information
-      if (output.error) {
-        error = output.error;
-      } else if (output.stderr) {
-        error = output.stderr;
-      }
-      
-      if (output.stackTrace || output.stack_trace) {
-        stackTrace = output.stackTrace || output.stack_trace;
-      }
-    }
-    
-    return {
-      code: code || '',
-      output: executionOutput || '',
-      error: error || '',
-      stackTrace: stackTrace || '',
-      language: 'bash', // Default to bash for terminal commands
-      exitCode: output?.status || output?.exitCode || (toolCall.status === 'success' ? 0 : 1),
-      executionTime: toolCall.endTime && toolCall.startTime 
-        ? toolCall.endTime.getTime() - toolCall.startTime.getTime()
-        : undefined
-    };
+    return gpt5Helper.parseCodeExecutionData(toolCall);
   }, [toolCall]);
 
   // Determine which tabs to show based on content
@@ -203,6 +153,7 @@ const CodeExecutionWidget: React.FC<CodeExecutionWidgetProps> = ({
 
         {/* Tool name chip */}
         <span className="icui-chip">{toolCall.metadata?.originalToolName || toolCall.toolName}</span>
+        {toolCall.status === 'running' && <span className="icui-spinner" aria-label="running" />}
 
         {/* Status icon */}
         <div className={`flex-shrink-0 ${statusInfo.color}`}>
