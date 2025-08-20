@@ -100,3 +100,6 @@ docs/guides/
 docs/summaries/
 docs/tickets/
 docs/saasplan/
+
+# workspace
+workspace/.icotes/chat_history/

@@ -948,15 +948,105 @@ class ChatService:
         """Broadcast configuration update to all connected clients"""
         try:
             config_message = {
-                'type': 'config_update',
+                'type': 'config',
                 'config': self.config.to_dict(),
-                'timestamp': datetime.now(timezone.utc).isoformat()
+                'timestamp': time.time()
             }
             
-            for websocket_id in self.active_connections:
-                await self._send_websocket_message(websocket_id, config_message)
+            for connection_id, websocket in self.websocket_connections.items():
+                try:
+                    await websocket.send_json(config_message)
+                except Exception as e:
+                    logger.error(f"Failed to send config update to connection {connection_id}: {e}")
+                    
         except Exception as e:
-            logger.warning(f"Could not broadcast config update: {e}")
+            logger.error(f"Failed to broadcast config update: {e}")
+
+    # Session CRUD operations
+    async def get_sessions(self) -> List[Dict[str, Any]]:
+        """Get list of all chat sessions with metadata."""
+        try:
+            sessions = []
+            for file in self.history_root.glob('*.jsonl'):
+                session_id = file.stem
+                try:
+                    stat = file.stat()
+                    # Count messages in session
+                    message_count = 0
+                    last_message_time = None
+                    with open(file, 'r', encoding='utf-8') as f:
+                        for line in f:
+                            line = line.strip()
+                            if line:
+                                message_count += 1
+                                try:
+                                    data = json.loads(line)
+                                    last_message_time = data.get('timestamp')
+                                except:
+                                    pass
+                    
+                    sessions.append({
+                        'id': session_id,
+                        'name': session_id,  # Default to session ID as name
+                        'created': stat.st_ctime,
+                        'updated': stat.st_mtime,
+                        'message_count': message_count,
+                        'last_message_time': last_message_time
+                    })
+                except Exception as e:
+                    logger.error(f"Error processing session {session_id}: {e}")
+                    continue
+            
+            # Sort by updated time, newest first
+            sessions.sort(key=lambda s: s['updated'], reverse=True)
+            return sessions
+        except Exception as e:
+            logger.error(f"Failed to get sessions: {e}")
+            return []
+    
+    async def create_session(self, name: str = None) -> str:
+        """Create a new chat session."""
+        try:
+            session_id = f"session_{int(time.time())}_{uuid.uuid4().hex[:8]}"
+            
+            # Create empty JSONL file to establish the session
+            file_path = self.history_root / f"{session_id}.jsonl"
+            file_path.touch()
+            
+            logger.info(f"Created new chat session: {session_id}")
+            return session_id
+        except Exception as e:
+            logger.error(f"Failed to create session: {e}")
+            raise
+    
+    async def update_session(self, session_id: str, name: str) -> bool:
+        """Update session metadata (rename)."""
+        try:
+            file_path = self.history_root / f"{session_id}.jsonl"
+            if not file_path.exists():
+                return False
+            
+            # For now, just log the rename since JSONL doesn't store metadata
+            # In future, could add a separate metadata file or use a different format
+            logger.info(f"Session {session_id} renamed to: {name}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to update session {session_id}: {e}")
+            return False
+    
+    async def delete_session(self, session_id: str) -> bool:
+        """Delete a chat session and its history."""
+        try:
+            file_path = self.history_root / f"{session_id}.jsonl"
+            if not file_path.exists():
+                return False
+            
+            file_path.unlink()
+            logger.info(f"Deleted chat session: {session_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to delete session {session_id}: {e}")
+            return False
     
     async def _handle_agent_status_update(self, message: Message):
         """Handle agent status updates from message broker"""

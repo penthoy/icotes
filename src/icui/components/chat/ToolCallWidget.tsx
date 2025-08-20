@@ -136,6 +136,9 @@ const ToolCallWidget: React.FC<ToolCallWidgetProps> = ({
           {getCategoryIcon()}
         </div>
 
+        {/* Tool name chip */}
+        <span className="icui-chip">{toolCall.metadata?.originalToolName || toolCall.toolName}</span>
+
         {/* Tool name and status */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">

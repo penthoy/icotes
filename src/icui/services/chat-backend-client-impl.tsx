@@ -45,6 +45,7 @@ export interface ChatMessage {
     streaming?: boolean;
     tokens?: number;
     latency?: number;
+    toolCalls?: any[]; // Added for tool calls
   };
 }
 
@@ -103,6 +104,10 @@ export class EnhancedChatBackendClient {
   // Streaming state management (like deprecated client)
   private streamingMessage: ChatMessage | null = null;
   private processedMessageIds: Set<string> = new Set();
+ 
+  // Tool-call tracking
+  private toolCallState: Map<string, any> = new Map();
+  private toolMessageIds: Map<string, string> = new Map();
   
   // Health monitoring
   private healthStatus: any = null;
@@ -625,6 +630,13 @@ export class EnhancedChatBackendClient {
         if (!this.currentSessionId) {
           this.currentSessionId = String(data.config.session_id);
         }
+      } else if (
+        data.type === 'tool_call_start' ||
+        data.type === 'tool_call_progress' ||
+        data.type === 'tool_call_complete' ||
+        data.type === 'tool_call_error'
+      ) {
+        this.handleToolCallEvent(data);
       } else {
         // console.log('[EnhancedChatBackendClient] Unknown message type:', data.type, 'full data:', data);
       }
@@ -785,6 +797,95 @@ export class EnhancedChatBackendClient {
   private handleError(error: string): void {
     this.errorCallbacks.forEach(callback => callback(error));
     notificationService.error(`Chat Error: ${error}`);
+  }
+
+  private handleToolCallEvent(data: any): void {
+    const toolId = String(data.toolId || data.id || `tool_${Date.now()}`);
+    const toolName = String(data.toolName || data.name || 'Tool');
+    const category = data.category || 'custom';
+    const now = new Date();
+    const existing = this.toolCallState.get(toolId) || {};
+    let status: 'pending' | 'running' | 'success' | 'error' = existing.status || 'pending';
+    let progress: number | undefined = existing.progress;
+    let output = existing.output;
+    let error = existing.error;
+    let startedAt: Date | string | undefined = existing.startedAt;
+    let endedAt: Date | string | undefined = existing.endedAt;
+
+    if (data.type === 'tool_call_start') {
+      status = 'running';
+      progress = typeof data.progress === 'number' ? data.progress : 0;
+      startedAt = now.toISOString();
+    } else if (data.type === 'tool_call_progress') {
+      status = 'running';
+      if (typeof data.progress === 'number') progress = data.progress;
+    } else if (data.type === 'tool_call_complete') {
+      status = 'success';
+      progress = typeof data.progress === 'number' ? data.progress : 100;
+      output = data.result ?? data.output;
+      endedAt = now.toISOString();
+    } else if (data.type === 'tool_call_error') {
+      status = 'error';
+      error = String(data.error || 'Unknown tool error');
+      endedAt = now.toISOString();
+    }
+
+    const toolMeta = {
+      id: toolId,
+      toolName,
+      status,
+      progress,
+      input: data.input,
+      output,
+      error,
+      category,
+      startedAt,
+      endedAt,
+      metadata: data.metadata || {}
+    };
+
+    // Update state
+    this.toolCallState.set(toolId, toolMeta);
+
+    if (this.streamingMessage) {
+      // Attach to current streaming message
+      const currentToolCalls = (this.streamingMessage.metadata as any)?.toolCalls as any[] | undefined;
+      let toolCalls: any[] = Array.isArray(currentToolCalls) ? [...currentToolCalls] : [];
+      const idx = toolCalls.findIndex(tc => tc.id === toolId);
+      if (idx >= 0) toolCalls[idx] = toolMeta; else toolCalls.push(toolMeta);
+
+      this.streamingMessage = {
+        ...this.streamingMessage,
+        metadata: {
+          ...(this.streamingMessage.metadata || {}),
+          toolCalls
+        }
+      };
+
+      // Emit updated streaming message
+      this.messageCallbacks.forEach(cb => cb(this.streamingMessage!));
+    } else {
+      // Emit or update a synthetic tool message
+      const existingMessageId = this.toolMessageIds.get(toolId);
+      const syntheticMessageId = existingMessageId || `tool_${toolId}`;
+      this.toolMessageIds.set(toolId, syntheticMessageId);
+
+      const synthetic: ChatMessage = {
+        id: syntheticMessageId,
+        role: 'assistant',
+        content: '',
+        timestamp: new Date(),
+        sender: 'ai',
+        metadata: {
+          messageType: 'system',
+          isStreaming: status === 'running',
+          streamComplete: status === 'success' || status === 'error',
+          toolCalls: [toolMeta]
+        }
+      } as any;
+
+      this.messageCallbacks.forEach(cb => cb(synthetic));
+    }
   }
 
   /**

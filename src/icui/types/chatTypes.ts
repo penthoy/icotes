@@ -15,6 +15,24 @@ export type MessageType = 'text' | 'code' | 'error' | 'system' | 'streaming';
 // Agent status types
 export type AgentStatus = 'idle' | 'busy' | 'error' | 'starting';
 
+// Tool call metadata for messages
+export type ToolCallStatus = 'pending' | 'running' | 'success' | 'error';
+export type ToolCallCategory = 'file' | 'code' | 'network' | 'data' | 'custom';
+
+export interface ToolCallMeta {
+  id: string;
+  toolName: string;
+  status: ToolCallStatus;
+  progress?: number;
+  input?: any;
+  output?: any;
+  error?: string;
+  category?: ToolCallCategory;
+  startedAt?: string | Date;
+  endedAt?: string | Date;
+  metadata?: Record<string, any>;
+}
+
 // Chat message interface
 export interface ChatMessage {
   id: string;
@@ -32,6 +50,8 @@ export interface ChatMessage {
     context?: any;
     isStreaming?: boolean;
     streamComplete?: boolean;
+    // Tool call widgets supplied by backend
+    toolCalls?: ToolCallMeta[];
   };
 }
 

@@ -83,6 +83,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
     messages,
     connectionStatus,
     isLoading,
+    isTyping,
     sendMessage,
     sendCustomAgentMessage,
     clearMessages,
@@ -453,14 +454,21 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
         ) : (
           <div className="space-y-4">
             {messages.map((message) => (
+              <div key={message.id} data-message-id={message.id}>
                               <ChatMessage 
-                  key={message.id} 
                   message={message}
                   className=""
                   highlightQuery={search.isOpen ? search.query : ''}
                 />
+              </div>
             ))}
             <div ref={messagesEndRef} />
+            {isConnected && isTyping && (
+              <div className="flex items-center gap-2 text-xs opacity-70 mt-1" style={{ color: 'var(--icui-text-secondary)' }}>
+                <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                <span>Assistant is typing…</span>
+              </div>
+            )}
             {/* Sticky jump-to-latest when user scrolls up */}
             {!isAutoScrollEnabled && hasNewMessages && (
               <div className="sticky bottom-2 flex justify-center z-10">
@@ -491,11 +499,12 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
       >
         {/* Search bar pinned above input */}
         {search.isOpen && (
-          <div className="flex items-center gap-2 border rounded p-2" style={{ borderColor: 'var(--icui-border-subtle)', backgroundColor: 'var(--icui-bg-primary)' }}>
+          <div className="space-y-2 border rounded p-3" style={{ borderColor: 'var(--icui-border-subtle)', backgroundColor: 'var(--icui-bg-primary)' }}>
+            <div className="flex items-center gap-2">
             <input
               value={search.query}
               onChange={e => search.setQuery(e.target.value)}
-              placeholder="Search..."
+              placeholder={search.options.useRegex ? "Search (regex)..." : "Search..."}
               className="text-sm px-2 py-1 rounded bg-transparent outline-none flex-1"
               style={{ color: 'var(--icui-text-primary)' }}
               autoFocus
@@ -504,6 +513,27 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
             <button className="text-xs underline" onClick={search.prev}>Prev</button>
             <button className="text-xs underline" onClick={search.next}>Next</button>
             <button className="text-xs underline" onClick={() => search.setIsOpen(false)}>Close</button>
+            </div>
+            <div className="flex items-center gap-3 text-xs">
+              <label className="flex items-center gap-1 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={search.options.caseSensitive}
+                  onChange={search.toggleCaseSensitive}
+                  className="w-3 h-3"
+                />
+                <span style={{ color: 'var(--icui-text-secondary)' }}>Case sensitive</span>
+              </label>
+              <label className="flex items-center gap-1 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={search.options.useRegex}
+                  onChange={search.toggleRegex}
+                  className="w-3 h-3"
+                />
+                <span style={{ color: 'var(--icui-text-secondary)' }}>Regex</span>
+              </label>
+            </div>
           </div>
         )}
 

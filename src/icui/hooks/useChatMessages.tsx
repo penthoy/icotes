@@ -37,6 +37,9 @@ export interface UseChatMessagesReturn {
   config: ChatConfig | null;
   isLoading: boolean;
   
+  // Typing state
+  isTyping: boolean;
+  
   // Actions
   sendMessage: (content: string, options?: MessageOptions) => Promise<void>;
   sendCustomAgentMessage: (content: string, agentName: string) => Promise<void>;
@@ -73,6 +76,7 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
   });
   const [config, setConfig] = useState<ChatConfig | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isTyping, setIsTyping] = useState(false);
 
   // Refs
   const clientRef = useRef<ChatBackendClient | null>(null);
@@ -118,10 +122,19 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
             return newMessages;
           }
         });
+
+        // Heuristics: if a streaming assistant message arrives, set typing true until completed
+        const streaming = message.metadata?.isStreaming && !message.metadata?.streamComplete;
+        setIsTyping(Boolean(streaming));
       });
       
       // Set up status callback
       clientRef.current.onStatus(setConnectionStatus);
+
+      // Set up typing callback from backend
+      clientRef.current.onTyping((typing: boolean) => {
+        setIsTyping(typing);
+      });
     }
     
     return clientRef.current;
@@ -364,6 +377,9 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
     connectionStatus,
     config,
     isLoading,
+    
+    // Typing state
+    isTyping,
     
     // Actions
     sendMessage,

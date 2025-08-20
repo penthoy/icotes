@@ -1121,6 +1121,68 @@ class RestAPI:
                 logger.error(f"Failed to get chat stats: {e}")
                 raise HTTPException(status_code=500, detail=str(e))
 
+        # Session CRUD endpoints
+        @self.app.get("/api/chat/sessions")
+        async def get_chat_sessions():
+            """Get list of all chat sessions with metadata."""
+            try:
+                sessions = await self.chat_service.get_sessions()
+                return SuccessResponse(
+                    data=sessions,
+                    message=f"Retrieved {len(sessions)} chat sessions"
+                )
+            except Exception as e:
+                logger.error(f"Failed to get chat sessions: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+        
+        @self.app.post("/api/chat/sessions")
+        async def create_chat_session(name: Optional[str] = None):
+            """Create a new chat session."""
+            try:
+                session_id = await self.chat_service.create_session(name)
+                return SuccessResponse(
+                    data={"session_id": session_id, "name": name},
+                    message="Chat session created successfully"
+                )
+            except Exception as e:
+                logger.error(f"Failed to create chat session: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+        
+        @self.app.put("/api/chat/sessions/{session_id}")
+        async def update_chat_session(session_id: str, name: str):
+            """Update chat session metadata (rename)."""
+            try:
+                success = await self.chat_service.update_session(session_id, name)
+                if success:
+                    return SuccessResponse(
+                        data={"session_id": session_id, "name": name},
+                        message="Chat session updated successfully"
+                    )
+                else:
+                    raise HTTPException(status_code=404, detail="Session not found")
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error(f"Failed to update chat session: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+        
+        @self.app.delete("/api/chat/sessions/{session_id}")
+        async def delete_chat_session(session_id: str):
+            """Delete a chat session and its history."""
+            try:
+                success = await self.chat_service.delete_session(session_id)
+                if success:
+                    return SuccessResponse(
+                        message="Chat session deleted successfully"
+                    )
+                else:
+                    raise HTTPException(status_code=404, detail="Session not found")
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error(f"Failed to delete chat session: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+
     def _register_documentation_routes(self):
         """Register documentation routes."""
         

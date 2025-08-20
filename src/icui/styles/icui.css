@@ -6,6 +6,7 @@
 @import './icui-panel.css';
 @import './icui-panel-area.css';
 @import './themes/icui-themes.css';
+@import './icui-widgets.css';
 
 /* Frame Container Base Styles */
 .icui-frame-container {
