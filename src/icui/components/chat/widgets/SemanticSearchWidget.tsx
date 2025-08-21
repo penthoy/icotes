@@ -7,7 +7,7 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import { Search, ChevronDown, ChevronRight } from 'lucide-react';
 import { ToolCallData } from '../ToolCallWidget';
-import { gpt5Helper } from '../modelhelper';
+import { getActiveModelHelper } from '../modelhelper';
 
 export interface SemanticSearchWidgetProps {
   toolCall: ToolCallData;
@@ -31,9 +31,10 @@ const SemanticSearchWidget: React.FC<SemanticSearchWidgetProps> = ({
 }) => {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
 
-  // Parse search data using GPT-5 helper
+  // Parse search data using active model helper
   const searchData = useMemo(() => {
-    return gpt5Helper.parseSemanticSearchData(toolCall);
+    const helper = getActiveModelHelper();
+    return helper.parseSemanticSearchData(toolCall);
   }, [toolCall]);
 
   // Toggle expansion

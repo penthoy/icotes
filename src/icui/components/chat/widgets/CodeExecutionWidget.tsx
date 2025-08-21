@@ -15,7 +15,7 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { useTheme } from '../../../hooks/useTheme';
 import { ToolCallData } from '../ToolCallWidget';
-import { gpt5Helper } from '../modelhelper';
+import { getActiveModelHelper } from '../modelhelper';
 
 export interface CodeExecutionWidgetProps {
   toolCall: ToolCallData;
@@ -49,9 +49,10 @@ const CodeExecutionWidget: React.FC<CodeExecutionWidgetProps> = ({
   const [copiedState, setCopiedState] = useState<string | null>(null);
   const { isDark } = useTheme();
 
-  // Parse code execution data using GPT-5 helper
+  // Parse code execution data using active model helper
   const executionData = useMemo((): CodeExecutionData => {
-    return gpt5Helper.parseCodeExecutionData(toolCall);
+    const helper = getActiveModelHelper();
+    return helper.parseCodeExecutionData(toolCall);
   }, [toolCall]);
 
   // Determine which tabs to show based on content

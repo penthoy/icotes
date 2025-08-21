@@ -2,8 +2,9 @@
  * Model Helper Abstractions
  * 
  * Exports model-specific helpers and their interfaces.
- * Currently supports GPT-5, with plans to add other models.
+ * Supports GPT-5 and a Generic fallback.
  */
 
 export { default as gpt5Helper, GPT5ModelHelper, type ModelHelper } from './gpt5';
-export * from './widgets'; 
+export { default as genericModelHelper } from './genericmodel';
+export { getActiveModelHelper, setActiveModelId, getActiveModelId } from './router'; 

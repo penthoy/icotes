@@ -15,7 +15,7 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { useTheme } from '../../../hooks/useTheme';
 import { ToolCallData } from '../ToolCallWidget';
-import { gpt5Helper } from '../modelhelper';
+import { getActiveModelHelper } from '../modelhelper';
 
 export interface FileEditWidgetProps {
   toolCall: ToolCallData;
@@ -54,9 +54,10 @@ const FileEditWidget: React.FC<FileEditWidgetProps> = ({
   const [copiedState, setCopiedState] = useState<string | null>(null);
   const { isDark } = useTheme();
 
-  // Parse file edit data using GPT-5 helper
+  // Parse file edit data using active model helper
   const fileEditData = useMemo((): FileEditData => {
-    const data = gpt5Helper.parseFileEditData(toolCall);
+    const helper = getActiveModelHelper();
+    const data = helper.parseFileEditData(toolCall);
     return {
       ...data,
       language: getLanguageFromPath(data.filePath || '')

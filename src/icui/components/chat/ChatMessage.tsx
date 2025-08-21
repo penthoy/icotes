@@ -21,7 +21,7 @@ import { useTheme } from '../../hooks/useTheme';
 import { ToolCallData } from './ToolCallWidget';
 import { visit } from 'unist-util-visit';
 import { getWidgetForTool } from '../../services/widgetRegistry';
-import { gpt5Helper } from './modelhelper';
+import { getActiveModelHelper } from './modelhelper';
 
 interface ChatMessageProps {
   message: ChatMessageType;
@@ -61,12 +61,16 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', high
     };
   }, [highlightQuery]);
 
-  // Use GPT-5 model helper for text processing
-  const stripAllToolText = gpt5Helper.stripAllToolText.bind(gpt5Helper);
+  // Select active model helper
+  const modelHelper = getActiveModelHelper();
 
-  // Use GPT-5 model helper for parsing tool calls
+  // Use model helper for text processing
+  const stripAllToolText = modelHelper.stripAllToolText.bind(modelHelper);
+
+  // Use model helper for parsing tool calls
   const parseToolCalls = useCallback((content: string): { content: string; toolCalls: ToolCallData[] } => {
-    return gpt5Helper.parseToolCalls(content, message);
+    const activeHelper = getActiveModelHelper();
+    return activeHelper.parseToolCalls(content, message);
   }, [message]);
 
   // Format timestamp helper

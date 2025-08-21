@@ -26,6 +26,10 @@ AGENT_DESCRIPTION = "An AI agent that helps you create other custom agents using
 AGENT_VERSION = "2.0.0"
 AGENT_AUTHOR = "Hot Reload System"
 
+# Model selection identifier for UI/router consumption
+# Frontend can read this via config/status endpoints and switch helpers accordingly
+AGENT_MODEL_ID = os.environ.get("AGENT_MODEL_ID", "gpt5")
+
 # Import OpenAI client
 try:
     import sys
