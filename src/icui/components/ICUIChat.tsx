@@ -466,7 +466,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
             {isConnected && isTyping && (
               <div className="flex items-center gap-2 text-xs opacity-70 mt-1" style={{ color: 'var(--icui-text-secondary)' }}>
                 <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-                <span>Assistant is typing…</span>
+                <span>Assistant is working…</span>
               </div>
             )}
             {/* Sticky jump-to-latest when user scrolls up */}
