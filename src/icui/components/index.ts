@@ -17,6 +17,9 @@ export { ICUIBaseHeader } from './ICUIBaseHeader';
 export { ICUIBaseFooter } from './ICUIBaseFooter';
 export { ICUILayoutPresetSelector } from './ICUILayoutPresetSelector';
 export { ICUIPanelSelector } from './ICUIPanelSelector';
+export { default as ICUIEditor } from './ICUIEditor';
+export { default as ICUIChat } from './ICUIChat';
+export { default as ICUIChatHistory } from './ICUIChatHistory';
 
 // Menu Components
 export * from './menus';

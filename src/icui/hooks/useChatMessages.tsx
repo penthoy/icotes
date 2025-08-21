@@ -37,6 +37,9 @@ export interface UseChatMessagesReturn {
   config: ChatConfig | null;
   isLoading: boolean;
   
+  // Typing state
+  isTyping: boolean;
+  
   // Actions
   sendMessage: (content: string, options?: MessageOptions) => Promise<void>;
   sendCustomAgentMessage: (content: string, agentName: string) => Promise<void>;
@@ -44,6 +47,7 @@ export interface UseChatMessagesReturn {
   updateConfig: (config: Partial<ChatConfig>) => Promise<void>;
   connect: () => Promise<boolean>;
   disconnect: () => void;
+  reloadMessages: (sessionId?: string) => Promise<void>;
   
   // Agent operations
   createAgent: (template: string, config?: any) => Promise<string>;
@@ -72,6 +76,7 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
   });
   const [config, setConfig] = useState<ChatConfig | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isTyping, setIsTyping] = useState(false);
 
   // Refs
   const clientRef = useRef<ChatBackendClient | null>(null);
@@ -117,10 +122,19 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
             return newMessages;
           }
         });
+
+        // Heuristics: if a streaming assistant message arrives, set typing true until completed
+        const streaming = message.metadata?.isStreaming && !message.metadata?.streamComplete;
+        setIsTyping(Boolean(streaming));
       });
       
       // Set up status callback
       clientRef.current.onStatus(setConnectionStatus);
+
+      // Set up typing callback from backend
+      clientRef.current.onTyping((typing: boolean) => {
+        setIsTyping(typing);
+      });
     }
     
     return clientRef.current;
@@ -138,7 +152,7 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
       
       // Load message history if persistence is enabled
       if (persistence) {
-        const history = await client.getMessageHistory(maxMessages);
+        const history = await client.getMessageHistory(maxMessages, client.currentSession);
         setMessages(history);
       }
       
@@ -264,6 +278,29 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
     }
   }, [getClient, persistence, maxMessages]);
 
+  // Reload messages for a specific session
+  const reloadMessages = useCallback(async (sessionId?: string) => {
+    try {
+      setIsLoading(true);
+      const client = getClient();
+      
+      // If sessionId is provided, ensure the client's current session is updated
+      if (sessionId) {
+        client.setCurrentSession(sessionId);
+      }
+      
+      const effectiveSessionId = sessionId || client.currentSession;
+      const history = await client.getMessageHistory(maxMessages, effectiveSessionId);
+      
+      setMessages(history);
+    } catch (error) {
+      console.error('Failed to reload messages:', error);
+      notificationService.error('Failed to reload messages');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [getClient, maxMessages]);
+
   // Update configuration
   const updateConfig = useCallback(async (newConfig: Partial<ChatConfig>) => {
     try {
@@ -338,6 +375,9 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
     config,
     isLoading,
     
+    // Typing state
+    isTyping,
+    
     // Actions
     sendMessage,
     sendCustomAgentMessage,
@@ -345,6 +385,7 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
     updateConfig,
     connect,
     disconnect,
+    reloadMessages,
     
     // Agent operations
     createAgent,

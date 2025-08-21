@@ -21,13 +21,18 @@ import React, { useRef, useEffect, useState, useCallback, useImperativeHandle, f
 import { 
   useChatMessages, 
   useTheme, 
-  ChatMessage, 
+  ChatMessage as ChatMessageType, 
   ConnectionStatus,
   MessageOptions,
   notificationService 
 } from '../index';
 import { useConfiguredAgents } from '../../hooks/useConfiguredAgents';
 import { CustomAgentDropdown } from './menus/CustomAgentDropdown';
+
+import ChatMessage from './chat/ChatMessage';
+import { useChatSearch } from '../hooks/useChatSearch';
+import { useChatSessionSync } from '../hooks/useChatSessionSync';
+import { useChatHistory } from '../hooks/useChatHistory';
 
 interface ICUIChatProps {
   className?: string;
@@ -36,8 +41,8 @@ interface ICUIChatProps {
   maxMessages?: number;
   persistence?: boolean;
   autoScroll?: boolean;
-  onMessageSent?: (message: ChatMessage) => void;
-  onMessageReceived?: (message: ChatMessage) => void;
+  onMessageSent?: (message: ChatMessageType) => void;
+  onMessageReceived?: (message: ChatMessageType) => void;
   onConnectionStatusChange?: (status: ConnectionStatus) => void;
 }
 
@@ -69,17 +74,22 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
   const [selectedAgent, setSelectedAgent] = useState(''); // Default agent will be set by CustomAgentDropdown
   const [isDarkTheme, setIsDarkTheme] = useState(false);
   const [isComposing, setIsComposing] = useState(false);
+  // NEW: smart auto-scroll state
+  const [isAutoScrollEnabled, setIsAutoScrollEnabled] = useState(true);
+  const [hasNewMessages, setHasNewMessages] = useState(false);
 
   // Use the chat messages hook for backend integration
   const {
     messages,
     connectionStatus,
     isLoading,
+    isTyping,
     sendMessage,
     sendCustomAgentMessage,
     clearMessages,
     connect,
     disconnect,
+    reloadMessages,
     isConnected,
     hasMessages,
     scrollToBottom
@@ -89,6 +99,27 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
     persistence,
     autoScroll
   });
+
+  // Chat search hook (Ctrl+F)
+  const search = useChatSearch(messages);
+
+  // Session synchronization
+  const { onSessionChange } = useChatSessionSync();
+
+  // Track current session name from events
+  const [sessionName, setSessionName] = useState<string>('');
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('icui.chat.sessions.v1');
+      if (raw) {
+        const parsed = JSON.parse(raw) as { sessions: Array<{id:string,name:string,updated:number,created:number}>; active?: string };
+        const active = parsed.active;
+        const activeMeta = parsed.sessions?.find(s => s.id === active);
+        if (activeMeta?.name) setSessionName(activeMeta.name);
+      }
+    } catch {}
+  }, []);
 
   // Get available custom agents
   const { agents: configuredAgents, isLoading: agentsLoading, error: agentsError } = useConfiguredAgents();
@@ -130,17 +161,75 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
     };
   }, []);
 
-  // Auto-scroll to bottom when new messages arrive
+  // Auto-scroll when new messages arrive, but only if the user is near the bottom
   useEffect(() => {
-    if (autoScroll && messagesEndRef.current) {
+    if (!messagesEndRef.current) return;
+    if (!autoScroll) return;
+
+    if (isAutoScrollEnabled) {
+      // Use instant scroll to avoid jitter during streaming
+      messagesEndRef.current.scrollIntoView({ behavior: 'auto' });
+      setHasNewMessages(false);
+    } else {
+      // User is reading older messages; show CTA
+      setHasNewMessages(true);
+    }
+  }, [messages, autoScroll, isAutoScrollEnabled]);
+
+  // Track user scroll position to enable/disable auto-scroll
+  useEffect(() => {
+    const container = chatContainerRef.current;
+    if (!container) return;
+
+    let ticking = false;
+    const thresholdPx = 96; // within 96px of bottom is considered "at bottom"
+
+    const handleScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => {
+        const distanceFromBottom = container.scrollHeight - (container.scrollTop + container.clientHeight);
+        const nearBottom = distanceFromBottom <= thresholdPx;
+        setIsAutoScrollEnabled(nearBottom);
+        if (nearBottom) setHasNewMessages(false);
+        ticking = false;
+      });
+    };
+
+    container.addEventListener('scroll', handleScroll, { passive: true });
+    // Initialize state based on current position
+    handleScroll();
+    return () => container.removeEventListener('scroll', handleScroll as any);
+  }, []);
+
+  // Jump to latest helper
+  const jumpToLatest = useCallback(() => {
+    setIsAutoScrollEnabled(true);
+    setHasNewMessages(false);
+    if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [messages, autoScroll]);
+  }, []);
 
   // Notify parent of connection status changes
   useEffect(() => {
     onConnectionStatusChange?.(connectionStatus);
   }, [connectionStatus, onConnectionStatusChange]);
+
+  // Listen for session changes from Chat History panel
+  useEffect(() => {
+    const cleanup = onSessionChange((sessionId, action, name) => {
+      if (action === 'switch' || action === 'create') {
+        setSessionName(name || '');
+        reloadMessages(sessionId);
+        setIsAutoScrollEnabled(true);
+        setHasNewMessages(true);
+        jumpToLatest();
+      }
+    });
+
+    return cleanup;
+  }, [onSessionChange, reloadMessages, jumpToLatest]);
 
   // Handle sending a message
   const handleSendMessage = useCallback(async (content?: string, options?: MessageOptions) => {
@@ -173,6 +262,13 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
         setInputValue('');
       }
       
+      // After sending, re-enable auto-scroll and jump smoothly once
+      setIsAutoScrollEnabled(true);
+      setHasNewMessages(false);
+      if (messagesEndRef.current) {
+        messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+      }
+
       // Focus back to input
       if (inputRef.current) {
         inputRef.current.focus();
@@ -190,7 +286,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
       console.error('Failed to send message:', error);
       notificationService.error('Failed to send message');
     }
-  }, [inputValue, selectedAgent, sendMessage, sendCustomAgentMessage, onMessageSent]);
+  }, [inputValue, selectedAgent, sendMessage, sendCustomAgentMessage, onMessageSent, customAgents]);
 
   // Handle clearing messages
   const handleClearMessages = useCallback(async () => {
@@ -235,39 +331,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
     }
   }, []);
 
-  // Format timestamp (following simplechat pattern)
-  const formatTimestamp = useCallback((date: Date | number | string) => {
-    try {
-      // Handle different timestamp formats defensively
-      let validDate: Date;
-      
-      if (date instanceof Date) {
-        validDate = date;
-      } else if (typeof date === 'number') {
-        validDate = new Date(date);
-      } else if (typeof date === 'string') {
-        validDate = new Date(date);
-      } else {
-        validDate = new Date(); // Fallback to current time
-      }
-      
-      // Check if date is valid
-      if (isNaN(validDate.getTime())) {
-        validDate = new Date(); // Fallback to current time
-      }
-      
-      return new Intl.DateTimeFormat('en-US', {
-        hour: '2-digit',
-        minute: '2-digit'
-      }).format(validDate);
-    } catch (error) {
-      console.warn('Invalid timestamp:', date, error);
-      return new Intl.DateTimeFormat('en-US', {
-        hour: '2-digit',
-        minute: '2-digit'
-      }).format(new Date());
-    }
-  }, []);
+
 
   // Handle message reception notification
   useEffect(() => {
@@ -322,16 +386,32 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
             isConnected ? 'bg-green-500' : 'bg-red-500'
           }`} />
           
-          {/* Connection Status Text */}
+          {/* Current Session Name */}
           <span className="text-sm" style={{ 
-            color: isConnected ? 'var(--icui-text-success)' : 'var(--icui-text-error)' 
+            color: isConnected ? 'var(--icui-text-primary)' : 'var(--icui-text-error)' 
           }}>
-            {isConnected ? 'Connected' : 'Disconnected'}
+            {isConnected ? (sessionName || 'No Session') : 'Disconnected'}
           </span>
         </div>
 
         {/* Actions */}
         <div className="flex items-center space-x-2">
+          {/* New Chat Button */}
+          <button
+            onClick={() => {
+              const evt = new CustomEvent('icui.chat.new');
+              window.dispatchEvent(evt);
+            }}
+            className="text-xs px-2 py-1 rounded hover:opacity-80 transition-opacity"
+            style={{ 
+              backgroundColor: 'var(--icui-bg-tertiary)', 
+              color: 'var(--icui-text-primary)' 
+            }}
+            title="New chat"
+          >
+            + New
+          </button>
+
           {/* Clear Button */}
           {hasMessages && (
             <button
@@ -352,9 +432,10 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
       {/* Messages Container */}
       <div 
         ref={chatContainerRef}
-        className="flex-1 overflow-y-auto p-3"
+        className="flex-1 overflow-y-auto p-3 relative"
         style={{ backgroundColor: 'var(--icui-bg-primary)' }}
       >
+        {/* Search overlay moved below in toolbar */}
         {isLoading ? (
           <div className="flex items-center justify-center h-full">
             <div className="flex items-center space-x-2" style={{ color: 'var(--icui-text-muted)' }}>
@@ -373,57 +454,89 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
         ) : (
           <div className="space-y-4">
             {messages.map((message) => (
-              message.sender === 'user' ? (
-                // User messages: Keep chat bubble style (modern chat style)
-                <div key={message.id} className="flex justify-end">
-                  <div
-                    className="max-w-[85%] p-3 rounded-lg text-sm rounded-br-sm"
-                    style={{
-                      backgroundColor: 'var(--icui-bg-tertiary)',
-                      color: 'var(--icui-text-primary)',
-                      border: '1px solid var(--icui-border-subtle)'
-                    }}
-                  >
-                    {/* User Message Content */}
-                    <div className="whitespace-pre-wrap break-words">
-                      {message.content}
-                    </div>
-                    
-                    {/* User Message Metadata */}
-                    <div className="flex items-center justify-end mt-2 text-xs" 
-                         style={{ color: 'var(--icui-text-secondary)' }}>
-                      <span>{formatTimestamp(message.timestamp)}</span>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                // AI/Agent messages: Clean text layout, maximizing content area
-                <div key={message.id} className="flex justify-start">
-                  <div className="w-full max-w-none">
-                    {/* Agent Message Content - Full width, no indentation */}
-                    <div className="text-sm leading-relaxed" 
-                         style={{ color: 'var(--icui-text-primary)' }}>
-                      <div className="whitespace-pre-wrap break-words">
-                        {message.content}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )
+              <div key={message.id} data-message-id={message.id}>
+                              <ChatMessage 
+                  message={message}
+                  className=""
+                  highlightQuery={search.isOpen ? search.query : ''}
+                />
+              </div>
             ))}
             <div ref={messagesEndRef} />
+            {isConnected && isTyping && (
+              <div className="flex items-center gap-2 text-xs opacity-70 mt-1" style={{ color: 'var(--icui-text-secondary)' }}>
+                <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                <span>Assistant is working…</span>
+              </div>
+            )}
+            {/* Sticky jump-to-latest when user scrolls up */}
+            {!isAutoScrollEnabled && hasNewMessages && (
+              <div className="sticky bottom-2 flex justify-center z-10">
+                <button
+                  onClick={jumpToLatest}
+                  className="px-3 py-1.5 text-xs rounded-full shadow border"
+                  style={{
+                    backgroundColor: 'var(--icui-bg-secondary)',
+                    color: 'var(--icui-text-primary)',
+                    borderColor: 'var(--icui-border-subtle)'
+                  }}
+                >
+                  Jump to latest
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
 
-      {/* Input Area */}
+      {/* Bottom Toolbar: Search + Input */}
       <div 
-        className="p-3 border-t" 
+        className="p-3 border-t space-y-2" 
         style={{ 
           backgroundColor: 'var(--icui-bg-secondary)', 
           borderTopColor: 'var(--icui-border-subtle)' 
         }}
       >
+        {/* Search bar pinned above input */}
+        {search.isOpen && (
+          <div className="space-y-2 border rounded p-3" style={{ borderColor: 'var(--icui-border-subtle)', backgroundColor: 'var(--icui-bg-primary)' }}>
+            <div className="flex items-center gap-2">
+            <input
+              value={search.query}
+              onChange={e => search.setQuery(e.target.value)}
+              placeholder={search.options.useRegex ? "Search (regex)..." : "Search..."}
+              className="text-sm px-2 py-1 rounded bg-transparent outline-none flex-1"
+              style={{ color: 'var(--icui-text-primary)' }}
+              autoFocus
+            />
+            <span className="text-xs" style={{ color: 'var(--icui-text-secondary)' }}>{search.results.length === 0 ? '0/0' : `${search.activeIdx + 1}/${search.results.length}`}</span>
+            <button className="text-xs underline" onClick={search.prev}>Prev</button>
+            <button className="text-xs underline" onClick={search.next}>Next</button>
+            <button className="text-xs underline" onClick={() => search.setIsOpen(false)}>Close</button>
+            </div>
+            <div className="flex items-center gap-3 text-xs">
+              <label className="flex items-center gap-1 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={search.options.caseSensitive}
+                  onChange={search.toggleCaseSensitive}
+                  className="w-3 h-3"
+                />
+                <span style={{ color: 'var(--icui-text-secondary)' }}>Case sensitive</span>
+              </label>
+              <label className="flex items-center gap-1 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={search.options.useRegex}
+                  onChange={search.toggleRegex}
+                  className="w-3 h-3"
+                />
+                <span style={{ color: 'var(--icui-text-secondary)' }}>Regex</span>
+              </label>
+            </div>
+          </div>
+        )}
+
         <div className="space-y-3">
           {/* Message Input */}
           <textarea
@@ -444,16 +557,18 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
             disabled={!isConnected}
           />
           
-          {/* Dropdown and Send Button Row */}
-          <div className="flex items-center justify-between gap-3">
-            <CustomAgentDropdown
-              selectedAgent={selectedAgent}
-              onAgentChange={setSelectedAgent}
-              disabled={false}
-              className="flex-shrink-0"
-              showCategories={true}
-              showDescriptions={true}
-            />
+          {/* Agent + Send */}
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-3 flex-1">
+              <CustomAgentDropdown
+                selectedAgent={selectedAgent}
+                onAgentChange={setSelectedAgent}
+                disabled={false}
+                className="flex-shrink-0"
+                showCategories={true}
+                showDescriptions={true}
+              />
+            </div>
             <button
               onClick={() => handleSendMessage()}
               disabled={!inputValue.trim() || !isConnected || isLoading}

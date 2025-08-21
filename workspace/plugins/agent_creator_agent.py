@@ -21,10 +21,15 @@ from typing import Dict, List, Any, AsyncGenerator
 logger = logging.getLogger(__name__)
 
 # Agent metadata
+MODEL_NAME = "gpt-5-nano"
 AGENT_NAME = "AgentCreator"
 AGENT_DESCRIPTION = "An AI agent that helps you create other custom agents using file editing tools"
 AGENT_VERSION = "2.0.0"
 AGENT_AUTHOR = "Hot Reload System"
+
+# Model selection identifier for UI/router consumption
+# Frontend can read this via config/status endpoints and switch helpers accordingly
+AGENT_MODEL_ID = os.environ.get("AGENT_MODEL_ID", "gpt5")
 
 # Import OpenAI client
 try:
@@ -334,7 +339,7 @@ Be helpful, practical, and focus on creating working solutions."""
         # Start the conversation loop for tool calls
         while True:
             stream = client.chat.completions.create(
-                model="gpt-5-mini",
+                model=MODEL_NAME,
                 messages=messages,
                 max_completion_tokens=2000,
                 tools=get_tools(),
@@ -449,7 +454,23 @@ Be helpful, practical, and focus on creating working solutions."""
                         result = {"success": False, "error": str(e)}
                     
                     if result["success"]:
-                        yield f"✅ **Success**: {result.get('data', 'Operation completed')}\n"
+                        # Format success message based on tool type for better readability
+                        data = result.get('data', 'Operation completed')
+                        if tool_name == 'read_file' and isinstance(data, dict) and 'content' in data:
+                            # For read_file, show summary instead of full content
+                            file_path = data.get('filePath', 'file')
+                            content_lines = len(data['content'].split('\n')) if data['content'] else 0
+                            content_size = len(data['content']) if data['content'] else 0
+                            yield f"✅ **Success**: Read {file_path} ({content_lines} lines, {content_size} characters)\n"
+                        elif tool_name == 'create_file' and isinstance(data, dict):
+                            # For create_file, show confirmation with path
+                            yield f"✅ **Success**: {data.get('message', 'File created successfully')}\n"
+                        else:
+                            # For other tools, show data as-is but truncate if too long
+                            data_str = str(data)
+                            if len(data_str) > 200:
+                                data_str = data_str[:200] + "... (truncated)"
+                            yield f"✅ **Success**: {data_str}\n"
                     else:
                         yield f"❌ **Error**: {result.get('error', 'Unknown error')}\n"
                     

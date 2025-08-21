@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 import sqlite3
 import aiosqlite
 from pathlib import Path
+import os
 
 # Internal imports
 from ..core.message_broker import MessageBroker, get_message_broker, Message, MessageType as BrokerMessageType
@@ -137,7 +138,7 @@ class ChatService:
     
     Features:
     - Real-time WebSocket communication
-    - Message persistence with SQLite
+    - Message persistence with JSONL per-session (deprecates SQLite chat.db)
     - Agent integration and status management
     - Typing indicators and status updates
     - Message history and pagination
@@ -156,7 +157,21 @@ class ChatService:
         self.websocket_connections: Dict[str, Any] = {}  # connection_id -> websocket
         self.config = ChatConfig()
         
-        # Initialize database (only if event loop is running)
+        # JSONL history root (workspace/.icotes/chat_history)
+        try:
+            workspace_root = os.environ.get('WORKSPACE_ROOT')
+            if not workspace_root:
+                backend_dir = os.path.dirname(os.path.abspath(__file__))
+                workspace_root = os.path.join(os.path.dirname(os.path.dirname(backend_dir)), 'workspace')
+            history_root = Path(workspace_root) / '.icotes' / 'chat_history'
+            history_root.mkdir(parents=True, exist_ok=True)
+            self.history_root = history_root
+        except Exception:
+            # Fallback to local directory if workspace resolution fails
+            self.history_root = Path('.icotes/chat_history')
+            self.history_root.mkdir(parents=True, exist_ok=True)
+        
+        # Initialize database (kept for backward compatibility but no longer used for writes)
         try:
             asyncio.create_task(self._initialize_database())
         except RuntimeError:
@@ -168,7 +183,7 @@ class ChatService:
             self.message_broker.subscribe(BrokerMessageType.AGENT_STATUS_UPDATED, self._handle_agent_status_update)
             self.message_broker.subscribe(BrokerMessageType.AGENT_MESSAGE, self._handle_agent_message)
         
-        logger.info("Chat service initialized")
+        logger.info("Chat service initialized (JSONL storage)")
     
     async def _initialize_database(self):
         """Initialize SQLite database for message persistence"""
@@ -240,7 +255,14 @@ class ChatService:
     
     async def handle_user_message(self, websocket_id: str, content: str, metadata: Dict[str, Any] = None) -> ChatMessage:
         """Handle a message from the user with support for agent routing"""
-        session_id = self.chat_sessions.get(websocket_id)
+        # Prefer explicit session_id from metadata if provided (allows client-side session switching)
+        session_id = None
+        if metadata and isinstance(metadata, dict) and metadata.get('session_id'):
+            session_id = str(metadata['session_id'])
+            # Update mapping so subsequent messages on this connection use this session
+            self.chat_sessions[websocket_id] = session_id
+        else:
+            session_id = self.chat_sessions.get(websocket_id)
         if not session_id:
             raise ValueError("WebSocket not connected to chat session")
         
@@ -798,92 +820,75 @@ class ChatService:
             logger.warning(f"Could not broadcast message: {e}")
     
     async def _store_message(self, message: ChatMessage):
-        """Store a message in the database"""
+        """Store a message to JSONL per session (deprecates SQLite)."""
         try:
-            async with aiosqlite.connect(self.db_path) as db:
-                await db.execute(
-                    """
-                    INSERT INTO chat_messages 
-                    (id, content, sender, timestamp, type, metadata, agent_id, session_id)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        message.id,
-                        message.content,
-                        message.sender.value,
-                        message.timestamp,
-                        message.type.value,
-                        json.dumps(message.metadata),
-                        message.agent_id,
-                        message.session_id
-                    )
-                )
-                await db.commit()
+            # Ensure session id exists
+            session_id = message.session_id or "default"
+            file_path = self.history_root / f"{session_id}.jsonl"
+            # Append as a single JSON line
+            with open(file_path, 'a', encoding='utf-8') as f:
+                f.write(json.dumps(message.to_dict(), ensure_ascii=False) + "\n")
         except Exception as e:
-            logger.error(f"Failed to store message: {e}")
+            logger.error(f"Failed to store message (JSONL): {e}")
     
     async def get_message_history(self, session_id: str = None, limit: int = 50, offset: int = 0) -> List[ChatMessage]:
-        """Get message history with pagination"""
+        """Get message history with pagination from JSONL files.
+        If session_id is None, aggregates across all sessions, sorted by timestamp."""
         try:
-            async with aiosqlite.connect(self.db_path) as db:
-                if session_id:
-                    cursor = await db.execute(
-                        """
-                        SELECT id, content, sender, timestamp, type, metadata, agent_id, session_id
-                        FROM chat_messages 
-                        WHERE session_id = ?
-                        ORDER BY timestamp DESC 
-                        LIMIT ? OFFSET ?
-                        """,
-                        (session_id, limit, offset)
-                    )
-                else:
-                    cursor = await db.execute(
-                        """
-                        SELECT id, content, sender, timestamp, type, metadata, agent_id, session_id
-                        FROM chat_messages 
-                        ORDER BY timestamp DESC 
-                        LIMIT ? OFFSET ?
-                        """,
-                        (limit, offset)
-                    )
-                
-                rows = await cursor.fetchall()
-                messages = []
-                
-                for row in rows:
-                    messages.append(ChatMessage(
-                        id=row[0],
-                        content=row[1],
-                        sender=MessageSender(row[2]),
-                        timestamp=row[3],
-                        type=ChatMessageType(row[4]),
-                        metadata=json.loads(row[5] or '{}'),
-                        agent_id=row[6],
-                        session_id=row[7]
-                    ))
-                
-                # Reverse to get chronological order
-                messages.reverse()
-                return messages
-                
+            messages: List[ChatMessage] = []
+            if session_id:
+                file_path = self.history_root / f"{session_id}.jsonl"
+                if file_path.exists():
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        for line in f:
+                            line = line.strip()
+                            if not line:
+                                continue
+                            try:
+                                data = json.loads(line)
+                                messages.append(ChatMessage.from_dict(data))
+                            except Exception:
+                                pass
+            else:
+                # Aggregate across all sessions
+                for file in self.history_root.glob('*.jsonl'):
+                    try:
+                        with open(file, 'r', encoding='utf-8') as f:
+                            for line in f:
+                                line = line.strip()
+                                if not line:
+                                    continue
+                                data = json.loads(line)
+                                messages.append(ChatMessage.from_dict(data))
+                    except Exception:
+                        continue
+            # Sort chronologically by timestamp
+            messages.sort(key=lambda m: m.timestamp)
+            # Apply offset/limit from the end (most recent)
+            start = max(0, len(messages) - offset - limit)
+            end = len(messages) - offset
+            return messages[start:end]
         except Exception as e:
-            logger.error(f"Failed to retrieve message history: {e}")
+            logger.error(f"Failed to retrieve message history (JSONL): {e}")
             return []
     
     async def clear_message_history(self, session_id: str = None) -> bool:
-        """Clear message history for a session or all messages"""
+        """Clear message history for a session or all sessions (JSONL)."""
         try:
-            async with aiosqlite.connect(self.db_path) as db:
-                if session_id:
-                    await db.execute("DELETE FROM chat_messages WHERE session_id = ?", (session_id,))
-                else:
-                    await db.execute("DELETE FROM chat_messages")
-                await db.commit()
-                logger.info(f"Cleared message history for session: {session_id or 'all'}")
-                return True
+            if session_id:
+                file_path = self.history_root / f"{session_id}.jsonl"
+                if file_path.exists():
+                    file_path.unlink()
+            else:
+                for file in self.history_root.glob('*.jsonl'):
+                    try:
+                        file.unlink()
+                    except Exception:
+                        pass
+            logger.info(f"Cleared message history for session: {session_id or 'all'} (JSONL)")
+            return True
         except Exception as e:
-            logger.error(f"Failed to clear message history: {e}")
+            logger.error(f"Failed to clear message history (JSONL): {e}")
             return False
     
     async def get_agent_status(self) -> AgentStatus:
@@ -943,15 +948,124 @@ class ChatService:
         """Broadcast configuration update to all connected clients"""
         try:
             config_message = {
-                'type': 'config_update',
+                'type': 'config',
                 'config': self.config.to_dict(),
-                'timestamp': datetime.now(timezone.utc).isoformat()
+                'timestamp': time.time()
             }
             
-            for websocket_id in self.active_connections:
-                await self._send_websocket_message(websocket_id, config_message)
+            for connection_id, websocket in self.websocket_connections.items():
+                try:
+                    await websocket.send_json(config_message)
+                except Exception as e:
+                    logger.error(f"Failed to send config update to connection {connection_id}: {e}")
+                    
         except Exception as e:
-            logger.warning(f"Could not broadcast config update: {e}")
+            logger.error(f"Failed to broadcast config update: {e}")
+
+    # Session CRUD operations
+    async def get_sessions(self) -> List[Dict[str, Any]]:
+        """Get list of all chat sessions with metadata."""
+        try:
+            sessions = []
+            for file in self.history_root.glob('*.jsonl'):
+                session_id = file.stem
+                try:
+                    stat = file.stat()
+                    # Count messages in session
+                    message_count = 0
+                    last_message_time = None
+                    with open(file, 'r', encoding='utf-8') as f:
+                        for line in f:
+                            line = line.strip()
+                            if line:
+                                message_count += 1
+                                try:
+                                    data = json.loads(line)
+                                    last_message_time = data.get('timestamp')
+                                except:
+                                    pass
+                    
+                    # Try reading metadata sidecar for display name
+                    meta_name = None
+                    meta_path = self.history_root / f"{session_id}.meta.json"
+                    if meta_path.exists():
+                        try:
+                            with open(meta_path, 'r', encoding='utf-8') as mf:
+                                meta = json.load(mf)
+                                meta_name = meta.get('name') or None
+                        except Exception:
+                            meta_name = None
+                    
+                    sessions.append({
+                        'id': session_id,
+                        'name': meta_name or session_id,  # Default to session ID as name
+                        'created': stat.st_ctime,
+                        'updated': stat.st_mtime,
+                        'message_count': message_count,
+                        'last_message_time': last_message_time
+                    })
+                except Exception as e:
+                    logger.error(f"Error processing session {session_id}: {e}")
+                    continue
+            
+            # Sort by updated time, newest first
+            sessions.sort(key=lambda s: s['updated'], reverse=True)
+            return sessions
+        except Exception as e:
+            logger.error(f"Failed to get sessions: {e}")
+            return []
+    
+    async def create_session(self, name: str = None) -> str:
+        """Create a new chat session."""
+        try:
+            session_id = f"session_{int(time.time())}_{uuid.uuid4().hex[:8]}"
+            
+            # Create empty JSONL file to establish the session
+            file_path = self.history_root / f"{session_id}.jsonl"
+            file_path.touch()
+            
+            # Persist display name if provided
+            if name:
+                meta_path = self.history_root / f"{session_id}.meta.json"
+                with open(meta_path, 'w', encoding='utf-8') as mf:
+                    json.dump({'id': session_id, 'name': name}, mf, ensure_ascii=False)
+            
+            logger.info(f"Created new chat session: {session_id}")
+            return session_id
+        except Exception as e:
+            logger.error(f"Failed to create session: {e}")
+            raise
+    
+    async def update_session(self, session_id: str, name: str) -> bool:
+        """Update session metadata (rename)."""
+        try:
+            file_path = self.history_root / f"{session_id}.jsonl"
+            if not file_path.exists():
+                return False
+            
+            meta_path = self.history_root / f"{session_id}.meta.json"
+            with open(meta_path, 'w', encoding='utf-8') as mf:
+                json.dump({'id': session_id, 'name': name}, mf, ensure_ascii=False)
+            
+            logger.info(f"Session {session_id} renamed to: {name}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed writing metadata for session {session_id}: {e}")
+            return False
+    
+    async def delete_session(self, session_id: str) -> bool:
+        """Delete a chat session and its history."""
+        try:
+            file_path = self.history_root / f"{session_id}.jsonl"
+            if not file_path.exists():
+                return False
+            
+            file_path.unlink()
+            logger.info(f"Deleted chat session: {session_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to delete session {session_id}: {e}")
+            return False
     
     async def _handle_agent_status_update(self, message: Message):
         """Handle agent status updates from message broker"""

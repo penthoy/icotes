@@ -6,7 +6,7 @@
       "enabled": true,
       "displayName": "Agent Creator",
       "description": "An AI agent that helps you create other custom agents",
-      "category": "Development",
+      "category": "Custom Agents",
       "order": 2,
       "icon": "\ud83e\udde0"
     },
@@ -14,31 +14,31 @@
       "enabled": false,
       "displayName": "Personal Assistant (Tool Demo)",
       "description": "Proof-of-concept agent demonstrating tool use capabilities",
-      "category": "Development",
+      "category": "Built-in",
       "order": 5,
       "icon": "\ud83d\udee0\ufe0f"
     },
     "OpenAIDemoAgent": {
       "enabled": true,
       "displayName": "OpenAI Demo",
-      "description": "OpenAI-powered demonstration agent",
-      "category": "AI Models",
+      "description": "Built-in agent: OpenAI demonstration agent",
+      "category": "Built-in",
       "order": 1,
       "icon": "\ud83e\udd16"
     },
     "OpenRouterAgent": {
       "enabled": true,
       "displayName": "OpenRouter",
-      "description": "Multi-model AI agent via OpenRouter",
-      "category": "AI Models",
+      "description": "Built-in agent: Multi-model AI agent via OpenRouter",
+      "category": "Built-in",
       "order": 4,
       "icon": "\ud83c\udf10"
     },
     "Qwen3CoderAgent": {
       "enabled": false,
       "displayName": "Qwen3CoderAgent",
-      "description": "Auto-discovered agent: Qwen3CoderAgent",
-      "category": "General",
+      "description": "Built-in agent: Qwen3CoderAgent",
+      "category": "Built-in",
       "order": 999,
       "icon": "\ud83d\udcbb"
     },
@@ -46,20 +46,20 @@
       "enabled": true,
       "displayName": "ExampleToolUser",
       "description": "Auto-discovered agent: ExampleToolUser",
-      "category": "General",
+      "category": "Tests",
       "order": 999
     }
   },
   "categories": {
-    "Development": {
+    "Custom Agents": {
       "icon": "\ud83d\udee0\ufe0f",
       "order": 2
     },
-    "General": {
+    "Tests": {
       "icon": "\ud83d\udcac",
       "order": 3
     },
-    "AI Models": {
+    "Built-in": {
       "icon": "\ud83e\udde0",
       "order": 1
     }
