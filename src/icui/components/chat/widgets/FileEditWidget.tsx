@@ -16,6 +16,7 @@ import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/pris
 import { useTheme } from '../../../hooks/useTheme';
 import { ToolCallData } from '../ToolCallWidget';
 import { getActiveModelHelper } from '../modelhelper';
+import { formatFilePath } from '../../../utils/pathUtils';
 
 export interface FileEditWidgetProps {
   toolCall: ToolCallData;
@@ -224,11 +225,6 @@ const FileEditWidget: React.FC<FileEditWidgetProps> = ({
       setActiveTab(availableTabs[0]);
     }
   }, [availableTabs, activeTab]);
-
-  const formatFilePath = (filePath: string) => {
-    const parts = filePath.split('/');
-    return parts[parts.length - 1];
-  };
 
   const statusInfo = useMemo(() => {
     switch (toolCall.status) {

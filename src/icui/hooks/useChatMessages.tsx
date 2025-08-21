@@ -292,9 +292,6 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
       const effectiveSessionId = sessionId || client.currentSession;
       const history = await client.getMessageHistory(maxMessages, effectiveSessionId);
       
-      // Temporary debug log to verify session persistence
-      console.log(`[Session Debug] Loaded ${history.length} messages for session: ${effectiveSessionId}`);
-      
       setMessages(history);
     } catch (error) {
       console.error('Failed to reload messages:', error);

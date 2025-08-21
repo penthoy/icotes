@@ -8,6 +8,7 @@ import React, { useState, useCallback, useMemo } from 'react';
 import { Search, ChevronDown, ChevronRight } from 'lucide-react';
 import { ToolCallData } from '../ToolCallWidget';
 import { getActiveModelHelper } from '../modelhelper';
+import { formatDisplayPath } from '../../../utils/pathUtils';
 
 export interface SemanticSearchWidgetProps {
   toolCall: ToolCallData;
@@ -43,13 +44,6 @@ const SemanticSearchWidget: React.FC<SemanticSearchWidgetProps> = ({
       setIsExpanded(prev => !prev);
     }
   }, [expandable]);
-
-  const formatFilePath = (path: string) => {
-    if (path.startsWith('/home/penthoy/icotes/workspace/')) {
-      return path.replace('/home/penthoy/icotes/workspace/', '');
-    }
-    return path;
-  };
 
   return (
     <div className="icui-widget">
@@ -91,7 +85,7 @@ const SemanticSearchWidget: React.FC<SemanticSearchWidgetProps> = ({
           {/* Parameters */}
           <div className="icui-widget__box p-2 text-xs space-y-1">
             <div><strong>Query:</strong> <code>{searchData.query || '(not provided)'}</code></div>
-            {searchData.scope && <div><strong>Scope:</strong> <code>{formatFilePath(searchData.scope)}</code></div>}
+            {searchData.scope && <div><strong>Scope:</strong> <code>{formatDisplayPath(searchData.scope)}</code></div>}
             {searchData.fileTypes && searchData.fileTypes.length > 0 && (
               <div><strong>Types:</strong> {searchData.fileTypes.join(', ')}</div>
             )}
@@ -103,7 +97,7 @@ const SemanticSearchWidget: React.FC<SemanticSearchWidgetProps> = ({
               {searchData.results.map((result, index) => (
                 <div key={index} className="text-sm">
                   <div className="font-mono text-xs icui-widget__meta">
-                    {formatFilePath(result.file)}{result.line && `:${result.line}`}
+                    {formatDisplayPath(result.file)}{result.line && `:${result.line}`}
                   </div>
                   <div className="mt-1 pl-2 border-l-2 border-gray-300 icui-widget__code text-xs">
                     {result.snippet}
