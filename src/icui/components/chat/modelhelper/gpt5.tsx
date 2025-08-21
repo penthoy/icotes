@@ -31,6 +31,33 @@ export class GPT5ModelHelper implements ModelHelper {
     return text
       .replace(/🔧\s*\*\*Executing tools\.\.\.\*\*[\s\S]*?🔧\s*\*\*Tool execution complete\. Continuing\.\.\.\*\*/g, '')
       .replace(/🔧\s*\*\*Executing tools\.\.\.\*\*\s*\n?/g, '')
+      // Remove incomplete tool headers that are still running (to prevent flashing)
+      .replace(/📋\s*\*\*[^:]+\*\*:\s*\{[^}]*\}\s*$/g, '')
+      .replace(/📋\s*\*\*[^:]+\*\*:\s*[^\n]*\s*$/g, '')
+      // Remove large success/error blocks that contain file content
+      .replace(/✅\s*\*\*Success\*\*:\s*\{[^}]*'content':[^}]*\}\s*\n/g, '')
+      .replace(/✅\s*\*\*Success\*\*:\s*\{[\s\S]*?'content':\s*'[\s\S]*?'[\s\S]*?\}\s*\n/g, '')
+      // Remove logger statements and debug output that leak through
+      .replace(/\\n\\n/g, '\n')
+      .replace(/\\n/g, '\n')
+      .replace(/\\"/g, '"')
+      .replace(/\\"\\n/g, '\n')
+      .replace(/logger\.(info|error|debug|warning)\([^)]*\)/g, '')
+      // Remove large blocks of escaped code that shouldn't be displayed as regular text
+      .replace(/(['"]content['"]:\s*['"][^'"]*?(?:logger\.|import |def |class |try:|except |if __name__|yield )[^'"]*?['"])/g, '')
+      // Clean up Python code artifacts that leak through
+      .replace(/\\n\s*except Exception as e:\\n\s*logger\.error.*?\\n/g, '')
+      .replace(/\\n\s*yield f['""][^'"]*?\\n/g, '')
+      // Remove blocks that look like raw Python code (starting with logger, import, def, etc.)
+      .replace(/\n\s*logger\.(info|error|debug|warning)\([^)]*\)\s*\n/g, '\n')
+      .replace(/\n\s*(import |from |def |class |try:|except |if __name__|yield )[^\n]*\n/g, '\n')
+      // Remove error handling blocks that leak through
+      .replace(/\n\s*except Exception as e:\s*\n[\s\S]*?(?=\n\n|\n[A-Z]|\n#|$)/g, '\n')
+      // Remove escaped code blocks that shouldn't be displayed as text
+      .replace(/\\\\\n/g, '\n')
+      .replace(/\\'/g, "'")
+      // Clean up multiple consecutive newlines
+      .replace(/\n{3,}/g, '\n\n')
       .trim();
   }
 
@@ -114,7 +141,17 @@ export class GPT5ModelHelper implements ModelHelper {
       .replace(/\\n/g, '\n')
       .replace(/\\"/g, '"')
       .replace(/\\"\\n/g, '\n')
-      .replace(/logger\.(info|error|debug)\([^)]*\)/g, '')
+      .replace(/logger\.(info|error|debug|warning)\([^)]*\)/g, '')
+      // Remove large blocks of escaped code that shouldn't be displayed as regular text
+      .replace(/(['"]content['"]:\s*['"][^'"]*?(?:logger\.|import |def |class |try:|except |if __name__|yield )[^'"]*?['"])/g, '')
+      // Clean up Python code artifacts that leak through
+      .replace(/\\n\s*except Exception as e:\\n\s*logger\.error.*?\\n/g, '')
+      .replace(/\\n\s*yield f['""][^'"]*?\\n/g, '')
+      // Remove blocks that look like raw Python code (starting with logger, import, def, etc.)
+      .replace(/\n\s*logger\.(info|error|debug|warning)\([^)]*\)\s*\n/g, '\n')
+      .replace(/\n\s*(import |from |def |class |try:|except |if __name__|yield )[^\n]*\n/g, '\n')
+      // Remove error handling blocks that leak through
+      .replace(/\n\s*except Exception as e:\s*\n[\s\S]*?(?=\n\n|\n[A-Z]|\n#|$)/g, '\n')
       .trim();
 
     // Enhanced pattern matching for GPT-5 tool execution blocks
@@ -127,12 +164,16 @@ export class GPT5ModelHelper implements ModelHelper {
     const standaloneExecutingPattern = /🔧\s*\*\*Executing tools\.\.\.\*\*(?!\s*\n[\s\S]*?🔧\s*\*\*Tool execution complete)/g;
     const standaloneMatches = Array.from(cleanContent.matchAll(standaloneExecutingPattern));
 
+    // Also check for individual tool headers that are still running (incomplete)
+    const incompleteToolPattern = /📋\s*\*\*([^:]+)\*\*:\s*(\{[^}]*\}|[^\n]*)(?:\n(?!✅|❌))?/g;
+    const incompleteToolMatches = Array.from(cleanContent.matchAll(incompleteToolPattern));
+
     // Only show progress widget for truly active executions (streaming messages)
     const isActiveStream = message.metadata?.isStreaming && !message.metadata?.streamComplete;
 
     // We'll add a generic progress widget only if we cannot identify a specific running tool
     let shouldAddGenericProgress = false;
-    if (standaloneMatches.length > 0 && isActiveStream) {
+    if (standaloneMatches.length > 0 && isActiveStream && incompleteToolMatches.length === 0) {
       shouldAddGenericProgress = true;
     }
 
@@ -141,7 +182,8 @@ export class GPT5ModelHelper implements ModelHelper {
       const toolId = `tool-${message.id}-${toolCallIndex++}`;
 
       // Parse individual completed tool calls (success/error) - GPT-5 specific format
-      const individualToolPattern = /📋\s*\*\*([^:]+)\*\*:\s*(\{[^}]*\}|\{[\s\S]*?\}|[^\n]*)\s*\n(✅\s*\*\*Success\*\*:\s*([\s\S]*?)(?=\n\n|📋|\n🔧|$)|❌\s*\*\*Error\*\*:\s*([\s\S]*?)(?=\n\n|📋|\n🔧|$))/g;
+      // Updated to handle very large content blocks that might span many lines
+      const individualToolPattern = /📋\s*\*\*([^:]+)\*\*:\s*(\{[^}]*\}|\{[\s\S]*?\}|[^\n]*)\s*\n(✅\s*\*\*Success\*\*:\s*([\s\S]*?)(?=\n\n📋|\n🔧|$)|❌\s*\*\*Error\*\*:\s*([\s\S]*?)(?=\n\n📋|\n🔧|$))/g;
 
       const createdIds: string[] = [];
       let toolMatch;
@@ -167,12 +209,29 @@ export class GPT5ModelHelper implements ModelHelper {
             // For read_file, check if it's a structured response
             if (toolName.includes('read_file') && parsedOutput.includes('content')) {
               try {
-                // Extract content from structured response
+                // Extract content from structured response - handle large content blocks
                 const contentMatch = parsedOutput.match(/'content':\s*'([\s\S]*?)',\s*'filePath'/);
                 if (contentMatch) {
+                  let content = contentMatch[1].replace(/\\n/g, '\n').replace(/\\'/g, "'");
+                  // Clean up any logger statements or debug output in the content
+                  content = content
+                    .replace(/logger\.(info|error|debug|warning)\([^)]*\)/g, '')
+                    .replace(/print\([^)]*\)/g, '')
+                    .trim();
+                  
+                  // Truncate large content for read_file operations to prevent UI overflow
+                  // Show only first 10 lines and a summary for display purposes
+                  const lines = content.split('\n');
+                  if (lines.length > 10) {
+                    const truncatedContent = lines.slice(0, 10).join('\n');
+                    content = `${truncatedContent}\n\n... (${lines.length - 10} more lines, ${content.length} total characters)`;
+                  }
+                  
                   parsedOutput = {
-                    content: contentMatch[1].replace(/\\n/g, '\n').replace(/\\'/g, "'"),
-                    filePath: input.filePath || 'unknown'
+                    content: content,
+                    filePath: input.filePath || 'unknown',
+                    totalLines: lines.length,
+                    totalSize: contentMatch[1].length
                   };
                 }
               } catch {
@@ -262,6 +321,44 @@ export class GPT5ModelHelper implements ModelHelper {
     // Remove tool execution blocks from content but keep the rest
     cleanContent = this.stripAllToolText(content);
 
+    // Additional cleanup for leaked code blocks that appear outside tool execution blocks
+    cleanContent = this.cleanupLeakedCode(cleanContent);
+
+    // Handle incomplete tool patterns that appear outside main execution blocks
+    // This helps show running tools even when they haven't been wrapped in execution blocks yet
+    if (isActiveStream && toolCalls.length === 0 && incompleteToolMatches.length > 0) {
+      incompleteToolMatches.forEach((match, index) => {
+        const toolName = match[1].trim();
+        const argsText = match[2].trim();
+
+        // Skip if this tool has already been processed or has completion markers
+        const hasCompletion = content.includes(`✅ **Success**`) || content.includes(`❌ **Error**`);
+        if (!hasCompletion) {
+          const input: any = argsText ? this.tryParseArgs(argsText) : {};
+          const { category, mappedName } = this.mapToolNameToCategory(toolName);
+
+          toolCalls.push({
+            id: `incomplete-${message.id}-${index}`,
+            toolName: mappedName,
+            category,
+            status: 'running',
+            progress: undefined,
+            input,
+            output: undefined,
+            error: undefined,
+            startTime: message.timestamp ? new Date(message.timestamp) : new Date(),
+            metadata: {
+              originalToolName: toolName,
+              incomplete: true,
+              running: true
+            }
+          });
+
+          shouldAddGenericProgress = false; // We have specific tool widgets
+        }
+      });
+    }
+
     // If we have identified running/completed tools, do not show generic progress
     if (toolCalls.length === 0 && shouldAddGenericProgress) {
       const progressToolCall: ToolCallData = {
@@ -281,7 +378,7 @@ export class GPT5ModelHelper implements ModelHelper {
       toolCalls.push(progressToolCall);
     }
 
-    // Also remove standalone "🔧 **Executing tools...**" indicators
+    // Final cleanup pass
     cleanContent = this.stripAllToolText(cleanContent);
 
     return {
@@ -328,16 +425,31 @@ export class GPT5ModelHelper implements ModelHelper {
                      originalToolName === 'read_file' ? 'read' :
                      originalToolName === 'replace_string_in_file' ? 'update' : 'update';
 
+    // For read_file operations, extract content from parsed output
+    let modifiedContent = input.content || output.content || output.modified_content;
+    if (originalToolName === 'read_file' && output && typeof output === 'object') {
+      // Handle structured output from read_file
+      if (output.content) {
+        modifiedContent = output.content;
+      }
+      // For read operations, show additional metadata if available
+      if (output.totalLines || output.totalSize) {
+        // Content is already truncated in parsing, so we use it as-is
+      }
+    }
+
     return {
       filePath,
       originalContent: input.original_content || output.original_content,
-      modifiedContent: input.content || output.content || output.modified_content,
+      modifiedContent,
       diff: output.diff,
       timestamp: toolCall.endTime ? new Date(toolCall.endTime).toLocaleString() : undefined,
       operation: operation as any,
       lineNumbers: output.line_numbers,
       startLine: input.startLine || input.start_line,
-      endLine: input.endLine || input.end_line
+      endLine: input.endLine || input.end_line,
+      totalLines: output?.totalLines,
+      totalSize: output?.totalSize
     };
   }
 
@@ -478,6 +590,30 @@ export class GPT5ModelHelper implements ModelHelper {
     }
     
     return 'text';
+  }
+
+  /**
+   * Clean up leaked code blocks that appear outside tool execution blocks
+   */
+  private cleanupLeakedCode(text: string): string {
+    return text
+      // Remove large success blocks that contain structured data (like file content)
+      .replace(/✅\s*\*\*Success\*\*:\s*\{[\s\S]*?\}\s*\n/g, '')
+      // Remove large blocks of code that contain Python-specific patterns
+      .replace(/\n[^\n]*(?:logger\.|import |def |class |try:|except |if __name__|yield |from )[^\n]*(?:\n[^\n]*(?:logger\.|import |def |class |try:|except |if __name__|yield |from |    |        )[^\n]*){5,}/g, '\n')
+      // Remove blocks that look like stack traces or error output
+      .replace(/\n[^\n]*(?:Traceback|File "[^"]*", line \d+|    at |Error:|Exception:)[^\n]*(?:\n[^\n]*(?:    |        |File |    at )[^\n]*){2,}/g, '\n')
+      // Remove logger output patterns
+      .replace(/\n[^\n]*logger\.[a-z]+\([^)]*\)[^\n]*(?:\n[^\n]*(?:    |        )[^\n]*){0,3}/g, '\n')
+      // Remove lines that look like escaped Python strings with code
+      .replace(/\n[^\n]*\\n[^\n]*(?:def |class |import |from |logger\.|try:|except )[^\n]*\n/g, '\n')
+      // Remove very long lines (>300 chars) that likely contain raw data
+      .replace(/\n[^\n]{300,}\n/g, '\n')
+      // Remove blocks that contain multiple consecutive technical lines (imports, functions etc)
+      .replace(/\n(?:[^\n]*(?:import|from|def|class|logger\.|yield|except)[^\n]*\n){3,}/g, '\n')
+      // Clean up multiple newlines
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
   }
 }
 

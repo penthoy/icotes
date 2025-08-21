@@ -453,7 +453,23 @@ Be helpful, practical, and focus on creating working solutions."""
                         result = {"success": False, "error": str(e)}
                     
                     if result["success"]:
-                        yield f"✅ **Success**: {result.get('data', 'Operation completed')}\n"
+                        # Format success message based on tool type for better readability
+                        data = result.get('data', 'Operation completed')
+                        if tool_name == 'read_file' and isinstance(data, dict) and 'content' in data:
+                            # For read_file, show summary instead of full content
+                            file_path = data.get('filePath', 'file')
+                            content_lines = len(data['content'].split('\n')) if data['content'] else 0
+                            content_size = len(data['content']) if data['content'] else 0
+                            yield f"✅ **Success**: Read {file_path} ({content_lines} lines, {content_size} characters)\n"
+                        elif tool_name == 'create_file' and isinstance(data, dict):
+                            # For create_file, show confirmation with path
+                            yield f"✅ **Success**: {data.get('message', 'File created successfully')}\n"
+                        else:
+                            # For other tools, show data as-is but truncate if too long
+                            data_str = str(data)
+                            if len(data_str) > 200:
+                                data_str = data_str[:200] + "... (truncated)"
+                            yield f"✅ **Success**: {data_str}\n"
                     else:
                         yield f"❌ **Error**: {result.get('error', 'Unknown error')}\n"
                     

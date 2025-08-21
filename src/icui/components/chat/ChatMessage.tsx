@@ -67,11 +67,11 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', high
   // Use model helper for text processing
   const stripAllToolText = modelHelper.stripAllToolText.bind(modelHelper);
 
-  // Use model helper for parsing tool calls
-  const parseToolCalls = useCallback((content: string): { content: string; toolCalls: ToolCallData[] } => {
+  // Use model helper for parsing tool calls - memoized to prevent unnecessary re-parsing
+  const parsedResult = useMemo((): { content: string; toolCalls: ToolCallData[] } => {
     const activeHelper = getActiveModelHelper();
-    return activeHelper.parseToolCalls(content, message);
-  }, [message]);
+    return activeHelper.parseToolCalls(message.content, message);
+  }, [message.content, message.id, message.metadata?.streamComplete]);
 
   // Format timestamp helper
   const formatTimestamp = useCallback((timestamp: string | Date) => {
@@ -292,7 +292,24 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', high
     );
     } else {
     // AI/Agent messages: Clean text layout with full markdown support
-    const { content, toolCalls } = parseToolCalls(message.content);
+    const { content, toolCalls } = parsedResult;
+    
+    // Check if this is a streaming message that contains tool execution text
+    const isStreamingWithTools = message.metadata?.isStreaming && 
+                                 message.content.includes('🔧 **Executing tools...**');
+    
+    // For streaming messages with tools, only show content if:
+    // 1. Not currently streaming with tools, OR
+    // 2. Stream is complete, OR 
+    // 3. We already have parsed tool calls (widgets will handle display)
+    const shouldShowContent = content && 
+      !(isStreamingWithTools && !message.metadata?.streamComplete && toolCalls.length === 0);
+    
+    // Show loading indicator only when we detect tool patterns but haven't parsed tools yet
+    const shouldShowLoading = isStreamingWithTools && 
+                             !message.metadata?.streamComplete && 
+                             toolCalls.length === 0 &&
+                             !content.trim(); // Only show loading if no clean content available
     
     return (
       <div className={`flex justify-start ${className}`}>
@@ -315,7 +332,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', high
           )}
 
           {/* Agent Message Content - Full width with markdown rendering */}
-          {content && (
+          {shouldShowContent && (
             <div className="text-sm leading-relaxed prose prose-sm max-w-none" 
                  style={{ color: 'var(--icui-text-primary)' }}>
               <ReactMarkdown
@@ -324,6 +341,14 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', high
               >
                 {content}
               </ReactMarkdown>
+            </div>
+          )}
+
+          {/* Show loading indicator for streaming tool execution */}
+          {shouldShowLoading && (
+            <div className="flex items-center gap-2 text-sm py-2" style={{ color: 'var(--icui-text-secondary)' }}>
+              <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+              <span>Processing tools...</span>
             </div>
           )}
           

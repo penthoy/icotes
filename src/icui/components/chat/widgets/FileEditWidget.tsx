@@ -40,6 +40,8 @@ interface FileEditData {
   };
   startLine?: number;
   endLine?: number;
+  totalLines?: number;
+  totalSize?: number;
 }
 
 const FileEditWidget: React.FC<FileEditWidgetProps> = ({
@@ -307,7 +309,7 @@ const FileEditWidget: React.FC<FileEditWidgetProps> = ({
             </div>
           )}
 
-          {/* For read operations, show file path and line range */}
+          {/* For read operations, show file path and line range, plus content preview */}
           {isReadOperation && toolCall.status === 'success' && (
             <div className="icui-widget__section">
               <div className="text-sm icui-widget__meta mb-2">
@@ -316,6 +318,45 @@ const FileEditWidget: React.FC<FileEditWidgetProps> = ({
               {(fileEditData.startLine || fileEditData.endLine) && (
                 <div className="text-sm icui-widget__meta mb-2">
                   <strong>Lines:</strong> {fileEditData.startLine || 1} - {fileEditData.endLine || 'end'}
+                </div>
+              )}
+              {/* Show file statistics if available */}
+              {(fileEditData.totalLines || fileEditData.totalSize) && (
+                <div className="text-sm icui-widget__meta mb-2">
+                  <strong>File Size:</strong> 
+                  {fileEditData.totalLines && ` ${fileEditData.totalLines} lines`}
+                  {fileEditData.totalSize && ` • ${Math.round(fileEditData.totalSize / 1024)}KB`}
+                </div>
+              )}
+              {/* Show content preview if available */}
+              {fileEditData.modifiedContent && (
+                <div className="mt-3">
+                  <div className="text-sm icui-widget__meta mb-2">
+                    <strong>Content Preview:</strong>
+                    {fileEditData.totalLines && fileEditData.totalLines > 10 && (
+                      <span className="ml-2 text-xs opacity-75">
+                        (showing first 10 of {fileEditData.totalLines} lines)
+                      </span>
+                    )}
+                  </div>
+                  <SyntaxHighlighter
+                    language={fileEditData.language}
+                    style={isDark ? oneDark : oneLight}
+                    customStyle={{
+                      margin: 0,
+                      borderRadius: '6px',
+                      background: 'var(--icui-bg-primary)',
+                      border: '1px solid var(--icui-border-subtle)',
+                      fontSize: '0.75rem',
+                      lineHeight: '1.4',
+                      maxHeight: '200px',
+                      overflow: 'auto'
+                    }}
+                    showLineNumbers={true}
+                    startingLineNumber={fileEditData.startLine || 1}
+                  >
+                    {fileEditData.modifiedContent}
+                  </SyntaxHighlighter>
                 </div>
               )}
             </div>
