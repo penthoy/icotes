@@ -1,0 +1,196 @@
+/* ICUI Editor UI Styles (moved from inline styles in ICUIEditor.tsx) */
+
+/* Tabs Bar */
+.icui-tabs {
+  background-color: var(--icui-bg-secondary);
+  border-bottom: 1px solid var(--icui-border-subtle);
+}
+
+.icui-tab {
+  display: flex;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  min-width: 0;
+  cursor: pointer;
+  border-right: 1px solid var(--icui-border-subtle);
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+  color: var(--icui-text-secondary);
+}
+
+.icui-tab:hover {
+  background-color: var(--icui-bg-tertiary);
+}
+
+.icui-tab.active {
+  background-color: var(--icui-bg-tertiary);
+  color: var(--icui-text-primary);
+  box-shadow: inset 0 -2px 0 0 var(--icui-accent);
+}
+
+.icui-tab .icui-tab-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.875rem;
+}
+
+.icui-dot-modified { color: var(--icui-warning); }
+
+.icui-tab .icui-close-btn {
+  margin-left: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--icui-text-secondary);
+  transition: opacity 0.2s ease;
+}
+
+.icui-tab .icui-close-btn:hover {
+  opacity: 0.8;
+}
+
+.icui-new-file-btn {
+  color: var(--icui-text-secondary);
+}
+
+/* Actions Bar */
+.icui-editor-actions {
+  background-color: var(--icui-bg-secondary);
+  border-bottom: 1px solid var(--icui-border-subtle);
+}
+
+.icui-path {
+  color: var(--icui-text-secondary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.75rem;
+}
+
+.icui-spinner {
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid var(--icui-accent);
+  border-top-color: transparent;
+  border-radius: 9999px;
+  animation: icui-spin 1s linear infinite;
+}
+
+@keyframes icui-spin {
+  to { transform: rotate(360deg); }
+}
+
+.icui-btn-save {
+  background-color: var(--icui-success);
+  color: white;
+}
+
+.icui-btn-accent {
+  background-color: var(--icui-accent);
+  color: white;
+}
+
+.icui-text-secondary {
+  color: var(--icui-text-secondary);
+}
+
+/* Empty state */
+.icui-editor-empty {
+  color: var(--icui-text-secondary);
+}
+
+/* Language Fallback Modal */
+.icui-modal {
+  background-color: var(--icui-bg-primary);
+  color: var(--icui-text-primary);
+  border: 1px solid var(--icui-border-subtle);
+  border-radius: 0.5rem;
+}
+
+.icui-language-button {
+  background-color: var(--icui-bg-secondary);
+  border: 1px solid var(--icui-border-subtle);
+  color: var(--icui-text-primary);
+  border-radius: 0.375rem;
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  transition: background-color 0.2s ease;
+}
+
+.icui-language-button:hover {
+  background-color: var(--icui-bg-tertiary);
+}
+
+.icui-button-secondary {
+  background-color: var(--icui-bg-secondary);
+  border: 1px solid var(--icui-border-subtle);
+  color: var(--icui-text-secondary);
+  border-radius: 0.375rem;
+  padding: 0.5rem 0.75rem;
+  transition: background-color 0.2s ease;
+}
+
+.icui-button-secondary:hover {
+  background-color: var(--icui-bg-tertiary);
+}
+
+/* CodeMirror container tweaks (moved from EditorView.theme) */
+.icui-editor-container .cm-editor { height: 100%; }
+.icui-editor-container .cm-scroller {
+  font-family: Menlo, Monaco, "Courier New", monospace;
+  font-size: 14px;
+  overflow: auto;
+  height: 100%;
+}
+.icui-editor-container .cm-content {
+  padding: 10px;
+  min-height: calc(100% - 20px);
+}
+.icui-editor-container .cm-focused { outline: none; }
+
+/* Fold gutter and placeholder styling */
+.icui-editor-container .cm-foldGutter .cm-gutterElement {
+  padding: 0 4px;
+  cursor: pointer;
+}
+
+.icui-editor-container .cm-foldPlaceholder {
+  background-color: var(--icui-bg-tertiary);
+  border: none;
+  color: var(--icui-text-secondary);
+  border-radius: 3px;
+  padding: 2px 4px;
+  margin: 0 2px;
+}
+
+.icui-editor-container .cm-foldGutter .cm-gutterElement:hover {
+  background-color: var(--icui-bg-tertiary);
+}
+
+.icui-editor-container .cm-foldGutter .cm-gutterElement::before {
+  content: '›';
+  transform: rotate(0deg);
+  transition: transform 0.2s ease;
+  display: inline-block;
+  margin-right: 2px;
+}
+
+.icui-editor-container .cm-foldGutter .cm-gutterElement.cm-foldGutter-folded::before {
+  transform: rotate(90deg);
+}
+
+.icui-editor-container .cm-foldGutter .cm-gutterElement::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border: 1px solid var(--icui-border-subtle);
+  border-radius: 3px;
+  display: inline-block;
+  height: 11px;
+  width: 18px;
+  margin: 0 1px;
+  vertical-align: middle;
+  font-size: 12px;
+  line-height: 11px;
+  text-align: center;
+  color: var(--icui-text-secondary);
+}

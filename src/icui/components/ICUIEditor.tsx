@@ -61,6 +61,16 @@ import {
 } from "@codemirror/language";
 import { python } from '@codemirror/lang-python';
 import { javascript } from '@codemirror/lang-javascript';
+import { markdown } from '@codemirror/lang-markdown';
+import { json } from '@codemirror/lang-json';
+import { html } from '@codemirror/lang-html';
+import { css } from '@codemirror/lang-css';
+import { cpp } from '@codemirror/lang-cpp';
+import { rust } from '@codemirror/lang-rust';
+import { go } from '@codemirror/lang-go';
+import { StreamLanguage } from '@codemirror/language';
+import { yaml } from '@codemirror/legacy-modes/mode/yaml';
+import { shell } from '@codemirror/legacy-modes/mode/shell';
 import { createICUISyntaxHighlighting, createICUIEnhancedEditorTheme } from '../utils/syntaxHighlighting';
 
 // File interface (using centralized ICUIFile type)
@@ -133,7 +143,7 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
   onFileActivate,
   onFileReorder,
   onConnectionStatusChange,
-  autoSave = true,
+  autoSave = false,
   autoSaveDelay = 1500,
   workspaceRoot
 }, ref) => {
@@ -143,6 +153,29 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>({ connected: false });
   const [isDarkTheme, setIsDarkTheme] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [autoSaveEnabled, setAutoSaveEnabled] = useState(false); // Always default to false regardless of prop
+  const [showLanguageSelector, setShowLanguageSelector] = useState(false);
+  const [currentFileForLanguageSelect, setCurrentFileForLanguageSelect] = useState<string | null>(null);
+  
+  // Language fallback selector
+  const [showLanguageFallback, setShowLanguageFallback] = useState(false);
+  const [pendingFile, setPendingFile] = useState<{ file: any; filePath: string } | null>(null);
+  
+  const supportedLanguages = [
+    { id: 'python', name: 'Python' },
+    { id: 'javascript', name: 'JavaScript' },
+    { id: 'typescript', name: 'TypeScript' },
+    { id: 'markdown', name: 'Markdown' },
+    { id: 'json', name: 'JSON' },
+    { id: 'html', name: 'HTML' },
+    { id: 'css', name: 'CSS' },
+    { id: 'yaml', name: 'YAML' },
+    { id: 'shell', name: 'Shell/Bash' },
+    { id: 'cpp', name: 'C++' },
+    { id: 'rust', name: 'Rust' },
+    { id: 'go', name: 'Go' },
+    { id: 'text', name: 'Plain Text' }
+  ];
 
   // Refs (following ICUIEnhancedEditorPanel pattern)
   const editorRef = useRef<HTMLDivElement>(null);
@@ -156,35 +189,128 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
   // Get workspace root from environment (following ICUIExplorer pattern)
   const effectiveWorkspaceRoot = workspaceRoot || getWorkspaceRoot();
 
+  // Helper function to detect language from file extension
+  const detectLanguageFromExtension = useCallback((filePath: string): string | null => {
+    const ext = filePath.split('.').pop()?.toLowerCase() || '';
+    const langMap: Record<string, string> = {
+      'py': 'python',
+      'js': 'javascript',
+      'jsx': 'javascript',
+      'ts': 'typescript',
+      'tsx': 'typescript',
+      'md': 'markdown',
+      'json': 'json',
+      'html': 'html',
+      'htm': 'html',
+      'css': 'css',
+      'scss': 'css',
+      'sass': 'css',
+      'yaml': 'yaml',
+      'yml': 'yaml',
+      'sh': 'shell',
+      'bash': 'shell',
+      'zsh': 'shell',
+      'fish': 'shell',
+      'cpp': 'cpp',
+      'cxx': 'cpp',
+      'cc': 'cpp',
+      'c': 'cpp',
+      'h': 'cpp',
+      'hpp': 'cpp',
+      'rs': 'rust',
+      'go': 'go',
+      'env': 'shell', // .env files use shell-like syntax
+      'gitignore': 'shell', // .gitignore can use shell highlighting
+      'txt': 'text', // Plain text files
+      '': 'text' // Files without extension
+    };
+    return langMap[ext] || null; // Return null for unsupported extensions
+  }, []);
+
+  // Helper function to get available language options for fallback
+  const getAvailableLanguages = () => [
+    'text', 'python', 'javascript', 'typescript', 'markdown', 'json', 
+    'html', 'css', 'yaml', 'shell', 'cpp', 'rust', 'go'
+  ];
+
+  // Helper function to handle language fallback selection
+  const handleLanguageFallback = useCallback((selectedLanguage: string) => {
+    if (pendingFile) {
+      const { file, filePath } = pendingFile;
+      const fileWithLanguage = { ...file, language: selectedLanguage };
+      
+      // Check if file is already open
+      const existingFileIndex = files.findIndex(f => f.path === filePath);
+      if (existingFileIndex >= 0) {
+        // File is already open, just activate it and update language
+        setFiles(prev => prev.map((f, index) => 
+          index === existingFileIndex ? { ...f, isTemporary: file.isTemporary || false, language: selectedLanguage } : f
+        ));
+        setActiveFileId(files[existingFileIndex].id);
+      } else {
+        // Add new file to the list
+        if (file.isTemporary) {
+          // Handle temporary file - remove other temporary files first
+          setFiles(prev => [...prev.filter(f => !f.isTemporary), fileWithLanguage]);
+        } else {
+          // Handle permanent file
+          setFiles(prev => [...prev, fileWithLanguage]);
+        }
+        setActiveFileId(fileWithLanguage.id);
+      }
+      
+      const languageName = supportedLanguages.find(l => l.id === selectedLanguage)?.name || selectedLanguage;
+      const fileTypeMsg = file.isTemporary ? ' (temporary)' : '';
+      EditorNotificationService.show(`Opened ${fileWithLanguage.name}${fileTypeMsg} with ${languageName} highlighting`, 'success');
+    }
+    
+    // Clean up
+    setShowLanguageFallback(false);
+    setPendingFile(null);
+  }, [files, pendingFile, supportedLanguages]);
+
   // File opening methods for external control (e.g., from Explorer)
   const openFile = useCallback(async (filePath: string) => {
     try {
       setIsLoading(true);
       const fileData = await backendService.getFile(filePath);
       
+      // Auto-detect language from file extension
+      const detectedLanguage = detectLanguageFromExtension(filePath);
+      
+      if (detectedLanguage === null) {
+        // Show language fallback selector for unsupported extensions
+        setPendingFile({ file: fileData, filePath });
+        setShowLanguageFallback(true);
+        setIsLoading(false);
+        return;
+      }
+      
+      const fileWithLanguage = { ...fileData, language: detectedLanguage };
+      
       // Check if file is already open
       const existingFileIndex = files.findIndex(f => f.path === filePath);
       if (existingFileIndex >= 0) {
         // File is already open, just activate it and mark as permanent
         setFiles(prev => prev.map((f, index) => 
-          index === existingFileIndex ? { ...f, isTemporary: false } : f
+          index === existingFileIndex ? { ...f, isTemporary: false, language: detectedLanguage } : f
         ));
         setActiveFileId(files[existingFileIndex].id);
       } else {
         // Add new file to the list as permanent
-        const permanentFile = { ...fileData, isTemporary: false };
+        const permanentFile = { ...fileWithLanguage, isTemporary: false };
         setFiles(prev => [...prev, permanentFile]);
         setActiveFileId(permanentFile.id);
       }
       
-      EditorNotificationService.show(`Opened ${fileData.name}`, 'success');
+      EditorNotificationService.show(`Opened ${fileWithLanguage.name}`, 'success');
     } catch (error) {
       console.error('Failed to open file:', error);
       EditorNotificationService.show(`Failed to open ${filePath}: ${error}`, 'error');
     } finally {
       setIsLoading(false);
     }
-  }, [files]);
+  }, [files, detectLanguageFromExtension]);
 
   const openFileTemporary = useCallback(async (filePath: string) => {
     try {
@@ -208,13 +334,23 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
 
       // Load the new file and mark it as temporary
       const fileData = await backendService.getFile(filePath);
-      const temporaryFile = { ...fileData, isTemporary: true };
+      const detectedLanguage = detectLanguageFromExtension(filePath);
+      
+      if (detectedLanguage === null) {
+        // Show language fallback selector for unsupported extensions
+        setPendingFile({ file: { ...fileData, isTemporary: true }, filePath });
+        setShowLanguageFallback(true);
+        setIsLoading(false);
+        return;
+      }
+      
+      const temporaryFile = { ...fileData, language: detectedLanguage, isTemporary: true };
       
       // Add new temporary file to the list (keeping all permanent files)
       setFiles(prev => [...prev.filter(f => !f.isTemporary), temporaryFile]);
       setActiveFileId(temporaryFile.id);
       
-      EditorNotificationService.show(`Opened ${fileData.name} (temporary)`, 'info');
+      EditorNotificationService.show(`Opened ${temporaryFile.name} (temporary)`, 'info');
     } catch (error) {
       console.error('Failed to open temporary file:', error);
       EditorNotificationService.show(`Failed to open ${filePath}: ${error}`, 'error');
@@ -412,7 +548,7 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
       }
 
       const fileToSave = updatedFiles.find(f => f.id === activeFileId);
-      if (autoSave && fileToSave?.path && fileToSave.modified) {
+      if (autoSaveEnabled && fileToSave?.path && fileToSave.modified) {
         autoSaveTimerRef.current = setTimeout(async () => {
           try {
             // Check connection at time of save, not when setting up the callback
@@ -439,7 +575,7 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
     });
 
     onFileChange?.(activeFileId, newContent);
-  }, [activeFileId, onFileChange, autoSave, autoSaveDelay]); // FIXED: Removed connectionStatus.connected dependency
+  }, [activeFileId, onFileChange, autoSaveEnabled, autoSaveDelay]); // FIXED: Use autoSaveEnabled instead of autoSave
 
   // Update the content change handler ref to always have the latest version
   useEffect(() => {
@@ -450,6 +586,7 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
   const createExtensions = useCallback((language: string): Extension[] => {
     const extensions: Extension[] = [
       lineNumbers(),
+      foldGutter(),
       dropCursor(),
       indentOnInput(),
       bracketMatching(),
@@ -469,28 +606,7 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
         indentWithTab,
       ]),
       syntaxHighlighting(createICUISyntaxHighlighting(isDarkTheme)),
-      EditorView.theme(createICUIEnhancedEditorTheme(isDarkTheme)),
-      EditorView.theme({
-        '&': {
-          height: '100%',
-        },
-        '.cm-scroller': {
-          fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-          fontSize: '14px',
-          overflow: 'auto',
-          height: '100%',
-        },
-        '.cm-editor': {
-          height: '100%',
-        },
-        '.cm-content': {
-          padding: '10px',
-          minHeight: 'calc(100% - 20px)', // Account for padding
-        },
-        '.cm-focused': {
-          outline: 'none',
-        },
-      }),
+  EditorView.theme(createICUIEnhancedEditorTheme(isDarkTheme)),
       // Add update listener to handle content changes - using stable ref
       EditorView.updateListener.of((update) => {
         if (update.docChanged) {
@@ -511,9 +627,28 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
     if (language === 'python') {
       extensions.push(python());
     } else if (language === 'javascript' || language === 'typescript') {
-      extensions.push(javascript());
+      extensions.push(javascript({ typescript: language === 'typescript' }));
+    } else if (language === 'markdown') {
+      extensions.push(markdown());
+    } else if (language === 'json') {
+      extensions.push(json());
+    } else if (language === 'html') {
+      extensions.push(html());
+    } else if (language === 'css') {
+      extensions.push(css());
+    } else if (language === 'yaml') {
+      extensions.push(StreamLanguage.define(yaml));
+    } else if (language === 'bash' || language === 'shell' || language === 'sh') {
+      extensions.push(StreamLanguage.define(shell));
+    } else if (language === 'cpp' || language === 'c') {
+      extensions.push(cpp());
+    } else if (language === 'rust') {
+      extensions.push(rust());
+    } else if (language === 'go') {
+      extensions.push(go());
     }
-    // Add more languages as needed
+    // Note: For unsupported extensions, fallback to text highlighting
+    // Users can manually select a language via the language selector
 
     return extensions;
   }, [isDarkTheme]); // Only depend on isDarkTheme, not handleContentChange
@@ -758,48 +893,25 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
   }, []);
 
   return (
-    <div className={`icui-editor-container h-full flex flex-col ${className}`}>
+  <div className={`icui-editor-container h-full flex flex-col ${className}`}>
       {/* File Tabs - FIXED: Use ICUI theme variables for consistency */}
-      <div className="flex border-b" style={{ backgroundColor: 'var(--icui-bg-secondary)', borderColor: 'var(--icui-border-subtle)' }}>
+  <div className="flex border-b icui-tabs">
         {files.map((file) => (
           <div
             key={file.id}
-            className={`flex items-center px-3 py-2 border-r cursor-pointer min-w-0 transition-all duration-200 ${
-              file.id === activeFileId
-                ? 'border-b-2'
-                : ''
-            }`}
-            style={{
-              backgroundColor: file.id === activeFileId 
-                ? 'var(--icui-bg-tertiary)' 
-                : 'transparent',
-              borderRightColor: 'var(--icui-border-subtle)',
-              borderBottomColor: file.id === activeFileId ? 'var(--icui-accent)' : 'transparent',
-              color: file.id === activeFileId ? 'var(--icui-text-primary)' : 'var(--icui-text-secondary)'
-            }}
+    className={`icui-tab ${file.id === activeFileId ? 'active' : ''}`}
             onClick={() => handleActivateFile(file.id)}
-            onMouseEnter={(e) => {
-              if (file.id !== activeFileId) {
-                e.currentTarget.style.backgroundColor = 'var(--icui-bg-tertiary)';
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (file.id !== activeFileId) {
-                e.currentTarget.style.backgroundColor = 'transparent';
-              }
-            }}
           >
-            <span className="truncate text-sm" style={{ fontStyle: file.isTemporary ? 'italic' : 'normal' }}>
+            <span className={`icui-tab-title ${file.isTemporary ? 'italic' : ''}`}>
               {file.name}
-              {file.modified && <span style={{ color: 'var(--icui-warning)' }} className="ml-1">•</span>}
+              {file.modified && <span className="ml-1 icui-dot-modified">•</span>}
             </span>
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 handleCloseFile(file.id);
               }}
-              className="ml-2 text-xs transition-colors hover:opacity-80"
-              style={{ color: 'var(--icui-text-secondary)' }}
+      className="icui-close-btn"
             >
               ×
             </button>
@@ -807,8 +919,7 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
         ))}
         <button
           onClick={onFileCreate}
-          className="px-3 py-2 text-sm transition-colors hover:opacity-80"
-          style={{ color: 'var(--icui-text-secondary)' }}
+      className="px-3 py-2 text-sm transition-colors hover:opacity-80 icui-new-file-btn"
           title="New File"
         >
           +
@@ -817,43 +928,42 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
 
       {/* File Actions - Simplified without connection status */}
       {activeFile && (
-        <div className="flex items-center justify-between p-2 border-b" style={{ backgroundColor: 'var(--icui-bg-secondary)', borderColor: 'var(--icui-border-subtle)' }}>
+        <div className="flex items-center justify-between p-2 border-b icui-editor-actions">
           <div className="flex items-center space-x-4">
-            <span className="text-xs font-mono" style={{ color: 'var(--icui-text-secondary)' }}>
+            <span className="text-xs font-mono icui-text-secondary">
               {activeFile.path || `${effectiveWorkspaceRoot}/${activeFile.name}`}
             </span>
             {isLoading && (
-              <div 
-                className="w-4 h-4 border-2 border-t-transparent rounded-full animate-spin" 
-                style={{ borderColor: 'var(--icui-accent)', borderTopColor: 'transparent' }}
-              />
+              <div className="icui-spinner" />
             )}
           </div>
           <div className="flex items-center space-x-2">
             <button
               onClick={() => handleSaveFile(activeFile.id)}
               disabled={!activeFile.modified || !connectionStatus.connected || isLoading}
-              className="px-3 py-1 text-xs rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{ 
-                backgroundColor: 'var(--icui-success)', 
-                color: 'white',
-                opacity: (!activeFile.modified || !connectionStatus.connected || isLoading) ? 0.5 : 1
-              }}
+              className="px-3 py-1 text-xs rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed icui-btn-save"
             >
               Save
             </button>
-            <button
-              onClick={() => handleRunFile(activeFile.id)}
-              disabled={!connectionStatus.connected || isLoading}
-              className="px-3 py-1 text-xs rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{ 
-                backgroundColor: 'var(--icui-accent)', 
-                color: 'white',
-                opacity: (!connectionStatus.connected || isLoading) ? 0.5 : 1
-              }}
-            >
-              Run
-            </button>
+            <div className="flex items-center space-x-1">
+              <input
+                type="checkbox"
+                id="auto-save-checkbox"
+                checked={autoSaveEnabled}
+                onChange={(e) => {
+                  setAutoSaveEnabled(e.target.checked);
+                  if (e.target.checked) {
+                    EditorNotificationService.show('Auto-save enabled', 'info');
+                  } else {
+                    EditorNotificationService.show('Auto-save disabled', 'info');
+                  }
+                }}
+                className="w-3 h-3"
+              />
+              <label htmlFor="auto-save-checkbox" className="text-xs cursor-pointer icui-text-secondary">
+                Auto
+              </label>
+            </div>
           </div>
         </div>
       )}
@@ -861,20 +971,15 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
       {/* Editor Container */}
       <div className="flex-1 relative overflow-hidden">
         {activeFile && files.find(f => f.id === activeFileId) ? (
-          <div 
-            ref={editorRef} 
-            className="h-full w-full"
-            style={{ height: '100%' }}
-          />
+          <div ref={editorRef} className="h-full w-full" />
         ) : (
-          <div className="flex items-center justify-center h-full" style={{ color: 'var(--icui-text-secondary)' }}>
+    <div className="flex items-center justify-center h-full icui-editor-empty">
             <div className="text-center">
               <p className="text-lg mb-2">No file open</p>
               {onFileCreate && (
                 <button
                   onClick={onFileCreate}
-                  className="px-4 py-2 rounded transition-colors"
-                  style={{ backgroundColor: 'var(--icui-accent)', color: 'white' }}
+      className="px-4 py-2 rounded transition-colors icui-btn-accent"
                 >
                   Create New File
                 </button>
@@ -883,6 +988,48 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
           </div>
         )}
       </div>
+      
+      {/* Language Fallback Selector Modal */}
+      {showLanguageFallback && pendingFile && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+          onClick={() => {
+            setShowLanguageFallback(false);
+            setPendingFile(null);
+          }}
+        >
+          <div className="icui-modal rounded-lg shadow-lg p-6 max-w-md w-full mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold mb-4">Select Language Highlighting</h3>
+            <p className="text-sm mb-4 icui-text-secondary">
+              The file extension for "{pendingFile.file.name}" is not recognized. Please select a syntax highlighting mode:
+            </p>
+            <div className="grid grid-cols-2 gap-2 max-h-60 overflow-y-auto">
+              {supportedLanguages.map((lang) => (
+                <button
+                  key={lang.id}
+                  onClick={() => handleLanguageFallback(lang.id)}
+                  className="icui-language-button text-sm"
+                >
+                  {lang.name}
+                </button>
+              ))}
+            </div>
+            <div className="flex justify-end mt-4 space-x-2">
+              <button
+                onClick={() => {
+                  setShowLanguageFallback(false);
+                  setPendingFile(null);
+                }}
+                className="icui-button-secondary text-sm"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 });

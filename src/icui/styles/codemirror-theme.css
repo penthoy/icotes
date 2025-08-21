@@ -1,0 +1,232 @@
+/* CodeMirror ICUI Theme Integration */
+
+/* Find/Replace Panel Styling */
+.cm-panels {
+  background-color: var(--icui-bg-secondary) !important;
+  color: var(--icui-text-primary) !important;
+  border: none !important;
+}
+
+.cm-panels.cm-panels-top {
+  border-bottom: 1px solid var(--icui-border-subtle) !important;
+}
+
+.cm-panels.cm-panels-bottom {
+  border-top: 1px solid var(--icui-border-subtle) !important;
+}
+
+.cm-panel {
+  background-color: var(--icui-bg-secondary) !important;
+  padding: 8px 12px !important;
+}
+
+/* Enhanced input styling for better dark mode visibility */
+.cm-panel input {
+  background-color: var(--icui-bg-primary) !important;
+  border: 1px solid var(--icui-border-subtle) !important;
+  border-radius: 4px !important;
+  padding: 6px 10px !important;
+  color: var(--icui-text-primary) !important;
+  font-size: 13px !important;
+  font-family: inherit !important;
+  min-width: 120px !important;
+}
+
+.cm-panel input::placeholder {
+  color: var(--icui-text-muted) !important;
+  opacity: 0.7 !important;
+}
+
+.cm-panel input:focus {
+  outline: none !important;
+  border-color: var(--icui-accent) !important;
+  box-shadow: 0 0 0 2px var(--icui-accent-bg) !important;
+}
+
+/* Enhanced button styling */
+.cm-panel button {
+  background-color: var(--icui-bg-tertiary) !important;
+  border: 1px solid var(--icui-border-subtle) !important;
+  border-radius: 4px !important;
+  padding: 6px 12px !important;
+  color: var(--icui-text-primary) !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  cursor: pointer !important;
+  margin: 0 3px !important;
+  transition: all 0.2s ease !important;
+}
+
+.cm-panel button:hover {
+  background-color: var(--icui-accent) !important;
+  color: white !important;
+  border-color: var(--icui-accent) !important;
+}
+
+.cm-panel button:active {
+  transform: translateY(1px) !important;
+}
+
+/* Ensure disabled controls are readable in dark mode */
+.cm-panel button:disabled,
+.cm-panel input:disabled,
+.cm-panel select:disabled {
+  opacity: 0.6 !important;
+  cursor: not-allowed !important;
+  color: var(--icui-text-secondary) !important;
+}
+
+/* Enhanced label styling for better readability */
+.cm-panel label {
+  color: var(--icui-text-primary) !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  margin: 0 12px 0 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+}
+
+/* Checkbox styling within panels */
+.cm-panel input[type="checkbox"] {
+  width: auto !important;
+  min-width: auto !important;
+  margin: 0 6px 0 0 !important;
+  padding: 0 !important;
+  accent-color: var(--icui-accent) !important;
+}
+
+/* Search match highlighting */
+.cm-searchMatch {
+  background-color: var(--icui-warning-bg) !important;
+  border: 1px solid var(--icui-warning) !important;
+  border-radius: 2px !important;
+}
+
+.cm-searchMatch.cm-searchMatch-selected {
+  background-color: var(--icui-accent-bg) !important;
+  border: 1px solid var(--icui-accent) !important;
+}
+
+/* Improve placeholder/search text contrast in dark theme */
+[data-theme="dark"] .cm-panel input,
+.icui-theme-github-dark .cm-panel input,
+.icui-theme-one-dark .cm-panel input,
+.icui-theme-dracula .cm-panel input {
+  color: var(--icui-text-primary) !important;
+}
+[data-theme="dark"] .cm-panel input::placeholder,
+.icui-theme-github-dark .cm-panel input::placeholder,
+.icui-theme-one-dark .cm-panel input::placeholder,
+.icui-theme-dracula .cm-panel input::placeholder {
+  color: var(--icui-text-secondary) !important;
+}
+
+/* Panel layout improvements */
+.cm-panel > * {
+  margin-right: 8px !important;
+}
+
+.cm-panel > *:last-child {
+  margin-right: 0 !important;
+}
+
+/* Close button styling */
+.cm-panel button[name="close"] {
+  background-color: transparent !important;
+  border: none !important;
+  color: var(--icui-text-secondary) !important;
+  font-size: 16px !important;
+  padding: 4px 8px !important;
+  border-radius: 50% !important;
+  margin-left: auto !important;
+}
+
+.cm-panel button[name="close"]:hover {
+  background-color: var(--icui-error-bg) !important;
+  color: var(--icui-error) !important;
+}
+
+/* Dark mode specific adjustments */
+[data-theme="dark"] .cm-panel {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+}
+
+[data-theme="dark"] .cm-panel input {
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2) !important;
+}
+
+[data-theme="dark"] .cm-panel button {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2) !important;
+}
+
+/* Dark theme buttons: black text for readability */
+.dark .cm-panel button,
+.icui-theme-github-dark .cm-panel button,
+.icui-theme-monokai .cm-panel button,
+.icui-theme-one-dark .cm-panel button,
+.icui-theme-dracula .cm-panel button,
+.icui-theme-solarized-dark .cm-panel button {
+  background-color: var(--icui-bg-tertiary) !important;
+  color: #000000 !important;
+  border-color: var(--icui-border) !important;
+}
+
+.dark .cm-panel button:disabled,
+.icui-theme-github-dark .cm-panel button:disabled,
+.icui-theme-monokai .cm-panel button:disabled,
+.icui-theme-one-dark .cm-panel button:disabled,
+.icui-theme-dracula .cm-panel button:disabled,
+.icui-theme-solarized-dark .cm-panel button:disabled {
+  background-color: var(--icui-bg-secondary) !important;
+  color: #333333 !important;
+  border-color: var(--icui-border-subtle) !important;
+  opacity: 1 !important;
+}
+
+/* Hover uses accent to be consistent across app */
+.dark .cm-panel button:hover,
+.icui-theme-github-dark .cm-panel button:hover,
+.icui-theme-monokai .cm-panel button:hover,
+.icui-theme-one-dark .cm-panel button:hover,
+.icui-theme-dracula .cm-panel button:hover,
+.icui-theme-solarized-dark .cm-panel button:hover {
+  background-color: var(--icui-accent) !important;
+  color: #ffffff !important;
+  border-color: var(--icui-accent) !important;
+}
+
+/* Light mode specific adjustments */
+[data-theme="light"] .cm-panel {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important;
+}
+
+[data-theme="light"] .cm-panel input {
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05) !important;
+}
+
+/* Replace panel specific styling */
+.cm-panel.cm-panel-replace {
+  border-top: 1px solid var(--icui-border-subtle) !important;
+}
+
+/* Search info text styling */
+.cm-panel .cm-search-info {
+  color: var(--icui-text-secondary) !important;
+  font-size: 12px !important;
+  margin-left: auto !important;
+}
+
+/* Tighten panel layout and prevent overflow */
+.cm-panel {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 6px !important;
+  align-items: center !important;
+}
+
+/* Panel checkbox text alignment */
+.cm-panel .cm-query-toggle {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+}
