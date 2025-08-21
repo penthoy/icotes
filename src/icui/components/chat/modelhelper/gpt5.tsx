@@ -31,6 +31,8 @@ export class GPT5ModelHelper implements ModelHelper {
     return text
       .replace(/🔧\s*\*\*Executing tools\.\.\.\*\*[\s\S]*?🔧\s*\*\*Tool execution complete\. Continuing\.\.\.\*\*/g, '')
       .replace(/🔧\s*\*\*Executing tools\.\.\.\*\*\s*\n?/g, '')
+  // Remove any standalone tool header lines early (prevents header flash before widget appears)
+  .replace(/📋\s*\*\*[^:]+\*\*:\s*(\{[^}]*\}|[^\n]*)\n?/g, '')
       // Remove incomplete tool headers that are still running (to prevent flashing)
       .replace(/📋\s*\*\*[^:]+\*\*:\s*\{[^}]*\}\s*$/g, '')
       .replace(/📋\s*\*\*[^:]+\*\*:\s*[^\n]*\s*$/g, '')

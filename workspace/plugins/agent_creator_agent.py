@@ -21,6 +21,7 @@ from typing import Dict, List, Any, AsyncGenerator
 logger = logging.getLogger(__name__)
 
 # Agent metadata
+MODEL_NAME = "gpt-5-nano"
 AGENT_NAME = "AgentCreator"
 AGENT_DESCRIPTION = "An AI agent that helps you create other custom agents using file editing tools"
 AGENT_VERSION = "2.0.0"
@@ -338,7 +339,7 @@ Be helpful, practical, and focus on creating working solutions."""
         # Start the conversation loop for tool calls
         while True:
             stream = client.chat.completions.create(
-                model="gpt-5-mini",
+                model=MODEL_NAME,
                 messages=messages,
                 max_completion_tokens=2000,
                 tools=get_tools(),
