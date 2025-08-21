@@ -12,8 +12,7 @@
 import React, { useState, useCallback } from 'react';
 import { ChevronDown, ChevronRight, Clock, CheckCircle, XCircle, Wrench, Play } from 'lucide-react';
 
-export type ToolCallStatus = 'pending' | 'running' | 'success' | 'error';
-export type ToolCallCategory = 'file' | 'code' | 'network' | 'data' | 'custom';
+import { ToolCallStatus, ToolCallCategory } from '../../types/chatTypes';
 
 export interface ToolCallData {
   id: string;
@@ -97,11 +96,18 @@ const ToolCallWidget: React.FC<ToolCallWidgetProps> = ({
   // Calculate execution time
   const getExecutionTime = () => {
     if (toolCall.startTime && toolCall.endTime) {
-      const duration = toolCall.endTime.getTime() - toolCall.startTime.getTime();
-      return `${duration}ms`;
+      const startTime = toolCall.startTime instanceof Date ? toolCall.startTime : new Date(toolCall.startTime);
+      const endTime = toolCall.endTime instanceof Date ? toolCall.endTime : new Date(toolCall.endTime);
+      if (!isNaN(startTime.getTime()) && !isNaN(endTime.getTime())) {
+        const seconds = ((endTime.getTime() - startTime.getTime()) / 1000).toFixed(2);
+        return `Duration: ${seconds}s`;
+      }
     } else if (toolCall.startTime) {
-      const duration = Date.now() - toolCall.startTime.getTime();
-      return `${duration}ms (ongoing)`;
+      const startTime = toolCall.startTime instanceof Date ? toolCall.startTime : new Date(toolCall.startTime);
+      if (!isNaN(startTime.getTime())) {
+        const seconds = ((Date.now() - startTime.getTime()) / 1000).toFixed(2);
+        return `Duration: ${seconds}s`;
+      }
     }
     return null;
   };

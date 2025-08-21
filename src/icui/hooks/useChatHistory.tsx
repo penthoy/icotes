@@ -16,27 +16,33 @@ export function useChatHistory() {
 
 	// Load from localStorage
 	useEffect(() => {
+		const createDefault = () => {
+			const id = `session_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+			const now = Date.now();
+			const meta: ChatSessionMeta = { id, name: 'Default Chat', created: now, updated: now };
+			setSessions([meta]);
+			setActiveSessionId(id);
+			chatClient.setCurrentSession(id);
+		};
+
 		try {
 			const raw = localStorage.getItem(STORAGE_KEY);
 			if (raw) {
 				const parsed = JSON.parse(raw) as { sessions: ChatSessionMeta[]; active?: string };
-				setSessions(parsed.sessions || []);
-				const activeId = parsed.active || chatClient.currentSession || '';
+				const loaded = Array.isArray(parsed.sessions) ? parsed.sessions : [];
+				if (loaded.length === 0) return createDefault();
+				setSessions(loaded);
+				const candidate = parsed.active || chatClient.currentSession || loaded[0]?.id || '';
+				const ids = new Set(loaded.map(s => s.id));
+				const activeId = ids.has(candidate) ? candidate : loaded[0]?.id || '';
 				setActiveSessionId(activeId);
-				if (activeId) {
-					chatClient.setCurrentSession(activeId);
-				}
+				if (activeId) chatClient.setCurrentSession(activeId);
 			} else {
-				// No sessions exist - create a default one
-				const id = `session_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-				const now = Date.now();
-				const meta: ChatSessionMeta = { id, name: 'Default Chat', created: now, updated: now };
-				setSessions([meta]);
-				setActiveSessionId(id);
-				chatClient.setCurrentSession(id);
+				createDefault();
 			}
 		} catch {
-			// ignore
+			// No sessions exist or JSON parse error we silently leave the state empty. Prefer falling back to a default session in both cases.
+			createDefault();
 		}
 	}, []);
 
@@ -62,11 +68,15 @@ export function useChatHistory() {
 	}, []);
 
 	const deleteSession = useCallback((id: string) => {
-		setSessions(prev => prev.filter(s => s.id !== id));
-		if (activeSessionId === id) {
-			setActiveSessionId('');
-			chatClient.setCurrentSession('');
-		}
+		setSessions(prev => {
+			const next = prev.filter(s => s.id !== id);
+			if (activeSessionId === id) {
+				const nextId = next[0]?.id || '';
+				setActiveSessionId(nextId);
+				chatClient.setCurrentSession(nextId);
+			}
+			return next;
+		});
 	}, [activeSessionId]);
 
 	const switchSession = useCallback((id: string) => {

@@ -96,7 +96,8 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', high
   const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, inline }) => {
     const match = /language-(\w+)/.exec(className || '');
     const language = match ? match[1] : '';
-    const blockId = `${message.id}-${Math.random().toString(36).substr(2, 9)}`;
+    const blockIdRef = React.useRef<string>(`${message.id}-${Math.random().toString(36).slice(2, 11)}`);
+    const blockId = blockIdRef.current;
     const isCopied = copiedStates[blockId];
 
     if (inline) {
@@ -119,7 +120,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', high
         <div className="flex items-center justify-between px-4 py-2 bg-gray-800 text-gray-200 text-sm rounded-t-lg">
           <span className="font-mono">{language || 'text'}</span>
           <button
-            onClick={() => handleCopy(children, blockId)}
+            onClick={() => handleCopy(typeof children === 'string' ? children : String(children), blockId)}
             className="flex items-center gap-1 px-2 py-1 rounded hover:bg-gray-700 transition-colors"
             title={isCopied ? 'Copied!' : 'Copy code'}
           >

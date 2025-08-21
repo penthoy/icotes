@@ -166,7 +166,7 @@ const CodeExecutionWidget: React.FC<CodeExecutionWidgetProps> = ({
           <div className="flex items-center gap-2">
             <span className="icui-widget__title">Code Execution</span>
             <span className={`text-xs px-2 py-0.5 rounded ${statusInfo.color}`}>
-              {executionData.language.toUpperCase()}
+              {(executionData.language || 'text').toUpperCase()}
             </span>
             {executionData.exitCode !== undefined && (
               <span className={`text-xs px-2 py-0.5 rounded ${
@@ -247,7 +247,7 @@ const CodeExecutionWidget: React.FC<CodeExecutionWidgetProps> = ({
           <div className="icui-widget__section">
             {activeTab === 'code' && (
               <SyntaxHighlighter
-                language={executionData.language}
+                language={executionData.language || 'text'}
                 style={isDark ? oneDark : oneLight}
                 customStyle={{ 
                   margin: 0, 

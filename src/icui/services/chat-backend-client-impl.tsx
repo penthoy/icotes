@@ -19,7 +19,25 @@ interface WebSocketMessage {
   type: string;
   data?: any;
   id?: string;
-  timestamp?: string;
+}
+
+// Tool call event data interface for type safety
+interface ToolCallEventData {
+  type?: 'tool_call_start' | 'tool_call_progress' | 'tool_call_complete' | 'tool_call_error' | string;
+  toolId?: string;
+  id?: string;
+  toolName?: string;
+  name?: string;
+  category?: 'file' | 'code' | 'data' | 'network' | 'custom';
+  status?: 'pending' | 'running' | 'success' | 'error';
+  progress?: number;
+  input?: any;
+  output?: any;
+  result?: any;
+  error?: string;
+  startedAt?: string | Date;
+  endedAt?: string | Date;
+  metadata?: Record<string, any>;
 }
 
 export interface ChatMessage {
@@ -799,7 +817,7 @@ export class EnhancedChatBackendClient {
     notificationService.error(`Chat Error: ${error}`);
   }
 
-  private handleToolCallEvent(data: any): void {
+  private handleToolCallEvent(data: ToolCallEventData): void {
     const toolId = String(data.toolId || data.id || `tool_${Date.now()}`);
     const toolName = String(data.toolName || data.name || 'Tool');
     const category = data.category || 'custom';

@@ -242,14 +242,18 @@ const FileEditWidget: React.FC<FileEditWidgetProps> = ({
   const originalToolName = toolCall.metadata?.originalToolName || toolCall.toolName;
   const isReadOperation = originalToolName === 'read_file';
   const isCreateOperation = originalToolName === 'create_file';
-  const hasExpandableContent = availableTabs.length > 0 || isReadOperation;
+  
+  // Content is expandable if there are tabs to show (diff/before/after) or if this is a read operation
+  const shouldShowExpandableContent = useMemo(() => {
+    return availableTabs.length > 0 || isReadOperation;
+  }, [availableTabs.length, isReadOperation]);
 
   return (
     <div className={`icui-widget ${className}`}>
       {/* Header */}
-      <div className={`icui-widget__header ${hasExpandableContent ? 'icui--clickable' : ''}`} onClick={hasExpandableContent ? handleToggleExpansion : undefined}>
+      <div className={`icui-widget__header ${shouldShowExpandableContent ? 'icui--clickable' : ''}`} onClick={shouldShowExpandableContent ? handleToggleExpansion : undefined}>
         {/* Expansion indicator */}
-        {hasExpandableContent && (
+        {shouldShowExpandableContent && (
           <div className="flex-shrink-0">
             {isExpanded ? (
               <ChevronDown size={14} className="text-gray-500" />
@@ -273,7 +277,7 @@ const FileEditWidget: React.FC<FileEditWidgetProps> = ({
           <div className="flex items-center gap-2">
             <span className="icui-widget__title">{formatFilePath(fileEditData.filePath)}</span>
             <span className={`text-xs px-2 py-0.5 rounded ${statusInfo.color}`}>
-              {isCreateOperation ? 'CREATE' : fileEditData.operation.toUpperCase()}
+              {isCreateOperation ? 'CREATE' : String(fileEditData.operation || 'update').toUpperCase()}
             </span>
           </div>
           {fileEditData.timestamp && (
@@ -285,7 +289,7 @@ const FileEditWidget: React.FC<FileEditWidgetProps> = ({
       </div>
 
       {/* Expanded content */}
-      {isExpanded && hasExpandableContent && (
+      {isExpanded && shouldShowExpandableContent && (
         <div>
           {/* Show error information if failed */}
           {toolCall.status === 'error' && toolCall.error && (

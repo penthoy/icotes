@@ -9,8 +9,10 @@
  */
 export const formatFilePath = (filePath: string): string => {
   if (!filePath) return 'Unknown file';
-  const parts = filePath.split('/');
-  return parts[parts.length - 1];
+  // Normalize: strip file://, convert backslashes, trim trailing slashes
+  const normalized = filePath.replace(/^file:\/\//, '').replace(/\\/g, '/').replace(/\/+$/, '');
+  const parts = normalized.split('/').filter(Boolean);
+  return parts[parts.length - 1] || 'Unknown file';
 };
 
 /**
@@ -39,8 +41,11 @@ export const formatDisplayPath = (path: string): string => {
  */
 export const getFileExtension = (filePath: string): string => {
   if (!filePath) return '';
-  const parts = filePath.split('.');
-  return parts.length > 1 ? parts.pop()?.toLowerCase() || '' : '';
+  const base = (filePath.split(/[\/\\]/).pop() || '').replace(/^\.+/, '');
+  const idx = base.lastIndexOf('.');
+  // No extension for dotfiles like '.env'  
+  if (idx <= 0) return '';
+  return base.slice(idx + 1).toLowerCase();
 };
 
 /**

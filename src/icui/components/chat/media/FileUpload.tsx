@@ -73,8 +73,9 @@ export const FileUpload: React.FC<FileUploadProps> = ({
         // Extension check
         return file.name.toLowerCase().endsWith(type.toLowerCase());
       } else {
-        // MIME type check
-        return file.type.match(type.replace('*', '.*'));
+        // MIME type check (e.g., image/*, application/pdf)
+        const pattern = '^' + type.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace('\\*', '.*') + '$';
+        return new RegExp(pattern).test(file.type);
       }
     });
   }, [accept]);
@@ -270,10 +271,20 @@ export const FileUpload: React.FC<FileUploadProps> = ({
           borderColor: isDragOver ? 'var(--icui-accent)' : 'var(--icui-border-subtle)',
           color: 'var(--icui-text-primary)'
         }}
+        role="button"
+        aria-disabled={disabled}
+        aria-label="Upload files"
+        tabIndex={disabled ? -1 : 0}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         onClick={() => !disabled && fileInputRef.current?.click()}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            fileInputRef.current?.click();
+          }
+        }}
       >
         <input
           ref={fileInputRef}

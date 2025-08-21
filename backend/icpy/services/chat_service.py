@@ -985,9 +985,20 @@ class ChatService:
                                 except:
                                     pass
                     
+                    # Try reading metadata sidecar for display name
+                    meta_name = None
+                    meta_path = self.history_root / f"{session_id}.meta.json"
+                    if meta_path.exists():
+                        try:
+                            with open(meta_path, 'r', encoding='utf-8') as mf:
+                                meta = json.load(mf)
+                                meta_name = meta.get('name') or None
+                        except Exception:
+                            meta_name = None
+                    
                     sessions.append({
                         'id': session_id,
-                        'name': session_id,  # Default to session ID as name
+                        'name': meta_name or session_id,  # Default to session ID as name
                         'created': stat.st_ctime,
                         'updated': stat.st_mtime,
                         'message_count': message_count,
@@ -1013,6 +1024,12 @@ class ChatService:
             file_path = self.history_root / f"{session_id}.jsonl"
             file_path.touch()
             
+            # Persist display name if provided
+            if name:
+                meta_path = self.history_root / f"{session_id}.meta.json"
+                with open(meta_path, 'w', encoding='utf-8') as mf:
+                    json.dump({'id': session_id, 'name': name}, mf, ensure_ascii=False)
+            
             logger.info(f"Created new chat session: {session_id}")
             return session_id
         except Exception as e:
@@ -1026,12 +1043,14 @@ class ChatService:
             if not file_path.exists():
                 return False
             
-            # For now, just log the rename since JSONL doesn't store metadata
-            # In future, could add a separate metadata file or use a different format
+            meta_path = self.history_root / f"{session_id}.meta.json"
+            with open(meta_path, 'w', encoding='utf-8') as mf:
+                json.dump({'id': session_id, 'name': name}, mf, ensure_ascii=False)
+            
             logger.info(f"Session {session_id} renamed to: {name}")
             return True
         except Exception as e:
-            logger.error(f"Failed to update session {session_id}: {e}")
+            logger.error(f"Failed writing metadata for session {session_id}: {e}")
             return False
     
     async def delete_session(self, session_id: str) -> bool:

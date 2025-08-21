@@ -60,6 +60,8 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
   // Convert file to URL if file prop is provided
   useEffect(() => {
     if (file) {
+      setIsLoading(true);
+      setHasError(false);
       const url = URL.createObjectURL(file);
       setImageUrl(url);
       setMetadata({
@@ -73,6 +75,14 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
       };
     }
   }, [file]);
+
+  // Add this effect (outside the selected range) to react to src updates when no file is provided:
+  useEffect(() => {
+    if (!file && src) {
+      setIsLoading(true);
+      setHasError(false);
+    }
+  }, [file, src]);
 
   // Handle image load to get dimensions
   const handleImageLoad = useCallback(() => {

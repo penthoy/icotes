@@ -147,8 +147,10 @@ I'm currently working on your request. This may take a moment...`;
       results['code_widget_resolved'] = codeWidget !== defaultWidget;
 
       // Test widget component names (check if they're the right components)
-      results['search_widget_correct'] = searchWidget.name?.includes('SemanticSearch') || false;
-      results['progress_widget_correct'] = progressWidget.name?.includes('Progress') || false;
+      results['search_widget_correct'] = searchWidget === SemanticSearchWidget;
+      results['progress_widget_correct'] = progressWidget === ProgressWidget;
+      results['file_widget_correct'] = fileWidget === FileEditWidget;
+      results['code_widget_correct'] = codeWidget === CodeExecutionWidget;
 
       console.log('Enhanced widget registry test results:', results);
     } catch (error) {

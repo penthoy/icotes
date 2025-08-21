@@ -46,10 +46,10 @@ const SemanticSearchWidget: React.FC<SemanticSearchWidgetProps> = ({
   }, [expandable]);
 
   return (
-    <div className="icui-widget">
+    <div className={`icui-widget${className ? ` ${className}` : ''}`}>
       <div 
         className={`icui-widget__header ${isExpanded ? 'icui--clickable' : 'icui--clickable'}`}
-        onClick={() => setIsExpanded(!isExpanded)}
+        onClick={handleToggleExpansion}
       >
         {/* Expansion indicator */}
         <div className="flex-shrink-0">
@@ -66,7 +66,7 @@ const SemanticSearchWidget: React.FC<SemanticSearchWidgetProps> = ({
         <span className="icui-widget__meta">
           {searchData.resultCount} result{searchData.resultCount !== 1 ? 's' : ''}
         </span>
-        {!isExpanded && (
+        {!isExpanded && expandable && (
           <button 
             className="ml-auto text-xs px-2 py-1 text-gray-400 hover:text-gray-600"
             onClick={(e) => {

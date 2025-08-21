@@ -28,38 +28,43 @@ export class GPT5ModelHelper implements ModelHelper {
    * Remove GPT-5 specific tool execution text blocks and executing indicators
    */
   stripAllToolText(text: string): string {
+    // Combine all major removal patterns into a single regex with alternation
+    const combinedPattern = new RegExp([
+      // Tool execution blocks
+      '🔧\\s*\\*\\*Executing tools\\.\\.\\.\\*\\*[\\s\\S]*?🔧\\s*\\*\\*Tool execution complete\\. Continuing\\.\\.\\.\\*\\*',
+      '🔧\\s*\\*\\*Executing tools\\.\\.\\.\\*\\*\\s*\\n?',
+      // Tool header lines (standalone, incomplete, or still running)
+      '📋\\s*\\*\\*[^:]+\\*\\*:\\s*(\\{[^}]*\\}|[^\\n]*)\\n?',
+      '📋\\s*\\*\\*[^:]+\\*\\*:\\s*\\{[^}]*\\}\\s*$',
+      '📋\\s*\\*\\*[^:]+\\*\\*:\\s*[^\\n]*\\s*$',
+      // Large success/error blocks with file content
+      '✅\\s*\\*\\*Success\\*\\*:\\s*\\{[^}]*\'content\':[^}]*\\}\\s*\\n',
+      '✅\\s*\\*\\*Success\\*\\*:\\s*\\{[\\s\\S]*?\'content\':\\s*\'[\\s\\S]*?\'[\\s\\S]*?\\}\\s*\\n',
+      // Logger statements and debug output
+      'logger\\.(info|error|debug|warning)\\([^)]*\\)',
+      // Large blocks of escaped code 
+      '([\'"]content[\'"]:\\s*[\'"][^\'\"]*?(?:logger\\.|import |def |class |try:|except |if __name__|yield )[^\'\"]*?[\'"])',
+      // Python code artifacts that leak through
+      '\\\\n\\s*except Exception as e:\\\\n\\s*logger\\.error.*?\\\\n',
+      '\\\\n\\s*yield f[\'\""][^\'\"]*?\\\\n',
+      // Raw Python code blocks
+      '\\n\\s*logger\\.(info|error|debug|warning)\\([^)]*\\)\\s*\\n',
+      '\\n\\s*(import |from |def |class |try:|except |if __name__|yield )[^\\n]*\\n'
+    ].join('|'), 'g');
+
     return text
-      .replace(/🔧\s*\*\*Executing tools\.\.\.\*\*[\s\S]*?🔧\s*\*\*Tool execution complete\. Continuing\.\.\.\*\*/g, '')
-      .replace(/🔧\s*\*\*Executing tools\.\.\.\*\*\s*\n?/g, '')
-  // Remove any standalone tool header lines early (prevents header flash before widget appears)
-  .replace(/📋\s*\*\*[^:]+\*\*:\s*(\{[^}]*\}|[^\n]*)\n?/g, '')
-      // Remove incomplete tool headers that are still running (to prevent flashing)
-      .replace(/📋\s*\*\*[^:]+\*\*:\s*\{[^}]*\}\s*$/g, '')
-      .replace(/📋\s*\*\*[^:]+\*\*:\s*[^\n]*\s*$/g, '')
-      // Remove large success/error blocks that contain file content
-      .replace(/✅\s*\*\*Success\*\*:\s*\{[^}]*'content':[^}]*\}\s*\n/g, '')
-      .replace(/✅\s*\*\*Success\*\*:\s*\{[\s\S]*?'content':\s*'[\s\S]*?'[\s\S]*?\}\s*\n/g, '')
-      // Remove logger statements and debug output that leak through
+      .replace(combinedPattern, '')
+      // Clean up multiple consecutive newlines
+      .replace(/\n{3,}/g, '\n\n')
+      // Handle escape sequences in a single pass
       .replace(/\\n\\n/g, '\n')
       .replace(/\\n/g, '\n')
       .replace(/\\"/g, '"')
       .replace(/\\"\\n/g, '\n')
-      .replace(/logger\.(info|error|debug|warning)\([^)]*\)/g, '')
-      // Remove large blocks of escaped code that shouldn't be displayed as regular text
-      .replace(/(['"]content['"]:\s*['"][^'"]*?(?:logger\.|import |def |class |try:|except |if __name__|yield )[^'"]*?['"])/g, '')
-      // Clean up Python code artifacts that leak through
-      .replace(/\\n\s*except Exception as e:\\n\s*logger\.error.*?\\n/g, '')
-      .replace(/\\n\s*yield f['""][^'"]*?\\n/g, '')
-      // Remove blocks that look like raw Python code (starting with logger, import, def, etc.)
-      .replace(/\n\s*logger\.(info|error|debug|warning)\([^)]*\)\s*\n/g, '\n')
-      .replace(/\n\s*(import |from |def |class |try:|except |if __name__|yield )[^\n]*\n/g, '\n')
-      // Remove error handling blocks that leak through
-      .replace(/\n\s*except Exception as e:\s*\n[\s\S]*?(?=\n\n|\n[A-Z]|\n#|$)/g, '\n')
-      // Remove escaped code blocks that shouldn't be displayed as text
       .replace(/\\\\\n/g, '\n')
       .replace(/\\'/g, "'")
-      // Clean up multiple consecutive newlines
-      .replace(/\n{3,}/g, '\n\n')
+      // Remove error handling blocks that leak through
+      .replace(/\n\s*except Exception as e:\s*\n[\s\S]*?(?=\n\n|\n[A-Z]|\n#|$)/g, '\n')
       .trim();
   }
 
@@ -94,18 +99,22 @@ export class GPT5ModelHelper implements ModelHelper {
    * Map GPT-5 tool names to categories and normalized names
    */
   mapToolNameToCategory(toolName: string): { category: 'file' | 'code' | 'data' | 'network' | 'custom'; mappedName: string } {
+    const name = toolName.toLowerCase();
     let category: 'file' | 'code' | 'data' | 'network' | 'custom' = 'custom';
-    let mappedName = toolName.toLowerCase().replace(/[^a-z0-9_]/g, '_');
+    let mappedName = name.replace(/[^a-z0-9_]/g, '_');
 
-    if (toolName.includes('read_file') || toolName.includes('create_file') || toolName.includes('replace_string')) {
+    if (name.includes('read_file') || name.includes('create_file') || name.includes('replace_string')) {
       category = 'file';
       mappedName = 'file_edit';
-    } else if (toolName.includes('run_in_terminal') || toolName.includes('execute') || toolName.includes('command')) {
+    } else if (name.includes('run_in_terminal') || name.includes('execute') || name.includes('command')) {
       category = 'code';
       mappedName = 'code_execution';
-    } else if (toolName.includes('semantic_search') || toolName.includes('search')) {
+    } else if (name.includes('semantic_search') || name.includes('search')) {
       category = 'data';
       mappedName = 'semantic_search';
+    } else if (name.includes('fetch') || name.includes('http') || name.includes('request')) {
+      category = 'network';
+      mappedName = 'network_request';
     }
 
     return { category, mappedName };
