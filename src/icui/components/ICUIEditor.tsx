@@ -180,6 +180,8 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
   // Refs (following ICUIEnhancedEditorPanel pattern)
   const editorRef = useRef<HTMLDivElement>(null);
   const editorViewRef = useRef<EditorView | null>(null);
+  const activeFileIdRef = useRef<string>('');
+  const saveHandlerRef = useRef<() => void | Promise<void>>(() => {});
   // Use centralized theme service instead of manual theme detection
   const { theme } = useTheme();
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -537,9 +539,16 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
     currentContentRef.current = newContent;
 
     setFiles(currentFiles => {
+      const wasTemporary = currentFiles.find(f => f.id === activeFileId)?.isTemporary;
       const updatedFiles = currentFiles.map(file =>
         file.id === activeFileId
-          ? { ...file, content: newContent, modified: file.content !== newContent }
+          ? { 
+              ...file, 
+              content: newContent, 
+              modified: file.content !== newContent,
+              // If this file was temporary, any edit makes it permanent
+              isTemporary: wasTemporary ? false : file.isTemporary,
+            }
           : file
       );
 
@@ -583,6 +592,12 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
     contentChangeHandlerRef.current = handleContentChange;
   }, [handleContentChange]);
 
+  // Keep a ref of the current active file id for keybindings
+  useEffect(() => {
+    activeFileIdRef.current = activeFileId;
+  }, [activeFileId]);
+
+
   // Create editor extensions (FIXED: Stable function to prevent recreating editor)
   const createExtensions = useCallback((language: string): Extension[] => {
     const extensions: Extension[] = [
@@ -600,7 +615,21 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
       crosshairCursor(),
       highlightSelectionMatches(),
       history(),
+      // Custom keybindings: Ctrl/Cmd+S to save
       keymap.of([
+        {
+          key: 'Mod-s',
+          run: () => {
+            try {
+              const fn = saveHandlerRef.current;
+              if (fn) fn();
+            } catch (e) {
+              console.warn('Save shortcut failed:', e);
+            }
+            // Returning true prevents the browser default Save Page dialog
+            return true;
+          }
+        },
         ...closeBracketsKeymap,
         ...defaultKeymap,
         ...searchKeymap,
@@ -762,6 +791,16 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
       setIsLoading(false);
     }
   }, [files, connectionStatus.connected, onFileSave]);
+
+  // Expose save handler via a ref so keymap can call latest function without recreating extensions
+  useEffect(() => {
+    saveHandlerRef.current = () => {
+      const id = activeFileIdRef.current;
+      if (id) {
+        return handleSaveFile(id);
+      }
+    };
+  }, [handleSaveFile]);
 
   const handleRunFile = useCallback(async (fileId: string) => {
     const file = files.find(f => f.id === fileId);
@@ -927,13 +966,7 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
             </button>
           </div>
         ))}
-        <button
-          onClick={onFileCreate}
-      className="px-3 py-2 text-sm transition-colors hover:opacity-80 icui-new-file-btn"
-          title="New File"
-        >
-          +
-        </button>
+
       </div>
 
       {/* File Actions - Simplified without connection status */}
