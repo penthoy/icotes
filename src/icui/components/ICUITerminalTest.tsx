@@ -164,7 +164,7 @@ const ICUITerminalTest = forwardRef<ICUITerminalTestRef, ICUITerminalTestProps>(
       enableMessageQueue: true,
       enableHealthMonitoring: true,
       enableAutoRecovery: true,
-      maxConcurrentConnections: 5,
+      maxConcurrentConnections: 10, // Increased from 5 to allow multiple terminal instances
       messageTimeout: 10000,
       batchConfig: {
         maxSize: 5,

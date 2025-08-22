@@ -151,7 +151,11 @@ export const ICUITabContainer: React.FC<ICUITabContainerProps> = ({
               borderBottomColor: tab.id === activeTabId ? 'var(--icui-accent)' : 'transparent',
               color: tab.id === activeTabId ? 'var(--icui-text-primary)' : 'var(--icui-text-secondary)'
             }}
-            onClick={() => onTabActivate(tab.id)}
+            onClick={() => {
+              if (tab.id !== activeTabId) {
+                onTabActivate(tab.id);
+              }
+            }}
             onMouseEnter={() => !dragOver && setHoveredTab(tab.id)}
             onMouseLeave={() => setHoveredTab(null)}
             onDragStart={(e) => handleDragStart(e, tab, index)}

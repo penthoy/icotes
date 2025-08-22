@@ -198,6 +198,7 @@ export class GPT5ModelHelper implements ModelHelper {
 
       const createdIds: string[] = [];
       let toolMatch;
+      let innerToolIndex = 0; // Track tool calls within this block
       while ((toolMatch = individualToolPattern.exec(toolBlock)) !== null) {
         const toolName = toolMatch[1].trim();
         const inputText = toolMatch[2].trim();
@@ -262,8 +263,10 @@ export class GPT5ModelHelper implements ModelHelper {
         // Determine tool category and widget type
         const { category, mappedName } = this.mapToolNameToCategory(toolName);
 
-        const idBase = `${toolId}-${toolName.replace(/[^a-zA-Z0-9]/g, '')}`;
+        // Create unique ID using both outer and inner indexes to avoid collisions
+        const idBase = `${toolId}-${innerToolIndex}-${toolName.replace(/[^a-zA-Z0-9]/g, '')}`;
         createdIds.push(idBase);
+        innerToolIndex++; // Increment inner tool index for uniqueness
         const toolCall: ToolCallData = {
           id: idBase,
           toolName: mappedName,

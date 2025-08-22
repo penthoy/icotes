@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useChatHistory } from '../hooks/useChatHistory';
 import { useChatSessionSync } from '../hooks/useChatSessionSync';
 import { Trash2, Edit3, Plus, MessageSquare, Clock, Search } from 'lucide-react';
@@ -18,7 +18,8 @@ const ICUIChatHistory: React.FC<ICUIChatHistoryProps> = ({
     createSession, 
     switchSession, 
     renameSession, 
-    deleteSession 
+  deleteSession,
+  refreshSessions 
   } = useChatHistory();
   
   const [editingId, setEditingId] = useState<string>('');
@@ -27,7 +28,20 @@ const ICUIChatHistory: React.FC<ICUIChatHistoryProps> = ({
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   // Session synchronization
-  const { emitSessionChange } = useChatSessionSync();
+  const { emitSessionChange, onSessionChange } = useChatSessionSync();
+
+  // Keep ChatHistory in sync when other components (e.g., ICUIChat) create/delete/switch sessions
+  useEffect(() => {
+    return onSessionChange((sessionId, action) => {
+      if (action === 'create' || action === 'delete') {
+        // Refresh list from backend to include the new/removed session
+        refreshSessions();
+      } else if (action === 'switch') {
+        // Mirror active highlight
+        switchSession(sessionId);
+      }
+    });
+  }, [onSessionChange, refreshSessions, switchSession]);
 
   // Filter and sort sessions based on search query
   const filteredAndSortedSessions = useMemo(() => {
@@ -43,10 +57,14 @@ const ICUIChatHistory: React.FC<ICUIChatHistoryProps> = ({
     return filtered.slice().sort((a, b) => b.updated - a.updated);
   }, [sessions, searchQuery]);
 
-  const handleCreateNew = useCallback(() => {
-    const newSessionId = createSession('New Chat');
-    emitSessionChange(newSessionId, 'create', 'New Chat');
-    onSessionSelect?.(newSessionId);
+  const handleCreateNew = useCallback(async () => {
+    try {
+      const newSessionId = await createSession('New Chat');
+      emitSessionChange(newSessionId, 'create', 'New Chat');
+      onSessionSelect?.(newSessionId);
+    } catch (error) {
+      console.error('Failed to create new chat session:', error);
+    }
   }, [createSession, emitSessionChange, onSessionSelect]);
 
   const handleSelect = useCallback((sessionId: string) => {
@@ -62,9 +80,13 @@ const ICUIChatHistory: React.FC<ICUIChatHistoryProps> = ({
     setTempName(session.name || 'Untitled');
   }, []);
 
-  const handleSaveRename = useCallback((sessionId: string) => {
+  const handleSaveRename = useCallback(async (sessionId: string) => {
     if (tempName.trim()) {
-      renameSession(sessionId, tempName.trim());
+      try {
+        await renameSession(sessionId, tempName.trim());
+      } catch (error) {
+        console.error('Failed to rename session:', error);
+      }
     }
     setEditingId('');
     setTempName('');
@@ -80,9 +102,14 @@ const ICUIChatHistory: React.FC<ICUIChatHistoryProps> = ({
     setShowDeleteConfirm(sessionId);
   }, []);
 
-  const handleConfirmDelete = useCallback((sessionId: string) => {
-    deleteSession(sessionId);
-    setShowDeleteConfirm('');
+  const handleConfirmDelete = useCallback(async (sessionId: string) => {
+    try {
+      await deleteSession(sessionId);
+      setShowDeleteConfirm('');
+    } catch (error) {
+      console.error('Failed to delete session:', error);
+      setShowDeleteConfirm('');
+    }
   }, [deleteSession]);
 
   const formatRelativeTime = useCallback((timestamp: number) => {

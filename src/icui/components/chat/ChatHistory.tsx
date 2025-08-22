@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { useChatHistory } from '../../hooks/useChatHistory';
+import { useChatSessionSync } from '../../hooks/useChatSessionSync';
 
 interface ChatHistoryProps {
 	className?: string;
@@ -8,17 +9,68 @@ interface ChatHistoryProps {
 }
 
 const ChatHistory: React.FC<ChatHistoryProps> = ({ className = '', onSelect, compact = false }) => {
-	const { sessions, activeSessionId, createSession, switchSession, renameSession, deleteSession } = useChatHistory();
+	const { sessions, activeSessionId, isLoading, createSession, switchSession, renameSession, deleteSession, refreshSessions } = useChatHistory();
+	const { onSessionChange } = useChatSessionSync();
 	const [editingId, setEditingId] = useState<string>('');
 	const [tempName, setTempName] = useState<string>('');
 
 	useEffect(() => {
-		const handler = () => createSession('New chat');
+		const handler = async () => {
+			try {
+				await createSession('New chat');
+			} catch (error) {
+				console.error('Failed to create new chat session:', error);
+			}
+		};
 		window.addEventListener('icui.chat.new' as any, handler as any);
 		return () => window.removeEventListener('icui.chat.new' as any, handler as any);
 	}, [createSession]);
 
+	// Listen for session changes from other components
+	useEffect(() => {
+		return onSessionChange((sessionId, action, sessionName) => {
+			if (action === 'create') {
+				// Refresh sessions list when a new session is created from another component
+				refreshSessions();
+			}
+		});
+	}, [onSessionChange, refreshSessions]);
+
 	const sorted = useMemo(() => sessions.slice().sort((a, b) => b.updated - a.updated), [sessions]);
+
+	const handleCreateSession = async () => {
+		try {
+			await createSession('New chat');
+		} catch (error) {
+			console.error('Failed to create session:', error);
+		}
+	};
+
+	const handleRenameSession = async (id: string, name: string) => {
+		try {
+			await renameSession(id, name || 'Untitled');
+			setEditingId('');
+		} catch (error) {
+			console.error('Failed to rename session:', error);
+			setEditingId('');
+		}
+	};
+
+	const handleDeleteSession = async (id: string) => {
+		try {
+			await deleteSession(id);
+		} catch (error) {
+			console.error('Failed to delete session:', error);
+		}
+	};
+
+	if (isLoading) {
+		return (
+			<div className={`flex items-center justify-center p-4 ${className}`}>
+				<div className="text-sm" style={{ color: 'var(--icui-text-secondary)' }}>Loading sessions...</div>
+			</div>
+		);
+	}
 
 	if (compact) {
 		return (
@@ -42,7 +94,7 @@ const ChatHistory: React.FC<ChatHistoryProps> = ({ className = '', onSelect, com
 			<div className="flex items-center justify-between">
 				<h3 className="text-sm font-semibold" style={{ color: 'var(--icui-text-primary)' }}>Sessions</h3>
 				<button
-					onClick={() => createSession('New chat')}
+					onClick={handleCreateSession}
 					className="px-2 py-1 text-xs rounded border"
 					style={{
 						backgroundColor: 'var(--icui-bg-secondary)',
@@ -70,19 +122,30 @@ const ChatHistory: React.FC<ChatHistoryProps> = ({ className = '', onSelect, com
 								<input
 									value={tempName}
 									onChange={e => setTempName(e.target.value)}
-									onBlur={() => { renameSession(s.id, tempName || 'Untitled'); setEditingId(''); }}
+									onBlur={() => handleRenameSession(s.id, tempName)}
+									onKeyDown={(e) => {
+										if (e.key === 'Enter') {
+											handleRenameSession(s.id, tempName);
+										} else if (e.key === 'Escape') {
+											setEditingId('');
+										}
+									}}
 									className="w-full bg-transparent text-xs outline-none"
+									autoFocus
 								/>
 							) : (
 								<button className="text-left truncate w-full" onClick={() => { switchSession(s.id); onSelect?.(s.id); }}>
 									<span className="text-xs font-medium">{s.name || 'Untitled'}</span>
 								</button>
 							)}
-							<div className="text-[10px] opacity-60">{new Date(s.updated).toLocaleString()}</div>
+							<div className="text-[10px] opacity-60">
+								{new Date(s.updated).toLocaleString()}
+								{s.message_count !== undefined && <span className="ml-1">({s.message_count} msgs)</span>}
+							</div>
 						</div>
 						<div className="flex items-center gap-1">
 							<button className="text-[10px] underline" onClick={() => { setEditingId(s.id); setTempName(s.name); }}>Rename</button>
-							<button className="text-[10px] underline" onClick={() => deleteSession(s.id)}>Delete</button>
+							<button className="text-[10px] underline" onClick={() => handleDeleteSession(s.id)}>Delete</button>
 						</div>
 					</div>
 				))}

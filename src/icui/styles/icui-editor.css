@@ -144,6 +144,12 @@
 }
 .icui-editor-container .cm-focused { outline: none; }
 
+/* Optional readability helpers for JSON/JSONL */
+/* Subtle divider after very long lines to hint wrap for JSONL */
+.icui-editor-container .cm-line {
+  text-wrap: pretty;
+}
+
 /* Fold gutter and placeholder styling */
 .icui-editor-container .cm-foldGutter .cm-gutterElement {
   padding: 0 4px;

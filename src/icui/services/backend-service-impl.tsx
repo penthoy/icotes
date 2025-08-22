@@ -66,7 +66,7 @@ export class EnhancedICUIBackendService extends EventEmitter {
     enableMessageQueue: true,
     enableHealthMonitoring: true,
     enableAutoRecovery: true,
-    maxConcurrentConnections: 5,
+    maxConcurrentConnections: 20, // Increased from 5 to allow multiple tabs/sessions
     messageTimeout: 15000,
     batchFileOperations: true
   };

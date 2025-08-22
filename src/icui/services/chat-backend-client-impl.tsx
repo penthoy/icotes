@@ -155,7 +155,7 @@ export class EnhancedChatBackendClient {
       enableMessageQueue: false, // Disable queuing
       enableHealthMonitoring: false, // Disable health monitoring
       enableAutoRecovery: false, // Disable auto recovery
-      maxConcurrentConnections: 1,
+      maxConcurrentConnections: 10, // Increased from 1 to allow multiple tabs/sessions
       messageTimeout: 60000, // Longer timeout
       batchConfig: {
         maxSize: 1,

@@ -104,7 +104,10 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
   const search = useChatSearch(messages);
 
   // Session synchronization
-  const { onSessionChange } = useChatSessionSync();
+  const { onSessionChange, emitSessionChange } = useChatSessionSync();
+
+  // Chat history management
+  const { createSession, switchSession, sessions } = useChatHistory();
 
   // Track current session name from events
   const [sessionName, setSessionName] = useState<string>('');
@@ -398,9 +401,18 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
         <div className="flex items-center space-x-2">
           {/* New Chat Button */}
           <button
-            onClick={() => {
-              const evt = new CustomEvent('icui.chat.new');
-              window.dispatchEvent(evt);
+            onClick={async () => {
+              try {
+                const newSessionId = await createSession();
+                switchSession(newSessionId);
+                // Find the newly created session to get its name
+                const newSession = sessions.find(s => s.id === newSessionId);
+                const sessionName = newSession?.name || 'New Chat';
+                emitSessionChange(newSessionId, 'create', sessionName);
+              } catch (error) {
+                console.error('Failed to create new chat session:', error);
+                notificationService.error('Failed to create new chat session');
+              }
             }}
             className="text-xs px-2 py-1 rounded hover:opacity-80 transition-opacity"
             style={{ 
