@@ -589,7 +589,9 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
       lineNumbers(),
       foldGutter(),
       dropCursor(),
-  EditorView.lineWrapping,
+  // Note: Do NOT enable global line wrapping here. We'll add it conditionally
+  // for .jsonl files during editor initialization to avoid layout issues in
+  // other languages like Python.
       indentOnInput(),
       bracketMatching(),
       closeBrackets(),
@@ -655,7 +657,7 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
     return extensions;
   }, [isDarkTheme]); // Only depend on isDarkTheme, not handleContentChange
 
-  // Initialize CodeMirror editor (FIXED: Only recreate on theme change, not file change)
+  // Initialize CodeMirror editor (FIXED: Only recreate on relevant changes)
   useEffect(() => {
     if (!editorRef.current) return;
 
@@ -678,9 +680,15 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
     currentContentRef.current = initialContent;
 
     // Create new editor state
+    const baseExtensions = createExtensions(activeFile.language || 'javascript');
+
+    // Enable soft wrap ONLY for .jsonl files
+    const isJsonl = (activeFile.path || activeFile.name || '').toLowerCase().endsWith('.jsonl');
+    const extensions = isJsonl ? [...baseExtensions, EditorView.lineWrapping] : baseExtensions;
+
     const state = EditorState.create({
       doc: initialContent,
-      extensions: createExtensions(activeFile.language || 'javascript'),
+      extensions,
     });
 
     // Create editor view - no custom dispatch, let CodeMirror handle it
@@ -700,7 +708,7 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
         // Editor instance destroyed on cleanup
       }
     };
-  }, [isDarkTheme, createExtensions, activeFile?.id]); // FIXED: Removed activeFile.content dependency
+  }, [isDarkTheme, createExtensions, activeFile?.id, activeFile?.name, activeFile?.path]); // Recreate when file identity or name/path changes
 
   // Update editor content when switching between files (FIXED: Prevent infinite loop)
   useEffect(() => {

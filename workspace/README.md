@@ -1,4 +1,1 @@
-# Demo Files for Simple Editor
-
-
-
+# Welcome to icotes

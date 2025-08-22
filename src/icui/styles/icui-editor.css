@@ -150,10 +150,20 @@
   text-wrap: pretty;
 }
 
-/* Fold gutter and placeholder styling */
+/* Fold gutter and placeholder styling (use CodeMirror defaults; avoid duplicating arrows) */
 .icui-editor-container .cm-foldGutter .cm-gutterElement {
   padding: 0 4px;
   cursor: pointer;
+}
+
+.icui-editor-container .cm-foldGutter .cm-gutterElement:hover {
+  background-color: var(--icui-bg-tertiary);
+}
+
+/* Ensure no extra chevrons are injected on top of the default marker */
+.icui-editor-container .cm-foldGutter .cm-gutterElement::before,
+.icui-editor-container .cm-foldGutter .cm-gutterElement::after {
+  content: none !important;
 }
 
 .icui-editor-container .cm-foldPlaceholder {
@@ -163,40 +173,4 @@
   border-radius: 3px;
   padding: 2px 4px;
   margin: 0 2px;
-}
-
-.icui-editor-container .cm-foldGutter .cm-gutterElement:hover {
-  background-color: var(--icui-bg-tertiary);
-}
-
-.icui-editor-container .cm-foldGutter .cm-gutterElement::before {
-  content: '›';
-  transform: rotate(0deg);
-  transition: transform 0.2s ease;
-  display: inline-block;
-  margin-right: 2px;
-}
-
-.icui-editor-container .cm-foldGutter .cm-gutterElement.cm-foldGutter-folded::before {
-  transform: rotate(90deg);
-}
-
-.icui-editor-container .cm-foldGutter .cm-gutterElement::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  border: 1px solid var(--icui-border-subtle);
-  border-radius: 3px;
-  display: inline-block;
-  height: 11px;
-  width: 18px;
-  margin: 0 1px;
-  vertical-align: middle;
-  font-size: 12px;
-  line-height: 11px;
-  text-align: center;
-  color: var(--icui-text-secondary);
 }
