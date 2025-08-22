@@ -141,18 +141,22 @@ const FileEditWidget: React.FC<FileEditWidgetProps> = ({
     
     let diffContent = '';
     for (let i = 0; i < maxLines; i++) {
-      const originalLine = originalLines[i] || '';
-      const modifiedLine = modifiedLines[i] || '';
+      const originalLine = originalLines[i];
+      const modifiedLine = modifiedLines[i];
       
       if (originalLine === modifiedLine) {
-        diffContent += `  ${modifiedLine}\n`;
-      } else if (originalLine && !modifiedLine) {
+        diffContent += `  ${modifiedLine || ''}\n`;
+      } else if (originalLine !== undefined && modifiedLine === undefined) {
         diffContent += `- ${originalLine}\n`;
-      } else if (!originalLine && modifiedLine) {
+      } else if (originalLine === undefined && modifiedLine !== undefined) {
         diffContent += `+ ${modifiedLine}\n`;
       } else {
-        diffContent += `- ${originalLine}\n`;
-        diffContent += `+ ${modifiedLine}\n`;
+        if (originalLine !== undefined) {
+          diffContent += `- ${originalLine}\n`;
+        }
+        if (modifiedLine !== undefined) {
+          diffContent += `+ ${modifiedLine}\n`;
+        }
       }
     }
     
@@ -201,18 +205,16 @@ const FileEditWidget: React.FC<FileEditWidgetProps> = ({
     
     const tabs: Array<'diff' | 'before' | 'after'> = [];
     
-    if (fileEditData.diff) {
+    // Always show diff tab if we have both original and modified content or explicit diff
+    if (fileEditData.diff || (fileEditData.originalContent && fileEditData.modifiedContent)) {
       tabs.push('diff');
     }
+    
     if (fileEditData.originalContent) {
       tabs.push('before');
     }
-    if (fileEditData.modifiedContent) {
-      tabs.push('after');
-    }
     
-    // If no tabs available, default to 'after' for update operations only
-    if (tabs.length === 0 && originalToolName === 'replace_string_in_file') {
+    if (fileEditData.modifiedContent) {
       tabs.push('after');
     }
     
@@ -380,7 +382,7 @@ const FileEditWidget: React.FC<FileEditWidgetProps> = ({
 
               {/* Content */}
               <div className="icui-widget__section">
-                {activeTab === 'diff' && fileEditData.diff && (
+                {activeTab === 'diff' && (
                   <SyntaxHighlighter
                     language="diff"
                     style={isDark ? oneDark : oneLight}
@@ -393,7 +395,7 @@ const FileEditWidget: React.FC<FileEditWidgetProps> = ({
                       lineHeight: '1.5'
                     }}
                   >
-                    {fileEditData.diff}
+                    {generateDiffView()}
                   </SyntaxHighlighter>
                 )}
 

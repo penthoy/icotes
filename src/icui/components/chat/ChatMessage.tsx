@@ -73,6 +73,59 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', high
     return activeHelper.parseToolCalls(message.content, message);
   }, [message.content, message.id, message.metadata?.streamComplete]);
 
+  // Parse content sequentially to interleave remarks and tool calls
+  const sequentialBlocks = useMemo(() => {
+    const blocks: Array<{ type: 'text' | 'toolCall'; content?: string; toolCall?: ToolCallData }> = [];
+    const { content, toolCalls } = parsedResult;
+    
+    // If no tool calls, just return the content as a single text block
+    if (toolCalls.length === 0) {
+      if (content.trim()) {
+        blocks.push({ type: 'text', content });
+      }
+      return blocks;
+    }
+
+    // Split the original message content by tool execution blocks to maintain sequence
+    const originalContent = message.content;
+    const parts = originalContent.split(/(🔧\s*\*\*Executing tools\.\.\.\*\*[\s\S]*?(?:🔧\s*\*\*Tool execution complete\. Continuing\.\.\.\*\*|$))/g);
+    
+    let toolCallIndex = 0;
+    
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i].trim();
+      if (!part) continue;
+
+      if (part.includes('🔧 **Executing tools...**')) {
+        // This is a tool execution block - find matching tool calls
+        const blockToolCalls = toolCalls.filter((tc, index) => {
+          // Match tool calls that belong to this execution block
+          return index >= toolCallIndex && index < toolCallIndex + 10; // reasonable limit per block
+        });
+        
+        blockToolCalls.forEach(toolCall => {
+          blocks.push({ type: 'toolCall', toolCall });
+        });
+        
+        toolCallIndex += blockToolCalls.length;
+      } else {
+        // This is explanatory text - clean it using the model helper
+        const cleanText = getActiveModelHelper().stripAllToolText(part);
+        if (cleanText.trim()) {
+          blocks.push({ type: 'text', content: cleanText });
+        }
+      }
+    }
+
+    // Add any remaining tool calls that weren't matched (running tools, etc.)
+    const remainingToolCalls = toolCalls.slice(toolCallIndex);
+    remainingToolCalls.forEach(toolCall => {
+      blocks.push({ type: 'toolCall', toolCall });
+    });
+
+    return blocks;
+  }, [parsedResult, message.content]);
+
   // Format timestamp helper
   const formatTimestamp = useCallback((timestamp: string | Date) => {
     const date = typeof timestamp === 'string' ? new Date(timestamp) : timestamp;
@@ -302,14 +355,12 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', high
     const isStreamingWithTools = message.metadata?.isStreaming && 
                                  message.content.includes('🔧 **Executing tools...**');
     
-    // For streaming messages with tools, only show content if:
-    // 1. Not currently streaming with tools, OR
-    // 2. Stream is complete, OR 
-    // 3. We already have parsed tool calls (widgets will handle display)
+    // For streaming messages with tools, show content more permissively:
+    // - Always show content if we have meaningful text after tool processing
+    // - Only suppress if we're actively streaming tools AND have no parsed content
     const shouldShowContent = content &&
-      !(isStreamingWithTools && !message.metadata?.streamComplete && toolCalls.length === 0) &&
-      // Additionally suppress content while a running tool widget is present to avoid flicker
-      !hasRunningTools;
+      // Don't suppress content just because we have running tools - let explanatory text show through
+      !(isStreamingWithTools && !message.metadata?.streamComplete && toolCalls.length === 0 && !content.trim());
     
     // Show loading indicator only when we detect tool patterns but haven't parsed tools yet
     const shouldShowLoading = (isStreamingWithTools || hasRunningTools) &&
@@ -320,35 +371,35 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', high
     return (
       <div className={`flex justify-start ${className}`}>
         <div className="w-full max-w-none">
-          {/* Tool Call Widgets */}
-          {toolCalls.length > 0 && (
-            <div className="mb-3">
-              {toolCalls.map((toolCall) => {
-                const Widget = getWidgetForTool(toolCall.toolName);
-                return (
-                  <Widget
-                    key={toolCall.id}
-                    toolCall={toolCall}
-                    expandable={true}
-                    defaultExpanded={false}
-                  />
-                );
-              })}
+          {/* Sequential Content - Interleaved text and tool calls */}
+          {sequentialBlocks.map((block, index) => (
+            <div key={`block-${index}`} className="mb-3">
+              {block.type === 'text' ? (
+                /* Text Block - Rendered as markdown */
+                <div className="text-sm leading-relaxed prose prose-sm max-w-none" 
+                     style={{ color: 'var(--icui-text-primary)' }}>
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm, ...(remarkHighlight ? [remarkHighlight] : [])]}
+                    components={markdownComponents}
+                  >
+                    {block.content || ''}
+                  </ReactMarkdown>
+                </div>
+              ) : (
+                /* Tool Call Widget */
+                (() => {
+                  const Widget = getWidgetForTool(block.toolCall!.toolName);
+                  return (
+                    <Widget
+                      toolCall={block.toolCall!}
+                      expandable={true}
+                      defaultExpanded={false}
+                    />
+                  );
+                })()
+              )}
             </div>
-          )}
-
-          {/* Agent Message Content - Full width with markdown rendering */}
-          {shouldShowContent && (
-            <div className="text-sm leading-relaxed prose prose-sm max-w-none" 
-                 style={{ color: 'var(--icui-text-primary)' }}>
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm, ...(remarkHighlight ? [remarkHighlight] : [])]}
-                components={markdownComponents}
-              >
-                {content}
-              </ReactMarkdown>
-            </div>
-          )}
+          ))}
 
           {/* Show loading indicator for streaming tool execution */}
           {shouldShowLoading && (

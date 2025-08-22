@@ -439,8 +439,10 @@ export class GPT5ModelHelper implements ModelHelper {
                      originalToolName === 'read_file' ? 'read' :
                      originalToolName === 'replace_string_in_file' ? 'update' : 'update';
 
-    // For read_file operations, extract content from parsed output
-    let modifiedContent = input.content || output.content || output.modified_content;
+    // Extract content based on tool type
+    let originalContent = input.original_content || output.original_content || output.originalContent;
+    let modifiedContent = input.content || output.content || output.modified_content || output.modifiedContent;
+    
     if (originalToolName === 'read_file' && output && typeof output === 'object') {
       // Handle structured output from read_file
       if (output.content) {
@@ -451,10 +453,16 @@ export class GPT5ModelHelper implements ModelHelper {
         // Content is already truncated in parsing, so we use it as-is
       }
     }
+    
+    // For replace_string_in_file operations, extract original and modified content
+    if (originalToolName === 'replace_string_in_file' && output && typeof output === 'object') {
+      originalContent = output.originalContent || originalContent;
+      modifiedContent = output.modifiedContent || modifiedContent;
+    }
 
     return {
       filePath,
-      originalContent: input.original_content || output.original_content,
+      originalContent,
       modifiedContent,
       diff: output.diff,
       timestamp: toolCall.endTime ? new Date(toolCall.endTime).toLocaleString() : undefined,

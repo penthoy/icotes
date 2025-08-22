@@ -16,6 +16,12 @@ async def get_filesystem_service():
     return await _get_filesystem_service()
 
 
+async def get_workspace_service():
+    """Import and return workspace service"""
+    from icpy.services import get_workspace_service as _get_workspace_service
+    return await _get_workspace_service()
+
+
 class ReplaceStringTool(BaseTool):
     """Tool for replacing strings in files"""
     
@@ -98,13 +104,55 @@ class ReplaceStringTool(BaseTool):
             if new_string is None:
                 return ToolResult(success=False, error="newString is required")
             
-            # Get workspace root from environment or default
-            workspace_root = os.environ.get('WORKSPACE_ROOT')
+            # Determine workspace root using WorkspaceService when available
+            workspace_root = None
+            try:
+                ws = await get_workspace_service()
+                if ws:
+                    # Prefer active workspace root from service
+                    root = None
+                    # Some implementations may expose a coroutine get_workspace_root()
+                    if hasattr(ws, 'get_workspace_root'):
+                        try:
+                            root = await ws.get_workspace_root()  # type: ignore[attr-defined]
+                        except Exception:
+                            root = None
+                    # Fall back to current_workspace.root_path if available
+                    if not root and getattr(ws, 'current_workspace', None) is not None:
+                        try:
+                            root = ws.current_workspace.root_path  # type: ignore[attr-defined]
+                        except Exception:
+                            root = None
+                    # Fall back to get_workspace_state()['root_path']
+                    if not root and hasattr(ws, 'get_workspace_state'):
+                        try:
+                            state = await ws.get_workspace_state()  # type: ignore[attr-defined]
+                            if isinstance(state, dict):
+                                root = state.get('root_path')
+                        except Exception:
+                            root = None
+                    workspace_root = root
+            except Exception:
+                # Fallback to env or static detection
+                workspace_root = None
+
+            if not workspace_root:
+                workspace_root = os.environ.get('WORKSPACE_ROOT')
+
             if not workspace_root:
                 # Default to workspace directory relative to backend
                 # From: /path/to/icotes/backend/icpy/agent/tools -> /path/to/icotes/workspace
                 backend_dir = os.path.dirname(os.path.abspath(__file__))
-                workspace_root = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(backend_dir)))), 'workspace')
+                workspace_root = os.path.join(
+                    os.path.dirname(
+                        os.path.dirname(
+                            os.path.dirname(
+                                os.path.dirname(backend_dir)
+                            )
+                        )
+                    ),
+                    'workspace'
+                )
             
             # Validate and normalize path
             normalized_path = self._validate_path(file_path, workspace_root)
@@ -132,11 +180,20 @@ class ReplaceStringTool(BaseTool):
                     )
             
             # Perform replacement
+            new_content = content
             if occurrence_count > 0:
                 new_content = content.replace(old_string, new_string)
-                await filesystem_service.write_file(normalized_path, new_content)
-            
-            return ToolResult(success=True, data={"replacedCount": occurrence_count})
+                if new_content != content:
+                    await filesystem_service.write_file(normalized_path, new_content)
+
+            return ToolResult(success=True, data={
+                "replacedCount": occurrence_count,
+                "filePath": normalized_path,
+                "originalContent": content,
+                "modifiedContent": new_content,
+                "oldString": old_string,
+                "newString": new_string
+            })
             
         except FileNotFoundError as e:
             return ToolResult(success=False, error=str(e))

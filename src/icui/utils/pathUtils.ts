@@ -23,12 +23,25 @@ export const formatFilePath = (filePath: string): string => {
 export const formatDisplayPath = (path: string): string => {
   if (!path) return 'Unknown file';
   
-  // Remove common workspace prefixes
-  if (path.startsWith('/home/penthoy/icotes/workspace/')) {
-    return path.replace('/home/penthoy/icotes/workspace/', '');
+  // Fallback: remove common workspace prefixes (browser-safe approach)
+  // Look for common icotes workspace patterns
+  if (path.includes('/workspace/')) {
+    const workspaceIndex = path.lastIndexOf('/workspace/');
+    return path.substring(workspaceIndex + 11); // Remove '/workspace/' prefix
   }
-  if (path.startsWith('/home/penthoy/icotes/')) {
-    return path.replace('/home/penthoy/icotes/', '');
+  
+  // Fallback: remove any absolute path prefix and show relative path
+  if (path.startsWith('/')) {
+    const parts = path.split('/');
+    // Try to find a meaningful starting point (like workspace, src, etc.)
+    const meaningfulStarts = ['workspace', 'src', 'backend', 'frontend', 'docs'];
+    for (let i = 0; i < parts.length; i++) {
+      if (meaningfulStarts.includes(parts[i])) {
+        return parts.slice(i).join('/');
+      }
+    }
+    // If no meaningful start found, just return the filename and immediate parent
+    return parts.slice(-2).join('/');
   }
   
   return path;

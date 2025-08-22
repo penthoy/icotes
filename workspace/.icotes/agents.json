@@ -48,6 +48,14 @@
       "description": "Auto-discovered agent: ExampleToolUser",
       "category": "Tests",
       "order": 999
+    },
+    "ClaudeAgentCreator": {
+      "enabled": true,
+      "displayName": "Claude Agent Creator",
+      "description": "An AI agent (Claude) that helps you create other custom agents",
+      "category": "Custom Agents",
+      "order": 3,
+      "icon": "\ud83e\udde0"
     }
   },
   "categories": {

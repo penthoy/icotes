@@ -4,7 +4,9 @@ Simple JWT token test for SaaS mode authentication.
 """
 
 import os
-import jwt
+import pytest
+# Skip this integration test if PyJWT isn't installed
+jwt = pytest.importorskip("jwt")
 from datetime import datetime, timezone, timedelta
 
 # Test JWT creation and validation

@@ -7,6 +7,7 @@ openai_api_key = os.getenv('OPENAI_API_KEY')
 google_api_key = os.getenv('GOOGLE_API_KEY')
 deepseek_api_key = os.getenv('DEEPSEEK_API_KEY')
 groq_api_key = os.getenv('GROQ_API_KEY')
+anthropic_api_key = os.getenv('ANTHROPIC_API_KEY')
 mailersend_api_key = os.environ.get('MAILERSEND_API_KEY')
 
 # if mailersend_api_key:
@@ -95,9 +96,9 @@ def get_deepseek_client():
     """
     Initializes and returns an OpenAI client configured for DeepSeek's API.
     """
-    deepseek_api_key = os.getenv("DEEPOKE_API_KEY")
+    deepseek_api_key = os.getenv("DEEPSEEK_API_KEY")
     if not deepseek_api_key:
-        raise ValueError("DEEPOKE_API_KEY environment variable is not set.")
+        raise ValueError("DEEPSEEK_API_KEY environment variable is not set.")
 
     return OpenAI(
         api_key=deepseek_api_key,
@@ -116,6 +117,20 @@ def get_groq_client():
     return OpenAI(
         api_key=groq_api_key,
         base_url="https://api.groq.com/v1",
+    )
+
+
+def get_anthropic_client():
+    """
+    Initializes and returns an OpenAI client configured for Anthropic's API (Claude).
+    """
+    anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not anthropic_api_key:
+        raise ValueError("ANTHROPIC_API_KEY environment variable is not set.")
+
+    return OpenAI(
+        api_key=anthropic_api_key,
+        base_url="https://api.anthropic.com/v1",
     )
 
 
