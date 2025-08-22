@@ -61,7 +61,7 @@ export function useChatHistory() {
 
 			setSessions(convertedSessions);
 
-			// Set active session (prefer localStorage, then backend, then first session)
+			// Set active session (prefer localStorage; otherwise choose the last-created session)
 			const storedActive = localStorage.getItem('icui.chat.active_session');
 			const availableIds = new Set(convertedSessions.map(s => s.id));
 			let activeId = '';
@@ -69,13 +69,22 @@ export function useChatHistory() {
 			if (storedActive && availableIds.has(storedActive)) {
 				activeId = storedActive;
 			} else if (convertedSessions.length > 0) {
-				activeId = convertedSessions[0].id;
+				// Choose latest by created timestamp
+				const latestByCreated = convertedSessions.reduce((a, b) => (a.created >= b.created ? a : b));
+				activeId = latestByCreated.id;
 			}
 
 			if (activeId) {
 				setActiveSessionId(activeId);
 				chatClient.setCurrentSession(activeId);
 				localStorage.setItem('icui.chat.active_session', activeId);
+				// Inform other components immediately
+				try {
+					const active = convertedSessions.find(s => s.id === activeId);
+					window.dispatchEvent(new CustomEvent('icui.chat.session.change', {
+						detail: { sessionId: activeId, action: 'switch', sessionName: active?.name }
+					}));
+				} catch {}
 			}
 
 		} catch (error) {
@@ -218,12 +227,28 @@ export function useChatHistory() {
 
 			// Update frontend state
 			setSessions(prev => prev.map(s => s.id === id ? { ...s, name, updated: Date.now() } : s));
+
+			// If the renamed session is the active one, immediately notify listeners (e.g., Chat Panel)
+			if (activeSessionId === id) {
+				try {
+					window.dispatchEvent(new CustomEvent('icui.chat.session.change', {
+						detail: { sessionId: id, action: 'switch', sessionName: name }
+					}));
+				} catch {}
+			}
 		} catch (error) {
 			console.error('[useChatHistory] Failed to rename session:', error);
 			// Fallback to client-side update
 			setSessions(prev => prev.map(s => s.id === id ? { ...s, name, updated: Date.now() } : s));
+			if (activeSessionId === id) {
+				try {
+					window.dispatchEvent(new CustomEvent('icui.chat.session.change', {
+						detail: { sessionId: id, action: 'switch', sessionName: name }
+					}));
+				} catch {}
+			}
 		}
-	}, []);
+	}, [activeSessionId]);
 
 	const deleteSession = useCallback(async (id: string): Promise<void> => {
 		try {
@@ -243,6 +268,15 @@ export function useChatHistory() {
 					const nextId = next[0]?.id || '';
 					setActiveSessionId(nextId);
 					chatClient.setCurrentSession(nextId);
+					// Emit change for new active
+					try {
+						const meta = next.find(s => s.id === nextId);
+						if (nextId) {
+							window.dispatchEvent(new CustomEvent('icui.chat.session.change', {
+								detail: { sessionId: nextId, action: 'switch', sessionName: meta?.name }
+							}));
+						}
+					} catch {}
 				}
 				return next;
 			});
@@ -255,6 +289,14 @@ export function useChatHistory() {
 					const nextId = next[0]?.id || '';
 					setActiveSessionId(nextId);
 					chatClient.setCurrentSession(nextId);
+					try {
+						const meta = next.find(s => s.id === nextId);
+						if (nextId) {
+							window.dispatchEvent(new CustomEvent('icui.chat.session.change', {
+								detail: { sessionId: nextId, action: 'switch', sessionName: meta?.name }
+							}));
+						}
+					} catch {}
 				}
 				return next;
 			});

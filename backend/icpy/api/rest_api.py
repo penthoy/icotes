@@ -173,6 +173,17 @@ class WorkflowFromTemplateRequest(BaseModel):
     session_metadata: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Session metadata")
 
 
+# Chat session request models
+class ChatSessionCreateRequest(BaseModel):
+    """Request body for creating a chat session."""
+    name: Optional[str] = Field(None, description="Optional human-friendly session name")
+
+
+class ChatSessionUpdateRequest(BaseModel):
+    """Request body for updating a chat session (rename)."""
+    name: str = Field(..., description="New session name")
+
+
 class RestAPI:
     """HTTP REST API for icpy Backend.
     
@@ -1136,12 +1147,12 @@ class RestAPI:
                 raise HTTPException(status_code=500, detail=str(e))
         
         @self.app.post("/api/chat/sessions")
-        async def create_chat_session(name: Optional[str] = None):
+        async def create_chat_session(request: ChatSessionCreateRequest):
             """Create a new chat session."""
             try:
-                session_id = await self.chat_service.create_session(name)
+                session_id = await self.chat_service.create_session(request.name)
                 return SuccessResponse(
-                    data={"session_id": session_id, "name": name},
+                    data={"session_id": session_id, "name": request.name},
                     message="Chat session created successfully"
                 )
             except Exception as e:
@@ -1149,13 +1160,13 @@ class RestAPI:
                 raise HTTPException(status_code=500, detail=str(e))
         
         @self.app.put("/api/chat/sessions/{session_id}")
-        async def update_chat_session(session_id: str, name: str):
+        async def update_chat_session(session_id: str, request: ChatSessionUpdateRequest):
             """Update chat session metadata (rename)."""
             try:
-                success = await self.chat_service.update_session(session_id, name)
+                success = await self.chat_service.update_session(session_id, request.name)
                 if success:
                     return SuccessResponse(
-                        data={"session_id": session_id, "name": name},
+                        data={"session_id": session_id, "name": request.name},
                         message="Chat session updated successfully"
                     )
                 else:

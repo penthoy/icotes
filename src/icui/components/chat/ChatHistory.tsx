@@ -10,7 +10,7 @@ interface ChatHistoryProps {
 
 const ChatHistory: React.FC<ChatHistoryProps> = ({ className = '', onSelect, compact = false }) => {
 	const { sessions, activeSessionId, isLoading, createSession, switchSession, renameSession, deleteSession, refreshSessions } = useChatHistory();
-	const { onSessionChange } = useChatSessionSync();
+	const { onSessionChange, emitSessionChange } = useChatSessionSync();
 	const [editingId, setEditingId] = useState<string>('');
 	const [tempName, setTempName] = useState<string>('');
 
@@ -50,6 +50,10 @@ const ChatHistory: React.FC<ChatHistoryProps> = ({ className = '', onSelect, com
 		try {
 			await renameSession(id, name || 'Untitled');
 			setEditingId('');
+			// If renaming the active session, immediately broadcast the change
+			if (activeSessionId === id) {
+				emitSessionChange(id, 'switch', name || 'Untitled');
+			}
 		} catch (error) {
 			console.error('Failed to rename session:', error);
 			setEditingId('');

@@ -1061,6 +1061,13 @@ class ChatService:
                 return False
             
             file_path.unlink()
+            # Remove sidecar metadata if present
+            try:
+                meta_path = self.history_root / f"{session_id}.meta.json"
+                if meta_path.exists():
+                    meta_path.unlink()
+            except Exception:
+                pass
             logger.info(f"Deleted chat session: {session_id}")
             return True
         except Exception as e:

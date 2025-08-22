@@ -32,6 +32,7 @@ import { CustomAgentDropdown } from './menus/CustomAgentDropdown';
 import ChatMessage from './chat/ChatMessage';
 import { useChatSearch } from '../hooks/useChatSearch';
 import { useChatSessionSync } from '../hooks/useChatSessionSync';
+import { enhancedChatBackendClient as chatClient } from '../services/chat-backend-client-impl';
 import { useChatHistory } from '../hooks/useChatHistory';
 
 interface ICUIChatProps {
@@ -94,7 +95,8 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
     hasMessages,
     scrollToBottom
   } = useChatMessages({
-    autoConnect,
+    // Avoid auto-connecting before a session is known to prevent generating orphan sessions
+    autoConnect: !!(typeof window !== 'undefined' && (localStorage.getItem('icui.chat.active_session') || chatClient.currentSession)) && autoConnect,
     maxMessages,
     persistence,
     autoScroll
@@ -107,22 +109,19 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
   const { onSessionChange, emitSessionChange } = useChatSessionSync();
 
   // Chat history management
-  const { createSession, switchSession, sessions } = useChatHistory();
+  const { createSession, switchSession, sessions, activeSession } = useChatHistory();
 
-  // Track current session name from events
-  const [sessionName, setSessionName] = useState<string>('');
+  // Track the globally-selected session (source: shared chat client + session sync)
+  const [currentSessionId, setCurrentSessionId] = useState<string>(chatClient.currentSession || '');
+  const [currentSessionName, setCurrentSessionName] = useState<string | undefined>(undefined);
 
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem('icui.chat.sessions.v1');
-      if (raw) {
-        const parsed = JSON.parse(raw) as { sessions: Array<{id:string,name:string,updated:number,created:number}>; active?: string };
-        const active = parsed.active;
-        const activeMeta = parsed.sessions?.find(s => s.id === active);
-        if (activeMeta?.name) setSessionName(activeMeta.name);
-      }
-    } catch {}
-  }, []);
+  // Compute title by preferring the most-recent event-provided name, then sessions list
+  const sessionTitle = (() => {
+    // Prefer event-provided name which updates immediately on rename
+    if (currentSessionName && currentSessionName.trim().length > 0) return currentSessionName;
+    const match = sessions.find(s => s.id === currentSessionId);
+    return match?.name || 'Untitled Chat';
+  })();
 
   // Get available custom agents
   const { agents: configuredAgents, isLoading: agentsLoading, error: agentsError } = useConfiguredAgents();
@@ -221,13 +220,26 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
 
   // Listen for session changes from Chat History panel
   useEffect(() => {
-    const cleanup = onSessionChange((sessionId, action, name) => {
+    // Initialize from chat client once on mount
+    if (chatClient.currentSession) {
+      setCurrentSessionId(chatClient.currentSession);
+      // Ensure connection if we suppressed autoConnect earlier
+      if (!isConnected) {
+        connect().catch(() => {/* noop */});
+      }
+    }
+
+  const cleanup = onSessionChange((sessionId, action, sessionName) => {
       if (action === 'switch' || action === 'create') {
-        setSessionName(name || '');
+        setCurrentSessionId(sessionId);
+    if (sessionName !== undefined) setCurrentSessionName(sessionName);
         reloadMessages(sessionId);
         setIsAutoScrollEnabled(true);
         setHasNewMessages(true);
         jumpToLatest();
+        if (!isConnected) {
+          connect().catch(() => {/* noop */});
+        }
       }
     });
 
@@ -393,7 +405,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
           <span className="text-sm" style={{ 
             color: isConnected ? 'var(--icui-text-primary)' : 'var(--icui-text-error)' 
           }}>
-            {isConnected ? (sessionName || 'No Session') : 'Disconnected'}
+            {isConnected ? sessionTitle : 'Disconnected'}
           </span>
         </div>
 
@@ -401,14 +413,16 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
         <div className="flex items-center space-x-2">
           {/* New Chat Button */}
           <button
-            onClick={async () => {
+      onClick={async () => {
               try {
-                const newSessionId = await createSession();
-                switchSession(newSessionId);
-                // Find the newly created session to get its name
-                const newSession = sessions.find(s => s.id === newSessionId);
-                const sessionName = newSession?.name || 'New Chat';
-                emitSessionChange(newSessionId, 'create', sessionName);
+        const newSessionId = await createSession();
+        switchSession(newSessionId);
+        // Try to find the created session's name; fall back to a sensible default
+        const created = sessions.find(s => s.id === newSessionId);
+        const createdName = created?.name || 'New Chat';
+        emitSessionChange(newSessionId, 'create', createdName);
+        setCurrentSessionId(newSessionId);
+        setCurrentSessionName(createdName);
               } catch (error) {
                 console.error('Failed to create new chat session:', error);
                 notificationService.error('Failed to create new chat session');
