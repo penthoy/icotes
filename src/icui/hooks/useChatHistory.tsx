@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { enhancedChatBackendClient as chatClient } from '../services/chat-backend-client-impl';
+import { chatBackendClient } from '../services/chat-backend-client-impl';
 import { configService } from '../../services/config-service';
 
 export interface ChatSessionMeta {
@@ -76,7 +76,7 @@ export function useChatHistory() {
 
 			if (activeId) {
 				setActiveSessionId(activeId);
-				chatClient.setCurrentSession(activeId);
+				chatBackendClient.setCurrentSession(activeId);
 				localStorage.setItem('icui.chat.active_session', activeId);
 				// Inform other components immediately
 				try {
@@ -115,7 +115,7 @@ export function useChatHistory() {
 					};
 					setSessions([newSession]);
 					setActiveSessionId(newSession.id);
-					chatClient.setCurrentSession(newSession.id);
+					chatBackendClient.setCurrentSession(newSession.id);
 					localStorage.setItem('icui.chat.active_session', newSession.id);
 				} else {
 					throw new Error('Failed to create default session');
@@ -128,7 +128,7 @@ export function useChatHistory() {
 				const meta: ChatSessionMeta = { id, name: 'Default Chat', created: now, updated: now };
 				setSessions([meta]);
 				setActiveSessionId(id);
-				chatClient.setCurrentSession(id);
+				chatBackendClient.setCurrentSession(id);
 			}
 		};
 
@@ -139,12 +139,12 @@ export function useChatHistory() {
 				const loaded = Array.isArray(parsed.sessions) ? parsed.sessions : [];
 				if (loaded.length === 0) return await createDefault();
 				setSessions(loaded);
-				const candidate = parsed.active || chatClient.currentSession || loaded[0]?.id || '';
+				const candidate = parsed.active || chatBackendClient.currentSession || loaded[0]?.id || '';
 				const ids = new Set(loaded.map(s => s.id));
 				const activeId = ids.has(candidate) ? candidate : loaded[0]?.id || '';
 				setActiveSessionId(activeId);
 				if (activeId) {
-					chatClient.setCurrentSession(activeId);
+					chatBackendClient.setCurrentSession(activeId);
 					localStorage.setItem('icui.chat.active_session', activeId);
 				}
 			} else {
@@ -196,7 +196,7 @@ export function useChatHistory() {
 			// Add to frontend state
 			setSessions(prev => [newSession, ...prev]);
 			setActiveSessionId(newSession.id);
-			chatClient.setCurrentSession(newSession.id);
+			chatBackendClient.setCurrentSession(newSession.id);
 
 			return newSession.id;
 		} catch (error) {
@@ -207,7 +207,7 @@ export function useChatHistory() {
 			const meta: ChatSessionMeta = { id, name: name || 'New Chat', created: now, updated: now };
 			setSessions(prev => [meta, ...prev]);
 			setActiveSessionId(id);
-			chatClient.setCurrentSession(id);
+			chatBackendClient.setCurrentSession(id);
 			return id;
 		}
 	}, []);
@@ -267,7 +267,7 @@ export function useChatHistory() {
 				if (activeSessionId === id) {
 					const nextId = next[0]?.id || '';
 					setActiveSessionId(nextId);
-					chatClient.setCurrentSession(nextId);
+					chatBackendClient.setCurrentSession(nextId);
 					// Emit change for new active
 					try {
 						const meta = next.find(s => s.id === nextId);
@@ -288,7 +288,7 @@ export function useChatHistory() {
 				if (activeSessionId === id) {
 					const nextId = next[0]?.id || '';
 					setActiveSessionId(nextId);
-					chatClient.setCurrentSession(nextId);
+					chatBackendClient.setCurrentSession(nextId);
 					try {
 						const meta = next.find(s => s.id === nextId);
 						if (nextId) {
@@ -305,7 +305,7 @@ export function useChatHistory() {
 
 	const switchSession = useCallback((id: string) => {
 		setActiveSessionId(id);
-		chatClient.setCurrentSession(id);
+		chatBackendClient.setCurrentSession(id);
 	}, []);
 
 	const refreshSessions = useCallback(async (): Promise<void> => {

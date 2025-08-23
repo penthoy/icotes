@@ -362,7 +362,10 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
       }
       
       websocket.current.onopen = () => {
-        console.log(`[ICUITerminal Enhanced] Connected to terminal ${terminalId.current}`);
+        // Reduced debug: Only log in development mode
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`[ICUITerminal Enhanced] Connected to terminal ${terminalId.current}`);
+        }
         setIsConnected(true);
         reconnectAttempts.current = 0;
         terminal.current?.clear();
@@ -394,7 +397,10 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
       };
       
       websocket.current.onclose = (event) => {
-        console.log(`[ICUITerminal Enhanced] Disconnected from terminal ${terminalId.current}:`, event.code, event.reason);
+        // Reduced debug: Only log disconnections in development or on error
+        if (process.env.NODE_ENV === 'development' || event.code !== 1000) {
+          console.log(`[ICUITerminal Enhanced] Disconnected from terminal ${terminalId.current}:`, event.code, event.reason);
+        }
         setIsConnected(false);
         
         if (event.code !== 1000) {

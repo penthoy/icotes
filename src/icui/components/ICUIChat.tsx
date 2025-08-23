@@ -33,7 +33,7 @@ import { CustomAgentDropdown } from './menus/CustomAgentDropdown';
 import ChatMessage from './chat/ChatMessage';
 import { useChatSearch } from '../hooks/useChatSearch';
 import { useChatSessionSync } from '../hooks/useChatSessionSync';
-import { enhancedChatBackendClient as chatClient } from '../services/chat-backend-client-impl';
+import { chatBackendClient } from '../services/chat-backend-client-impl';
 import { useChatHistory } from '../hooks/useChatHistory';
 
 interface ICUIChatProps {
@@ -98,7 +98,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
     scrollToBottom
   } = useChatMessages({
     // Avoid auto-connecting before a session is known to prevent generating orphan sessions
-    autoConnect: !!(typeof window !== 'undefined' && (localStorage.getItem('icui.chat.active_session') || chatClient.currentSession)) && autoConnect,
+    autoConnect: !!(typeof window !== 'undefined' && (localStorage.getItem('icui.chat.active_session') || chatBackendClient.currentSession)) && autoConnect,
     maxMessages,
     persistence,
     autoScroll
@@ -114,7 +114,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
   const { createSession, switchSession, sessions, activeSession } = useChatHistory();
 
   // Track the globally-selected session (source: shared chat client + session sync)
-  const [currentSessionId, setCurrentSessionId] = useState<string>(chatClient.currentSession || '');
+  const [currentSessionId, setCurrentSessionId] = useState<string>(chatBackendClient.currentSession || '');
   const [currentSessionName, setCurrentSessionName] = useState<string | undefined>(undefined);
 
   // Compute title by preferring the most-recent event-provided name, then sessions list
@@ -223,8 +223,8 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
   // Listen for session changes from Chat History panel
   useEffect(() => {
     // Initialize from chat client once on mount
-    if (chatClient.currentSession) {
-      setCurrentSessionId(chatClient.currentSession);
+    if (chatBackendClient.currentSession) {
+      setCurrentSessionId(chatBackendClient.currentSession);
       // Ensure connection if we suppressed autoConnect earlier
       if (!isConnected) {
         connect().catch(() => {/* noop */});

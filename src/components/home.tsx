@@ -140,15 +140,19 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
 
   // Handle connection status changes from ICUIEditor
   const handleConnectionStatusChange = useCallback((status: {connected: boolean; error?: string; timestamp?: number}) => {
-    console.log('Home received connection status change:', status);
-    console.log('Updating editorConnectionStatus to:', status);
+    // Reduced debug: Only log connection errors, not routine status changes
+    if (status.error) {
+      console.log('Home received connection error:', status.error);
+    }
     setEditorConnectionStatus(status);
   }, []);
 
-  // Debug: Log when connectionStatus derived value changes
+  // Reduced debug: Only log connection status in development mode
   useEffect(() => {
-    console.log('connectionStatus derived value changed to:', connectionStatus);
-  }, [connectionStatus]);
+    if (process.env.NODE_ENV === 'development' && editorConnectionStatus.error) {
+      console.log('Connection error:', editorConnectionStatus.error);
+    }
+  }, [editorConnectionStatus]);
 
   // Remove local file management handlers - let ICUIEditor handle its own files
   // These are kept for potential future use but do nothing now
