@@ -42,13 +42,7 @@
       "order": 999,
       "icon": "\ud83d\udcbb"
     },
-    "ExampleToolUser": {
-      "enabled": true,
-      "displayName": "ExampleToolUser",
-      "description": "Auto-discovered agent: ExampleToolUser",
-      "category": "Tests",
-      "order": 999
-    },
+
     "ClaudeAgentCreator": {
       "enabled": true,
       "displayName": "Claude Agent Creator",

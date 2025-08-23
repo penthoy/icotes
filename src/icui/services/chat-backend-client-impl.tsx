@@ -360,6 +360,47 @@ export class EnhancedChatBackendClient {
   }
 
   /**
+   * Stop/interrupt current streaming response
+   */
+  async stopStreaming(): Promise<void> {
+    if (!this.connectionId || !this.enhancedService) {
+      throw new Error('Enhanced chat service not connected');
+    }
+
+    const stopMessage = {
+      type: 'stop',
+      session_id: this.currentSessionId,
+      timestamp: new Date().toISOString()
+    };
+
+    const messageOptions: MessageOptions = {
+      priority: 'high', // High priority for stop messages
+      timeout: 5000, // Short timeout
+      expectResponse: false,
+      retries: 0
+    };
+
+    try {
+      await this.enhancedService.sendMessage(
+        this.connectionId,
+        JSON.stringify(stopMessage),
+        messageOptions
+      );
+      
+      // Mark as no longer streaming
+      this.isStreaming = false;
+      this.streamingMessage = null;
+      
+      // Notify typing stopped
+      this.typingCallbacks.forEach(callback => callback(false));
+      
+    } catch (error) {
+      console.error('[EnhancedChatBackendClient] Failed to stop streaming:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Get available agents with enhanced caching
    */
   async getAgents(): Promise<AgentConfig[]> {
@@ -623,6 +664,9 @@ export class EnhancedChatBackendClient {
       } else if (data.type === 'message_stream') {
         // console.log('[EnhancedChatBackendClient] Handling streaming message');
         this.handleStreamingMessage(data);
+      } else if (data.type === 'stream_stopped') {
+        // console.log('[EnhancedChatBackendClient] Handling stream stopped');
+        this.handleStreamStopped(data);
       } else if (data.type === 'typing') {
         // console.log('[EnhancedChatBackendClient] Handling typing indicator');
         this.handleTypingIndicator(data);
@@ -796,6 +840,26 @@ export class EnhancedChatBackendClient {
         this.isStreaming = false;
       }
     }
+  }
+
+  private handleStreamStopped(data: any): void {
+    // Handle stream interruption
+    this.isStreaming = false;
+    this.streamingMessage = null;
+    
+    // Notify typing stopped
+    this.typingCallbacks.forEach(callback => callback(false));
+    
+    // Notify stream callbacks that streaming is done
+    this.streamCallbacks.forEach(callback => 
+      callback({
+        content: '',
+        done: true
+      })
+    );
+    
+    // Log the stop event
+    console.log('[EnhancedChatBackendClient] Stream stopped:', data.message || 'Streaming interrupted');
   }
 
   private handleTypingIndicator(data: any): void {

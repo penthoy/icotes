@@ -73,55 +73,76 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', high
     return activeHelper.parseToolCalls(message.content, message);
   }, [message.content, message.id, message.metadata?.streamComplete]);
 
-  // Parse content sequentially to interleave remarks and tool calls
+  // Parse content sequentially to interleave remarks and tool calls robustly
   const sequentialBlocks = useMemo(() => {
     const blocks: Array<{ type: 'text' | 'toolCall'; content?: string; toolCall?: ToolCallData }> = [];
     const { content, toolCalls } = parsedResult;
-    
-    // If no tool calls, just return the content as a single text block
+
+    // If no tool calls, just return cleaned content
     if (toolCalls.length === 0) {
-      if (content.trim()) {
-        blocks.push({ type: 'text', content });
-      }
+      const clean = getActiveModelHelper().stripAllToolText(content || message.content || '');
+      if (clean.trim()) blocks.push({ type: 'text', content: clean });
       return blocks;
     }
 
-    // Split the original message content by tool execution blocks to maintain sequence
-    const originalContent = message.content;
-    const parts = originalContent.split(/(🔧\s*\*\*Executing tools\.\.\.\*\*[\s\S]*?(?:🔧\s*\*\*Tool execution complete\. Continuing\.\.\.\*\*|$))/g);
-    
-    let toolCallIndex = 0;
-    
-    for (let i = 0; i < parts.length; i++) {
-      const part = parts[i].trim();
-      if (!part) continue;
-
-      if (part.includes('🔧 **Executing tools...**')) {
-        // This is a tool execution block - find matching tool calls
-        const blockToolCalls = toolCalls.filter((tc, index) => {
-          // Match tool calls that belong to this execution block
-          return index >= toolCallIndex && index < toolCallIndex + 10; // reasonable limit per block
-        });
-        
-        blockToolCalls.forEach(toolCall => {
-          blocks.push({ type: 'toolCall', toolCall });
-        });
-        
-        toolCallIndex += blockToolCalls.length;
+    // Build an index of tool calls grouped by execution block and ordered
+    const grouped: Record<number, ToolCallData[]> = {};
+    const ungrouped: ToolCallData[] = [];
+    toolCalls.forEach(tc => {
+      const b = Number.isInteger(tc.metadata?.blockIndex) ? (tc.metadata!.blockIndex as number) : undefined;
+      if (b === undefined) {
+        ungrouped.push(tc);
       } else {
-        // This is explanatory text - clean it using the model helper
-        const cleanText = getActiveModelHelper().stripAllToolText(part);
-        if (cleanText.trim()) {
-          blocks.push({ type: 'text', content: cleanText });
-        }
+        if (!grouped[b]) grouped[b] = [];
+        grouped[b].push(tc);
       }
+    });
+
+    // Sort each group by indexInBlock or order for deterministic output
+    Object.values(grouped).forEach(list => {
+      list.sort((a, b) => {
+        const ai = (a.metadata?.indexInBlock ?? a.metadata?.order ?? 0) as number;
+        const bi = (b.metadata?.indexInBlock ?? b.metadata?.order ?? 0) as number;
+        return ai - bi;
+      });
+    });
+
+    // Split original content into alternating narration and execution blocks
+    const original = message.content || '';
+    const splitter = /(🔧\s*\*\*Executing tools\.\.\.\*\*[\s\S]*?)(?=🔧\s*\*\*Tool execution complete\. Continuing\.\.\.\*\*|$)/g;
+    const segments: { kind: 'text' | 'exec'; value: string }[] = [];
+    let lastIndex = 0;
+    for (const m of original.matchAll(splitter)) {
+      const idx = m.index ?? 0;
+      if (idx > lastIndex) {
+        segments.push({ kind: 'text', value: original.slice(lastIndex, idx) });
+      }
+      segments.push({ kind: 'exec', value: m[0] });
+      lastIndex = idx + m[0].length;
+    }
+    if (lastIndex < original.length) {
+      segments.push({ kind: 'text', value: original.slice(lastIndex) });
     }
 
-    // Add any remaining tool calls that weren't matched (running tools, etc.)
-    const remainingToolCalls = toolCalls.slice(toolCallIndex);
-    remainingToolCalls.forEach(toolCall => {
-      blocks.push({ type: 'toolCall', toolCall });
+    // Assemble blocks by iterating segments and injecting corresponding widgets
+    let execBlockCursor = 0;
+    segments.forEach(seg => {
+      if (seg.kind === 'text') {
+        const clean = getActiveModelHelper().stripAllToolText(seg.value);
+        if (clean.trim()) blocks.push({ type: 'text', content: clean });
+      } else {
+        const tcs = grouped[execBlockCursor] || [];
+        tcs.forEach(tc => blocks.push({ type: 'toolCall', toolCall: tc }));
+        execBlockCursor++;
+      }
     });
+
+    // Append any ungrouped tool calls (e.g., emitted outside blocks) in their original order
+    if (ungrouped.length > 0) {
+      ungrouped
+        .sort((a, b) => ((a.metadata?.order ?? 0) as number) - ((b.metadata?.order ?? 0) as number))
+        .forEach(tc => blocks.push({ type: 'toolCall', toolCall: tc }));
+    }
 
     return blocks;
   }, [parsedResult, message.content]);

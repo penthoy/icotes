@@ -43,6 +43,7 @@ export interface UseChatMessagesReturn {
   // Actions
   sendMessage: (content: string, options?: MessageOptions) => Promise<void>;
   sendCustomAgentMessage: (content: string, agentName: string) => Promise<void>;
+  stopStreaming: () => Promise<void>;
   clearMessages: () => Promise<void>;
   updateConfig: (config: Partial<ChatConfig>) => Promise<void>;
   connect: () => Promise<boolean>;
@@ -260,6 +261,19 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
     }
   }, [getClient, maxMessages]);
 
+  // Stop streaming
+  const stopStreaming = useCallback(async () => {
+    try {
+      const client = getClient();
+      await client.stopStreaming();
+      setIsTyping(false);
+      notificationService.show('Streaming stopped', 'info');
+    } catch (error) {
+      console.error('Failed to stop streaming:', error);
+      notificationService.error('Failed to stop streaming');
+    }
+  }, [getClient]);
+
   // Clear messages
   const clearMessages = useCallback(async () => {
     try {
@@ -381,6 +395,7 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
     // Actions
     sendMessage,
     sendCustomAgentMessage,
+    stopStreaming,
     clearMessages,
     updateConfig,
     connect,

@@ -38,3 +38,8 @@ with a json file.
 This is the python/fastapi backend that powers everything going on behind the scene.
 it is named ICPY as I have some plans to make part of the backend using faster frameworks
 in rust or go later on.
+
+## Hot reload:
+When you create <Agent_name>_agent.py under plugins folder, and after editing the .icotes/agents.json to register it.
+The hot reload system can pick it up automatically, or press the reload button next to the Agent selector on the Chat window
+which will force it to reload. and you can use your updated/created agent right away.

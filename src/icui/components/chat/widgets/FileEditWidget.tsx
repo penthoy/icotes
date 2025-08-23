@@ -10,7 +10,7 @@
  */
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import { ChevronDown, ChevronRight, File, Clock, ExternalLink, Copy, Check, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, File, Clock, ExternalLink, Copy, CheckCircle, XCircle } from 'lucide-react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { useTheme } from '../../../hooks/useTheme';
@@ -198,7 +198,7 @@ const FileEditWidget: React.FC<FileEditWidgetProps> = ({
       return [];
     }
     
-    // For create_file operations, don't show tabs - just show summary
+    // For create_file operations, don't show tabs but allow expansion to show details
     if (originalToolName === 'create_file') {
       return [];
     }
@@ -231,9 +231,9 @@ const FileEditWidget: React.FC<FileEditWidgetProps> = ({
   const statusInfo = useMemo(() => {
     switch (toolCall.status) {
       case 'success':
-        return { icon: <Check size={12} />, color: 'text-green-500' };
+        return { icon: <CheckCircle size={12} />, color: 'text-green-500' };
       case 'error':
-        return { icon: <X size={12} />, color: 'text-red-500' };
+        return { icon: <XCircle size={12} />, color: 'text-red-500' };
       case 'running':
         return { icon: <Clock size={12} />, color: 'text-blue-500' };
       default:
@@ -244,11 +244,12 @@ const FileEditWidget: React.FC<FileEditWidgetProps> = ({
   const originalToolName = toolCall.metadata?.originalToolName || toolCall.toolName;
   const isReadOperation = originalToolName === 'read_file';
   const isCreateOperation = originalToolName === 'create_file';
+  const isReplaceOperation = originalToolName === 'replace_string_in_file';
   
-  // Content is expandable if there are tabs to show (diff/before/after) or if this is a read operation
+  // Content is expandable if there are tabs to show (diff/before/after) or if this is a special operation
   const shouldShowExpandableContent = useMemo(() => {
-    return availableTabs.length > 0 || isReadOperation;
-  }, [availableTabs.length, isReadOperation]);
+    return availableTabs.length > 0 || isReadOperation || isCreateOperation || isReplaceOperation;
+  }, [availableTabs.length, isReadOperation, isCreateOperation, isReplaceOperation]);
 
   return (
     <div className={`icui-widget ${className}`}>
@@ -364,8 +365,113 @@ const FileEditWidget: React.FC<FileEditWidgetProps> = ({
             </div>
           )}
 
-          {/* For create/update operations, show tabs if available */}
-          {!isReadOperation && !isCreateOperation && availableTabs.length > 0 && (
+          {/* For create operations, show file details */}
+          {isCreateOperation && toolCall.status === 'success' && (
+            <div className="icui-widget__section">
+              <div className="text-sm icui-widget__meta mb-2">
+                <strong>Created File:</strong> <code>{fileEditData.filePath}</code>
+              </div>
+              {fileEditData.modifiedContent && (
+                <div className="text-sm icui-widget__meta mb-2">
+                  <strong>Content Length:</strong> {fileEditData.modifiedContent.length} characters
+                </div>
+              )}
+              {fileEditData.modifiedContent && (
+                <div className="mt-3">
+                  <div className="text-sm icui-widget__meta mb-2">
+                    <strong>File Content:</strong>
+                  </div>
+                  <SyntaxHighlighter
+                    language={fileEditData.language}
+                    style={isDark ? oneDark : oneLight}
+                    customStyle={{
+                      margin: 0,
+                      borderRadius: '6px',
+                      background: 'var(--icui-bg-primary)',
+                      border: '1px solid var(--icui-border-subtle)',
+                      fontSize: '0.75rem',
+                      lineHeight: '1.4',
+                      maxHeight: '300px',
+                      overflow: 'auto'
+                    }}
+                    showLineNumbers={true}
+                  >
+                    {fileEditData.modifiedContent}
+                  </SyntaxHighlighter>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* For create operations, show error details */}
+          {isCreateOperation && toolCall.status === 'error' && (
+            <div className="icui-widget__section">
+              <div className="icui-widget__error">
+                <div className="font-medium mb-2">Create File Failed:</div>
+                <div className="text-sm mb-2">
+                  <strong>Target Path:</strong> <code>{fileEditData.filePath}</code>
+                </div>
+                <div className="text-sm">
+                  <strong>Error:</strong> {toolCall.error}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* For replace_string operations without diff data, show replacement details */}
+          {isReplaceOperation && toolCall.status === 'success' && availableTabs.length === 0 && (
+            <div className="icui-widget__section">
+              <div className="text-sm icui-widget__meta mb-2">
+                <strong>Modified File:</strong> <code>{fileEditData.filePath}</code>
+              </div>
+              <div className="text-sm icui-widget__meta mb-2">
+                <strong>Operation:</strong> String replacement completed successfully
+              </div>
+              {toolCall.input?.oldString && (
+                <div className="mt-3">
+                  <div className="text-sm icui-widget__meta mb-2">
+                    <strong>Replaced Text:</strong>
+                  </div>
+                  <div className="icui-widget__code text-xs">
+                    {toolCall.input.oldString}
+                  </div>
+                </div>
+              )}
+              {toolCall.input?.newString && (
+                <div className="mt-3">
+                  <div className="text-sm icui-widget__meta mb-2">
+                    <strong>With New Text:</strong>
+                  </div>
+                  <div className="icui-widget__code text-xs">
+                    {toolCall.input.newString}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* For replace_string operations, show error details */}
+          {isReplaceOperation && toolCall.status === 'error' && (
+            <div className="icui-widget__section">
+              <div className="icui-widget__error">
+                <div className="font-medium mb-2">String Replacement Failed:</div>
+                <div className="text-sm mb-2">
+                  <strong>Target File:</strong> <code>{fileEditData.filePath}</code>
+                </div>
+                {toolCall.input?.oldString && (
+                  <div className="text-sm mb-2">
+                    <strong>Search String:</strong> <code>{toolCall.input.oldString.slice(0, 100)}{toolCall.input.oldString.length > 100 ? '...' : ''}</code>
+                  </div>
+                )}
+                <div className="text-sm">
+                  <strong>Error:</strong> {toolCall.error}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* For operations with diff/content data, show tabs */}
+          {(!isReadOperation && !isCreateOperation && availableTabs.length > 0) || (isReplaceOperation && availableTabs.length > 0) && (
             <>
               {/* Tabs */}
               <div className="icui-widget__tabs">

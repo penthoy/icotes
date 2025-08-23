@@ -1468,6 +1468,18 @@ async def chat_websocket(websocket: WebSocket):
                         "timestamp": time.time()
                     })
                 
+                elif message_type == "stop":
+                    # Stop/interrupt current streaming response
+                    session_id = data.get("session_id") or connection_id
+                    success = await chat_service.stop_streaming(session_id)
+                    
+                    await websocket.send_json({
+                        "type": "stop_response",
+                        "success": success,
+                        "session_id": session_id,
+                        "timestamp": time.time()
+                    })
+                
                 else:
                     logger.warning(f"Unknown chat message type: {message_type}")
                     

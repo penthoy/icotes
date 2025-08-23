@@ -18,6 +18,7 @@
  */
 
 import React, { useRef, useEffect, useState, useCallback, useImperativeHandle, forwardRef } from 'react';
+import { Square } from 'lucide-react';
 import { 
   useChatMessages, 
   useTheme, 
@@ -87,6 +88,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
     isTyping,
     sendMessage,
     sendCustomAgentMessage,
+    stopStreaming,
     clearMessages,
     connect,
     disconnect,
@@ -303,6 +305,16 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
     }
   }, [inputValue, selectedAgent, sendMessage, sendCustomAgentMessage, onMessageSent, customAgents]);
 
+  // Handle stopping streaming
+  const handleStopStreaming = useCallback(async () => {
+    try {
+      await stopStreaming();
+    } catch (error) {
+      console.error('Failed to stop streaming:', error);
+      notificationService.error('Failed to stop streaming');
+    }
+  }, [stopStreaming]);
+
   // Handle clearing messages
   const handleClearMessages = useCallback(async () => {
     try {
@@ -321,14 +333,18 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
         // Allow new line with Shift+Enter
         return;
       } else {
-        // Send message with Enter
+        // Send message or stop streaming with Enter
         e.preventDefault();
         if (!isComposing) {
-          handleSendMessage();
+          if (isTyping) {
+            handleStopStreaming();
+          } else {
+            handleSendMessage();
+          }
         }
       }
     }
-  }, [handleSendMessage, isComposing]);
+  }, [handleSendMessage, handleStopStreaming, isComposing, isTyping]);
 
   // Handle input composition (for IME support)
   const handleCompositionStart = useCallback(() => {
@@ -596,16 +612,23 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
               />
             </div>
             <button
-              onClick={() => handleSendMessage()}
-              disabled={!inputValue.trim() || !isConnected || isLoading}
+              onClick={() => isTyping ? handleStopStreaming() : handleSendMessage()}
+              disabled={(!isTyping && (!inputValue.trim() || !isConnected || isLoading))}
               className="px-4 py-2 rounded-md text-sm font-medium hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity focus:outline-none focus:ring-2 focus:ring-offset-2 flex-shrink-0"
               style={{ 
-                backgroundColor: 'var(--icui-accent)', 
+                backgroundColor: isTyping ? 'var(--icui-text-error)' : 'var(--icui-accent)', 
                 color: 'var(--icui-text-primary)'
               }}
-              title="Send message (Enter)"
+              title={isTyping ? "Stop generation" : "Send message (Enter)"}
             >
-              Send
+              {isTyping ? (
+                <div className="flex items-center gap-2">
+                  <Square size={14} />
+                  <span>Stop</span>
+                </div>
+              ) : (
+                'Send'
+              )}
             </button>
           </div>
         </div>

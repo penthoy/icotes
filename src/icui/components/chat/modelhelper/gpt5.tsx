@@ -166,10 +166,12 @@ export class GPT5ModelHelper implements ModelHelper {
       .trim();
 
     // Enhanced pattern matching for GPT-5 tool execution blocks
-    const toolExecutionPattern = /🔧\s*\*\*Executing tools\.\.\.\*\*\s*\n([\s\S]*?)🔧\s*\*\*Tool execution complete\. Continuing\.\.\.\*\*/g;
-    const toolCalls: ToolCallData[] = [];
-    let match;
-    let toolCallIndex = 0;
+  const toolExecutionPattern = /🔧\s*\*\*Executing tools\.\.\.\*\*\s*\n([\s\S]*?)🔧\s*\*\*Tool execution complete\. Continuing\.\.\.\*\*/g;
+  const toolCalls: ToolCallData[] = [];
+  let match;
+  let toolCallIndex = 0;
+  let executionBlockIndex = 0; // Track which Executing tools block we're in
+  let globalOrder = 0; // Global order of tools as parsed
 
     // First, check for standalone "🔧 **Executing tools...**" without completion
     const standaloneExecutingPattern = /🔧\s*\*\*Executing tools\.\.\.\*\*(?!\s*\n[\s\S]*?🔧\s*\*\*Tool execution complete)/g;
@@ -188,7 +190,7 @@ export class GPT5ModelHelper implements ModelHelper {
       shouldAddGenericProgress = true;
     }
 
-    while ((match = toolExecutionPattern.exec(content)) !== null) {
+  while ((match = toolExecutionPattern.exec(content)) !== null) {
       const toolBlock = match[1];
       const toolId = `tool-${message.id}-${toolCallIndex++}`;
 
@@ -197,8 +199,8 @@ export class GPT5ModelHelper implements ModelHelper {
       const individualToolPattern = /📋\s*\*\*([^:]+)\*\*:\s*(\{[^}]*\}|\{[\s\S]*?\}|[^\n]*)\s*\n(✅\s*\*\*Success\*\*:\s*([\s\S]*?)(?=\n\n📋|\n🔧|$)|❌\s*\*\*Error\*\*:\s*([\s\S]*?)(?=\n\n📋|\n🔧|$))/g;
 
       const createdIds: string[] = [];
-      let toolMatch;
-      let innerToolIndex = 0; // Track tool calls within this block
+  let toolMatch;
+  let innerToolIndex = 0; // Track tool calls within this block
       while ((toolMatch = individualToolPattern.exec(toolBlock)) !== null) {
         const toolName = toolMatch[1].trim();
         const inputText = toolMatch[2].trim();
@@ -249,12 +251,28 @@ export class GPT5ModelHelper implements ModelHelper {
               } catch {
                 // Keep as string if parsing fails
               }
-            } else if (toolName.includes('semantic_search') && parsedOutput.startsWith('[')) {
+            } else if (toolName.includes('semantic_search')) {
               try {
-                // Parse array results
-                parsedOutput = JSON.parse(parsedOutput.replace(/'/g, '"'));
+                // Parse array results - handle both direct arrays and success messages with arrays
+                let arrayText = parsedOutput;
+                
+                // If it's a success message, extract the array part
+                const arrayMatch = parsedOutput.match(/\[[\s\S]*\]/);
+                if (arrayMatch) {
+                  arrayText = arrayMatch[0];
+                }
+                
+                // Parse the array, handling Python-style syntax more comprehensively
+                const cleanedText = arrayText
+                  .replace(/'/g, '"')           // Single to double quotes
+                  .replace(/None/g, 'null')     // Python None to JSON null
+                  .replace(/True/g, 'true')     // Python True to JSON true  
+                  .replace(/False/g, 'false')   // Python False to JSON false
+                  .replace(/,(\s*[}\]])/g, '$1'); // Remove trailing commas
+                
+                parsedOutput = JSON.parse(cleanedText);
               } catch {
-                // Keep as string
+                // Keep as string if parsing fails - let the widget parser handle it
               }
             }
           }
@@ -264,9 +282,10 @@ export class GPT5ModelHelper implements ModelHelper {
         const { category, mappedName } = this.mapToolNameToCategory(toolName);
 
         // Create unique ID using both outer and inner indexes to avoid collisions
-        const idBase = `${toolId}-${innerToolIndex}-${toolName.replace(/[^a-zA-Z0-9]/g, '')}`;
+    const idBase = `${toolId}-${innerToolIndex}-${toolName.replace(/[^a-zA-Z0-9]/g, '')}`;
         createdIds.push(idBase);
-        innerToolIndex++; // Increment inner tool index for uniqueness
+    const indexInBlock = innerToolIndex; // capture before increment for metadata
+    innerToolIndex++; // Increment inner tool index for uniqueness
         const toolCall: ToolCallData = {
           id: idBase,
           toolName: mappedName,
@@ -280,7 +299,10 @@ export class GPT5ModelHelper implements ModelHelper {
           endTime: message.timestamp ? new Date(message.timestamp) : new Date(),
           metadata: {
             originalToolName: toolName,
-            executionBlock: toolBlock.trim()
+      executionBlock: toolBlock.trim(),
+      blockIndex: executionBlockIndex,
+      indexInBlock,
+      order: globalOrder++
           }
         };
 
@@ -304,7 +326,7 @@ export class GPT5ModelHelper implements ModelHelper {
           // Determine if this header segment contains success/error
           const hasOutcome = /✅\s*\*\*Success\*\*|❌\s*\*\*Error\*\*/.test(lastHeader[0]);
 
-          if (!alreadyCreated && !hasOutcome) {
+      if (!alreadyCreated && !hasOutcome) {
             // We have a running tool
             shouldAddGenericProgress = false; // we can attach spinner to this tool instead
 
@@ -324,12 +346,18 @@ export class GPT5ModelHelper implements ModelHelper {
               metadata: {
                 originalToolName: headerToolName,
                 executionBlock: toolBlock.trim(),
-                running: true
+        running: true,
+        blockIndex: executionBlockIndex,
+        indexInBlock: innerToolIndex, // next index position
+        order: globalOrder++
               }
             });
           }
         }
       }
+
+  // Increment block index after finishing this execution block
+  executionBlockIndex++;
     }
 
     // Remove tool execution blocks from content but keep the rest
@@ -481,19 +509,43 @@ export class GPT5ModelHelper implements ModelHelper {
   parseCodeExecutionData(toolCall: ToolCallData): any {
     const input = toolCall.input || {};
     const output = toolCall.output || {};
+    const originalToolName = toolCall.metadata?.originalToolName || toolCall.toolName;
     
     let code = '';
     let executionOutput = '';
     let error = '';
     let stackTrace = '';
     
-    // Extract code from input
-    if (input.command) {
-      code = input.command;
-    } else if (input.code) {
-      code = input.code;
-    } else if (input.script) {
-      code = input.script;
+    // Extract code/command from input - enhanced for run_in_terminal
+    if (originalToolName === 'run_in_terminal') {
+      // For terminal commands, prioritize command parameter
+      code = input.command || input.cmd || input.script || input.code || '';
+      
+      // If still no code, try to extract from tool call metadata or raw input
+      if (!code && typeof input === 'string') {
+        code = input;
+      }
+      
+      // If still no code, check if it's in a nested structure
+      if (!code && input.raw) {
+        code = input.raw;
+      }
+    } else {
+      // For other code execution tools
+      if (input.command) {
+        code = input.command;
+      } else if (input.code) {
+        code = input.code;
+      } else if (input.script) {
+        code = input.script;
+      } else if (input.cmd) {
+        code = input.cmd;
+      }
+      
+      // Fallback: if input is a simple string, treat it as code
+      if (!code && typeof input === 'string') {
+        code = input;
+      }
     }
     
     // Extract output from various formats
@@ -525,7 +577,7 @@ export class GPT5ModelHelper implements ModelHelper {
       output: executionOutput || '',
       error: error || '',
       stackTrace: stackTrace || '',
-      language: 'bash', // Default to bash for terminal commands
+      language: originalToolName === 'run_in_terminal' ? 'bash' : this.detectCodeLanguage(code) || 'bash',
       exitCode: output?.status || output?.exitCode || (toolCall.status === 'success' ? 0 : 1),
       executionTime: toolCall.endTime && toolCall.startTime 
         ? toolCall.endTime.getTime() - toolCall.startTime.getTime() 
@@ -545,48 +597,161 @@ export class GPT5ModelHelper implements ModelHelper {
     let results: any[] = [];
     let resultCount = 0;
     
-    // Handle different output formats
+    // Handle different output formats - enhanced for better parsing
     if (Array.isArray(output)) {
       // Direct array
-      results = output.map((item: any) => ({
-        file: item.file || 'Unknown file',
-        line: item.line,
-        snippet: item.snippet || ''
-      }));
-    } else if (output.result) {
-      try {
-        const parsed = JSON.parse(output.result);
-        if (Array.isArray(parsed)) {
-          results = parsed.map((item: any) => ({
-            file: item.file || 'Unknown file',
-            line: item.line,
-            snippet: item.snippet || ''
+      results = output
+        .filter((item: any) => item && (item.file || item.path)) // Only include items with valid file paths
+        .map((item: any) => ({
+          file: item.file || item.path || 'Unknown file',
+          line: item.line || item.lineNumber || undefined,
+          snippet: item.snippet || item.text || item.content || 'No snippet available'
+        }));
+    } else if (output && typeof output === 'object') {
+      // Check various nested structures
+      if (output.data && Array.isArray(output.data)) {
+        // Output has .data property with array
+        results = output.data
+          .filter((item: any) => item && (item.file || item.path)) // Only include items with valid file paths
+          .map((item: any) => ({
+            file: item.file || item.path || 'Unknown file', 
+            line: item.line || item.lineNumber || undefined,
+            snippet: item.snippet || item.text || item.content || 'No snippet available'
           }));
+      } else if (output.results && Array.isArray(output.results)) {
+        // Output has .results property
+        results = output.results
+          .filter((item: any) => item && (item.file || item.path)) // Only include items with valid file paths
+          .map((item: any) => ({
+            file: item.file || item.path || 'Unknown file',
+            line: item.line || item.lineNumber || undefined,
+            snippet: item.snippet || item.text || item.content || 'No snippet available'
+          }));
+      } else if (output.result) {
+        try {
+          // Try parsing result as JSON
+          let parsed;
+          if (typeof output.result === 'string') {
+            parsed = JSON.parse(output.result);
+          } else {
+            parsed = output.result;
+          }
+          
+          if (Array.isArray(parsed)) {
+            results = parsed
+              .filter((item: any) => item && (item.file || item.path)) // Only include items with valid file paths
+              .map((item: any) => ({
+                file: item.file || item.path || 'Unknown file',
+                line: item.line || item.lineNumber || undefined,
+                snippet: item.snippet || item.text || item.content || 'No snippet available'
+              }));
+          } else if (parsed.data && Array.isArray(parsed.data)) {
+            // Nested data structure
+            results = parsed.data
+              .filter((item: any) => item && (item.file || item.path)) // Only include items with valid file paths
+              .map((item: any) => ({
+                file: item.file || item.path || 'Unknown file',
+                line: item.line || item.lineNumber || undefined,
+                snippet: item.snippet || item.text || item.content || 'No snippet available'
+              }));
+          }
+        } catch {
+          // If parsing fails, continue to string parsing
         }
-      } catch {
-        // If parsing fails, show simple text
       }
-    } else if (typeof output === 'string' && output.startsWith('[')) {
+    } 
+    
+    // Handle string output - enhanced with better regex patterns
+    if (results.length === 0 && typeof output === 'string') {
       try {
-        const parsed = JSON.parse(output.replace(/'/g, '"'));
-        if (Array.isArray(parsed)) {
-          results = parsed.map((item: any) => ({
-            file: item.file || 'Unknown file',
-            line: item.line,
-            snippet: item.snippet || ''
-          }));
+        // Handle string output - could be JSON array or success message with array
+        let arrayText = output;
+        
+        // If it's a success message, extract the array part with better regex
+        if (!output.startsWith('[')) {
+          // Try multiple patterns to extract array data
+          const patterns = [
+            /\[[\s\S]*?\]/g,           // Basic array pattern
+            /results?:\s*\[[\s\S]*?\]/gi, // "results: [...]" pattern
+            /data:\s*\[[\s\S]*?\]/gi,     // "data: [...]" pattern
+            /found:\s*\[[\s\S]*?\]/gi     // "found: [...]" pattern
+          ];
+          
+          for (const pattern of patterns) {
+            const match = output.match(pattern);
+            if (match && match[0]) {
+              // Extract just the array part
+              const extractMatch = match[0].match(/\[[\s\S]*\]/);
+              if (extractMatch) {
+                arrayText = extractMatch[0];
+                break;
+              }
+            }
+          }
         }
-      } catch {
-        // Keep as empty if parsing fails
+        
+        // Parse the array, handling Python-style syntax and various formats
+        const cleanedArrayText = arrayText
+          .replace(/'/g, '"')           // Single to double quotes
+          .replace(/None/g, 'null')     // Python None to JSON null
+          .replace(/True/g, 'true')     // Python True to JSON true
+          .replace(/False/g, 'false')   // Python False to JSON false
+          .replace(/,\s*}/g, '}')       // Remove trailing commas
+          .replace(/,\s*]/g, ']');      // Remove trailing commas
+          
+        const parsed = JSON.parse(cleanedArrayText);
+        if (Array.isArray(parsed)) {
+          results = parsed
+            .filter((item: any) => item && (item.file || item.path || item.filename)) // Only include items with valid file paths
+            .map((item: any) => ({
+              file: item.file || item.path || item.filename || 'Unknown file',
+              line: item.line || item.lineNumber || item.line_number || undefined,
+              snippet: item.snippet || item.text || item.content || item.match || 'No snippet available'
+            }));
+        }
+      } catch (parseError) {
+        // If JSON parsing fails, try to extract results using simpler patterns
+        try {
+          // Look for file:line patterns in the text
+          const fileLinePattern = /([^:\n]+):(\d+):\s*(.+)/g;
+          let match;
+          const extractedResults = [];
+          
+          while ((match = fileLinePattern.exec(output)) !== null) {
+            extractedResults.push({
+              file: match[1].trim(),
+              line: parseInt(match[2], 10),
+              snippet: match[3].trim()
+            });
+          }
+          
+          if (extractedResults.length > 0) {
+            results = extractedResults;
+          }
+        } catch {
+          // Final fallback - keep results empty
+        }
       }
     }
     
     resultCount = results.length;
     
+    // Extract query from various possible locations
+    let query = input.query || '';
+    if (!query && toolCall.metadata?.query) {
+      query = toolCall.metadata.query;
+    }
+    if (!query && input.search_query) {
+      query = input.search_query;
+    }
+    if (!query && input.term) {
+      query = input.term;
+    }
+    
     return {
-      query: input.query || '',
-      scope: input.scope || '',
-      fileTypes: input.fileTypes || [],
+      query: query || '(not provided)',
+      scope: input.scope || input.root || '',
+      fileTypes: input.fileTypes || input.file_types || [],
       results,
       resultCount
     };
@@ -612,6 +777,35 @@ export class GPT5ModelHelper implements ModelHelper {
     }
     
     return 'text';
+  }
+
+  private detectCodeLanguage(code: string): string {
+    if (!code) return 'bash';
+    
+    const trimmed = code.trim();
+    
+    // Python patterns
+    if (trimmed.includes('import ') || trimmed.includes('def ') || trimmed.includes('print(') || trimmed.startsWith('python ')) {
+      return 'python';
+    }
+    
+    // JavaScript/Node patterns  
+    if (trimmed.includes('npm ') || trimmed.includes('node ') || trimmed.includes('const ') || trimmed.includes('function(')) {
+      return 'javascript';
+    }
+    
+    // Git commands
+    if (trimmed.startsWith('git ')) {
+      return 'bash';
+    }
+    
+    // Docker commands
+    if (trimmed.startsWith('docker ')) {
+      return 'bash';
+    }
+    
+    // Default to bash for shell commands
+    return 'bash';
   }
 
   /**

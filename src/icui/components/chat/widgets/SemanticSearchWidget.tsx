@@ -5,7 +5,7 @@
  */
 
 import React, { useState, useCallback, useMemo } from 'react';
-import { Search, ChevronDown, ChevronRight } from 'lucide-react';
+import { Search, ChevronDown, ChevronRight, CheckCircle, XCircle, Clock } from 'lucide-react';
 import { ToolCallData } from '../ToolCallWidget';
 import { getActiveModelHelper } from '../modelhelper';
 import { formatDisplayPath } from '../../../utils/pathUtils';
@@ -38,6 +38,22 @@ const SemanticSearchWidget: React.FC<SemanticSearchWidgetProps> = ({
     return helper.parseSemanticSearchData(toolCall);
   }, [toolCall]);
 
+  // Get status icon and color - unified with other widgets
+  const getStatusInfo = () => {
+    switch (toolCall.status) {
+      case 'success':
+        return { icon: <CheckCircle size={12} />, color: 'text-green-500' };
+      case 'error':
+        return { icon: <XCircle size={12} />, color: 'text-red-500' };
+      case 'running':
+        return { icon: <Clock size={12} />, color: 'text-blue-500' };
+      default:
+        return { icon: <Search size={12} />, color: 'text-yellow-500' };
+    }
+  };
+
+  const statusInfo = getStatusInfo();
+
   // Toggle expansion
   const handleToggleExpansion = useCallback(() => {
     if (expandable) {
@@ -62,6 +78,12 @@ const SemanticSearchWidget: React.FC<SemanticSearchWidgetProps> = ({
 
         <span className="icui-chip">{toolCall.metadata?.originalToolName || toolCall.toolName}</span>
         {toolCall.status === 'running' && <span className="icui-spinner" aria-label="running" />}
+        
+        {/* Status icon */}
+        <div className={`flex-shrink-0 ${statusInfo.color}`}>
+          {statusInfo.icon}
+        </div>
+
         <span className="icui-widget__title">Search Results</span>
         <span className="icui-widget__meta">
           {searchData.resultCount} result{searchData.resultCount !== 1 ? 's' : ''}
@@ -106,7 +128,18 @@ const SemanticSearchWidget: React.FC<SemanticSearchWidgetProps> = ({
               ))}
             </div>
           ) : (
-            <div className="text-xs icui-widget__meta">No results found</div>
+            <div className="text-xs icui-widget__meta space-y-1">
+              <div>No results found</div>
+              {toolCall.output && (
+                <details className="text-xs opacity-75">
+                  <summary className="cursor-pointer hover:opacity-100">Debug Info</summary>
+                  <div className="mt-1 p-2 bg-gray-100 dark:bg-gray-800 rounded text-xs font-mono">
+                    <div><strong>Raw Output:</strong></div>
+                    <div className="whitespace-pre-wrap">{JSON.stringify(toolCall.output, null, 2)}</div>
+                  </div>
+                </details>
+              )}
+            </div>
           )}
         </div>
       )}

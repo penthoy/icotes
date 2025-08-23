@@ -56,6 +56,12 @@ const builtInWidgets: WidgetConfig[] = [
 		priority: 1
 	},
 	{
+		toolName: 'run_in_terminal',
+		component: CodeExecutionWidget as any,
+		category: 'code',
+		priority: 1
+	},
+	{
 		toolName: 'semantic_search',
 		component: SemanticSearchWidget as any,
 		category: 'data',
