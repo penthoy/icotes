@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### August 2025 - Code Refactoring and Debug Output Cleanup
+
+- **Code Refactoring**: Clean up legacy "Enhanced" naming conventions
+  - **EnhancedChatBackendClient → ChatBackendClient**: Renamed main class with backward compatibility exports
+  - **EnhancedICUIBackendService → ICUIBackendService**: Renamed main class with legacy export support
+  - **Import Updates**: Updated all components (`ICUIChat.tsx`, `useChatHistory.tsx`) to use new naming
+  - **Build Verification**: All changes compile successfully with zero breaking changes
+
+- **Debug Output Reduction**: Significantly reduced excessive console output while preserving essential logging
+  - **Message Filtering**: Removed repetitive "Message received" and heartbeat logs cluttering console
+  - **Connection Logging**: Limited connection status changes to errors and development mode only
+  - **Health Updates**: Reduced to only log unhealthy states instead of every update
+  - **Environment Awareness**: Console output now respects `process.env.NODE_ENV` for production vs development
+  - **Error Preservation**: All important error conditions still properly logged for debugging
+
+- **Files Modified**: `src/icui/services/chat-backend-client-impl.tsx`, `src/icui/services/backend-service-impl.tsx`, `src/icui/components/ICUIChat.tsx`, `src/icui/hooks/useChatHistory.tsx`, `src/components/home.tsx`, `src/icui/components/ICUITerminal.tsx`, `src/icui/components/ICUITerminalTest.tsx`
+
 #### August 2025 - SaaS Mode Implementation & Critical Infrastructure Fixes
 
 - **SaaS Authentication System**: Complete production-ready SaaS mode with orchestrator integration
@@ -325,4 +342,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Manual viewport manipulation that conflicted with xterm.js
 
 ---
-*Last updated: July 8, 2025*
+*Last updated: August 23, 2025*
