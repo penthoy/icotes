@@ -26,26 +26,28 @@ export const formatDisplayPath = (path: string): string => {
   // Normalize: strip file://, convert backslashes, trim trailing slashes
   const normalized = path.replace(/^file:\/\//, '').replace(/\\/g, '/').replace(/\/+$/, '');
 
-  // Prefer showing a path relative to workspace if present (with or without trailing slash)
-  const workspaceMarker = '/workspace';
-  const wsIdx = normalized.lastIndexOf(workspaceMarker);
-  if (wsIdx >= 0) {
-    const rel = normalized.slice(wsIdx + workspaceMarker.length).replace(/^\/+/, '');
+  // Segment-aware: only treat 'workspace' as a path segment, not a substring.
+  const wsParts = normalized.split('/').filter(Boolean);
+  const wsIdx = wsParts.lastIndexOf('workspace');
+  if (wsIdx !== -1) {
+    const rel = wsParts.slice(wsIdx + 1).join('/');
     return rel || 'workspace';
   }
 
-  // Remove any absolute path prefix and show a meaningful relative path
-  if (normalized.startsWith('/')) {
-    const parts = normalized.split('/');
+  const isAbsolute = normalized.startsWith('/') || /^[A-Za-z]:\//.test(normalized);
+  if (isAbsolute) {
+    const parts = normalized.split('/').filter(Boolean);
     // Try to find a meaningful starting point (like workspace, src, etc.)
     const meaningfulStarts = ['workspace', 'src', 'backend', 'frontend', 'docs'];
-    for (let i = 0; i < parts.length; i++) {
-      if (meaningfulStarts.includes(parts[i])) {
-        return parts.slice(i).join('/');
-      }
+    const idx = parts.findIndex((seg) => meaningfulStarts.includes(seg));
+    if (idx !== -1) {
+      return parts.slice(idx).join('/');
     }
-    // If no meaningful start found, just return the filename and immediate parent
-    return parts.slice(-2).join('/');
+    // If no meaningful start found, return the filename and immediate parent (without leading slash)
+    if (parts.length >= 2) {
+      return parts.slice(-2).join('/');
+    }
+    return parts[0] || normalized;
   }
   
   return normalized;

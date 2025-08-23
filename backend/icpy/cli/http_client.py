@@ -22,7 +22,7 @@ import time
 import uuid
 from typing import Dict, List, Any, Optional, Union
 from dataclasses import dataclass, field
-from urllib.parse import urlparse
+from urllib.parse import urlparse, quote
 import os
 
 import aiohttp
@@ -298,7 +298,7 @@ class HttpClient:
         Returns:
             File content and metadata
         """
-        return self.make_request('GET', f'/api/files/content?path={file_path}')
+        return self.make_request('GET', f'/api/files/content?path={quote(file_path, safe="")}')
     
     def save_file(self, file_path: str, content: str) -> Dict[str, Any]:
         """
@@ -327,7 +327,7 @@ class HttpClient:
         Returns:
             Directory contents
         """
-        return self.make_request('GET', f'/api/files/list?path={dir_path}')
+        return self.make_request('GET', f'/api/files/list?path={quote(dir_path, safe="")}')
     
     def close(self) -> None:
         """

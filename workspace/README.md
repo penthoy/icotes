@@ -2,42 +2,44 @@
 # Welcome to icotes #
 #####################
 
-# Disclaimer
+# Disclaimer #
 This is an MVP and not yet a beta, so bugs and stability issues are expected.
 Some UI elements may be placeholders.
 Do not use this for mission-critical workloads.
 This software is provided "as is," without warranties or support.
 That said, feel free to try it out and share feedback—would love to hear your thoughts. 
 
-# Features at a glance.
+# Features at a glance #
 
-## Agent Creator:
-You'll see This is the agent selected by default, 
-it is a custom agent meaning you can access the code of this agent directly 
-under the workspace/plugins folder under agent_creator_agent.py 
-and you can change and update any part of this agent to fit your need.
-First thing you can try is to change MODEL_NAME by default using gpt-5-nano but if you
-want higher power, you know what to do :)
+## Agent Creator ##
+This is the default selected agent. It's a custom agent, and the code lives at
+`workspace/plugins/agent_creator_agent.py`. You can modify any part of it to fit your needs.
 
-## Features:
+The `MODEL_NAME` defaults to `gpt-5-nano`. To use a more capable model, change the `MODEL_NAME`
+constant in the agent implementation or configure it via your environment/runtime settings.
+
+## Features ##
 Fully working Editor, Terminal and AI agent that can do CRUD operations on the
 File system level, Agent can also run terminal commands and edit any files.
 
-# index:
-both the frontend and backend core are designed to be a standalone framework with
-middleware/glue code that connect them together, in order to be very flexible.
+# Index #
+Both the frontend and backend cores are designed as standalone frameworks, with
+middleware/glue code that connects them for flexibility.
 
-## ICUI:
-This is the main frontend frame work that's used for all the UI you see,
-it is designed to be flexible and modular. the arrangement of all the panels can be reconfigured
-with a json file.
+## ICUI ##
+This is the main frontend framework used for the UI.
+It is designed to be flexible and modular. The arrangement of panels can be reconfigured
+with a JSON file.
 
-## ICPY:
-This is the python/fastapi backend that powers everything going on behind the scene.
-it is named ICPY as I have some plans to make part of the backend using faster frameworks
-in rust or go later on.
+## ICPY ##
+This is the Python/FastAPI backend that powers everything behind the scenes.
+It is named ICPY with the intent to explore portions in faster frameworks
+such as Rust or Go later on.
 
-## Hot reload:
-When you create <Agent_name>_agent.py under plugins folder, and after editing the .icotes/agents.json to register it.
-The hot reload system can pick it up automatically, or press the reload button next to the Agent selector on the Chat window
-which will force it to reload. and you can use your updated/created agent right away.
+## Hot reload ##
+To add or update an agent:
+1) Create `<AgentName>_agent.py` under the `workspace/plugins` folder.
+2) Register it in `.icotes/agents.json`.
+3) The hot-reload system will pick it up automatically, or click the reload button next to the Agent
+   selector in the Chat window to force a reload.
+You can use your updated agent immediately after reload.

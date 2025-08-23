@@ -47,6 +47,15 @@
 .icui-composer__textarea:focus {
   border-color: var(--icui-accent);
   box-shadow: 0 0 0 3px color-mix(in oklab, var(--icui-accent) 25%, transparent);
+  /* Fallback for environments lacking color-mix/oklab */
+  outline: 3px solid var(--icui-accent);
+  outline-offset: 1px;
+}
+
+@supports (color: oklab(0 0 0)) {
+  .icui-composer__textarea:focus {
+    outline: none; /* rely on the color-mix ring where supported */
+  }
 }
 
 /* Bottom controls row */

@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 # Model selection identifier for UI/router consumption
 # Frontend can read this via config/status endpoints and switch helpers accordingly
-AGENT_MODEL_ID = "gpt-5"
+AGENT_MODEL_ID = "gpt5"
 
 # Import required modules
 try:

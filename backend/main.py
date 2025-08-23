@@ -961,7 +961,7 @@ async def get_custom_agents():
     except ImportError as e:
         logger.warning(f"icpy custom agent module not available: {e}")
         # Fallback: return some default agents for testing
-        fallback_agents = ["OpenAIDemoAgent", "TestAgent", "DefaultAgent"]
+        fallback_agents = ["AgentCreator", "OpenAIDemoAgent", "TestAgent", "DefaultAgent"]
         return {"success": True, "agents": fallback_agents}
     except Exception as e:
         logger.error(f"Error getting custom agents: {e}")

@@ -31,7 +31,7 @@ const SimpleChat: React.FC<SimpleChatProps> = ({ className = '' }) => {
   });
 
   const [inputValue, setInputValue] = React.useState('');
-  const [selectedAgent, setSelectedAgent] = React.useState('OpenAIDemoAgent'); // Default to the first available agent
+  const [selectedAgent, setSelectedAgent] = React.useState(''); // Default will be set by component from configuration
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when new messages arrive

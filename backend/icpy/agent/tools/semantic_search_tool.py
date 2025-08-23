@@ -223,6 +223,8 @@ class SemanticSearchTool(BaseTool):
             file_types = kwargs.get("fileTypes")
             include_hidden = bool(kwargs.get("includeHidden", False))
             context_lines = int(kwargs.get("contextLines", 2) or 2)
+            if context_lines < 0:
+                context_lines = 0
             max_results = int(kwargs.get("maxResults", 50) or 50)
             mode = kwargs.get("mode", "smart")
             root = kwargs.get("root", "workspace")
