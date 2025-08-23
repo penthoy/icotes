@@ -18,7 +18,7 @@
  */
 
 import React, { useRef, useEffect, useState, useCallback, useImperativeHandle, forwardRef } from 'react';
-import { Square } from 'lucide-react';
+import { Square, Send, Paperclip, Mic, Wand2, RefreshCw, Settings } from 'lucide-react';
 import { 
   useChatMessages, 
   useTheme, 
@@ -392,7 +392,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
     // Auto-resize textarea
     const target = e.target;
     target.style.height = 'auto';
-    target.style.height = `${Math.min(target.scrollHeight, 120)}px`;
+  target.style.height = `${Math.min(target.scrollHeight, 220)}px`;
   }, []);
 
   return (
@@ -400,7 +400,8 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
       className={`icui-chat h-full flex flex-col ${className}`} 
       style={{ 
         backgroundColor: 'var(--icui-bg-primary)', 
-        color: 'var(--icui-text-primary)' 
+  color: 'var(--icui-text-primary)',
+  overflowX: 'hidden'
       }}
     >
       {/* Header */}
@@ -475,7 +476,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
       <div 
         ref={chatContainerRef}
         className="flex-1 overflow-y-auto p-3 relative"
-        style={{ backgroundColor: 'var(--icui-bg-primary)' }}
+        style={{ backgroundColor: 'var(--icui-bg-primary)', overflowX: 'hidden' }}
       >
         {/* Search overlay moved below in toolbar */}
         {isLoading ? (
@@ -531,12 +532,13 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
         )}
       </div>
 
-      {/* Bottom Toolbar: Search + Input */}
+  {/* Bottom Toolbar: Search + Input */}
       <div 
-        className="p-3 border-t space-y-2" 
+        className="p-3 space-y-2" 
         style={{ 
-          backgroundColor: 'var(--icui-bg-secondary)', 
-          borderTopColor: 'var(--icui-border-subtle)' 
+          backgroundColor: 'var(--icui-bg-primary)', 
+          borderTopColor: 'var(--icui-border-subtle)',
+          overflowX: 'hidden'
         }}
       >
         {/* Search bar pinned above input */}
@@ -579,57 +581,59 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
           </div>
         )}
 
-        <div className="space-y-3">
-          {/* Message Input */}
-          <textarea
-            ref={inputRef}
-            value={inputValue}
-            onChange={handleInputChange}
-            onKeyDown={handleKeyPress}
-            onCompositionStart={handleCompositionStart}
-            onCompositionEnd={handleCompositionEnd}
-            placeholder="Type your message..."
-            className="w-full resize-none rounded-md border px-3 py-2 text-sm min-h-[38px] max-h-[120px] focus:outline-none transition-colors"
-            style={{ 
-              backgroundColor: 'var(--icui-bg-primary)', 
-              color: 'var(--icui-text-primary)',
-              borderColor: 'var(--icui-border-subtle)'
-            }}
-            rows={1}
-            disabled={!isConnected}
-          />
-          
-          {/* Agent + Send */}
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-center gap-3 flex-1">
-              <CustomAgentDropdown
-                selectedAgent={selectedAgent}
-                onAgentChange={setSelectedAgent}
-                disabled={false}
-                className="flex-shrink-0"
-                showCategories={true}
-                showDescriptions={true}
+        <div className="space-y-2">
+          {/* Modern Composer - preserves previous layout (textarea on top, controls at bottom) */}
+          <div className="icui-composer">
+            {/* Body: textarea */}
+            <div className="icui-composer__body">
+              <textarea
+                ref={inputRef}
+                value={inputValue}
+                onChange={handleInputChange}
+                onKeyDown={handleKeyPress}
+                onCompositionStart={handleCompositionStart}
+                onCompositionEnd={handleCompositionEnd}
+                placeholder="Type your message…"
+                className="icui-composer__textarea"
+                style={{ color: 'var(--icui-text-primary)' }}
+                rows={1}
+                disabled={!isConnected}
               />
             </div>
-            <button
-              onClick={() => isTyping ? handleStopStreaming() : handleSendMessage()}
-              disabled={(!isTyping && (!inputValue.trim() || !isConnected || isLoading))}
-              className="px-4 py-2 rounded-md text-sm font-medium hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity focus:outline-none focus:ring-2 focus:ring-offset-2 flex-shrink-0"
-              style={{ 
-                backgroundColor: isTyping ? 'var(--icui-text-error)' : 'var(--icui-accent)', 
-                color: 'var(--icui-text-primary)'
-              }}
-              title={isTyping ? "Stop generation" : "Send message (Enter)"}
-            >
-              {isTyping ? (
-                <div className="flex items-center gap-2">
-                  <Square size={14} />
-                  <span>Stop</span>
-                </div>
-              ) : (
-                'Send'
-              )}
-            </button>
+
+            {/* Bottom controls row - dropdown + refresh + settings + send */}
+            <div className="icui-composer__controls">
+              <div className="flex items-center gap-2 min-w-0">
+                <CustomAgentDropdown
+                  selectedAgent={selectedAgent}
+                  onAgentChange={setSelectedAgent}
+                  disabled={false}
+                  className="flex-shrink-0"
+                  showCategories={true}
+                  showDescriptions={true}
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                {isTyping ? (
+                  <button
+                    className="icui-button icui--danger"
+                    onClick={handleStopStreaming}
+                    title="Stop generation"
+                  >
+                    <Square size={16} />
+                  </button>
+                ) : (
+                  <button
+                    className="icui-button"
+                    onClick={() => handleSendMessage()}
+                    disabled={!inputValue.trim() || !isConnected || isLoading}
+                    title="Send message (Enter)"
+                  >
+                    <Send size={16} />
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       </div>
