@@ -283,7 +283,7 @@ class OpenAIStreamingHandler:
         
         Args:
             messages: Conversation messages
-            max_tokens: Maximum tokens for completion (defaults from env AGENT_MAX_TOKENS or 2000)
+            max_tokens: Maximum tokens for completion (defaults from env AGENT_MAX_TOKENS or 3500)
             auto_continue: When response stops due to token limit, automatically continue (env AGENT_AUTO_CONTINUE, default True)
             max_continue_rounds: Maximum number of auto-continue follow-ups (env AGENT_MAX_CONTINUE_ROUNDS, default 3)
             
@@ -294,16 +294,16 @@ class OpenAIStreamingHandler:
             # Resolve configuration with environment overrides
             if max_tokens is None:
                 try:
-                    max_tokens = int(os.environ.get("AGENT_MAX_TOKENS", "2000"))
+                    max_tokens = int(os.environ.get("AGENT_MAX_TOKENS", "3500"))
                 except ValueError:
                     max_tokens = 2000
             if auto_continue is None:
                 auto_continue = os.environ.get("AGENT_AUTO_CONTINUE", "1") not in ("0", "false", "False")
             if max_continue_rounds is None:
                 try:
-                    max_continue_rounds = int(os.environ.get("AGENT_MAX_CONTINUE_ROUNDS", "3"))
+                    max_continue_rounds = int(os.environ.get("AGENT_MAX_CONTINUE_ROUNDS", "10"))
                 except ValueError:
-                    max_continue_rounds = 3
+                    max_continue_rounds = 10
 
             # Get available tools
             tools = self.tool_loader.get_openai_tools()
@@ -660,9 +660,9 @@ def create_simple_agent_chat_function(agent_name: str, system_prompt: str, model
                 # Simple streaming without tools
                 # Determine token and continuation behavior
                 try:
-                    default_max_tokens = int(os.environ.get("AGENT_MAX_TOKENS", "2000"))
+                    default_max_tokens = int(os.environ.get("AGENT_MAX_TOKENS", "3500"))
                 except ValueError:
-                    default_max_tokens = 2000
+                    default_max_tokens = 3500
 
                 # Determine the correct max tokens parameter based on model
                 api_params = {

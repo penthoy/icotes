@@ -71,12 +71,14 @@ LABEL version="${BUILD_VERSION}" \
 # Install system dependencies and tini for proper PID 1 handling
 # CRITICAL FIX: Add procps for PTY support
 # DEV-LIKE TOOLS: Add sudo, htop, git, editors, bash-completion, locales, build tools
+# SEMANTIC SEARCH: Add ripgrep for semantic search functionality
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl tini procps \
     sudo bash-completion locales \
     git vim nano htop less \
     build-essential gcc g++ make \
     unzip zip tar \
+    ripgrep \
     && sed -i 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen \
     && locale-gen \
     && update-locale LANG=en_US.UTF-8 \
