@@ -122,7 +122,10 @@ def get_groq_client():
 
 def get_anthropic_client():
     """
-    Initializes and returns an OpenAI client configured for Anthropic's API (Claude).
+    Initializes and returns an OpenAI client configured for Anthropic's OpenAI-compatible API (Claude).
+    
+    Anthropic provides OpenAI-compatible endpoints at https://api.anthropic.com/v1/chat/completions
+    which allows using the OpenAI SDK with Claude models.
     """
     anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
     if not anthropic_api_key:

@@ -37,7 +37,8 @@
   border: 1px solid var(--icui-border-subtle);
   border-radius: 10px;
   outline: none;
-  overflow-y: hidden; /* prevent inner scrollbar during auto-resize */
+  /* allow scroll when we hit max-height; if JS auto-resizes, it will rarely show */
+  overflow-y: auto;
   overflow-x: hidden;
   white-space: pre-wrap;
   word-break: break-word;

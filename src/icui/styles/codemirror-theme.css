@@ -167,7 +167,7 @@
 .icui-theme-dracula .cm-panel button,
 .icui-theme-solarized-dark .cm-panel button {
   background-color: var(--icui-bg-tertiary) !important;
-  color: #000000 !important;
+  color: var(--icui-text-primary) !important;
   border-color: var(--icui-border) !important;
 }
 

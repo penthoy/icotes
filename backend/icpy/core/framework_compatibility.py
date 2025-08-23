@@ -160,8 +160,11 @@ class OpenAIAgentWrapper(BaseAgentWrapper):
                     "messages": messages,
                     "temperature": self.config.temperature,
                 }
-                api_params.update(get_openai_token_param(self.config.model, self.config.max_tokens))
-                
+                if self.config.max_tokens is not None:
+                    api_params.update(
+                        get_openai_token_param(self.config.model, self.config.max_tokens)
+                    )
+
                 response = await self._agent.chat.completions.create(**api_params)
                 
                 response_content = response.choices[0].message.content

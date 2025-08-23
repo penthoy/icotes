@@ -18,7 +18,6 @@ logger = logging.getLogger(__name__)
 # Import helper functions
 try:
     from .helpers import create_simple_agent_chat_function, create_standard_agent_metadata
-    from .clients import get_openai_client
     DEPENDENCIES_AVAILABLE = True
 except ImportError as e:
     logger.warning(f"Dependencies not available: {e}")

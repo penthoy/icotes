@@ -53,8 +53,12 @@ export function useChatHistory() {
 			const convertedSessions: ChatSessionMeta[] = backendSessions.map((s: any) => ({
 				id: s.id,
 				name: s.name || 'Untitled',
-				created: s.created * 1000, // Convert to milliseconds
-				updated: s.updated * 1000, // Convert to milliseconds
+				created: s.created && typeof s.created === 'number' 
+					? (s.created > 1e12 ? s.created : s.created * 1000)
+					: Date.now(),
+				updated: s.updated && typeof s.updated === 'number' 
+					? (s.updated > 1e12 ? s.updated : s.updated * 1000)
+					: Date.now(),
 				message_count: s.message_count,
 				last_message_time: s.last_message_time
 			}));
@@ -159,8 +163,11 @@ export function useChatHistory() {
 	useEffect(() => {
 		const initializeSessions = async () => {
 			setIsLoading(true);
-			await loadSessions();
-			setIsLoading(false);
+			try {
+				await loadSessions();
+			} finally {
+				setIsLoading(false);
+			}
 		};
 		initializeSessions();
 	}, []);

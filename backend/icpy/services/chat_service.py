@@ -1100,7 +1100,7 @@ class ChatService:
             # Try to stop any running agents for this session
             try:
                 from .agent_service import get_agent_service
-                agent_service = get_agent_service()
+                agent_service = await get_agent_service()
                 
                 # Stop any agent sessions for this chat session
                 for agent_session_id in list(agent_service.agent_sessions.keys()):

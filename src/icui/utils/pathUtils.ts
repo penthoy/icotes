@@ -22,17 +22,21 @@ export const formatFilePath = (filePath: string): string => {
  */
 export const formatDisplayPath = (path: string): string => {
   if (!path) return 'Unknown file';
-  
-  // Fallback: remove common workspace prefixes (browser-safe approach)
-  // Look for common icotes workspace patterns
-  if (path.includes('/workspace/')) {
-    const workspaceIndex = path.lastIndexOf('/workspace/');
-    return path.substring(workspaceIndex + 11); // Remove '/workspace/' prefix
+
+  // Normalize: strip file://, convert backslashes, trim trailing slashes
+  const normalized = path.replace(/^file:\/\//, '').replace(/\\/g, '/').replace(/\/+$/, '');
+
+  // Prefer showing a path relative to workspace if present (with or without trailing slash)
+  const workspaceMarker = '/workspace';
+  const wsIdx = normalized.lastIndexOf(workspaceMarker);
+  if (wsIdx >= 0) {
+    const rel = normalized.slice(wsIdx + workspaceMarker.length).replace(/^\/+/, '');
+    return rel || 'workspace';
   }
-  
-  // Fallback: remove any absolute path prefix and show relative path
-  if (path.startsWith('/')) {
-    const parts = path.split('/');
+
+  // Remove any absolute path prefix and show a meaningful relative path
+  if (normalized.startsWith('/')) {
+    const parts = normalized.split('/');
     // Try to find a meaningful starting point (like workspace, src, etc.)
     const meaningfulStarts = ['workspace', 'src', 'backend', 'frontend', 'docs'];
     for (let i = 0; i < parts.length; i++) {
@@ -44,9 +48,8 @@ export const formatDisplayPath = (path: string): string => {
     return parts.slice(-2).join('/');
   }
   
-  return path;
+  return normalized;
 };
-
 /**
  * Get file extension from path
  * @param filePath - File path

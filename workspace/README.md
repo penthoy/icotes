@@ -3,13 +3,11 @@
 #####################
 
 # Disclaimer
-This is currently only just an MVP and hardly considered beta, 
-so bugs and stability issues are to be expected. 
-some UI elements might even be place holders.
-so I wouldn't advice to build your mission critical software with it
-This is provided as-is, is you used this to broke some things, you're entirely on your own.
-That said feel free to try it out and tell me what you think, 
-would loved to hear your feedback. 
+This is an MVP and not yet a beta, so bugs and stability issues are expected.
+Some UI elements may be placeholders.
+Do not use this for mission-critical workloads.
+This software is provided "as is," without warranties or support.
+That said, feel free to try it out and share feedback—would love to hear your thoughts. 
 
 # Features at a glance.
 

@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
 
 import sys
-sys.path.append('/home/penthoy/icotes/backend')
-sys.path.append('/home/penthoy/icotes/workspace/plugins')
+from pathlib import Path
+
+# Resolve paths relative to this file (assumed at repo root)
+ROOT = Path(__file__).resolve().parent
+
+sys.path.append(str(ROOT / 'backend'))
+sys.path.append(str(ROOT / 'workspace' / 'plugins'))
 
 print('Final integration test: Context-aware AgentCreator')
 print('='*60)
@@ -48,3 +53,4 @@ except Exception as e:
     print(f'✗ Error: {e}')
     import traceback
     traceback.print_exc()
+    sys.exit(1)

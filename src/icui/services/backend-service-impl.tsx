@@ -253,8 +253,8 @@ export class ICUIBackendService extends EventEmitter {
   private async initializeConnection(): Promise<void> {
     if (this.connectionId && this.enhancedService) {
       // Reduced debug: Only log during development or for errors
-      if (process.env.NODE_ENV === 'development') {
-        console.log('[ICUIBackendService] Already connected');
+      if (import.meta.env?.MODE === 'development' || import.meta.env?.DEV) {
+        console.debug('[ICUIBackendService] Already connected');
       }
       return;
     }

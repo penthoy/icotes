@@ -132,10 +132,11 @@ def custom_tool_executor(tool_name, arguments):
 
 
 # Create the chat function using the helper
-# Note: system prompt will be called dynamically to get the latest version
+# Note: system prompt is evaluated once at definition time. If you need fresh context per request,
+# update helpers to accept a lazy provider or rebuild the chat function per call.
 chat = create_simple_agent_chat_function(
     agent_name="PersonalAgent",
-    system_prompt=get_system_prompt(),  # This gets called once at definition time
+    system_prompt=get_system_prompt(),  # Evaluated once here
     model_name="gpt-4o-mini",
     custom_tools=get_tools(),
     custom_tool_executor=custom_tool_executor

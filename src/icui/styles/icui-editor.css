@@ -142,7 +142,18 @@
   padding: 10px;
   min-height: calc(100% - 20px);
 }
-.icui-editor-container .cm-focused { outline: none; }
+.icui-editor-container .cm-focused {
+  outline: none;
+  /* Visible focus ring for keyboard users */
+  box-shadow: 0 0 0 2px var(--icui-accent);
+}
+
+/* Buttons and interactive controls */
+.icui-language-button:focus-visible,
+.icui-button-secondary:focus-visible {
+  outline: 2px solid var(--icui-accent);
+  outline-offset: 2px;
+}
 
 /* Optional readability helpers for JSON/JSONL */
 /* Subtle divider after very long lines to hint wrap for JSONL */

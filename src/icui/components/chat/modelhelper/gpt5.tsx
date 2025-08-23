@@ -199,6 +199,7 @@ export class GPT5ModelHelper implements ModelHelper {
       const individualToolPattern = /📋\s*\*\*([^:]+)\*\*:\s*(\{[^}]*\}|\{[\s\S]*?\}|[^\n]*)\s*\n(✅\s*\*\*Success\*\*:\s*([\s\S]*?)(?=\n\n📋|\n🔧|$)|❌\s*\*\*Error\*\*:\s*([\s\S]*?)(?=\n\n📋|\n🔧|$))/g;
 
       const createdIds: string[] = [];
+      const createdNames = new Set<string>(); // track by sanitized tool name
   let toolMatch;
   let innerToolIndex = 0; // Track tool calls within this block
       while ((toolMatch = individualToolPattern.exec(toolBlock)) !== null) {
@@ -282,8 +283,10 @@ export class GPT5ModelHelper implements ModelHelper {
         const { category, mappedName } = this.mapToolNameToCategory(toolName);
 
         // Create unique ID using both outer and inner indexes to avoid collisions
-    const idBase = `${toolId}-${innerToolIndex}-${toolName.replace(/[^a-zA-Z0-9]/g, '')}`;
+        const sanitizedName = toolName.replace(/[^a-zA-Z0-9]/g, '');
+        const idBase = `${toolId}-${innerToolIndex}-${sanitizedName}`;
         createdIds.push(idBase);
+        createdNames.add(sanitizedName);
     const indexInBlock = innerToolIndex; // capture before increment for metadata
     innerToolIndex++; // Increment inner tool index for uniqueness
         const toolCall: ToolCallData = {
@@ -320,8 +323,8 @@ export class GPT5ModelHelper implements ModelHelper {
           const headerArgsText = lastHeader[2].trim();
 
           // Check whether this header already had a completed entry created above
-          const idBase = `${toolId}-${headerToolName.replace(/[^a-zA-Z0-9]/g, '')}`;
-          const alreadyCreated = createdIds.includes(idBase);
+          const headerToolKey = headerToolName.replace(/[^a-zA-Z0-9]/g, '');
+          const alreadyCreated = createdNames.has(headerToolKey);
 
           // Determine if this header segment contains success/error
           const hasOutcome = /✅\s*\*\*Success\*\*|❌\s*\*\*Error\*\*/.test(lastHeader[0]);
@@ -334,7 +337,7 @@ export class GPT5ModelHelper implements ModelHelper {
             const { category, mappedName } = this.mapToolNameToCategory(headerToolName);
 
             toolCalls.push({
-              id: `${idBase}-running`,
+              id: `${toolId}-${headerToolKey}-running`,
               toolName: mappedName,
               category,
               status: 'running',

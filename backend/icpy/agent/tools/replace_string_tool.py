@@ -47,6 +47,10 @@ class ReplaceStringTool(BaseTool):
                 "validateContext": {
                     "type": "boolean",
                     "description": "Whether to validate that exactly one occurrence exists before replacement"
+                },
+                "returnContent": {
+                    "type": "boolean",
+                    "description": "Include original/modified content in the result (truncated). Default: false"
                 }
             },
             "required": ["filePath", "oldString", "newString"]
@@ -60,26 +64,26 @@ class ReplaceStringTool(BaseTool):
             Normalized absolute path if valid, None if invalid
         """
         try:
-            # Normalize the workspace root
-            workspace_root = os.path.abspath(workspace_root)
+            # Normalize and resolve symlinks
+            workspace_root = os.path.realpath(os.path.abspath(workspace_root))
             
             # Handle absolute vs relative paths
             if os.path.isabs(file_path):
-                normalized_path = os.path.abspath(file_path)
+                normalized_path = os.path.realpath(os.path.abspath(file_path))
             else:
                 # For relative paths, check if they already include workspace
                 if file_path.startswith('workspace/') or file_path.startswith('workspace\\'):
                     # Remove 'workspace/' prefix and join with workspace_root
                     relative_path = file_path[10:]  # Remove 'workspace/' (10 chars)
-                    normalized_path = os.path.abspath(os.path.join(workspace_root, relative_path))
+                    normalized_path = os.path.realpath(os.path.abspath(os.path.join(workspace_root, relative_path)))
                 elif file_path == 'workspace':
-                    normalized_path = os.path.abspath(workspace_root)
+                    normalized_path = workspace_root
                 else:
                     # Normal relative path from workspace root
-                    normalized_path = os.path.abspath(os.path.join(workspace_root, file_path))
+                    normalized_path = os.path.realpath(os.path.abspath(os.path.join(workspace_root, file_path)))
             
-            # Check if the normalized path is within workspace
-            if not normalized_path.startswith(workspace_root):
+            # Ensure normalized_path is within workspace_root
+            if os.path.commonpath([workspace_root, normalized_path]) != workspace_root:
                 return None
             
             return normalized_path
@@ -186,14 +190,21 @@ class ReplaceStringTool(BaseTool):
                 if new_content != content:
                     await filesystem_service.write_file(normalized_path, new_content)
 
-            return ToolResult(success=True, data={
+            data = {
                 "replacedCount": occurrence_count,
                 "filePath": normalized_path,
-                "originalContent": content,
-                "modifiedContent": new_content,
                 "oldString": old_string,
                 "newString": new_string
-            })
+            }
+            # Optional content echo (capped)
+            if kwargs.get("returnContent", False):
+                MAX_PREVIEW = 10000
+                data["originalContent"] = content[:MAX_PREVIEW]
+                data["modifiedContent"] = new_content[:MAX_PREVIEW]
+                if len(content) > MAX_PREVIEW or len(new_content) > MAX_PREVIEW:
+                    data["contentTruncated"] = True
+            
+            return ToolResult(success=True, data=data)
             
         except FileNotFoundError as e:
             return ToolResult(success=False, error=str(e))

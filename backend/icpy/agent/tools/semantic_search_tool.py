@@ -154,7 +154,8 @@ class SemanticSearchTool(BaseTool):
         return results
     
     def _cap_results(self, results: List[Dict[str, Any]], max_results: int) -> List[Dict[str, Any]]:
-        return results[: max(1, max_results)]
+        # Cap at non-negative limit; 0 should return an empty list
+        return results[: max(0, int(max_results))]
     
     def _looks_like_filename(self, query: str) -> bool:
         """Heuristic to decide if query looks like a filename/path."""
@@ -236,8 +237,8 @@ class SemanticSearchTool(BaseTool):
             base_root = await self._get_base_root(root)
             search_path = self._build_path(base_root, scope)
             
-            # Mode: filename-only detection when smart or filename
-            if mode in ("smart", "filename") and self._looks_like_filename(query):
+            # Mode: filename-only detection when smart or filename (but not content mode)
+            if mode in ("smart", "filename") and mode != "content" and self._looks_like_filename(query):
                 cmd = ["rg", "--files"]
                 if include_hidden:
                     cmd.append("--hidden")
@@ -253,19 +254,31 @@ class SemanticSearchTool(BaseTool):
             
             # Content search passes
             passes: List[Tuple[List[str], str]] = []
-            # Pass 1: exact fixed string, case-sensitive
-            cmd1 = self._build_ripgrep_command(query, base_root, scope, file_types, include_hidden)
-            # _build_ripgrep_command already includes the search path
-            passes.append((cmd1, "exact"))
             
-            # Pass 2: case-insensitive exact
-            cmd2 = [c for c in cmd1]
-            if "-i" not in cmd2:
-                cmd2.insert(1, "-i")
-            passes.append((cmd2, "ci_exact"))
+            # If regex mode, use the query as-is in a regex pass and skip fixed-string passes
+            if mode == "regex":
+                cmd_regex = ["rg", "-n", "-H", "--no-heading", "-C", str(context_lines), "-e", query]
+                if include_hidden:
+                    cmd_regex.append("--hidden")
+                if file_types:
+                    for file_type in file_types:
+                        cmd_regex.extend(["-t", file_type.lstrip('.')])
+                cmd_regex.append(search_path)
+                passes.append((cmd_regex, "regex"))
+            else:
+                # Pass 1: exact fixed string, case-sensitive
+                cmd1 = self._build_ripgrep_command(query, base_root, scope, file_types, include_hidden)
+                # _build_ripgrep_command already includes the search path
+                passes.append((cmd1, "exact"))
+                
+                # Pass 2: case-insensitive exact
+                cmd2 = [c for c in cmd1]
+                if "-i" not in cmd2:
+                    cmd2.insert(1, "-i")
+                passes.append((cmd2, "ci_exact"))
             
-            # Tokenization for later passes
-            tokens = self._tokenize(query)
+            # Tokenization for later passes (skip for regex mode)
+            tokens = [] if mode == "regex" else self._tokenize(query)
             if tokens:
                 # Pass 3: AND ordered regex with context lines (case-insensitive)
                 and_pattern = self._and_regex(tokens)

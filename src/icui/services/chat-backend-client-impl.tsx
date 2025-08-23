@@ -392,14 +392,6 @@ export class ChatBackendClient {
         JSON.stringify(stopMessage),
         messageOptions
       );
-      
-      // Mark as no longer streaming
-      this.isStreaming = false;
-      this.streamingMessage = null;
-      
-      // Notify typing stopped
-      this.typingCallbacks.forEach(callback => callback(false));
-      
     } catch (error) {
       console.error('[ChatBackendClient] Failed to stop streaming:', error);
       throw error;
