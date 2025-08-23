@@ -610,7 +610,7 @@ export class GPT5ModelHelper implements ModelHelper {
     } else if (output && typeof output === 'object') {
       // Check various nested structures
       if (output.data && Array.isArray(output.data)) {
-        // Output has .data property with array
+        // Output has .data property with array (from ToolResult structure)
         results = output.data
           .filter((item: any) => item && (item.file || item.path)) // Only include items with valid file paths
           .map((item: any) => ({
@@ -661,7 +661,7 @@ export class GPT5ModelHelper implements ModelHelper {
       }
     } 
     
-    // Handle string output - enhanced with better regex patterns
+  // Handle string output - enhanced with better regex patterns
     if (results.length === 0 && typeof output === 'string') {
       try {
         // Handle string output - could be JSON array or success message with array
@@ -674,7 +674,8 @@ export class GPT5ModelHelper implements ModelHelper {
             /\[[\s\S]*?\]/g,           // Basic array pattern
             /results?:\s*\[[\s\S]*?\]/gi, // "results: [...]" pattern
             /data:\s*\[[\s\S]*?\]/gi,     // "data: [...]" pattern
-            /found:\s*\[[\s\S]*?\]/gi     // "found: [...]" pattern
+            /found:\s*\[[\s\S]*?\]/gi,    // "found: [...]" pattern
+            /Success.*?\[[\s\S]*?\]/gi    // "**Success**: [...]" pattern
           ];
           
           for (const pattern of patterns) {
@@ -712,11 +713,11 @@ export class GPT5ModelHelper implements ModelHelper {
       } catch (parseError) {
         // If JSON parsing fails, try to extract results using simpler patterns
         try {
-          // Look for file:line patterns in the text
+          const extractedResults: any[] = [];
+
+          // 1) Look for file:line: snippet patterns
           const fileLinePattern = /([^:\n]+):(\d+):\s*(.+)/g;
           let match;
-          const extractedResults = [];
-          
           while ((match = fileLinePattern.exec(output)) !== null) {
             extractedResults.push({
               file: match[1].trim(),
@@ -724,7 +725,30 @@ export class GPT5ModelHelper implements ModelHelper {
               snippet: match[3].trim()
             });
           }
-          
+
+          // 2) Extract Python-like object chunks even if the array is truncated
+          //    Matches minimal object blocks and then we JSON-ify them
+          const objectPattern = /\{[^{}]*\}/g;
+          const rawObjects = output.match(objectPattern) || [];
+          for (const raw of rawObjects) {
+            try {
+              const jsonish = raw
+                .replace(/'/g, '"')
+                .replace(/None/g, 'null')
+                .replace(/True/g, 'true')
+                .replace(/False/g, 'false')
+                .replace(/,\s*}/g, '}');
+              const obj = JSON.parse(jsonish);
+              if (obj && (obj.file || obj.path || obj.filename)) {
+                extractedResults.push({
+                  file: obj.file || obj.path || obj.filename,
+                  line: obj.line || obj.lineNumber || obj.line_number || undefined,
+                  snippet: obj.snippet || obj.text || obj.content || obj.match || 'No snippet available'
+                });
+              }
+            } catch {}
+          }
+
           if (extractedResults.length > 0) {
             results = extractedResults;
           }
@@ -734,6 +758,45 @@ export class GPT5ModelHelper implements ModelHelper {
       }
     }
     
+    // Special case: Sometimes output might have success=true and data separately
+    if (results.length === 0 && output && typeof output === 'object') {
+      if (output.success === true && output.data && Array.isArray(output.data)) {
+        results = output.data
+          .filter((item: any) => item && (item.file || item.path))
+          .map((item: any) => ({
+            file: item.file || item.path || 'Unknown file',
+            line: item.line || item.lineNumber || undefined,
+            snippet: item.snippet || item.text || item.content || 'No snippet available'
+          }));
+      }
+    }
+    
+    // Normalize results where some tools encode "file-line-snippet" inside the file field itself
+    if (results.length > 0) {
+      results = results.map((r: any) => {
+        let file = r.file;
+        let line = r.line;
+        let snippet = r.snippet;
+
+        // If file looks like: "/path/to/file.ext-14-# some snippet..."
+        const hyphenEnc = typeof file === 'string' ? file.match(/^(.*?)-(\d+)-(.*)$/) : null;
+        if (!line && hyphenEnc) {
+          const [, f, ln, sn] = hyphenEnc;
+          file = f;
+          line = parseInt(ln, 10);
+          if (!snippet || snippet === 'No snippet available') {
+            snippet = (sn || '').trim();
+          }
+        }
+
+        return {
+          file: file || 'Unknown file',
+          line: line || undefined,
+          snippet: snippet || 'No snippet available'
+        };
+      });
+    }
+
     resultCount = results.length;
     
     // Extract query from various possible locations

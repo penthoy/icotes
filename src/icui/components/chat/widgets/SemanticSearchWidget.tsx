@@ -119,10 +119,7 @@ const SemanticSearchWidget: React.FC<SemanticSearchWidgetProps> = ({
               {searchData.results.map((result, index) => (
                 <div key={index} className="text-sm">
                   <div className="font-mono text-xs icui-widget__meta">
-                    {formatDisplayPath(result.file)}{result.line && `:${result.line}`}
-                  </div>
-                  <div className="mt-1 pl-2 border-l-2 border-gray-300 icui-widget__code text-xs">
-                    {result.snippet}
+                    {result.file}{result.line && `:${result.line}`}
                   </div>
                 </div>
               ))}
@@ -130,16 +127,18 @@ const SemanticSearchWidget: React.FC<SemanticSearchWidgetProps> = ({
           ) : (
             <div className="text-xs icui-widget__meta space-y-1">
               <div>No results found</div>
-              {toolCall.output && (
-                <details className="text-xs opacity-75">
-                  <summary className="cursor-pointer hover:opacity-100">Debug Info</summary>
-                  <div className="mt-1 p-2 bg-gray-100 dark:bg-gray-800 rounded text-xs font-mono">
-                    <div><strong>Raw Output:</strong></div>
-                    <div className="whitespace-pre-wrap">{JSON.stringify(toolCall.output, null, 2)}</div>
-                  </div>
-                </details>
-              )}
             </div>
+          )}
+
+          {/* Debug Info - always available for additional detail */}
+          {toolCall.output && (
+            <details className="text-xs opacity-75">
+              <summary className="cursor-pointer hover:opacity-100">Debug Info</summary>
+              <div className="mt-1 p-2 bg-gray-100 dark:bg-gray-800 rounded text-xs font-mono">
+                <div><strong>Raw Output:</strong></div>
+                <div className="whitespace-pre-wrap">{JSON.stringify(toolCall.output, null, 2)}</div>
+              </div>
+            </details>
           )}
         </div>
       )}
