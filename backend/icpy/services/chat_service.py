@@ -1061,6 +1061,13 @@ class ChatService:
                 return False
             
             file_path.unlink()
+            # Remove sidecar metadata if present
+            try:
+                meta_path = self.history_root / f"{session_id}.meta.json"
+                if meta_path.exists():
+                    meta_path.unlink()
+            except Exception:
+                pass
             logger.info(f"Deleted chat session: {session_id}")
             return True
         except Exception as e:
@@ -1084,6 +1091,49 @@ class ChatService:
             pass
         except Exception as e:
             logger.error(f"Error handling agent message: {e}")
+
+    async def stop_streaming(self, session_id: str) -> bool:
+        """Stop/interrupt current streaming response for a session"""
+        try:
+            logger.info(f"Stop streaming requested for session: {session_id}")
+            
+            # Try to stop any running agents for this session
+            try:
+                from .agent_service import get_agent_service
+                agent_service = await get_agent_service()
+                
+                # Stop any agent sessions for this chat session
+                for agent_session_id in list(agent_service.agent_sessions.keys()):
+                    agent_session = agent_service.agent_sessions.get(agent_session_id)
+                    if agent_session and agent_session.session_id == session_id:
+                        logger.info(f"Stopping agent session {agent_session_id} for chat session {session_id}")
+                        await agent_service.stop_agent(agent_session_id)
+            except Exception as e:
+                logger.warning(f"Failed to stop agent sessions for chat session {session_id}: {e}")
+            
+            # Send stop/interrupt message to all connections in this session
+            stop_message = {
+                'type': 'stream_stopped',
+                'session_id': session_id,
+                'timestamp': datetime.now(timezone.utc).isoformat(),
+                'message': 'Streaming interrupted by user'
+            }
+            
+            # Send to all connections in this session
+            stopped = False
+            for websocket_id, ws_session_id in self.chat_sessions.items():
+                if ws_session_id == session_id:
+                    await self._send_websocket_message(websocket_id, stop_message)
+                    stopped = True
+            
+            # Also send typing indicator to stop
+            await self._send_typing_indicator(session_id, False)
+            
+            return stopped
+            
+        except Exception as e:
+            logger.error(f"Failed to stop streaming for session {session_id}: {e}")
+            return False
     
     def get_stats(self) -> Dict[str, Any]:
         """Get chat service statistics"""

@@ -10,7 +10,7 @@
  */
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import { ChevronDown, ChevronRight, Play, Clock, Copy, Check, AlertTriangle, Terminal } from 'lucide-react';
+import { ChevronDown, ChevronRight, Play, Clock, Copy, Check, CheckCircle, AlertTriangle, Terminal } from 'lucide-react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { useTheme } from '../../../hooks/useTheme';
@@ -99,15 +99,15 @@ const CodeExecutionWidget: React.FC<CodeExecutionWidgetProps> = ({
   // Get status info
   const getStatusInfo = () => {
     if (toolCall.status === 'error' || (executionData.exitCode !== undefined && executionData.exitCode !== 0)) {
-      return { color: 'text-red-500', icon: <AlertTriangle size={16} /> };
+      return { color: 'text-red-500', icon: <AlertTriangle size={12} /> };
     }
     if (toolCall.status === 'success') {
-      return { color: 'text-green-500', icon: <Play size={16} /> };
+      return { color: 'text-green-500', icon: <CheckCircle size={12} /> };
     }
     if (toolCall.status === 'running') {
-      return { color: 'text-blue-500', icon: <Play size={16} className="animate-pulse" /> };
+      return { color: 'text-blue-500', icon: <Play size={12} className="animate-pulse" /> };
     }
-    return { color: 'text-yellow-500', icon: <Terminal size={16} /> };
+    return { color: 'text-yellow-500', icon: <Terminal size={12} /> };
   };
 
   const statusInfo = getStatusInfo();

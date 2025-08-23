@@ -164,7 +164,7 @@ const ICUITerminalTest = forwardRef<ICUITerminalTestRef, ICUITerminalTestProps>(
       enableMessageQueue: true,
       enableHealthMonitoring: true,
       enableAutoRecovery: true,
-      maxConcurrentConnections: 5,
+      maxConcurrentConnections: 10, // Increased from 5 to allow multiple terminal instances
       messageTimeout: 10000,
       batchConfig: {
         maxSize: 5,
@@ -182,7 +182,8 @@ const ICUITerminalTest = forwardRef<ICUITerminalTestRef, ICUITerminalTestProps>(
 
     // Enhanced service event handlers - listen for both connection_opened and connected
     enhancedService.current.on('connection_opened', (data: any) => {
-      console.log('[ICUITerminalTest] Enhanced service connected:', data);
+      // Reduced debug: Enhanced service connected
+      // console.log('[ICUITerminalTest] Enhanced service connected:', data);
       setIsConnected(true);
       
       if (terminal.current) {
@@ -196,13 +197,13 @@ const ICUITerminalTest = forwardRef<ICUITerminalTestRef, ICUITerminalTestProps>(
     });
 
     enhancedService.current.on('connected', (data: any) => {
-      console.log('[ICUITerminalTest] Enhanced service connected (legacy event):', data);
+      // Reduced debug: console.log('[ICUITerminalTest] Enhanced service connected (legacy event):', data);
       setIsConnected(true);
       onTerminalReady?.(terminal.current!);
     });
 
     enhancedService.current.on('connection_closed', (data: any) => {
-      console.log('[ICUITerminalTest] Enhanced service disconnected:', data);
+      // Reduced debug: console.log('[ICUITerminalTest] Enhanced service disconnected:', data);
       setIsConnected(false);
       if (terminal.current) {
         terminal.current.write('\r\n\x1b[31mTerminal disconnected\x1b[0m\r\n');
@@ -210,7 +211,7 @@ const ICUITerminalTest = forwardRef<ICUITerminalTestRef, ICUITerminalTestProps>(
     });
 
     enhancedService.current.on('disconnected', (data: any) => {
-      console.log('[ICUITerminalTest] Enhanced service disconnected (legacy event):', data);
+      // Reduced debug: console.log('[ICUITerminalTest] Enhanced service disconnected (legacy event):', data);
       setIsConnected(false);
       if (terminal.current) {
         terminal.current.write('\r\n\x1b[31mTerminal disconnected\x1b[0m\r\n');
@@ -237,12 +238,18 @@ const ICUITerminalTest = forwardRef<ICUITerminalTestRef, ICUITerminalTestProps>(
 
     enhancedService.current.on('healthUpdate', (health: any) => {
       setHealthStatus(health);
-      console.log('[ICUITerminalTest] Health update:', health);
+      // Reduced debug: Only log health issues
+      if (health.status === 'unhealthy') {
+        console.log('[ICUITerminalTest] Health issue:', health);
+      }
     });
 
     enhancedService.current.on('connectionClosed', (data: any) => {
       if (data.connectionId === connectionId.current) {
-        console.log('[ICUITerminalTest] Connection closed:', data);
+        // Reduced debug: Only log unexpected connection closures
+        if (data.reason && data.reason !== 'normal closure') {
+          console.log('[ICUITerminalTest] Unexpected connection closure:', data);
+        }
         setIsConnected(false);
         connectionId.current = null;
         onTerminalExit?.(data.code || 0);
@@ -266,7 +273,10 @@ const ICUITerminalTest = forwardRef<ICUITerminalTestRef, ICUITerminalTestProps>(
 
       console.log('[ICUITerminalTest] Connecting with options:', options);
       connectionId.current = await enhancedService.current.connect(options);
-      console.log('[ICUITerminalTest] Connected with ID:', connectionId.current);
+      // Reduced debug: Only log in development mode
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[ICUITerminalTest] Connected with ID:', connectionId.current);
+      }
       
     } catch (error) {
       console.error('[ICUITerminalTest] Connection failed:', error);

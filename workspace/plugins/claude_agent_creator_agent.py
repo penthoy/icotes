@@ -1,7 +1,10 @@
 """
-Agent Creator - An AI agent that helps create other custom agents
+Claude Agent Creator - An AI agent that helps create other custom agents (Anthropic Claude)
 
-This agent specializes in:
+This agent mirrors AgentCreator but uses Anthropic Claude Sonnet for reasoning
+and tool-use streaming.
+
+Capabilities:
 1. Creating custom agent code using file tools
 2. Agent architecture design
 3. Integration patterns with tool system
@@ -14,16 +17,16 @@ Enhanced with tool integration capabilities for file operations.
 import json
 import os
 import logging
-from typing import Dict, List, Any, AsyncGenerator
+from typing import Dict, List, Any
 
 # Configure logging
 logger = logging.getLogger(__name__)
 
 # Model selection identifier for UI/router consumption
-# Frontend can read this via config/status endpoints and switch helpers accordingly
-AGENT_MODEL_ID = "gpt5"
+# Update to your preferred Claude Sonnet variant if needed
+AGENT_MODEL_ID = "claude-sonnet-4-20250514"
 
-# Import required modules
+# Import required modules and backend helpers
 try:
     import sys
     backend_path = os.environ.get("ICOTES_BACKEND_PATH")
@@ -38,84 +41,88 @@ try:
             current_dir = os.path.dirname(current_dir)
         
         if not backend_path:
-            # Fallback to relative path
+            # Fallback to relative path from workspace/plugins/
             backend_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "backend"))
     
     sys.path.append(backend_path)
-    
-    from icpy.agent.clients import get_openai_client
+
+    # Import OpenAI-compatible client and streaming handler + shared helpers
+    from icpy.agent.clients import get_anthropic_client
     from icpy.agent.helpers import (
-        create_agent_chat_function, 
-        get_available_tools_summary,
-        ToolDefinitionLoader,
-        ToolExecutor,
-        OpenAIStreamingHandler,
         create_standard_agent_metadata,
         create_environment_reload_function,
-        create_agent_context,
+        get_available_tools_summary,
+        ToolDefinitionLoader,
+        OpenAIStreamingHandler,
         add_context_to_agent_prompt,
-        format_agent_context_for_prompt
     )
-    
+
     DEPENDENCIES_AVAILABLE = True
-    logger.info("All dependencies available for AgentCreator")
-    
+    logger.info("All dependencies available for ClaudeAgentCreator")
+
     # Agent metadata using helper (after import)
     AGENT_METADATA = create_standard_agent_metadata(
-        name="AgentCreator",
-        description="An AI agent that helps you create other custom agents using file editing tools",
-    version="2.1.1", 
+        name="ClaudeAgentCreator",
+        description="An AI agent (Claude) that helps you create other custom agents using file editing tools",
+        version="1.0.0",
         author="Hot Reload System",
-    model=AGENT_MODEL_ID
+        model=AGENT_MODEL_ID,
     )
-    
+
     # Individual metadata fields for backward compatibility
     MODEL_NAME = AGENT_METADATA["MODEL_NAME"]
     AGENT_NAME = AGENT_METADATA["AGENT_NAME"]
-    AGENT_DESCRIPTION = AGENT_METADATA["AGENT_DESCRIPTION"] 
+    AGENT_DESCRIPTION = AGENT_METADATA["AGENT_DESCRIPTION"]
     AGENT_VERSION = AGENT_METADATA["AGENT_VERSION"]
     AGENT_AUTHOR = AGENT_METADATA["AGENT_AUTHOR"]
-    
+
     # Create standardized reload function using helper
     reload_env = create_environment_reload_function([
         "icpy.agent.helpers",
-        "icpy.agent.clients"
+        "icpy.agent.clients",
     ])
-    
+
 except ImportError as e:
-    logger.warning(f"Dependencies not available: {e}")
+    logger.warning(f"Dependencies not available for ClaudeAgentCreator: {e}")
     DEPENDENCIES_AVAILABLE = False
-    
+
     # Fallback metadata if helpers are not available
     MODEL_NAME = AGENT_MODEL_ID
-    AGENT_NAME = "AgentCreator"
-    AGENT_DESCRIPTION = "An AI agent that helps you create other custom agents using file editing tools"
-    AGENT_VERSION = "2.1.0"
+    AGENT_NAME = "ClaudeAgentCreator"
+    AGENT_DESCRIPTION = "An AI agent (Claude) that helps you create other custom agents using file editing tools"
+    AGENT_VERSION = "1.0.0"
     AGENT_AUTHOR = "Hot Reload System"
-    
+
     # Fallback reload function
     def reload_env():
-        """Fallback reload function when helpers are not available"""
         global DEPENDENCIES_AVAILABLE
         DEPENDENCIES_AVAILABLE = False
         logger.info("Dependencies still not available after reload")
         return False
 
+
 def get_tools():
     """
-    Get available tools for AgentCreator using the helper class.
-    
-    Returns OpenAI function calling compatible tool definitions
+    Get available tools for ClaudeAgentCreator using the helper class.
+
+    Returns Anthropic function/tool calling compatible tool definitions.
+    Falls back to OpenAI-compatible tool schema if Anthropic-specific export
+    is not available in the current backend version.
     """
     if not DEPENDENCIES_AVAILABLE:
         logger.warning("Dependencies not available, returning empty tools list")
         return []
-    
+
     try:
         loader = ToolDefinitionLoader()
-        tools = loader.get_openai_tools()
-        logger.info(f"Loaded {len(tools)} tools via helper")
-        return tools
+        # Prefer Anthropic-specific tools if provided by the backend helpers
+        # Prefer OpenAI tool schema; backend maps these for Claude calls
+        if hasattr(loader, "get_openai_tools"):
+            tools = loader.get_openai_tools()
+            logger.info(f"Loaded {len(tools)} tools via helper")
+            return tools
+        logger.warning("ToolDefinitionLoader has no compatible export; returning empty list")
+        return []
     except Exception as e:
         logger.warning(f"Failed to load tools via helper: {e}")
         return []
@@ -123,39 +130,37 @@ def get_tools():
 
 def chat(message, history):
     """
-    Agent Creator streaming chat function with tool integration using helpers.
-    
-    This function is now much simpler thanks to the extracted helper functions.
-    
+    Claude Agent Creator streaming chat function with tool integration using helpers.
+
     Args:
         message: str - User message
         history: List[Dict] or str (JSON) - Conversation history
-        
+
     Yields:
         str - Response chunks for streaming
     """
     if not DEPENDENCIES_AVAILABLE:
-        yield "🚫 Dependencies not available. Please check your configuration."
+        yield "🚫 Dependencies not available for ClaudeAgentCreator. Please check your Anthropic configuration."
         return
-    
+
     # Enhanced system prompt with tools information and context
-    base_system_prompt = f"""You are AgentCreator, an expert AI agent specialized in helping developers create custom agents for icotes using powerful file editing tools.
+    base_system_prompt = f"""You are ClaudeAgentCreator, an expert AI agent specialized in helping developers create custom agents for icotes using powerful file editing tools.
 
 Your capabilities include:
-- **File Operations**: Read, create, and modify files using integrated tools
-- **Code Generation**: Write clean, maintainable agent code with proper structure
-- **Agent Architecture**: Design robust agent systems with tool integration
-- **Testing**: Create comprehensive tests following TDD principles
+- File Operations: Read, create, and modify files using integrated tools
+- Code Generation: Write clean, maintainable agent code with proper structure
+- Agent Architecture: Design robust agent systems with tool integration
+- Testing: Create comprehensive tests following TDD principles
 
 {get_available_tools_summary()}
 
 You help users:
-1. **Design Agent Architecture**: Plan agent structure and capabilities
-2. **Write Agent Code**: Create working agents with proper tool integration
-3. **Implement Tool Usage**: Show how agents can use tools effectively
-4. **Create Tests**: Write comprehensive test suites using TDD approach
-5. **Debug and Fix**: Analyze and fix agent code issues
-6. **Follow Best Practices**: Ensure code follows icotes conventions
+1. Design Agent Architecture: Plan agent structure and capabilities
+2. Write Agent Code: Create working agents with proper tool integration
+3. Implement Tool Usage: Show how agents can use tools effectively
+4. Create Tests: Write comprehensive test suites using TDD approach
+5. Debug and Fix: Analyze and fix agent code issues
+6. Follow Best Practices: Ensure code follows icotes conventions
 
 Agent Creation Process:
 1. Analyze requirements and plan agent structure
@@ -171,13 +176,13 @@ Agent behavior:
 
 Agent structure:
 1. All custom agents should be created under workspace/plugins/ where workspace is your workspace root directory.
-2. all your code is under workspace/plugins/agent_creator_agent.py you can use this as implementation reference.
+2. all your code is under workspace/plugins/claude_agent_creator_agent.py you can use this as implementation reference. when I refer to you or your code, this is the file I am refering to.
 3. agents should use this convention: <AGENT_NAME>_agent.py
 4. after a new agent is created, you also need to add a config update to workspace/.icotes/agents.json for this agent to be properly registered with the hot reload system.
 5. before you modify the agent.json, make sure you read it and understand its structure before updating it, always update with the same structure as the original.
 
-**IMPORTANT WORKSPACE STRUCTURE**:
-- Your workspace root is: <workspace_root> 
+IMPORTANT WORKSPACE STRUCTURE:
+- Your workspace root is: <workspace_root>
 - Agent files go in: <workspace_root>/plugins/<AGENT_NAME>_agent.py
 - Configuration goes in: <workspace_root>/.icotes/agents.json
 - The plugins/ directory already exists and is the correct location for all agent files
@@ -197,43 +202,34 @@ When creating agents, always include:
 - Tool integration when needed
 
 Be helpful, practical, and focus on creating working solutions."""
-    
+
     # Add context information to the system prompt with dynamic workspace detection
-    # The context helper will automatically detect the appropriate workspace root
     system_prompt = add_context_to_agent_prompt(base_system_prompt)
-    
+
     try:
-        # Use the helper function to create a chat function
-        # But we need to handle it differently since we're already in the chat function
-        client = get_openai_client()
-        
-        # Handle JSON string history (gradio compatibility)  
+        # Initialize compatible client (router may send to Claude depending on model id)
+        client = get_anthropic_client()
+
+        # Handle JSON string history (gradio compatibility)
         if isinstance(history, str):
             history = json.loads(history)
-        
+
         # Build conversation messages
         system_message = {"role": "system", "content": system_prompt}
         messages = [system_message] + history + [{"role": "user", "content": message}]
-        
-        # Create streaming handler and process
+
+        # Create streaming handler and process (OpenAI-style; backend routes based on model)
         handler = OpenAIStreamingHandler(client, MODEL_NAME)
-        
-        logger.info("AgentCreator: Starting chat with tools using helpers")
-        # Enable auto-continue by default with sane limits (override via env)
+        logger.info("ClaudeAgentCreator: Starting chat with tools using Anthropic helpers")
         yield from handler.stream_chat_with_tools(messages)
-        logger.info("AgentCreator: Chat completed successfully")
-                
+        logger.info("ClaudeAgentCreator: Chat completed successfully")
+
     except Exception as e:
-        logger.error(f"Error in AgentCreator streaming: {e}")
-        yield f"🚫 Error processing request: {str(e)}\n\nPlease check your OpenAI API key configuration."
+        logger.error(f"Error in ClaudeAgentCreator streaming: {e}")
+        yield f"🚫 Error processing request with Claude: {str(e)}\n\nPlease check your Anthropic API key configuration."
 
 
 if __name__ == "__main__":
-    # Test the chat function locally
-    test_message = "Hello, AgentCreator! Can you help me create a simple agent that can read and create files?"
-    test_history = []
-    
-    print("Testing AgentCreator with tool integration:")
-    # for chunk in chat(test_message, test_history):
-    #     print(chunk, end="")
-    print("\n\nTest completed!") 
+    # Simple local test harness (non-streaming print)
+    print("Testing ClaudeAgentCreator wiring (dry-run)...")
+    print("Test completed! (Use the UI to chat and stream responses)")

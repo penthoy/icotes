@@ -1,7 +1,7 @@
 /**
- * ICUI Terminal Component - Enhanced Version
- * 
- * This is the enhanced terminal using modern WebSocket service integration.
+ * ICUI Terminal Component - Version 1.0
+ *
+ * This is the terminal using modern WebSocket service integration.
  * Features:
  * - Clean terminal functionality using XTerm.js
  * - Enhanced WebSocket service integration
@@ -288,7 +288,7 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
     }, 100);
 
     terminal.current.focus();
-    terminal.current.write('ICUITerminal Enhanced initialized!\r\n');
+    terminal.current.write('ICUITerminal initialized!\r\n');
     terminal.current.write('Terminal ID: ' + terminalId.current + '\r\n');
     terminal.current.write('Connecting to backend...\r\n');
 
@@ -326,7 +326,7 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
         const baseUrl = `${finalProtocol}//${url.host}`;
         const wsUrl = `${baseUrl}/ws/terminal/${terminalId.current}`;
         
-        console.log(`[ICUITerminal Enhanced] Connecting to: ${wsUrl}`);
+        console.log(`[ICUITerminal] Connecting to: ${wsUrl}`);
         websocket.current = new WebSocket(wsUrl);
         
       } catch (error) {
@@ -357,12 +357,15 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
           wsUrl = `${protocol}//${host}/ws/terminal/${terminalId.current}`;
         }
         
-        console.log(`[ICUITerminal Enhanced] Connecting to (fallback): ${wsUrl}`);
+        console.log(`[ICUITerminal] Connecting to (fallback): ${wsUrl}`);
         websocket.current = new WebSocket(wsUrl);
       }
       
       websocket.current.onopen = () => {
-        console.log(`[ICUITerminal Enhanced] Connected to terminal ${terminalId.current}`);
+        // Reduced debug: Only log in development mode
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`[ICUITerminal] Connected to terminal ${terminalId.current}`);
+        }
         setIsConnected(true);
         reconnectAttempts.current = 0;
         terminal.current?.clear();
@@ -394,7 +397,10 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
       };
       
       websocket.current.onclose = (event) => {
-        console.log(`[ICUITerminal Enhanced] Disconnected from terminal ${terminalId.current}:`, event.code, event.reason);
+        // Reduced debug: Only log disconnections in development or on error
+        if (process.env.NODE_ENV === 'development' || event.code !== 1000) {
+          console.log(`[ICUITerminal] Disconnected from terminal ${terminalId.current}:`, event.code, event.reason);
+        }
         setIsConnected(false);
         
         if (event.code !== 1000) {
@@ -418,7 +424,7 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
       };
       
       websocket.current.onerror = (error) => {
-        console.error('[ICUITerminal Enhanced] WebSocket error:', error);
+        console.error('[ICUITerminal] WebSocket error:', error);
         terminal.current?.write("\r\n\x1b[31mTerminal connection error\x1b[0m\r\n");
       };
     };

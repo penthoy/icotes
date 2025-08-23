@@ -1,5 +1,5 @@
 /**
- * Enhanced Chat Backend Client
+ * Chat Backend Client
  * 
  * Integrates all WebSocket improvements: connection management, error handling,
  * message queuing, health monitoring, and migration support for chat service.
@@ -101,7 +101,7 @@ export interface AgentConfig {
   tools?: any[];
 }
 
-export class EnhancedChatBackendClient {
+export class ChatBackendClient {
   private enhancedService: EnhancedWebSocketService | null = null;
   private connectionId: string | null = null;
   
@@ -155,7 +155,7 @@ export class EnhancedChatBackendClient {
       enableMessageQueue: false, // Disable queuing
       enableHealthMonitoring: false, // Disable health monitoring
       enableAutoRecovery: false, // Disable auto recovery
-      maxConcurrentConnections: 1,
+      maxConcurrentConnections: 10, // Increased from 1 to allow multiple tabs/sessions
       messageTimeout: 60000, // Longer timeout
       batchConfig: {
         maxSize: 1,
@@ -166,7 +166,7 @@ export class EnhancedChatBackendClient {
 
     // Enhanced service event handlers
     this.enhancedService.on('connection_opened', (data: any) => {
-      log.info('EnhancedChatBackendClient', 'Enhanced service connected', data);
+      log.info('ChatBackendClient', 'Enhanced service connected', data);
       this.reconnectAttempts = 0;
       this.isDisconnecting = false;
       
@@ -181,7 +181,7 @@ export class EnhancedChatBackendClient {
 
     // Also listen for legacy events for compatibility
     this.enhancedService.on('connected', (data: any) => {
-      log.info('EnhancedChatBackendClient', 'Enhanced service connected (legacy event)', data);
+      log.info('ChatBackendClient', 'Enhanced service connected (legacy event)', data);
       this.reconnectAttempts = 0;
       this.isDisconnecting = false;
       
@@ -195,7 +195,7 @@ export class EnhancedChatBackendClient {
     });
 
     this.enhancedService.on('connection_closed', (data: any) => {
-      log.info('EnhancedChatBackendClient', 'Enhanced service disconnected', data);
+      log.info('ChatBackendClient', 'Enhanced service disconnected', data);
       
       this.notifyStatus({
         connected: false,
@@ -206,7 +206,7 @@ export class EnhancedChatBackendClient {
     });
 
     this.enhancedService.on('disconnected', (data: any) => {
-      log.info('EnhancedChatBackendClient', 'Enhanced service disconnected (legacy event)', data);
+      log.info('ChatBackendClient', 'Enhanced service disconnected (legacy event)', data);
       
       this.notifyStatus({
         connected: false,
@@ -217,30 +217,36 @@ export class EnhancedChatBackendClient {
     });
 
     this.enhancedService.on('message', (data: any) => {
-      // console.log('[EnhancedChatBackendClient] Raw message received:', data);
+      // console.log('[ChatBackendClient] Raw message received:', data);
       if (data.connectionId === this.connectionId) {
         // Use rawData if available (original JSON string), otherwise stringify the parsed message
         const messageData = data.rawData || JSON.stringify(data.message);
-        // console.log('[EnhancedChatBackendClient] Processing message for connectionId:', this.connectionId, 'data:', messageData);
+        // console.log('[ChatBackendClient] Processing message for connectionId:', this.connectionId, 'data:', messageData);
         this.handleWebSocketMessage({ data: messageData });
       } else {
-        // console.log('[EnhancedChatBackendClient] Message not for this connection:', data.connectionId, 'expected:', this.connectionId);
+        // console.log('[ChatBackendClient] Message not for this connection:', data.connectionId, 'expected:', this.connectionId);
       }
     });
 
     this.enhancedService.on('error', (error: any) => {
-      log.error('EnhancedChatBackendClient', 'Enhanced service error', { error });
+      log.error('ChatBackendClient', 'Enhanced service error', { error });
       this.handleError(error.message || 'Unknown enhanced service error');
     });
 
     this.enhancedService.on('healthUpdate', (health: any) => {
       this.healthStatus = health;
-      console.log('[EnhancedChatBackendClient] Health update:', health);
+      // Reduced debug: Only log health issues, not routine updates
+      if (health.status === 'unhealthy') {
+        console.log('[ChatBackendClient] Health issue:', health);
+      }
     });
 
     this.enhancedService.on('connectionClosed', (data: any) => {
       if (data.connectionId === this.connectionId) {
-        console.log('[EnhancedChatBackendClient] Connection closed:', data);
+        // Reduced debug: Only log unexpected connection closures
+        if (data.reason && data.reason !== 'normal closure') {
+          console.log('[ChatBackendClient] Unexpected connection closure:', data);
+        }
         this.connectionId = null;
         
         this.notifyStatus({
@@ -260,7 +266,7 @@ export class EnhancedChatBackendClient {
     try {
       // Prevent multiple connection attempts
       if (this.connectionId && this.enhancedService) {
-        log.warn('EnhancedChatBackendClient', 'Enhanced service already connected');
+        log.warn('ChatBackendClient', 'Enhanced service already connected');
         return true;
       }
 
@@ -277,13 +283,13 @@ export class EnhancedChatBackendClient {
         timeout: 15000
       };
 
-      log.info('EnhancedChatBackendClient', 'Connecting with options', options);
+      log.info('ChatBackendClient', 'Connecting with options', options);
       this.connectionId = await this.enhancedService.connect(options);
-      log.info('EnhancedChatBackendClient', 'Connected with ID', { connectionId: this.connectionId });
+      log.info('ChatBackendClient', 'Connected with ID', { connectionId: this.connectionId });
       
       return true;
     } catch (error) {
-      log.error('EnhancedChatBackendClient', 'Enhanced connection failed', { error });
+      log.error('ChatBackendClient', 'Enhanced connection failed', { error });
       
       this.notifyStatus({
         connected: false,
@@ -338,7 +344,7 @@ export class EnhancedChatBackendClient {
     };
 
     try {
-      // console.log('[EnhancedChatBackendClient] Sending enhanced message:', message);
+      // console.log('[ChatBackendClient] Sending enhanced message:', message);
       
       await this.enhancedService.sendMessage(
         this.connectionId,
@@ -354,7 +360,40 @@ export class EnhancedChatBackendClient {
       }
       
     } catch (error) {
-      log.error('EnhancedChatBackendClient', 'Send message failed', { error });
+      log.error('ChatBackendClient', 'Send message failed', { error });
+      throw error;
+    }
+  }
+
+  /**
+   * Stop/interrupt current streaming response
+   */
+  async stopStreaming(): Promise<void> {
+    if (!this.connectionId || !this.enhancedService) {
+      throw new Error('Enhanced chat service not connected');
+    }
+
+    const stopMessage = {
+      type: 'stop',
+      session_id: this.currentSessionId,
+      timestamp: new Date().toISOString()
+    };
+
+    const messageOptions: MessageOptions = {
+      priority: 'high', // High priority for stop messages
+      timeout: 5000, // Short timeout
+      expectResponse: false,
+      retries: 0
+    };
+
+    try {
+      await this.enhancedService.sendMessage(
+        this.connectionId,
+        JSON.stringify(stopMessage),
+        messageOptions
+      );
+    } catch (error) {
+      console.error('[ChatBackendClient] Failed to stop streaming:', error);
       throw error;
     }
   }
@@ -623,6 +662,9 @@ export class EnhancedChatBackendClient {
       } else if (data.type === 'message_stream') {
         // console.log('[EnhancedChatBackendClient] Handling streaming message');
         this.handleStreamingMessage(data);
+      } else if (data.type === 'stream_stopped') {
+        // console.log('[EnhancedChatBackendClient] Handling stream stopped');
+        this.handleStreamStopped(data);
       } else if (data.type === 'typing') {
         // console.log('[EnhancedChatBackendClient] Handling typing indicator');
         this.handleTypingIndicator(data);
@@ -796,6 +838,26 @@ export class EnhancedChatBackendClient {
         this.isStreaming = false;
       }
     }
+  }
+
+  private handleStreamStopped(data: any): void {
+    // Handle stream interruption
+    this.isStreaming = false;
+    this.streamingMessage = null;
+    
+    // Notify typing stopped
+    this.typingCallbacks.forEach(callback => callback(false));
+    
+    // Notify stream callbacks that streaming is done
+    this.streamCallbacks.forEach(callback => 
+      callback({
+        content: '',
+        done: true
+      })
+    );
+    
+    // Log the stop event
+    console.log('[EnhancedChatBackendClient] Stream stopped:', data.message || 'Streaming interrupted');
   }
 
   private handleTypingIndicator(data: any): void {
@@ -1064,8 +1126,7 @@ export class EnhancedChatBackendClient {
 }
 
 // Create singleton instance
-export const enhancedChatBackendClient = new EnhancedChatBackendClient();
+export const chatBackendClient = new ChatBackendClient();
 
-// Compatibility exports for existing code
-export { EnhancedChatBackendClient as ChatBackendClient };
-export const chatBackendClient = enhancedChatBackendClient;
+// Legacy compatibility export
+export const enhancedChatBackendClient = chatBackendClient;

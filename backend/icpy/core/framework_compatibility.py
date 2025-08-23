@@ -92,6 +92,20 @@ class BaseAgentWrapper(ABC):
         pass
 
 
+# Import the OpenAI helper function to avoid circular imports
+# This is placed here since it's only needed for OpenAI classes
+try:
+    from ..agent.helpers import get_openai_token_param
+except ImportError:
+    # Fallback function in case of circular imports
+    def get_openai_token_param(model_name: str, max_tokens: int) -> dict:
+        """Fallback token parameter selection"""
+        if "gpt-5" in model_name.lower() or model_name.startswith("o1"):
+            return {"max_completion_tokens": max_tokens}
+        else:
+            return {"max_tokens": max_tokens}
+
+
 class OpenAIAgentWrapper(BaseAgentWrapper):
     """Wrapper for OpenAI-based agents"""
     
@@ -141,12 +155,17 @@ class OpenAIAgentWrapper(BaseAgentWrapper):
             api_key = self.config.api_key or os.getenv("OPENAI_API_KEY")
             if api_key and api_key != "placeholder-key" and api_key.startswith("sk-"):
                 # Make real API call
-                response = await self._agent.chat.completions.create(
-                    model=self.config.model,
-                    messages=messages,
-                    temperature=self.config.temperature,
-                    max_tokens=self.config.max_tokens
-                )
+                api_params = {
+                    "model": self.config.model,
+                    "messages": messages,
+                    "temperature": self.config.temperature,
+                }
+                if self.config.max_tokens is not None:
+                    api_params.update(
+                        get_openai_token_param(self.config.model, self.config.max_tokens)
+                    )
+
+                response = await self._agent.chat.completions.create(**api_params)
                 
                 response_content = response.choices[0].message.content
                 usage_info = response.usage.model_dump() if response.usage else None
@@ -201,13 +220,15 @@ class OpenAIAgentWrapper(BaseAgentWrapper):
             api_key = self.config.api_key or os.getenv("OPENAI_API_KEY")
             if api_key and api_key != "placeholder-key" and api_key.startswith("sk-"):
                 # Make real streaming API call
-                stream = await self._agent.chat.completions.create(
-                    model=self.config.model,
-                    messages=messages,
-                    temperature=self.config.temperature,
-                    max_tokens=self.config.max_tokens,
-                    stream=True
-                )
+                api_params = {
+                    "model": self.config.model,
+                    "messages": messages,
+                    "temperature": self.config.temperature,
+                    "stream": True
+                }
+                api_params.update(get_openai_token_param(self.config.model, self.config.max_tokens))
+                
+                stream = await self._agent.chat.completions.create(**api_params)
                 
                 async for chunk in stream:
                     if chunk.choices[0].delta.content:

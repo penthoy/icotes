@@ -4,7 +4,7 @@
  * Handles panel docking, tab management, and drag/drop between areas
  */
 
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { ICUITabContainer, ICUITab } from './ICUITabContainer';
 import { ICUIPanelType } from './ICUIPanelSelector';
 
@@ -63,7 +63,59 @@ export const ICUIPanelArea: React.FC<ICUIPanelAreaProps> = ({
   const [dragOver, setDragOver] = useState(false);
   const dragCounter = useRef(0);
 
-  const activePanel = activePanelId ? panels.find(p => p.id === activePanelId) : panels[0];
+  // Stable local active tab state to avoid ping-pong with fallback logic
+  const [localActiveTabId, setLocalActiveTabId] = useState<string>(() => {
+    return activePanelId || panels[0]?.id || '';
+  });
+
+  // Keep local active tab in sync with prop changes, but don't override unnecessarily
+  useEffect(() => {
+    if (activePanelId && activePanelId !== localActiveTabId) {
+      setLocalActiveTabId(activePanelId);
+    }
+  }, [activePanelId]);
+
+  // When panels change (reorder/add/remove), ensure the active tab still exists
+  useEffect(() => {
+    // If current active tab no longer exists, select a sensible default
+    const exists = panels.some(p => p.id === localActiveTabId);
+    if (!exists) {
+      const next = (activePanelId && panels.some(p => p.id === activePanelId))
+        ? activePanelId
+        : (panels[0]?.id || '');
+      if (next !== localActiveTabId) {
+        setLocalActiveTabId(next);
+        // Inform parent if we auto-selected a new tab
+        if (next && next !== activePanelId) {
+          onPanelActivate?.(next);
+        }
+      }
+    }
+  }, [panels]);
+
+  // Detect newly added panel and auto-activate it to avoid ping-pong on creation
+  const prevPanelIdsRef = useRef<string[]>([]);
+  useEffect(() => {
+    const prevIds = prevPanelIdsRef.current;
+    const currentIds = panels.map(p => p.id);
+    // Compute added ids
+    const added = currentIds.filter(id => !prevIds.includes(id));
+
+    if (added.length === 1) {
+      const newId = added[0];
+      // Only auto-activate if parent hasn't explicitly set a different active
+      if (!activePanelId || activePanelId === newId) {
+        if (localActiveTabId !== newId) {
+          setLocalActiveTabId(newId);
+          onPanelActivate?.(newId);
+        }
+      }
+    }
+
+    prevPanelIdsRef.current = currentIds;
+  }, [panels, activePanelId]);
+
+  const activePanel = (localActiveTabId ? panels.find(p => p.id === localActiveTabId) : panels[0]);
 
   // Convert panels to tabs
   const tabs: ICUITab[] = panels.map(panel => ({
@@ -78,6 +130,8 @@ export const ICUIPanelArea: React.FC<ICUIPanelAreaProps> = ({
 
   // Handle tab operations
   const handleTabActivate = useCallback((tabId: string) => {
+    // Optimistically update local active state to avoid visual flicker
+    setLocalActiveTabId(tabId);
     onPanelActivate?.(tabId);
   }, [onPanelActivate]);
 
@@ -136,6 +190,8 @@ export const ICUIPanelArea: React.FC<ICUIPanelAreaProps> = ({
         return;
       }
       
+      // Optimistically set active tab locally to prevent flicker while parent updates layout
+      setLocalActiveTabId(panelId);
       // Dropping panel in different area
       onPanelDrop?.(panelId, sourceAreaId);
     } else if (sourceAreaId === id) {
@@ -190,7 +246,7 @@ export const ICUIPanelArea: React.FC<ICUIPanelAreaProps> = ({
       >
         <ICUITabContainer
           tabs={tabs}
-          activeTabId={activePanelId || panels[0]?.id || ''}
+          activeTabId={localActiveTabId}
           onTabActivate={handleTabActivate}
           onTabClose={onPanelClose ? handleTabClose : undefined}
           onTabReorder={handleTabReorder}

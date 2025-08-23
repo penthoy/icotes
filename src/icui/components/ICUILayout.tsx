@@ -149,16 +149,24 @@ export const ICUILayout: React.FC<ICUILayoutProps> = ({
 
   // Handle panel activation
   const handlePanelActivate = useCallback((areaId: string, panelId: string) => {
-    setCurrentLayout(prev => ({
-      ...prev,
-      areas: {
-        ...prev.areas,
-        [areaId]: {
-          ...prev.areas[areaId],
-          activePanelId: panelId,
-        }
+    setCurrentLayout(prev => {
+      const area = prev.areas[areaId];
+      if (!area) return prev;
+      if (area.activePanelId === panelId) {
+        // No-op to prevent redundant updates and flicker
+        return prev;
       }
-    }));
+      return {
+        ...prev,
+        areas: {
+          ...prev.areas,
+          [areaId]: {
+            ...area,
+            activePanelId: panelId,
+          }
+        }
+      };
+    });
     onPanelActivate?.(panelId, areaId);
   }, [onPanelActivate]);
 

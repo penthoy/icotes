@@ -18,6 +18,7 @@
  */
 
 import React, { useRef, useEffect, useState, useCallback, useImperativeHandle, forwardRef } from 'react';
+import { Square, Send, Paperclip, Mic, Wand2, RefreshCw, Settings } from 'lucide-react';
 import { 
   useChatMessages, 
   useTheme, 
@@ -32,6 +33,7 @@ import { CustomAgentDropdown } from './menus/CustomAgentDropdown';
 import ChatMessage from './chat/ChatMessage';
 import { useChatSearch } from '../hooks/useChatSearch';
 import { useChatSessionSync } from '../hooks/useChatSessionSync';
+import { chatBackendClient } from '../services/chat-backend-client-impl';
 import { useChatHistory } from '../hooks/useChatHistory';
 
 interface ICUIChatProps {
@@ -86,6 +88,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
     isTyping,
     sendMessage,
     sendCustomAgentMessage,
+    stopStreaming,
     clearMessages,
     connect,
     disconnect,
@@ -94,7 +97,8 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
     hasMessages,
     scrollToBottom
   } = useChatMessages({
-    autoConnect,
+    // Avoid auto-connecting before a session is known to prevent generating orphan sessions
+    autoConnect: !!(typeof window !== 'undefined' && (localStorage.getItem('icui.chat.active_session') || chatBackendClient.currentSession)) && autoConnect,
     maxMessages,
     persistence,
     autoScroll
@@ -104,22 +108,22 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
   const search = useChatSearch(messages);
 
   // Session synchronization
-  const { onSessionChange } = useChatSessionSync();
+  const { onSessionChange, emitSessionChange } = useChatSessionSync();
 
-  // Track current session name from events
-  const [sessionName, setSessionName] = useState<string>('');
+  // Chat history management
+  const { createSession, switchSession, sessions, activeSession } = useChatHistory();
 
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem('icui.chat.sessions.v1');
-      if (raw) {
-        const parsed = JSON.parse(raw) as { sessions: Array<{id:string,name:string,updated:number,created:number}>; active?: string };
-        const active = parsed.active;
-        const activeMeta = parsed.sessions?.find(s => s.id === active);
-        if (activeMeta?.name) setSessionName(activeMeta.name);
-      }
-    } catch {}
-  }, []);
+  // Track the globally-selected session (source: shared chat client + session sync)
+  const [currentSessionId, setCurrentSessionId] = useState<string>(chatBackendClient.currentSession || '');
+  const [currentSessionName, setCurrentSessionName] = useState<string | undefined>(undefined);
+
+  // Compute title by preferring the most-recent event-provided name, then sessions list
+  const sessionTitle = (() => {
+    // Prefer event-provided name which updates immediately on rename
+    if (currentSessionName && currentSessionName.trim().length > 0) return currentSessionName;
+    const match = sessions.find(s => s.id === currentSessionId);
+    return match?.name || 'Untitled Chat';
+  })();
 
   // Get available custom agents
   const { agents: configuredAgents, isLoading: agentsLoading, error: agentsError } = useConfiguredAgents();
@@ -218,13 +222,26 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
 
   // Listen for session changes from Chat History panel
   useEffect(() => {
-    const cleanup = onSessionChange((sessionId, action, name) => {
+    // Initialize from chat client once on mount
+    if (chatBackendClient.currentSession) {
+      setCurrentSessionId(chatBackendClient.currentSession);
+      // Ensure connection if we suppressed autoConnect earlier
+      if (!isConnected) {
+        connect().catch(() => {/* noop */});
+      }
+    }
+
+  const cleanup = onSessionChange((sessionId, action, sessionName) => {
       if (action === 'switch' || action === 'create') {
-        setSessionName(name || '');
+        setCurrentSessionId(sessionId);
+    if (sessionName !== undefined) setCurrentSessionName(sessionName);
         reloadMessages(sessionId);
         setIsAutoScrollEnabled(true);
         setHasNewMessages(true);
         jumpToLatest();
+        if (!isConnected) {
+          connect().catch(() => {/* noop */});
+        }
       }
     });
 
@@ -288,6 +305,16 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
     }
   }, [inputValue, selectedAgent, sendMessage, sendCustomAgentMessage, onMessageSent, customAgents]);
 
+  // Handle stopping streaming
+  const handleStopStreaming = useCallback(async () => {
+    try {
+      await stopStreaming();
+    } catch (error) {
+      console.error('Failed to stop streaming:', error);
+      notificationService.error('Failed to stop streaming');
+    }
+  }, [stopStreaming]);
+
   // Handle clearing messages
   const handleClearMessages = useCallback(async () => {
     try {
@@ -306,14 +333,18 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
         // Allow new line with Shift+Enter
         return;
       } else {
-        // Send message with Enter
+        // Send message or stop streaming with Enter
         e.preventDefault();
         if (!isComposing) {
-          handleSendMessage();
+          if (isTyping) {
+            handleStopStreaming();
+          } else {
+            handleSendMessage();
+          }
         }
       }
     }
-  }, [handleSendMessage, isComposing]);
+  }, [handleSendMessage, handleStopStreaming, isComposing, isTyping]);
 
   // Handle input composition (for IME support)
   const handleCompositionStart = useCallback(() => {
@@ -361,7 +392,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
     // Auto-resize textarea
     const target = e.target;
     target.style.height = 'auto';
-    target.style.height = `${Math.min(target.scrollHeight, 120)}px`;
+  target.style.height = `${Math.min(target.scrollHeight, 220)}px`;
   }, []);
 
   return (
@@ -369,7 +400,8 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
       className={`icui-chat h-full flex flex-col ${className}`} 
       style={{ 
         backgroundColor: 'var(--icui-bg-primary)', 
-        color: 'var(--icui-text-primary)' 
+  color: 'var(--icui-text-primary)',
+  overflowX: 'hidden'
       }}
     >
       {/* Header */}
@@ -390,7 +422,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
           <span className="text-sm" style={{ 
             color: isConnected ? 'var(--icui-text-primary)' : 'var(--icui-text-error)' 
           }}>
-            {isConnected ? (sessionName || 'No Session') : 'Disconnected'}
+            {isConnected ? sessionTitle : 'Disconnected'}
           </span>
         </div>
 
@@ -398,9 +430,20 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
         <div className="flex items-center space-x-2">
           {/* New Chat Button */}
           <button
-            onClick={() => {
-              const evt = new CustomEvent('icui.chat.new');
-              window.dispatchEvent(evt);
+      onClick={async () => {
+              try {
+        const newSessionId = await createSession();
+        switchSession(newSessionId);
+        // Try to find the created session's name; fall back to a sensible default
+        const created = sessions.find(s => s.id === newSessionId);
+        const createdName = created?.name || 'New Chat';
+        emitSessionChange(newSessionId, 'create', createdName);
+        setCurrentSessionId(newSessionId);
+        setCurrentSessionName(createdName);
+              } catch (error) {
+                console.error('Failed to create new chat session:', error);
+                notificationService.error('Failed to create new chat session');
+              }
             }}
             className="text-xs px-2 py-1 rounded hover:opacity-80 transition-opacity"
             style={{ 
@@ -433,7 +476,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
       <div 
         ref={chatContainerRef}
         className="flex-1 overflow-y-auto p-3 relative"
-        style={{ backgroundColor: 'var(--icui-bg-primary)' }}
+        style={{ backgroundColor: 'var(--icui-bg-primary)', overflowX: 'hidden' }}
       >
         {/* Search overlay moved below in toolbar */}
         {isLoading ? (
@@ -489,12 +532,13 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
         )}
       </div>
 
-      {/* Bottom Toolbar: Search + Input */}
+  {/* Bottom Toolbar: Search + Input */}
       <div 
-        className="p-3 border-t space-y-2" 
+        className="p-3 space-y-2" 
         style={{ 
-          backgroundColor: 'var(--icui-bg-secondary)', 
-          borderTopColor: 'var(--icui-border-subtle)' 
+          backgroundColor: 'var(--icui-bg-primary)', 
+          borderTopColor: 'var(--icui-border-subtle)',
+          overflowX: 'hidden'
         }}
       >
         {/* Search bar pinned above input */}
@@ -537,50 +581,59 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
           </div>
         )}
 
-        <div className="space-y-3">
-          {/* Message Input */}
-          <textarea
-            ref={inputRef}
-            value={inputValue}
-            onChange={handleInputChange}
-            onKeyDown={handleKeyPress}
-            onCompositionStart={handleCompositionStart}
-            onCompositionEnd={handleCompositionEnd}
-            placeholder="Type your message..."
-            className="w-full resize-none rounded-md border px-3 py-2 text-sm min-h-[38px] max-h-[120px] focus:outline-none transition-colors"
-            style={{ 
-              backgroundColor: 'var(--icui-bg-primary)', 
-              color: 'var(--icui-text-primary)',
-              borderColor: 'var(--icui-border-subtle)'
-            }}
-            rows={1}
-            disabled={!isConnected}
-          />
-          
-          {/* Agent + Send */}
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-center gap-3 flex-1">
-              <CustomAgentDropdown
-                selectedAgent={selectedAgent}
-                onAgentChange={setSelectedAgent}
-                disabled={false}
-                className="flex-shrink-0"
-                showCategories={true}
-                showDescriptions={true}
+        <div className="space-y-2">
+          {/* Modern Composer - preserves previous layout (textarea on top, controls at bottom) */}
+          <div className="icui-composer">
+            {/* Body: textarea */}
+            <div className="icui-composer__body">
+              <textarea
+                ref={inputRef}
+                value={inputValue}
+                onChange={handleInputChange}
+                onKeyDown={handleKeyPress}
+                onCompositionStart={handleCompositionStart}
+                onCompositionEnd={handleCompositionEnd}
+                placeholder="Type your message…"
+                className="icui-composer__textarea"
+                style={{ color: 'var(--icui-text-primary)' }}
+                rows={1}
+                disabled={!isConnected}
               />
             </div>
-            <button
-              onClick={() => handleSendMessage()}
-              disabled={!inputValue.trim() || !isConnected || isLoading}
-              className="px-4 py-2 rounded-md text-sm font-medium hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity focus:outline-none focus:ring-2 focus:ring-offset-2 flex-shrink-0"
-              style={{ 
-                backgroundColor: 'var(--icui-accent)', 
-                color: 'var(--icui-text-primary)'
-              }}
-              title="Send message (Enter)"
-            >
-              Send
-            </button>
+
+            {/* Bottom controls row - dropdown + refresh + settings + send */}
+            <div className="icui-composer__controls">
+              <div className="flex items-center gap-2 min-w-0">
+                <CustomAgentDropdown
+                  selectedAgent={selectedAgent}
+                  onAgentChange={setSelectedAgent}
+                  disabled={false}
+                  className="flex-shrink-0"
+                  showCategories={true}
+                  showDescriptions={true}
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                {isTyping ? (
+                  <button
+                    className="icui-button icui--danger"
+                    onClick={handleStopStreaming}
+                    title="Stop generation"
+                  >
+                    <Square size={16} />
+                  </button>
+                ) : (
+                  <button
+                    className="icui-button"
+                    onClick={() => handleSendMessage()}
+                    disabled={!inputValue.trim() || !isConnected || isLoading}
+                    title="Send message (Enter)"
+                  >
+                    <Send size={16} />
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       </div>

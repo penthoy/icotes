@@ -21,7 +21,9 @@ import logging
 import time
 import uuid
 from typing import Dict, List, Any, Optional, Union
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from urllib.parse import urlparse, quote
+import os
 
 import aiohttp
 import requests
@@ -31,10 +33,38 @@ from requests.packages.urllib3.util.retry import Retry
 logger = logging.getLogger(__name__)
 
 
+# Keep helper at module scope so default_factory can call it
+def _resolve_backend_url_from_env() -> str:
+    host = os.getenv("BACKEND_HOST") or os.getenv("HOSTNAME")
+    port = os.getenv("PORT")
+    site = os.getenv("SITE_URL")
+
+    # If SITE_URL looks like a full URL, extract components
+    if not host and site:
+        parsed = urlparse(site if "://" in site else f"http://{site}")
+        host = parsed.hostname or host
+        port = port or (str(parsed.port) if parsed.port else None)
+        scheme = parsed.scheme or "http"
+    else:
+        scheme = "http"
+
+    host = host or "localhost"
+    port = port or "8000"
+    return f"{scheme}://{host}:{port}"
+
+
 @dataclass
 class CliConfig:
     """Configuration for CLI operations"""
-    backend_url: str = f"http://{os.getenv('SITE_URL', '0.0.0.0')}:{os.getenv('PORT', '8000')}"
+    # Resolution order:
+    # 1) ICPY_BACKEND_URL (full URL)
+    # 2) BACKEND_HOST or HOSTNAME (host only) + PORT
+    # 3) SITE_URL (extract host/port if it's a URL) + PORT
+    # 4) http://localhost:8000
+    backend_url: str = field(default_factory=lambda: (
+        os.getenv("ICPY_BACKEND_URL")
+        or _resolve_backend_url_from_env()
+    ))
     timeout: int = 30
     retry_count: int = 3
     retry_delay: float = 1.0
@@ -268,7 +298,7 @@ class HttpClient:
         Returns:
             File content and metadata
         """
-        return self.make_request('GET', f'/api/files/content?path={file_path}')
+        return self.make_request('GET', f'/api/files/content?path={quote(file_path, safe="")}')
     
     def save_file(self, file_path: str, content: str) -> Dict[str, Any]:
         """
@@ -297,7 +327,7 @@ class HttpClient:
         Returns:
             Directory contents
         """
-        return self.make_request('GET', f'/api/files/list?path={dir_path}')
+        return self.make_request('GET', f'/api/files/list?path={quote(dir_path, safe="")}')
     
     def close(self) -> None:
         """

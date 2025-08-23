@@ -7,6 +7,9 @@
 @import './icui-panel-area.css';
 @import './themes/icui-themes.css';
 @import './icui-widgets.css';
+@import './icui-editor.css';
+@import './codemirror-theme.css';
+@import './icui-composer.css';
 
 /* Frame Container Base Styles */
 .icui-frame-container {

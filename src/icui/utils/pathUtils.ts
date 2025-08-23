@@ -22,18 +22,36 @@ export const formatFilePath = (filePath: string): string => {
  */
 export const formatDisplayPath = (path: string): string => {
   if (!path) return 'Unknown file';
-  
-  // Remove common workspace prefixes
-  if (path.startsWith('/home/penthoy/icotes/workspace/')) {
-    return path.replace('/home/penthoy/icotes/workspace/', '');
-  }
-  if (path.startsWith('/home/penthoy/icotes/')) {
-    return path.replace('/home/penthoy/icotes/', '');
-  }
-  
-  return path;
-};
 
+  // Normalize: strip file://, convert backslashes, trim trailing slashes
+  const normalized = path.replace(/^file:\/\//, '').replace(/\\/g, '/').replace(/\/+$/, '');
+
+  // Segment-aware: only treat 'workspace' as a path segment, not a substring.
+  const wsParts = normalized.split('/').filter(Boolean);
+  const wsIdx = wsParts.lastIndexOf('workspace');
+  if (wsIdx !== -1) {
+    const rel = wsParts.slice(wsIdx + 1).join('/');
+    return rel || 'workspace';
+  }
+
+  const isAbsolute = normalized.startsWith('/') || /^[A-Za-z]:\//.test(normalized);
+  if (isAbsolute) {
+    const parts = normalized.split('/').filter(Boolean);
+    // Try to find a meaningful starting point (like workspace, src, etc.)
+    const meaningfulStarts = ['workspace', 'src', 'backend', 'frontend', 'docs'];
+    const idx = parts.findIndex((seg) => meaningfulStarts.includes(seg));
+    if (idx !== -1) {
+      return parts.slice(idx).join('/');
+    }
+    // If no meaningful start found, return the filename and immediate parent (without leading slash)
+    if (parts.length >= 2) {
+      return parts.slice(-2).join('/');
+    }
+    return parts[0] || normalized;
+  }
+  
+  return normalized;
+};
 /**
  * Get file extension from path
  * @param filePath - File path

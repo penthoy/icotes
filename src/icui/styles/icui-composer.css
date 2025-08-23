@@ -1,0 +1,104 @@
+/* ICUI Chat Composer - modern, widget-aligned input */
+
+.icui-composer {
+  border: 1px solid var(--icui-border-subtle);
+  border-radius: 14px; /* larger border bubble to include all controls */
+  background: transparent; /* inherit parent; parent is primary (black) */
+  overflow-x: hidden; /* avoid horizontal scrollbar */
+}
+
+/* Removed top header: controls belong at the bottom by request */
+
+.icui-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--icui-text-muted);
+}
+.icui-dot.icui-dot--on { background: #22c55e; }
+.icui-dot.icui-dot--off { background: #ef4444; }
+
+.icui-composer__body {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 10px 12px 8px;
+  overflow-x: hidden;
+}
+
+.icui-composer__textarea {
+  width: 100%;
+  min-height: 56px; /* a bit taller by default */
+  max-height: 220px; /* allow more growth before scrolling */
+  resize: none;
+  padding: 10px 12px; /* simple padding; send button moved to bottom row */
+  background: transparent;
+  border: 1px solid var(--icui-border-subtle);
+  border-radius: 10px;
+  outline: none;
+  /* allow scroll when we hit max-height; if JS auto-resizes, it will rarely show */
+  overflow-y: auto;
+  overflow-x: hidden;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.icui-composer__textarea:focus {
+  border-color: var(--icui-accent);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--icui-accent) 25%, transparent);
+  /* Fallback for environments lacking color-mix/oklab */
+  outline: 3px solid var(--icui-accent);
+  outline-offset: 1px;
+}
+
+@supports (color: oklab(0 0 0)) {
+  .icui-composer__textarea:focus {
+    outline: none; /* rely on the color-mix ring where supported */
+  }
+}
+
+/* Bottom controls row */
+.icui-composer__controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px 10px;
+  overflow-x: hidden;
+}
+
+/* Inline actions removed for simpler look */
+
+.icui-icon-button {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid var(--icui-border-subtle);
+  background: transparent;
+  color: var(--icui-text-secondary);
+}
+
+.icui-icon-button:hover { background: var(--icui-bg-secondary); }
+.icui-icon-button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Primary action button (send/stop) */
+.icui-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  min-width: 38px;
+  padding: 0 10px;
+  border-radius: 10px;
+  background: var(--icui-accent);
+  color: var(--icui-text-primary);
+  border: 1px solid color-mix(in oklab, var(--icui-accent) 60%, black 15%);
+}
+.icui-button:hover { filter: brightness(1.05); }
+.icui-button:disabled { opacity: 0.5; cursor: not-allowed; }
+.icui-button.icui--danger { background: var(--icui-danger); }

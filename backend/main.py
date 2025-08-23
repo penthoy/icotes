@@ -382,7 +382,8 @@ allowed_origins = configure_cors_origins()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
-    allow_credentials=True,
+    # Credentials cannot be used with wildcard origins
+    allow_credentials=False if allowed_origins == ["*"] else True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -960,7 +961,7 @@ async def get_custom_agents():
     except ImportError as e:
         logger.warning(f"icpy custom agent module not available: {e}")
         # Fallback: return some default agents for testing
-        fallback_agents = ["OpenAIDemoAgent", "TestAgent", "DefaultAgent"]
+        fallback_agents = ["AgentCreator", "OpenAIDemoAgent", "TestAgent", "DefaultAgent"]
         return {"success": True, "agents": fallback_agents}
     except Exception as e:
         logger.error(f"Error getting custom agents: {e}")
@@ -1025,6 +1026,8 @@ async def reload_custom_agents_endpoint(request: Request):
         # Send WebSocket notification to connected clients
         try:
             if ICPY_AVAILABLE:
+                # Lazy import to avoid startup errors when messaging is unavailable
+                from icpy.core.message_broker import get_message_broker
                 message_broker = await get_message_broker()
                 await message_broker.publish(
                     topic="agents.reloaded",
@@ -1206,32 +1209,6 @@ async def get_custom_agent_info(agent_name: str):
         logger.error(f"Error getting agent info for {agent_name}: {e}")
         return {"success": False, "error": str(e)}
 
-# Health check endpoint
-@app.get("/health")
-async def health_check():
-    """Health check endpoint for monitoring system status."""
-    try:
-        status = {
-            "status": "healthy",
-            "services": {
-                "icpy": ICPY_AVAILABLE,
-                "terminal": TERMINAL_AVAILABLE,
-            },
-            "timestamp": time.time()
-        }
-        
-        # Add clipboard service status if available
-        if clipboard_service:
-            try:
-                status["services"]["clipboard"] = clipboard_service.get_status()
-            except Exception:
-                status["services"]["clipboard"] = {"available": False}
-        
-        return status
-    except Exception as e:
-        logger.error(f"Health check error: {e}")
-        return {"status": "unhealthy", "error": str(e), "timestamp": time.time()}
-
 # Agent WebSocket endpoints
 @app.websocket("/ws/agents/{session_id}/stream")
 async def agent_stream_websocket(websocket: WebSocket, session_id: str):
@@ -1257,6 +1234,8 @@ async def agent_stream_websocket(websocket: WebSocket, session_id: str):
         connection_id = await websocket_api.connect_websocket(websocket)
         
         # Subscribe to agent stream topic
+        # Lazy import to avoid startup errors when messaging is unavailable
+        from icpy.core.message_broker import get_message_broker
         message_broker = await get_message_broker()
         await message_broker.subscribe(f"agent.{session_id}.stream", 
                                      lambda msg: websocket_api.send_to_connection(connection_id, msg.payload))
@@ -1323,6 +1302,8 @@ async def workflow_monitor_websocket(websocket: WebSocket, session_id: str):
         connection_id = await websocket_api.connect_websocket(websocket)
         
         # Subscribe to workflow events
+        # Lazy import to avoid startup errors when messaging is unavailable
+        from icpy.core.message_broker import get_message_broker
         message_broker = await get_message_broker()
         await message_broker.subscribe(f"workflow.{session_id}.*", 
                                      lambda msg: websocket_api.send_to_connection(connection_id, msg.payload))
@@ -1465,6 +1446,35 @@ async def chat_websocket(websocket: WebSocket):
                     await websocket.send_json({
                         "type": "config_updated",
                         "config": chat_service.config.to_dict(),
+                        "timestamp": time.time()
+                    })
+                
+                elif message_type == "stop":
+                    # Stop/interrupt current streaming response
+                    # Derive session_id from the connection mapping; don't trust client override
+                    mapped_session_id = chat_service.chat_sessions.get(connection_id)
+                    requested_session_id = data.get("session_id")
+                    if mapped_session_id and requested_session_id and requested_session_id != mapped_session_id:
+                        logger.warning(
+                            f"Stop requested with mismatched session_id "
+                            f"(requested={requested_session_id}, mapped={mapped_session_id}); ignoring client override."
+                        )
+                    session_id_to_stop = mapped_session_id or requested_session_id
+                    if not session_id_to_stop:
+                        await websocket.send_json({
+                            "type": "stop_response",
+                            "success": False,
+                            "error": "no_session_for_connection",
+                            "timestamp": time.time()
+                        })
+                        continue
+
+                    success = await chat_service.stop_streaming(session_id_to_stop)
+                    
+                    await websocket.send_json({
+                        "type": "stop_response",
+                        "success": success,
+                        "session_id": session_id_to_stop,
                         "timestamp": time.time()
                     })
                 

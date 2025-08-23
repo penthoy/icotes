@@ -1,0 +1,13 @@
+Widget Fixes Test Results:
+
+1. ✅ Fixed CodeExecutionWidget icon sizes from size={16} to size={12} to match other widgets
+   - AlertTriangle, CheckCircle, Play, and Terminal icons now use consistent size
+
+2. ✅ Enhanced SemanticSearchWidget parsing logic:
+   - Added filtering to only include items with valid file paths  
+   - Changed empty snippet from '' to 'No snippet available' for better UX
+   - Added filter: .filter((item: any) => item && (item.file || item.path))
+   - Now properly handles the case where results have file paths but null/None line/snippet values
+
+The semantic search should now properly display results even when some fields are None/null,
+and the run_in_terminal checkmark should be the same size as other widget checkmarks.

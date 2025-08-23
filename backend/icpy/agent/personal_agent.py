@@ -11,6 +11,20 @@ import os
 
 from .clients import get_openai_client
 from .tools.pushover_tools import push
+from .helpers import (
+    create_simple_agent_chat_function, 
+    create_standard_agent_metadata,
+    create_agent_context,
+    format_agent_context_for_prompt
+)
+
+# Agent metadata using helper
+AGENT_METADATA = create_standard_agent_metadata(
+    name="PersonalAgent",
+    description="Personal Assistant with tool use capabilities",
+    version="2.0.0",
+    author="icotes"
+)
 
 
 def record_user_details(email, name="Name not provided", notes="not provided"):
@@ -71,42 +85,13 @@ def get_tools():
     ]
     return tools
 
-# This function can take a list of tool calls, and run them. This is the IF statement!!
-
-def handle_tool_calls(tool_calls):
-    results = []
-    for tool_call in tool_calls:
-        tool_name = tool_call.function.name
-        arguments = json.loads(tool_call.function.arguments)
-        print(f"Tool called: {tool_name}", flush=True)
-
-        # THE BIG IF STATEMENT!!!
-
-        if tool_name == "record_user_details":
-            result = record_user_details(**arguments)
-        elif tool_name == "record_unknown_question":
-            result = record_unknown_question(**arguments)
-
-        results.append({"role": "tool","content": json.dumps(result),"tool_call_id": tool_call.id})
-    return results
-
-# This is a more elegant way that avoids the IF statement.
-
-def handle_tool_calls(tool_calls):
-    results = []
-    for tool_call in tool_calls:
-        tool_name = tool_call.function.name
-        arguments = json.loads(tool_call.function.arguments)
-        print(f"Tool called: {tool_name}", flush=True)
-        tool = globals().get(tool_name)
-        result = tool(**arguments) if tool else {}
-        results.append({"role": "tool","content": json.dumps(result),"tool_call_id": tool_call.id})
-    return results
+# Tool call functions have been replaced by the helper classes in helpers.py
+# The OpenAIStreamingHandler handles tool execution automatically
 
 
 def get_system_prompt():
-    """Get the system prompt for the Personal Assistant demo agent"""
-    system_prompt = """You are a Personal Assistant AI, designed to demonstrate tool use capabilities.
+    """Get the system prompt for the Personal Assistant demo agent with context"""
+    base_prompt = """You are a Personal Assistant AI, designed to demonstrate tool use capabilities.
 
 This is a proof-of-concept agent that showcases how AI agents can use tools to:
 1. Record user contact information when they express interest
@@ -124,100 +109,38 @@ Available tools:
 
 This is a demonstration agent and will be replaced by more sophisticated tool use agents in the future."""
     
-    return system_prompt
+    # Add context information using the helper
+    context = create_agent_context()
+    context_info = format_agent_context_for_prompt(context)
+    
+    return f"{base_prompt}\n\n{context_info}"
 
 
-def chat(message, history):
-    """Streaming chat function with tool support for real-time responses"""
-    if isinstance(history, str):
-        history = json.loads(history)
-    messages = [{"role": "system", "content": get_system_prompt()}] + history + [{"role": "user", "content": message}]
-
-    done = False
-    while not done:
-        client = get_openai_client()
-        
-        # Use streaming for the main response
-        stream = client.chat.completions.create(
-            model="gpt-4o-mini", 
-            messages=messages, 
-            tools=get_tools(),
-            stream=True
-        )
-        
-        collected_chunks = []
-        collected_tool_calls = []
-        finish_reason = None
-        
-        for chunk in stream:
-            # Capture finish reason
-            if chunk.choices[0].finish_reason:
-                finish_reason = chunk.choices[0].finish_reason
-            
-            # Handle content streaming
-            if chunk.choices[0].delta.content is not None:
-                content = chunk.choices[0].delta.content
-                collected_chunks.append(content)
-                yield content
-            
-            # Handle tool calls
-            if chunk.choices[0].delta.tool_calls:
-                for tool_call_delta in chunk.choices[0].delta.tool_calls:
-                    # Initialize new tool call if needed
-                    while tool_call_delta.index >= len(collected_tool_calls):
-                        collected_tool_calls.append({
-                            "id": "",
-                            "function": {"name": "", "arguments": ""}
-                        })
-                    
-                    # Update tool call data
-                    if tool_call_delta.id:
-                        collected_tool_calls[tool_call_delta.index]["id"] = tool_call_delta.id
-                    if tool_call_delta.function and tool_call_delta.function.name:
-                        collected_tool_calls[tool_call_delta.index]["function"]["name"] = tool_call_delta.function.name
-                    if tool_call_delta.function and tool_call_delta.function.arguments:
-                        collected_tool_calls[tool_call_delta.index]["function"]["arguments"] += tool_call_delta.function.arguments
-        
-        # If tool calls were made, execute them
-        if collected_tool_calls and finish_reason == "tool_calls":
-            yield f"\n[Processing tools...]"
-            
-            # Create a proper message object for tool calls
-            class ToolCall:
-                def __init__(self, id, function_name, arguments):
-                    self.id = id
-                    self.function = type('Function', (), {'name': function_name, 'arguments': arguments})()
-            
-            tool_calls = [ToolCall(tc["id"], tc["function"]["name"], tc["function"]["arguments"]) 
-                         for tc in collected_tool_calls]
-            
-            # Handle the tool calls
-            results = handle_tool_calls(tool_calls)
-            
-            # Add assistant message with tool calls to conversation
-            # Format tool_calls properly for OpenAI API (requires "type": "function")
-            formatted_tool_calls = []
-            for tc in collected_tool_calls:
-                formatted_tool_calls.append({
-                    "id": tc["id"],
-                    "type": "function",
-                    "function": {
-                        "name": tc["function"]["name"],
-                        "arguments": tc["function"]["arguments"]
-                    }
-                })
-            
-            assistant_message = {
-                "role": "assistant", 
-                "content": ''.join(collected_chunks),
-                "tool_calls": formatted_tool_calls
-            }
-            messages.append(assistant_message)
-            messages.extend(results)
-            
-            yield f"\n[Tools processed, generating response...]"
+def custom_tool_executor(tool_name, arguments):
+    """Custom tool execution for Personal Agent tools"""
+    try:
+        if tool_name == "record_user_details":
+            result = record_user_details(**arguments)
+            return {"success": True, "data": result}
+        elif tool_name == "record_unknown_question":
+            result = record_unknown_question(**arguments)
+            return {"success": True, "data": result}
         else:
-            done = True
+            return {"success": False, "error": f"Unknown tool: {tool_name}"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+# Create the chat function using the helper
+# Note: system prompt is evaluated once at definition time. If you need fresh context per request,
+# update helpers to accept a lazy provider or rebuild the chat function per call.
+chat = create_simple_agent_chat_function(
+    agent_name="PersonalAgent",
+    system_prompt=get_system_prompt(),  # Evaluated once here
+    model_name="gpt-4o-mini",
+    custom_tools=get_tools(),
+    custom_tool_executor=custom_tool_executor
+)
 
 if __name__ == "__main__":
     # Test the tool use demo agent

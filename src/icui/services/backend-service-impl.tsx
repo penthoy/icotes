@@ -1,5 +1,5 @@
 /**
- * Enhanced ICUI Backend Service
+ * ICUI Backend Service
  * 
  * Integrates all WebSocket improvements for file operations, explorer functionality,
  * and general backend communication with connection management, error handling,
@@ -47,7 +47,7 @@ export interface EnhancedBackendConfig {
  * Provides file operations, connection management, and workspace utilities
  * with all WebSocket improvements integrated.
  */
-export class EnhancedICUIBackendService extends EventEmitter {
+export class ICUIBackendService extends EventEmitter {
   private enhancedService: EnhancedWebSocketService | null = null;
   private migrationHelper: WebSocketMigrationHelper | null = null;
   private connectionId: string | null = null;
@@ -66,7 +66,7 @@ export class EnhancedICUIBackendService extends EventEmitter {
     enableMessageQueue: true,
     enableHealthMonitoring: true,
     enableAutoRecovery: true,
-    maxConcurrentConnections: 5,
+    maxConcurrentConnections: 20, // Increased from 5 to allow multiple tabs/sessions
     messageTimeout: 15000,
     batchFileOperations: true
   };
@@ -92,12 +92,12 @@ export class EnhancedICUIBackendService extends EventEmitter {
       const dynamicConfig = await configService.getConfig();
       this.baseUrl = dynamicConfig.base_url;  // Use base_url, not api_url
       this.websocketUrl = dynamicConfig.ws_url;
-      console.log('🔧 EnhancedICUIBackendService using dynamic URLs:', {
+      console.log('🔧 ICUIBackendService using dynamic URLs:', {
         baseUrl: this.baseUrl,
         websocketUrl: this.websocketUrl
       });
     } catch (error) {
-      console.warn('⚠️  Failed to get dynamic config for EnhancedICUIBackendService, using fallbacks:', error);
+      console.warn('⚠️  Failed to get dynamic config for ICUIBackendService, using fallbacks:', error);
       
       // Use environment variables or window location as fallback
       const envBackendUrl = import.meta.env.VITE_BACKEND_URL;
@@ -129,7 +129,7 @@ export class EnhancedICUIBackendService extends EventEmitter {
         this.websocketUrl = `${wsProtocol}//${host}/ws`;
       }
       
-      console.log('🔄 EnhancedICUIBackendService using fallback URLs:', {
+      console.log('🔄 ICUIBackendService using fallback URLs:', {
         baseUrl: this.baseUrl,
         websocketUrl: this.websocketUrl
       });
@@ -142,7 +142,7 @@ export class EnhancedICUIBackendService extends EventEmitter {
   private initializeEnhancedService(): void {
     // Only initialize if URLs are available
     if (!this.baseUrl || !this.websocketUrl) {
-      console.log('🔄 EnhancedICUIBackendService URLs not ready, delaying initialization');
+      console.log('🔄 ICUIBackendService URLs not ready, delaying initialization');
       return;
     }
 
@@ -176,25 +176,25 @@ export class EnhancedICUIBackendService extends EventEmitter {
 
     // Enhanced service event handlers
     this.enhancedService.on('connection_opened', (data: any) => {
-      log.info('EnhancedICUIBackendService', 'Enhanced service connected', data);
+      log.info('ICUIBackendService', 'Enhanced service connected', data);
       this._initialized = true;
       this.emit('connection_status_changed', { status: 'connected' });
     });
 
     this.enhancedService.on('connection_closed', (data: any) => {
-      log.info('EnhancedICUIBackendService', 'Enhanced service disconnected', data);
+      log.info('ICUIBackendService', 'Enhanced service disconnected', data);
       this.emit('connection_status_changed', { status: 'disconnected' });
     });
 
     // Also listen for the legacy events for compatibility
     this.enhancedService.on('connected', (data: any) => {
-      // console.log('[EnhancedICUIBackendService] Enhanced service connected (legacy event):', data);
+      // console.log('[ICUIBackendService] Enhanced service connected (legacy event):', data);
       this._initialized = true;
       this.emit('connection_status_changed', { status: 'connected' });
     });
 
     this.enhancedService.on('disconnected', (data: any) => {
-      // console.log('[EnhancedICUIBackendService] Enhanced service disconnected (legacy event):', data);
+      // console.log('[ICUIBackendService] Enhanced service disconnected (legacy event):', data);
       this.emit('connection_status_changed', { status: 'disconnected' });
     });
 
@@ -205,18 +205,18 @@ export class EnhancedICUIBackendService extends EventEmitter {
     });
 
     this.enhancedService.on('error', (error: any) => {
-      console.error('[EnhancedICUIBackendService] Enhanced service error:', error);
+      console.error('[ICUIBackendService] Enhanced service error:', error);
       this.emit('error', error);
     });
 
     this.enhancedService.on('healthUpdate', (health: any) => {
       this.healthStatus = health;
-      // console.log('[EnhancedICUIBackendService] Health update:', health);
+      // console.log('[ICUIBackendService] Health update:', health);
     });
 
     this.enhancedService.on('connectionClosed', (data: any) => {
       if (data.connectionId === this.connectionId) {
-        // console.log('[EnhancedICUIBackendService] Connection closed:', data);
+        // console.log('[ICUIBackendService] Connection closed:', data);
         this.connectionId = null;
         this._initialized = false;
         this.emit('connection_status_changed', { status: 'disconnected' });
@@ -229,7 +229,7 @@ export class EnhancedICUIBackendService extends EventEmitter {
    */
   private async ensureInitialized(): Promise<void> {
     if (!this._initialized) {
-      log.info('EnhancedICUIBackendService', 'Auto-initializing enhanced service');
+      log.info('ICUIBackendService', 'Auto-initializing enhanced service');
       
       // First, ensure we have config and URLs
       if (!this.baseUrl || !this.websocketUrl) {
@@ -252,7 +252,10 @@ export class EnhancedICUIBackendService extends EventEmitter {
    */
   private async initializeConnection(): Promise<void> {
     if (this.connectionId && this.enhancedService) {
-      console.log('[EnhancedICUIBackendService] Already connected');
+      // Reduced debug: Only log during development or for errors
+      if (import.meta.env?.MODE === 'development' || import.meta.env?.DEV) {
+        console.debug('[ICUIBackendService] Already connected');
+      }
       return;
     }
 
@@ -270,22 +273,22 @@ export class EnhancedICUIBackendService extends EventEmitter {
         timeout: 15000
       };
 
-      log.info('EnhancedICUIBackendService', 'Connecting with options', options);
+      log.info('ICUIBackendService', 'Connecting with options', options);
       this.connectionId = await this.enhancedService.connect(options);
-      log.info('EnhancedICUIBackendService', 'Connected with ID', { connectionId: this.connectionId });
+      log.info('ICUIBackendService', 'Connected with ID', { connectionId: this.connectionId });
       
     } catch (error) {
-      console.error('[EnhancedICUIBackendService] Enhanced connection failed:', error);
+      console.error('[ICUIBackendService] Enhanced connection failed:', error);
       
       // Fallback to legacy service
       if (this.migrationHelper) {
-        console.log('[EnhancedICUIBackendService] Attempting fallback to legacy service');
+        console.log('[ICUIBackendService] Attempting fallback to legacy service');
         try {
           const legacyService = this.migrationHelper.getService('main');
-          console.warn('[EnhancedICUIBackendService] Using legacy service adapter');
+          console.warn('[ICUIBackendService] Using legacy service adapter');
           // Would need to implement full legacy adapter here
         } catch (fallbackError) {
-          console.error('[EnhancedICUIBackendService] Fallback also failed:', fallbackError);
+          console.error('[ICUIBackendService] Fallback also failed:', fallbackError);
           throw fallbackError;
         }
       } else {
@@ -305,7 +308,7 @@ export class EnhancedICUIBackendService extends EventEmitter {
       // Use REST API for file listing (same as deprecated version)
       const path = workspaceRoot || '/';
       const url = `${this.baseUrl}/api/files?path=${encodeURIComponent(path)}`;
-      // console.log('[EnhancedICUIBackendService] Getting workspace files from:', url);
+      // console.log('[ICUIBackendService] Getting workspace files from:', url);
       
       const response = await fetch(url);
       
@@ -664,40 +667,43 @@ export class EnhancedICUIBackendService extends EventEmitter {
         // Data is already parsed
         message = event.data;
       } else {
-        console.warn('[EnhancedICUIBackendService] Invalid message data received:', event.data);
+        console.warn('[ICUIBackendService] Invalid message data received:', event.data);
         return;
       }
 
-      console.log('[EnhancedICUIBackendService] Message received:', message);
+      // Removed excessive debug: console.log('[ICUIBackendService] Message received:', message);
       
       // Handle different message types
       if (message.type === 'filesystem_event') {
         // Handle filesystem events and emit them for the explorer
-        log.debug('EnhancedICUIBackendService', 'Filesystem event received', { event: message.event, data: message.data });
-        console.log('[EnhancedICUIBackendService] Filesystem event received:', { event: message.event, data: message.data });
+        log.debug('ICUIBackendService', 'Filesystem event received', { event: message.event, data: message.data });
+        // Reduced debug: Only log filesystem events in debug mode
         this.emit('filesystem_event', {
           type: message.event,
           path: message.data?.path,
           data: message.data
         });
       } else if (message.type === 'subscribed') {
-        log.info('EnhancedICUIBackendService', 'Subscription confirmed', { topics: message.topics });
-        console.log('[EnhancedICUIBackendService] Subscription confirmed:', message.topics);
+        log.info('ICUIBackendService', 'Subscription confirmed', { topics: message.topics });
+        // Reduced debug: console.log('[ICUIBackendService] Subscription confirmed:', message.topics);
       } else if (message.type === 'unsubscribed') {
-        log.info('EnhancedICUIBackendService', 'Unsubscription confirmed', { topics: message.topics });
-        console.log('[EnhancedICUIBackendService] Unsubscription confirmed:', message.topics);
+        log.info('ICUIBackendService', 'Unsubscription confirmed', { topics: message.topics });
+        // Reduced debug: console.log('[ICUIBackendService] Unsubscription confirmed:', message.topics);
       } else if (message.type === 'welcome') {
-        log.info('EnhancedICUIBackendService', 'Welcome message received', { connectionId: message.connection_id });
-        console.log('[EnhancedICUIBackendService] Welcome message received:', message.connection_id);
+        log.info('ICUIBackendService', 'Welcome message received', { connectionId: message.connection_id });
+        // Reduced debug: console.log('[ICUIBackendService] Welcome message received:', message.connection_id);
       } else if (message.method) {
         this.emit('response', message);
       } else if (message.event) {
         this.emit(message.event, message.data);
       } else {
-        console.log('[EnhancedICUIBackendService] Unhandled message type:', message.type || 'unknown');
+        // Only log unhandled message types that are not common heartbeat/ping messages
+        if (message.type && message.type !== 'heartbeat' && message.type !== 'ping' && message.type !== 'pong') {
+          console.log('[ICUIBackendService] Unhandled message type:', message.type);
+        }
       }
     } catch (error) {
-      console.error('[EnhancedICUIBackendService] Error parsing message:', error);
+      console.error('[ICUIBackendService] Error parsing message:', error);
     }
   }
 
@@ -843,9 +849,8 @@ export class EnhancedICUIBackendService extends EventEmitter {
   }
 }
 
-// Create singleton instance with enhanced features
-export const enhancedICUIBackendService = new EnhancedICUIBackendService();
+// Create singleton instance
+export const icuiBackendService = new ICUIBackendService();
 
-// Compatibility exports for existing code
-export { EnhancedICUIBackendService as ICUIBackendService };
-export const icuiBackendService = enhancedICUIBackendService;
+// Legacy compatibility export
+export const enhancedICUIBackendService = icuiBackendService;
