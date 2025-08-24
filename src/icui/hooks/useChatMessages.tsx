@@ -1,16 +1,5 @@
-/**
- import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { 
-  ChatMessage, 
-  ConnectionStatus, 
-  ChatConfig, 
-  MessageOptions,
-  AgentType 
-} from '../types/chatTypes';
-import { ChatBackendClient } from '../services/chatBackendClient';
-import { notificationService } from '../services/notificationService';sages Hook - ICUI Framework
- * Custom React hook for managing chat message state and operations
- */
+// Chat Messages Hook - ICUI Framework
+// Centralizes on the singleton chatBackendClient to avoid duplicate clients/sockets
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { 
@@ -20,7 +9,7 @@ import {
   MessageOptions,
   AgentType
 } from '../types/chatTypes';
-import { ChatBackendClient } from '../services/chatBackendClient';
+import { chatBackendClient as singletonClient } from '../services/chat-backend-client-impl';
 import { notificationService } from '../services/notificationService';
 
 export interface UseChatMessagesOptions {
@@ -80,17 +69,18 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
   const [isTyping, setIsTyping] = useState(false);
 
   // Refs
-  const clientRef = useRef<ChatBackendClient | null>(null);
+  const clientRef = useRef<typeof singletonClient | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const isInitializedRef = useRef(false);
+  const isConnectingRef = useRef(false);
 
   // Get or create client instance
-  const getClient = useCallback((): ChatBackendClient => {
+  const getClient = useCallback(() => {
     if (!clientRef.current) {
-      clientRef.current = new ChatBackendClient();
+      clientRef.current = singletonClient;
       
       // Set up message callback
-      clientRef.current.onMessage((message: ChatMessage) => {
+  clientRef.current.onMessage((message: ChatMessage) => {
         // Ignore user messages that are broadcast back
         if (message.sender === 'user') {
           return;
@@ -130,7 +120,7 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
       });
       
       // Set up status callback
-      clientRef.current.onStatus(setConnectionStatus);
+  clientRef.current.onStatus(setConnectionStatus);
 
       // Set up typing callback from backend
       clientRef.current.onTyping((typing: boolean) => {
@@ -145,7 +135,7 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
   const initialize = useCallback(async () => {
     try {
       setIsLoading(true);
-      const client = getClient();
+  const client = getClient();
       
       // Load configuration
       const chatConfig = await client.getChatConfig();
@@ -173,6 +163,8 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
   const connect = useCallback(async (): Promise<boolean> => {
     try {
       const client = getClient();
+      if (client.isConnected || isConnectingRef.current) return true;
+      isConnectingRef.current = true;
       const success = await client.connectWebSocket();
       
       if (success && !isInitializedRef.current) {
@@ -180,7 +172,7 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
         isInitializedRef.current = true;
       }
       
-      return success;
+    return success;
     } catch (error) {
       console.error('Failed to connect:', error);
       return false;
@@ -189,9 +181,7 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
 
   // Disconnect
   const disconnect = useCallback(() => {
-    if (clientRef.current) {
-      clientRef.current.disconnect();
-    }
+    // Keep singleton connection alive across consumers; no-op here
   }, []);
 
   // Send message
@@ -371,12 +361,7 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
     if (autoConnect && !isInitializedRef.current) {
       connect();
     }
-    
-    // Cleanup on unmount
-    return () => {
-      disconnect();
-    };
-  }, [autoConnect, connect, disconnect]);
+  }, [autoConnect, connect]);
 
   // Computed values
   const isConnected = connectionStatus.connected;

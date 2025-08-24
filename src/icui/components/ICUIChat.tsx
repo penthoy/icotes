@@ -108,7 +108,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
   const search = useChatSearch(messages);
 
   // Session synchronization
-  const { onSessionChange, emitSessionChange } = useChatSessionSync();
+  const { onSessionChange, emitSessionChange } = useChatSessionSync('ICUIChat');
 
   // Chat history management
   const { createSession, switchSession, sessions, activeSession } = useChatHistory();
@@ -231,14 +231,16 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
       }
     }
 
-  const cleanup = onSessionChange((sessionId, action, sessionName) => {
+    const cleanup = onSessionChange((sessionId, action, sessionName) => {
       if (action === 'switch' || action === 'create') {
-        setCurrentSessionId(sessionId);
-    if (sessionName !== undefined) setCurrentSessionName(sessionName);
-        reloadMessages(sessionId);
-        setIsAutoScrollEnabled(true);
-        setHasNewMessages(true);
-        jumpToLatest();
+        if (sessionId !== currentSessionId) {
+          setCurrentSessionId(sessionId);
+          if (sessionName !== undefined) setCurrentSessionName(sessionName);
+          reloadMessages(sessionId);
+          setIsAutoScrollEnabled(true);
+          setHasNewMessages(true);
+          jumpToLatest();
+        }
         if (!isConnected) {
           connect().catch(() => {/* noop */});
         }
@@ -246,7 +248,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
     });
 
     return cleanup;
-  }, [onSessionChange, reloadMessages, jumpToLatest]);
+  }, [onSessionChange, reloadMessages, jumpToLatest, currentSessionId, isConnected, connect]);
 
   // Handle sending a message
   const handleSendMessage = useCallback(async (content?: string, options?: MessageOptions) => {

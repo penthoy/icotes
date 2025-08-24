@@ -80,6 +80,51 @@ export const ICUITabContainer: React.FC<ICUITabContainerProps> = ({
 
   const activeTab = tabs.find(tab => tab.id === activeTabId);
 
+  // Debounce + circuit breaker for tab activation (Phase 3 hardening)
+  const debounceTimerRef = useRef<number | null>(null);
+  const lastRequestedTabRef = useRef<string | null>(null);
+  const switchCountRef = useRef(0);
+  const lastSwitchWindowStartRef = useRef<number>(0);
+
+  const requestActivate = useCallback((nextTabId: string) => {
+    if (nextTabId === activeTabId) return;
+
+    // Circuit breaker: block if >6 switches within 1000ms window
+    const now = Date.now();
+    if (now - lastSwitchWindowStartRef.current > 1000) {
+      lastSwitchWindowStartRef.current = now;
+      switchCountRef.current = 0;
+    }
+    switchCountRef.current += 1;
+    if (switchCountRef.current > 6) {
+      // Soft-block: don't activate, just log in dev builds
+      if (process.env.NODE_ENV !== 'production') {
+        // eslint-disable-next-line no-console
+        console.debug('[ICUITabContainer] Rapid tab switching detected - temporarily blocking');
+      }
+      return;
+    }
+
+    // Debounce actual activation to 100ms
+    lastRequestedTabRef.current = nextTabId;
+    if (debounceTimerRef.current) {
+      window.clearTimeout(debounceTimerRef.current);
+    }
+    debounceTimerRef.current = window.setTimeout(() => {
+      const target = lastRequestedTabRef.current;
+      if (target && target !== activeTabId) {
+        onTabActivate(target);
+      }
+      debounceTimerRef.current = null;
+    }, 100);
+  }, [activeTabId, onTabActivate]);
+
+  useEffect(() => () => {
+    if (debounceTimerRef.current) {
+      window.clearTimeout(debounceTimerRef.current);
+    }
+  }, []);
+
   // Get background colors based on theme - FIXED: Active tabs should be lighter like editor tabs
   const getTabBackgroundColor = (isActive: boolean) => {
     if (isDarkTheme) {
@@ -134,7 +179,7 @@ export const ICUITabContainer: React.FC<ICUITabContainerProps> = ({
   return (
     <div className={`icui-tab-container h-full flex flex-col ${className}`}>
       {/* Tab Bar */}
-      <div className="flex items-center overflow-x-auto min-h-[40px]" style={{ backgroundColor: 'var(--icui-bg-secondary)', borderBottom: '1px solid var(--icui-border-subtle)' }}>
+  <div data-testid="icui-tab-bar" className="flex items-center overflow-x-auto min-h-[40px]" style={{ backgroundColor: 'var(--icui-bg-secondary)', borderBottom: '1px solid var(--icui-border-subtle)' }}>
         {tabs.map((tab, index) => (
           <div
             key={tab.id}
@@ -151,11 +196,7 @@ export const ICUITabContainer: React.FC<ICUITabContainerProps> = ({
               borderBottomColor: tab.id === activeTabId ? 'var(--icui-accent)' : 'transparent',
               color: tab.id === activeTabId ? 'var(--icui-text-primary)' : 'var(--icui-text-secondary)'
             }}
-            onClick={() => {
-              if (tab.id !== activeTabId) {
-                onTabActivate(tab.id);
-              }
-            }}
+            onClick={() => requestActivate(tab.id)}
             onMouseEnter={() => !dragOver && setHoveredTab(tab.id)}
             onMouseLeave={() => setHoveredTab(null)}
             onDragStart={(e) => handleDragStart(e, tab, index)}

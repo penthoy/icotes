@@ -1,40 +1,19 @@
 import { useCallback } from 'react';
+import { emitSessionChange as busEmit, subscribeSessionChange } from '../lib/eventBus';
 
-// Global event system for session synchronization
-const SESSION_CHANGE_EVENT = 'icui.chat.session.change';
-
-interface SessionChangeEvent extends CustomEvent {
-	detail: {
-		sessionId: string;
-		sessionName?: string;
-		action: 'switch' | 'create' | 'delete';
-	};
-}
-
-export function useChatSessionSync() {
-	// Emit session change event
+export function useChatSessionSync(source: string = 'useChatSessionSync') {
+	// Emit via typed bus
 	const emitSessionChange = useCallback((sessionId: string, action: 'switch' | 'create' | 'delete', sessionName?: string) => {
-		const event = new CustomEvent(SESSION_CHANGE_EVENT, {
-			detail: { sessionId, action, sessionName }
+		busEmit({ sessionId, action, sessionName, source });
+	}, [source]);
+
+	// Subscribe via typed bus
+	const onSessionChange = useCallback((callback: (sessionId: string, action: 'switch' | 'create' | 'delete', sessionName?: string, payload?: any) => void) => {
+		return subscribeSessionChange((payload) => {
+			if (payload.source && payload.source === source) return; // self-ignore
+			callback(payload.sessionId, payload.action, payload.sessionName, payload);
 		});
-		window.dispatchEvent(event);
-	}, []);
+	}, [source]);
 
-	// Listen for session change events
-	const onSessionChange = useCallback((callback: (sessionId: string, action: 'switch' | 'create' | 'delete', sessionName?: string) => void) => {
-		const handler = (event: SessionChangeEvent) => {
-			callback(event.detail.sessionId, event.detail.action, event.detail.sessionName);
-		};
-		
-		window.addEventListener(SESSION_CHANGE_EVENT, handler as EventListener);
-		
-		return () => {
-			window.removeEventListener(SESSION_CHANGE_EVENT, handler as EventListener);
-		};
-	}, []);
-
-	return {
-		emitSessionChange,
-		onSessionChange
-	};
+	return { emitSessionChange, onSessionChange };
 } 
