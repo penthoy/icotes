@@ -50,6 +50,14 @@
       "category": "Custom Agents",
       "order": 3,
       "icon": "\ud83e\udde0"
+    },
+    "OpenRouterAgentCreator": {
+      "enabled": true,
+      "displayName": "OpenRouter Agent Creator",
+      "description": "An AI agent (OpenRouter) that helps you create other custom agents",
+      "category": "Custom Agents",
+      "order": 4,
+      "icon": "\ud83c\udf10"
     }
   },
   "categories": {

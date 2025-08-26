@@ -70,7 +70,8 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
 
   // Refs
   const clientRef = useRef<typeof singletonClient | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  // For components that want to auto-scroll, we keep a virtual ref and provide a helper
+  const messagesEndRef = useRef<HTMLElement | null>(null);
   const isInitializedRef = useRef(false);
   const isConnectingRef = useRef(false);
 
@@ -344,8 +345,12 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
 
   // Scroll to bottom
   const scrollToBottom = useCallback(() => {
-    if (messagesEndRef.current && autoScroll) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    if (!autoScroll) return;
+    try {
+      const el = document.querySelector('[data-icui-chat-end]') as HTMLElement | null;
+      (el || messagesEndRef.current)?.scrollIntoView({ behavior: 'smooth' });
+    } catch {
+      // no-op
     }
   }, [autoScroll]);
 

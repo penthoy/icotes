@@ -76,9 +76,11 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
   const [selectedAgent, setSelectedAgent] = useState(''); // Default agent will be set by CustomAgentDropdown
   const [isDarkTheme, setIsDarkTheme] = useState(false);
   const [isComposing, setIsComposing] = useState(false);
-  // NEW: smart auto-scroll state
+  // NEW: smart auto-scroll state with user intent tracking
   const [isAutoScrollEnabled, setIsAutoScrollEnabled] = useState(true);
   const [hasNewMessages, setHasNewMessages] = useState(false);
+  const [userHasScrolledUp, setUserHasScrolledUp] = useState(false);
+  const lastScrollTop = useRef(0);
 
   // Use the chat messages hook for backend integration
   const {
@@ -165,22 +167,23 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
     };
   }, []);
 
-  // Auto-scroll when new messages arrive, but only if the user is near the bottom
+  // Auto-scroll when new messages arrive, but only if user hasn't intentionally scrolled up
   useEffect(() => {
     if (!messagesEndRef.current) return;
     if (!autoScroll) return;
 
-    if (isAutoScrollEnabled) {
+    // Only auto-scroll if user is at bottom AND hasn't intentionally scrolled up
+    if (isAutoScrollEnabled && !userHasScrolledUp) {
       // Use instant scroll to avoid jitter during streaming
       messagesEndRef.current.scrollIntoView({ behavior: 'auto' });
       setHasNewMessages(false);
     } else {
-      // User is reading older messages; show CTA
+      // User is reading older messages or has scrolled up; show CTA
       setHasNewMessages(true);
     }
-  }, [messages, autoScroll, isAutoScrollEnabled]);
+  }, [messages, autoScroll, isAutoScrollEnabled, userHasScrolledUp]);
 
-  // Track user scroll position to enable/disable auto-scroll
+  // Track user scroll position to enable/disable auto-scroll with intent detection
   useEffect(() => {
     const container = chatContainerRef.current;
     if (!container) return;
@@ -192,10 +195,26 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
       if (ticking) return;
       ticking = true;
       requestAnimationFrame(() => {
+        const currentScrollTop = container.scrollTop;
         const distanceFromBottom = container.scrollHeight - (container.scrollTop + container.clientHeight);
         const nearBottom = distanceFromBottom <= thresholdPx;
+        
+        // Detect if user manually scrolled up (not caused by new content)
+        const scrolledUp = currentScrollTop < lastScrollTop.current;
+        
+        // Update states based on user behavior
         setIsAutoScrollEnabled(nearBottom);
-        if (nearBottom) setHasNewMessages(false);
+        
+        if (scrolledUp && !nearBottom) {
+          // User intentionally scrolled up away from bottom
+          setUserHasScrolledUp(true);
+        } else if (nearBottom) {
+          // User is back at bottom, re-enable auto-scrolling
+          setUserHasScrolledUp(false);
+          setHasNewMessages(false);
+        }
+        
+        lastScrollTop.current = currentScrollTop;
         ticking = false;
       });
     };
@@ -209,6 +228,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
   // Jump to latest helper
   const jumpToLatest = useCallback(() => {
     setIsAutoScrollEnabled(true);
+    setUserHasScrolledUp(false); // Reset user scroll intent
     setHasNewMessages(false);
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
@@ -258,6 +278,18 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
     }
 
     try {
+      // Auto-create session if none exists
+      if (!currentSessionId && sessions.length === 0) {
+        // Create session with explicit name, matching manual button behavior
+        const newSessionId = await createSession('New Chat');
+        switchSession(newSessionId);
+        // Set the name immediately - don't rely on async session state updates
+        const createdName = 'New Chat';
+        emitSessionChange(newSessionId, 'create', createdName);
+        setCurrentSessionId(newSessionId);
+        setCurrentSessionName(createdName);
+      }
+
       // Check if selected agent is a custom agent (from custom_agent.py registry)
       // Dynamic check based on available custom agents from the API
       const isCustomAgent = customAgents.includes(selectedAgent);
@@ -507,7 +539,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
                 />
               </div>
             ))}
-            <div ref={messagesEndRef} />
+            <div ref={messagesEndRef} data-icui-chat-end />
             {isConnected && isTyping && (
               <div className="flex items-center gap-2 text-xs opacity-70 mt-1" style={{ color: 'var(--icui-text-secondary)' }}>
                 <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />

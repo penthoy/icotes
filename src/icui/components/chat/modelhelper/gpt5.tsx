@@ -30,9 +30,11 @@ export class GPT5ModelHelper implements ModelHelper {
   stripAllToolText(text: string): string {
     // Combine all major removal patterns into a single regex with alternation
     const combinedPattern = new RegExp([
-      // Tool execution blocks
+      // Tool execution blocks (complete blocks)
       '🔧\\s*\\*\\*Executing tools\\.\\.\\.\\*\\*[\\s\\S]*?🔧\\s*\\*\\*Tool execution complete\\. Continuing\\.\\.\\.\\*\\*',
+      // Standalone tool execution messages
       '🔧\\s*\\*\\*Executing tools\\.\\.\\.\\*\\*\\s*\\n?',
+      '🔧\\s*\\*\\*Tool execution complete\\. Continuing\\.\\.\\.\\*\\*\\s*\\n?',
       // Tool header lines (standalone, incomplete, or still running)
       '📋\\s*\\*\\*[^:]+\\*\\*:\\s*(\\{[^}]*\\}|[^\\n]*)\\n?',
       '📋\\s*\\*\\*[^:]+\\*\\*:\\s*\\{[^}]*\\}\\s*$',
