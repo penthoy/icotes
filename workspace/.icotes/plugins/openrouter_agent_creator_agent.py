@@ -219,11 +219,18 @@ Be helpful, practical, and focus on creating working solutions."""
 
         # Handle JSON string history (gradio compatibility)
         if isinstance(history, str):
-            history = json.loads(history)
+            try:
+                history = json.loads(history) or []
+            except json.JSONDecodeError:
+                logger.warning("Invalid JSON for history; defaulting to empty list")
+                history = []
+        if not isinstance(history, list):
+            logger.warning(f"Unexpected history type {type(history)}; defaulting to []")
+            history = []
 
         # Build conversation messages
         system_message = {"role": "system", "content": system_prompt}
-        messages = [system_message] + history + [{"role": "user", "content": message}]
+        messages = [system_message, *history, {"role": "user", "content": message}]
 
         # Create streaming handler and process (OpenAI-style for OpenRouter compatibility)
         handler = OpenAIStreamingHandler(client, MODEL_NAME)

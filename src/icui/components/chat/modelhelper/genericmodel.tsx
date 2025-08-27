@@ -383,8 +383,8 @@ export class GenericModelHelper implements ModelHelper {
         const toolName = match[1].trim();
         const argsText = match[2].trim();
 
-        // Skip if this tool has already been processed or has completion markers
-        const hasCompletion = content.includes(`✅ **Success**`) || content.includes(`❌ **Error**`);
+        // Skip only if this header itself shows completion markers
+        const hasCompletion = /✅\s*\*\*Success\*\*|❌\s*\*\*Error\*\*/.test(match[0]);
         if (!hasCompletion) {
           const input: any = argsText ? this.tryParseArgs(argsText) : {};
           const { category, mappedName } = this.mapToolNameToCategory(toolName);
@@ -588,7 +588,12 @@ export class GenericModelHelper implements ModelHelper {
       error: error || '',
       stackTrace: stackTrace || '',
       language: originalToolName === 'run_in_terminal' ? 'bash' : this.detectCodeLanguage(code) || 'bash',
-      exitCode: output?.status || output?.exitCode || (toolCall.status === 'success' ? 0 : 1),
+      exitCode:
+        typeof output?.exitCode === 'number' ? output.exitCode
+        : typeof output?.status === 'number' ? output.status
+        : (typeof output?.status === 'string' && /^\d+$/.test(output.status)
+            ? parseInt(output.status, 10)
+            : (toolCall.status === 'success' ? 0 : 1)),
       executionTime: toolCall.endTime && toolCall.startTime 
         ? toolCall.endTime.getTime() - toolCall.startTime.getTime() 
         : undefined,

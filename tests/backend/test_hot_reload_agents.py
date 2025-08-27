@@ -45,12 +45,6 @@ class TestAgentRegistry:
         # Should include the built-in agent path
         assert any('icpy/agent' in path for path in paths)
         
-        """
-Test suite for Hot Reload Agent System
-
-This test suite validates the dynamic agent registry and hot-reload capabilities
-while ensuring backward compatibility with existing gradio-compatible agents.
-    
     def test_agent_name_resolution(self):
         """Test AGENT_NAME vs filename fallback"""
         # Create a mock module with AGENT_NAME

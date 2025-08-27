@@ -94,7 +94,7 @@ except ImportError as e:
         logger.info("KimiAgent: Environment reload requested")
 
 
-def chat(message: str, history: List[Dict[str, str]]) -> AsyncGenerator[str, None]:
+def chat(message: str, history: List[Dict[str, str]]) -> Generator[str, None, None]:
     """
     Main chat function for KimiAgent using Moonshot's Kimi models.
     
