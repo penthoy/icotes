@@ -42,7 +42,6 @@
       "order": 999,
       "icon": "\ud83d\udcbb"
     },
-
     "ClaudeAgentCreator": {
       "enabled": true,
       "displayName": "Claude Agent Creator",
@@ -58,6 +57,29 @@
       "category": "Custom Agents",
       "order": 4,
       "icon": "\ud83c\udf10"
+    },
+    "KimiAgent": {
+      "enabled": true,
+      "displayName": "Kimi K2 Assistant",
+      "description": "General-purpose AI assistant powered by Moonshot's Kimi models",
+      "category": "AI Models",
+      "order": 1,
+      "icon": "\ud83c\udf19"
+    },
+    "OllamaAgent": {
+      "enabled": true,
+      "displayName": "Ollama Assistant",
+      "description": "Privacy-focused AI assistant using local Ollama models",
+      "category": "AI Models",
+      "order": 2,
+      "icon": "\ud83c\udfe0"
+    },
+    "deepseek-r1:14b": {
+      "enabled": true,
+      "displayName": "deepseek-r1:14b",
+      "description": "Auto-discovered agent: deepseek-r1:14b",
+      "category": "General",
+      "order": 999
     }
   },
   "categories": {
@@ -65,13 +87,17 @@
       "icon": "\ud83d\udee0\ufe0f",
       "order": 2
     },
+    "AI Models": {
+      "icon": "\ud83e\udd16",
+      "order": 1
+    },
     "Tests": {
       "icon": "\ud83d\udcac",
-      "order": 3
+      "order": 4
     },
     "Built-in": {
       "icon": "\ud83e\udde0",
-      "order": 1
+      "order": 3
     }
   },
   "settings": {

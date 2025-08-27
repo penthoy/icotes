@@ -13,7 +13,7 @@ That said, feel free to try it out and share feedback—would love to hear your 
 
 ## Agent Creator ##
 This is the default selected agent. It's a custom agent, and the code lives at
-`workspace/plugins/agent_creator_agent.py`. You can modify any part of it to fit your needs.
+`workspace/.icotes/plugins/agent_creator_agent.py`. You can modify any part of it to fit your needs.
 
 The `MODEL_NAME` defaults to `gpt-5-nano`. To use a more capable model, change the `MODEL_NAME`
 constant in the agent implementation or configure it via your environment/runtime settings.
@@ -38,7 +38,7 @@ such as Rust or Go later on.
 
 ## Hot reload ##
 To add or update an agent:
-1) Create `<AgentName>_agent.py` under the `workspace/plugins` folder.
+1) Create `<AgentName>_agent.py` under the `workspace/.icotes/plugins` folder.
 2) Register it in `.icotes/agents.json`.
 3) The hot-reload system will pick it up automatically, or click the reload button next to the Agent
    selector in the Chat window to force a reload.

@@ -15,7 +15,7 @@
 ### Agent Function Consolidation (January 2025)
 - **Task**: Extract reusable helper functions from agent_creator_agent for better code organization
 - **Key Insight**: Centralized complex streaming and tool call logic into helper classes, reduced agent code by 18% while making agent development more accessible
-- **Files**: `backend/icpy/agent/helpers.py`, `workspace/plugins/agent_creator_agent.py`, `backend/icpy/agent/personal_agent.py`
+- **Files**: `backend/icpy/agent/helpers.py`, `workspace/.icotes/plugins/agent_creator_agent.py`, `backend/icpy/agent/personal_agent.py`
 
 ### Chat History Bug Fixes (December 2024)
 - **Task**: Fix all critical chat history bugs and integrate backend CRUD API with frontend
@@ -35,7 +35,7 @@
 ### Agent Tool System - Phase 1 Complete (December 2024)
 - **Task**: Complete implementation of 5-tool agent system with full TDD approach
 - **Key Insight**: 71 passing tests, comprehensive tool registry system, OpenAI function calling compatibility, security features with workspace enforcement
-- **Files**: `backend/icpy/agent/tools/*`, `workspace/plugins/agent_creator_agent.py`
+- **Files**: `backend/icpy/agent/tools/*`, `workspace/.icotes/plugins/agent_creator_agent.py`
 
 ### Chat Frontend Phase 1 Complete (December 2024)
 - **Task**: Implement modern chat interface with markdown support, tool call widgets, and streaming infrastructure

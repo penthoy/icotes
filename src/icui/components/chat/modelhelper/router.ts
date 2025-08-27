@@ -1,6 +1,8 @@
-import gpt5Helper from './gpt5';
 import genericModelHelper from './genericmodel';
-import type { ModelHelper } from './gpt5';
+import type { ModelHelper } from './genericmodel';
+
+// For backward compatibility, alias the generic helper as gpt5Helper
+const gpt5Helper = genericModelHelper;
 
 let ACTIVE_MODEL_ID = 'gpt5';
 
