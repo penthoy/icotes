@@ -144,34 +144,36 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
           return node;
         });
         
-        // After state is updated, refresh expanded folder contents
+        // After state is updated, refresh contents of all expanded folders (any depth)
+        const collectExpanded = (nodes: FileNode[], acc: FileNode[] = []): FileNode[] => {
+          for (const n of nodes) {
+            if (n.type === 'folder' && n.isExpanded) acc.push(n);
+            if (n.children && n.children.length > 0) collectExpanded(n.children as FileNode[], acc);
+          }
+          return acc;
+        };
         setTimeout(async () => {
-          const expandedFolders = mergedFiles.filter(node => 
-            node.type === 'folder' && node.isExpanded && node.children && node.children.length > 0
-          );
-          
-          if (expandedFolders.length > 0) {
-            for (const folder of expandedFolders) {
-              try {
-                const freshChildren = await backendService.getDirectoryContents(folder.path, showHiddenFiles);
-                setFiles(currentFiles => {
-                  const updateChildren = (nodes: FileNode[]): FileNode[] => {
-                    return nodes.map(node => {
-                      if (node.id === folder.id) {
-                        return { ...node, children: freshChildren };
-                      }
-                      if (node.children) {
-                        return { ...node, children: updateChildren(node.children) };
-                      }
-                      return node;
-                    });
-                  };
-                  return updateChildren(currentFiles);
+          const expanded = collectExpanded(mergedFiles);
+          if (expanded.length === 0) return;
+          try {
+            const results = await Promise.all(
+              expanded.map(async (folder) => ({
+                path: folder.path,
+                children: await backendService.getDirectoryContents(folder.path, showHiddenFiles),
+              }))
+            );
+            setFiles(currentFiles => {
+              const apply = (nodes: FileNode[]): FileNode[] =>
+                nodes.map(node => {
+                  const match = results.find(r => r.path === node.path);
+                  const nextChildren = node.children ? apply(node.children as FileNode[]) : node.children;
+                  if (match) return { ...node, children: match.children };
+                  return node.children ? { ...node, children: nextChildren } : node;
                 });
-              } catch (err) {
-                console.warn('Failed to refresh expanded folder:', folder.path, err);
-              }
-            }
+              return apply(currentFiles);
+            });
+          } catch (err) {
+            console.warn('Failed to refresh expanded folders:', err);
           }
         }, 10);
         
@@ -497,34 +499,35 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
           return node;
         });
         
-        // After state is updated, refresh expanded folder contents with new hidden file setting
+        const collectExpanded = (nodes: FileNode[], acc: FileNode[] = []): FileNode[] => {
+          for (const n of nodes) {
+            if (n.type === 'folder' && n.isExpanded) acc.push(n);
+            if (n.children && n.children.length > 0) collectExpanded(n.children as FileNode[], acc);
+          }
+          return acc;
+        };
         setTimeout(async () => {
-          const expandedFolders = mergedFiles.filter(node => 
-            node.type === 'folder' && node.isExpanded && node.children && node.children.length > 0
-          );
-          
-          if (expandedFolders.length > 0) {
-            for (const folder of expandedFolders) {
-              try {
-                const freshChildren = await backendService.getDirectoryContents(folder.path, newState);
-                setFiles(currentFiles => {
-                  const updateChildren = (nodes: FileNode[]): FileNode[] => {
-                    return nodes.map(node => {
-                      if (node.id === folder.id) {
-                        return { ...node, children: freshChildren };
-                      }
-                      if (node.children) {
-                        return { ...node, children: updateChildren(node.children) };
-                      }
-                      return node;
-                    });
-                  };
-                  return updateChildren(currentFiles);
+          const expanded = collectExpanded(mergedFiles);
+          if (expanded.length === 0) return;
+          try {
+            const results = await Promise.all(
+              expanded.map(async (folder) => ({
+                path: folder.path,
+                children: await backendService.getDirectoryContents(folder.path, newState),
+              }))
+            );
+            setFiles(currentFiles => {
+              const apply = (nodes: FileNode[]): FileNode[] =>
+                nodes.map(node => {
+                  const match = results.find(r => r.path === node.path);
+                  const nextChildren = node.children ? apply(node.children as FileNode[]) : node.children;
+                  if (match) return { ...node, children: match.children };
+                  return node.children ? { ...node, children: nextChildren } : node;
                 });
-              } catch (err) {
-                console.warn('Failed to refresh expanded folder:', folder.path, err);
-              }
-            }
+              return apply(currentFiles);
+            });
+          } catch (err) {
+            console.warn('Failed to refresh expanded folders:', err);
           }
         }, 10);
         

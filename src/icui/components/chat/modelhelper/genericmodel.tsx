@@ -1,12 +1,17 @@
 /**
  * Generic Model Helper
  * 
- * Contains model-agnostic parsing logic and helper functions for:
+ * Contains parsing logic and helper functions for:
  * - Tool execution text parsing
  * - Tool call extraction from message content
  * - Tool name mapping and categorization
  * - Content cleaning and formatting
  * - Widget data parsing
+ * 
+ * Note: While this helper is designed to be extensible for different model output formats,
+ * its current implementation contains several GPT-5-style formatting patterns
+ * (e.g., '🔧 **Executing tools...**', '📋 **toolname**:', '✅ **Success**').
+ * Update or extend the parsing logic as needed to support other model formats.
  */
 
 import { ChatMessage as ChatMessageType, ToolCallMeta } from '../../../types/chatTypes';
@@ -142,7 +147,7 @@ export class GenericModelHelper implements ModelHelper {
         endTime: tc.endedAt ? new Date(tc.endedAt) : undefined,
         metadata: tc.metadata
       }));
-      return { content, toolCalls };
+      return { content: this.stripAllToolText(content), toolCalls };
     }
 
     // Clean up content first to prevent flashing

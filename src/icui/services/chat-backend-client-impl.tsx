@@ -403,8 +403,8 @@ export class ChatBackendClient {
       );
     } catch (error) {
       console.error('[ChatBackendClient] Failed to stop streaming:', error);
-  // Even if sending the stop message fails, keep the local interrupt behavior
-  throw error;
+      // Even if sending the stop message fails, keep the local interrupt behavior
+      this.handleError('Failed to send stop signal; stream already stopped locally.');
     }
   }
 

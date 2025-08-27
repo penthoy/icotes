@@ -17,8 +17,6 @@ Enhanced with tool integration capabilities for file operations.
 import json
 import os
 import logging
-from typing import Dict, List, Any
-
 # Configure logging
 logger = logging.getLogger(__name__)
 
@@ -99,6 +97,18 @@ except ImportError as e:
         DEPENDENCIES_AVAILABLE = False
         logger.info("Dependencies still not available after reload")
         return False
+
+    # Fallback metadata object with standard keys
+    AGENT_METADATA = {
+        "AGENT_NAME": AGENT_NAME,
+        "AGENT_DESCRIPTION": AGENT_DESCRIPTION,
+        "AGENT_VERSION": AGENT_VERSION,
+        "AGENT_AUTHOR": AGENT_AUTHOR,
+        "MODEL_NAME": MODEL_NAME,
+        "AGENT_MODEL_ID": AGENT_MODEL_ID,
+        "status": "error",
+        "error": f"Dependencies not available: {e}",
+    }
 
 
 def get_tools():

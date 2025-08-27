@@ -139,6 +139,8 @@ def get_ollama_client():
     Uses OLLAMA_URL environment variable
     """
     ollama_url = os.getenv("OLLAMA_URL")
+    if not ollama_url:
+        raise ValueError("OLLAMA_URL environment variable is not set. Example: http://localhost:11434/v1")
     
     return OpenAI(
         api_key="ollama",  # Ollama uses a fixed API key

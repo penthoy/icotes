@@ -85,6 +85,10 @@ export const ICUITabContainer: React.FC<ICUITabContainerProps> = ({
   const lastRequestedTabRef = useRef<string | null>(null);
   const switchCountRef = useRef(0);
   const lastSwitchWindowStartRef = useRef<number>(0);
+  
+  // Keep latest activeTabId for debounce callback
+  const activeTabIdRef = useRef(activeTabId);
+  useEffect(() => { activeTabIdRef.current = activeTabId; }, [activeTabId]);
 
   const requestActivate = useCallback((nextTabId: string) => {
     if (nextTabId === activeTabId) return;
@@ -102,6 +106,12 @@ export const ICUITabContainer: React.FC<ICUITabContainerProps> = ({
         // eslint-disable-next-line no-console
         console.debug('[ICUITabContainer] Rapid tab switching detected - temporarily blocking');
       }
+      // Clear any pending activation
+      if (debounceTimerRef.current) {
+        window.clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
+      }
+      lastRequestedTabRef.current = null;
       return;
     }
 
@@ -112,12 +122,13 @@ export const ICUITabContainer: React.FC<ICUITabContainerProps> = ({
     }
     debounceTimerRef.current = window.setTimeout(() => {
       const target = lastRequestedTabRef.current;
-      if (target && target !== activeTabId) {
+      // Use a ref for the latest activeTabId to avoid stale closure
+      if (target && target !== activeTabIdRef.current) {
         onTabActivate(target);
       }
       debounceTimerRef.current = null;
     }, 100);
-  }, [activeTabId, onTabActivate]);
+  }, [onTabActivate]);
 
   useEffect(() => () => {
     if (debounceTimerRef.current) {

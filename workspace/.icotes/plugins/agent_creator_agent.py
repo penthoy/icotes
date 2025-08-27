@@ -171,7 +171,7 @@ Agent behavior:
 
 Agent structure:
 1. All custom agents should be created under workspace/.icotes/plugins/ where workspace is your workspace root directory.
-2. all your code is under workspace/.icotes/plugins/agent_creator_agent.py you can use this as implementation reference.
+2. Use this file (workspace/.icotes/plugins/agent_creator_agent.py) as a reference implementation; create new agents under workspace/.icotes/plugins/<AGENT_NAME>_agent.py.
 3. agents should use this convention: <AGENT_NAME>_agent.py
 4. after a new agent is created, you also need to add a config update to workspace/.icotes/agents.json for this agent to be properly registered with the hot reload system.
 5. before you modify the agent.json, make sure you read it and understand its structure before updating it, always update with the same structure as the original.

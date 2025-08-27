@@ -282,10 +282,8 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
       if (!currentSessionId && sessions.length === 0) {
         // Create session with explicit name, matching manual button behavior
         const newSessionId = await createSession('New Chat');
-        switchSession(newSessionId);
         // Set the name immediately - don't rely on async session state updates
         const createdName = 'New Chat';
-        emitSessionChange(newSessionId, 'create', createdName);
         setCurrentSessionId(newSessionId);
         setCurrentSessionName(createdName);
       }

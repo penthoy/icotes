@@ -177,6 +177,8 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
     } catch (error) {
       console.error('Failed to connect:', error);
       return false;
+    } finally {
+      isConnectingRef.current = false;
     }
   }, [getClient, initialize]);
 

@@ -135,11 +135,19 @@ export const ChatSessionStoreProvider: React.FC<{ children: React.ReactNode }> =
     } catch {}
     setSessions(prev => {
       const next = prev.filter(s => s.id !== id);
+      // Notify deletion first
+      const deletedName = prev.find(s => s.id === id)?.name;
+      emitSessionChange({ sessionId: id, action: 'delete', sessionName: deletedName, source: 'chatSessionStore' });
       if (activeSessionId === id) {
         const nextId = next[0]?.id || '';
         setActiveSessionId(nextId);
         chatBackendClient.setCurrentSession(nextId);
-        if (nextId) emitSessionChange({ sessionId: nextId, action: 'switch', sessionName: next.find(s => s.id === nextId)?.name, source: 'chatSessionStore' });
+        if (nextId) {
+          emitSessionChange({ sessionId: nextId, action: 'switch', sessionName: next.find(s => s.id === nextId)?.name, source: 'chatSessionStore' });
+          localStorage.setItem('icui.chat.active_session', nextId);
+        } else {
+          localStorage.removeItem('icui.chat.active_session');
+        }
       }
       return next;
     });

@@ -1,10 +1,7 @@
 """
 Test suite for Hot Reload Agent System
 
-Thi        # Should include workspace plugins if it exists
-        workspace_plugins = Path("workspace/.icotes/plugins")
-        if workspace_plugins.exists():
-            assert str(workspace_plugins) in pathsst suite validates the dynamic agent registry and hot-reload capabilities
+This test suite validates the dynamic agent registry and hot-reload capabilities
 while ensuring backward compatibility with existing gradio-compatible agents.
 """
 
@@ -48,10 +45,11 @@ class TestAgentRegistry:
         # Should include the built-in agent path
         assert any('icpy/agent' in path for path in paths)
         
-        # Should include workspace plugins if it exists
-        workspace_plugins = Path("workspace/.icotes/plugins")
-        if workspace_plugins.exists():
-            assert str(workspace_plugins) in paths
+        """
+Test suite for Hot Reload Agent System
+
+This test suite validates the dynamic agent registry and hot-reload capabilities
+while ensuring backward compatibility with existing gradio-compatible agents.
     
     def test_agent_name_resolution(self):
         """Test AGENT_NAME vs filename fallback"""

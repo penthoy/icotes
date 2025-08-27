@@ -14,7 +14,7 @@ Uses Moonshot's Kimi models through OpenAI-compatible API.
 import json
 import os
 import logging
-from typing import Dict, List, Any, AsyncGenerator
+from typing import Dict, List, Generator
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -53,7 +53,6 @@ try:
         create_standard_agent_metadata,
         create_environment_reload_function,
         get_available_tools_summary,
-        ToolDefinitionLoader,
         OpenAIStreamingHandler,
         add_context_to_agent_prompt,
     )
@@ -80,13 +79,14 @@ except ImportError as e:
     logger.warning(f"Import error in KimiAgent: {e}")
     DEPENDENCIES_AVAILABLE = False
     AGENT_METADATA = {
-        "name": AGENT_NAME,
-        "description": AGENT_DESCRIPTION,
-        "version": "1.0.0",
-        "author": "Hot Reload System",
-        "model": AGENT_MODEL_ID,
+        "AGENT_NAME": AGENT_NAME,
+        "AGENT_DESCRIPTION": AGENT_DESCRIPTION,
+        "AGENT_VERSION": "1.0.0",
+        "AGENT_AUTHOR": "Hot Reload System",
+        "MODEL_NAME": MODEL_NAME if 'MODEL_NAME' in globals() else AGENT_MODEL_ID,
+        "AGENT_MODEL_ID": AGENT_MODEL_ID,
         "status": "error",
-        "error": f"Dependencies not available: {e}"
+        "error": f"Dependencies not available: {e}",
     }
 
     def reload_env():
