@@ -38,6 +38,10 @@ def get_openrouter_client():
     return OpenAI(
         api_key=openrouter_api_key,
         base_url="https://openrouter.ai/api/v1",
+        default_headers={
+            "HTTP-Referer": "https://github.com/penthoy/icotes",  # Your app's repository URL
+            "X-Title": "icotes",  # Your app's name
+        }
     )
 
 
