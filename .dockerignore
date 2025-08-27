@@ -89,6 +89,12 @@ docs/
 # Backend chat database
 backend/chat.db
 
+# Chat history files (exclude from Docker builds)
+workspace/.icotes/chat_history/
+**/chat_history/
+*.chat
+*.jsonl
+
 # Temporary files
 *.tmp
 *.temp

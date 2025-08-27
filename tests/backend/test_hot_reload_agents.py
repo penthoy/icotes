@@ -45,11 +45,6 @@ class TestAgentRegistry:
         # Should include the built-in agent path
         assert any('icpy/agent' in path for path in paths)
         
-        # Should include workspace plugins if it exists
-        workspace_plugins = Path("workspace/plugins")
-        if workspace_plugins.exists():
-            assert str(workspace_plugins) in paths
-    
     def test_agent_name_resolution(self):
         """Test AGENT_NAME vs filename fallback"""
         # Create a mock module with AGENT_NAME
@@ -217,7 +212,7 @@ class TestBackwardCompatibility:
     def test_gradio_compatible_format(self):
         """Test that agents maintain gradio-compatible chat(message, history) format"""
         # Test with workspace test agent if available
-        test_agent_path = Path("workspace/plugins/test_hot_reload_agent.py")
+        test_agent_path = Path("workspace/.icotes/plugins/test_hot_reload_agent.py")
         if test_agent_path.exists():
             # Import the test agent module
             import importlib.util
@@ -253,12 +248,12 @@ class TestWorkspacePlugins:
     """Test workspace plugin functionality"""
     
     def test_discover_workspace_agents(self):
-        """Test discovery of agents in workspace/plugins/"""
+        """Test discovery of agents in workspace/.icotes/plugins/"""
         registry = AgentRegistry()
         paths = registry.get_agent_paths()
         
         # Should include workspace plugins path
-        workspace_path = "workspace/plugins"
+        workspace_path = "workspace/.icotes/plugins"
         if Path(workspace_path).exists():
             assert workspace_path in paths or any(workspace_path in path for path in paths)
     
@@ -266,7 +261,7 @@ class TestWorkspacePlugins:
     async def test_workspace_agent_loading(self):
         """Test loading of workspace plugin agents"""
         # Check if test agent exists
-        test_agent_path = Path("workspace/plugins/test_hot_reload_agent.py")
+        test_agent_path = Path("workspace/.icotes/plugins/test_hot_reload_agent.py")
         if test_agent_path.exists():
             registry = AgentRegistry()
             agents = await registry.discover_and_load()

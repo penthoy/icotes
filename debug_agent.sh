@@ -5,12 +5,12 @@
 # Example: ./debug_agent.sh agent_creator_agent
 
 AGENT_NAME=${1:-agent_creator_agent}
-AGENT_FILE="workspace/plugins/${AGENT_NAME}.py"
+AGENT_FILE="workspace/.icotes/plugins/${AGENT_NAME}.py"
 
 if [ ! -f "$AGENT_FILE" ]; then
     echo "❌ Agent file not found: $AGENT_FILE"
     echo "Available agents:"
-    ls -1 workspace/plugins/*.py 2>/dev/null | sed 's/.*\///' | sed 's/\.py$//'
+    ls -1 workspace/.icotes/plugins/*.py 2>/dev/null | sed 's/.*\///' | sed 's/\.py$//'
     exit 1
 fi
 

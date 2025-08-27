@@ -48,7 +48,7 @@ class AgentRegistry:
         
         # Workspace plugins path (relative to project root, not backend dir)
         project_root = Path(__file__).parent.parent.parent.parent  # Go up from backend/icpy/agent/
-        workspace_plugins = project_root / "workspace" / "plugins"
+        workspace_plugins = project_root / "workspace" / ".icotes" / "plugins"
         if workspace_plugins.exists():
             paths.append(str(workspace_plugins))
             

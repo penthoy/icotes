@@ -27,7 +27,7 @@ class TestSemanticSearchToolEnhancements:
             if '--files' in cmd and any('agent_creator_agent.py' in arg for arg in cmd):
                 m = MagicMock()
                 m.returncode = 0
-                m.stdout = "/workspace/plugins/agent_creator_agent.py\n/workspace/other/agent_creator_agent.py"
+                m.stdout = "/workspace/.icotes/plugins/agent_creator_agent.py\n/workspace/other/agent_creator_agent.py"
                 return m
             # Fallback content search shouldn't be needed
             m = MagicMock()

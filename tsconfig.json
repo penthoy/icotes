@@ -20,7 +20,7 @@
     },
     "types": ["vitest/globals", "@testing-library/jest-dom", "node"]
   },
-  "include": ["src", "tests/**/*"],
-  "exclude": ["src/components/archived/**/*"],
+  "include": ["src"],
+  "exclude": ["src/components/archived/**/*", "tests/**/*"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

@@ -23,6 +23,7 @@ import SimpleEditor from "../tests/integration/simpleeditor";
 import SimpleExplorer from "../tests/integration/simpleexplorer";
 import SimpleChat from "../tests/integration/simplechat";
 import { BackendContextProvider } from "./contexts/BackendContext";
+import { ChatSessionStoreProvider } from "./icui/state/chatSessionStore";
 import { configService } from "./services/config-service";
 
 function App() {
@@ -41,12 +42,16 @@ function App() {
         <Routes>
           <Route path="/" element={
             <BackendContextProvider>
-              <Home />
+              <ChatSessionStoreProvider>
+                <Home />
+              </ChatSessionStoreProvider>
             </BackendContextProvider>
           } />
           <Route path="/inthome" element={
             <BackendContextProvider>
-              <IntegratedHome />
+              <ChatSessionStoreProvider>
+                <IntegratedHome />
+              </ChatSessionStoreProvider>
             </BackendContextProvider>
           } />
           <Route path="/integration" element={<Integration />} />

@@ -118,6 +118,8 @@ export class ChatBackendClient {
   private isStreaming: boolean = false;
   private reconnectAttempts: number = 0;
   private isDisconnecting: boolean = false;
+  // Client-side interrupt flag to immediately stop processing incoming stream chunks
+  private stopRequested: boolean = false;
   
   // Streaming state management (like deprecated client)
   private streamingMessage: ChatMessage | null = null;
@@ -373,6 +375,13 @@ export class ChatBackendClient {
       throw new Error('Enhanced chat service not connected');
     }
 
+    // Set client-side interrupt so UI stops immediately even if backend delays
+    this.stopRequested = true;
+    // Also proactively update local streaming state
+    if (this.isStreaming) {
+      this.handleStreamStopped({ message: 'Client interrupt requested' });
+    }
+
     const stopMessage = {
       type: 'stop',
       session_id: this.currentSessionId,
@@ -394,7 +403,8 @@ export class ChatBackendClient {
       );
     } catch (error) {
       console.error('[ChatBackendClient] Failed to stop streaming:', error);
-      throw error;
+      // Even if sending the stop message fails, keep the local interrupt behavior
+      this.handleError('Failed to send stop signal; stream already stopped locally.');
     }
   }
 
@@ -751,8 +761,15 @@ export class ChatBackendClient {
 
   private handleStreamingMessage(data: any): void {
     // console.log('[EnhancedChatBackendClient] Streaming message data:', data);
+    // If we've been interrupted or not streaming anymore, ignore further chunks/ends
+    if ((!this.isStreaming || this.stopRequested) && (data.stream_chunk || data.stream_end)) {
+      // Silently ignore to prevent UI flicker
+      return;
+    }
     
     if (data.stream_start) {
+  // Reset any prior stop request on new stream
+  this.stopRequested = false;
       // Start new streaming message
       const messageId = data.id || Date.now().toString();
       // console.log('[EnhancedChatBackendClient] Starting streaming message:', messageId);
@@ -780,6 +797,11 @@ export class ChatBackendClient {
       this.isStreaming = true;
       
     } else if (data.stream_chunk && this.streamingMessage) {
+      // If a stop was requested, ignore further chunks and finalize locally
+      if (this.stopRequested) {
+        this.handleStreamStopped({ message: 'Client interrupted during streaming' });
+        return;
+      }
       // Append chunk to streaming message
       // console.log('[EnhancedChatBackendClient] Appending chunk:', data.chunk);
       this.streamingMessage.content += data.chunk;
@@ -823,6 +845,7 @@ export class ChatBackendClient {
       
       this.streamingMessage = null;
       this.isStreaming = false;
+      this.stopRequested = false;
     } else {
       console.warn('[EnhancedChatBackendClient] ⚠️ Unhandled streaming message:', data);
       
@@ -844,6 +867,7 @@ export class ChatBackendClient {
     // Handle stream interruption
     this.isStreaming = false;
     this.streamingMessage = null;
+  this.stopRequested = false;
     
     // Notify typing stopped
     this.typingCallbacks.forEach(callback => callback(false));

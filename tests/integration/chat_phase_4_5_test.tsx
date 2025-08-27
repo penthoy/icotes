@@ -32,7 +32,7 @@ const ChatPhase45Test: React.FC = () => {
       fileTypes: ['py']
     },
     output: {
-      result: `[{'file': '/home/penthoy/icotes/workspace/plugins/example_tool_using_agent.py', 'line': 24, 'snippet': 'AGENT_NAME = "ExampleToolUser"'}, {'file': '/home/penthoy/icotes/workspace/plugins/agent_creator_agent.py', 'line': 24, 'snippet': 'AGENT_NAME = "AgentCreator"'}]`
+      result: `[{'file': '/home/penthoy/icotes/workspace/.icotes/plugins/example_tool_using_agent.py', 'line': 24, 'snippet': 'AGENT_NAME = "ExampleToolUser"'}, {'file': '/home/penthoy/icotes/workspace/.icotes/plugins/agent_creator_agent.py', 'line': 24, 'snippet': 'AGENT_NAME = "AgentCreator"'}]`
     },
     startTime: new Date(Date.now() - 2000),
     endTime: new Date(),
@@ -114,7 +114,7 @@ drwxrwxr-x  3 penthoy penthoy 4096 Aug 18 18:35 plugins`,
   const sampleToolExecutionText = `🔧 **Executing tools...**
 
 📋 **semantic_search**: {'query': 'AGENT_NAME', 'scope': '/home/penthoy/icotes/workspace', 'fileTypes': ['py']}
-✅ **Success**: [{'file': '/home/penthoy/icotes/workspace/plugins/example_tool_using_agent.py', 'line': 24, 'snippet': 'AGENT_NAME = "ExampleToolUser"'}, {'file': '/home/penthoy/icotes/workspace/plugins/agent_creator_agent.py', 'line': 24, 'snippet': 'AGENT_NAME = "AgentCreator"'}]
+✅ **Success**: [{'file': '/home/penthoy/icotes/workspace/.icotes/plugins/example_tool_using_agent.py', 'line': 24, 'snippet': 'AGENT_NAME = "ExampleToolUser"'}, {'file': '/home/penthoy/icotes/workspace/.icotes/plugins/agent_creator_agent.py', 'line': 24, 'snippet': 'AGENT_NAME = "AgentCreator"'}]
 
 🔧 **Tool execution complete. Continuing...**`;
 

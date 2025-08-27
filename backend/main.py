@@ -810,7 +810,9 @@ async def terminal_websocket_endpoint(websocket: WebSocket, terminal_id: str):
         # Wait for tasks to complete
         await asyncio.gather(read_from_terminal(), write_to_terminal(), return_exceptions=True)
         logger.info(f"[DEBUG] Terminal tasks completed for terminal_id: {terminal_id}")
-        
+    except asyncio.CancelledError:
+        # Normal disconnect path; avoid noisy error logs
+        logger.info(f"[DEBUG] Terminal WebSocket cancelled for terminal_id: {terminal_id}")
     except Exception as e:
         logger.error(f"[DEBUG] Terminal WebSocket error for terminal_id {terminal_id}: {e}")
     finally:

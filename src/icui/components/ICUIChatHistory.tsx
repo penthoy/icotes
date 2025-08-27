@@ -28,7 +28,7 @@ const ICUIChatHistory: React.FC<ICUIChatHistoryProps> = ({
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   // Session synchronization
-  const { emitSessionChange, onSessionChange } = useChatSessionSync();
+  const { emitSessionChange, onSessionChange } = useChatSessionSync('ICUIChatHistory');
 
   // Keep ChatHistory in sync when other components (e.g., ICUIChat) create/delete/switch sessions
   useEffect(() => {
@@ -38,10 +38,12 @@ const ICUIChatHistory: React.FC<ICUIChatHistoryProps> = ({
         refreshSessions();
       } else if (action === 'switch') {
         // Mirror active highlight
-        switchSession(sessionId);
+        if (sessionId !== activeSessionId) {
+          switchSession(sessionId);
+        }
       }
     });
-  }, [onSessionChange, refreshSessions, switchSession]);
+  }, [onSessionChange, refreshSessions, switchSession, activeSessionId]);
 
   // Filter and sort sessions based on search query
   const filteredAndSortedSessions = useMemo(() => {
@@ -69,10 +71,12 @@ const ICUIChatHistory: React.FC<ICUIChatHistoryProps> = ({
 
   const handleSelect = useCallback((sessionId: string) => {
     const selected = sessions.find(s => s.id === sessionId);
-    switchSession(sessionId);
-    emitSessionChange(sessionId, 'switch', selected?.name);
+    if (sessionId !== activeSessionId) {
+      switchSession(sessionId);
+      emitSessionChange(sessionId, 'switch', selected?.name);
+    }
     onSessionSelect?.(sessionId);
-  }, [sessions, switchSession, emitSessionChange, onSessionSelect]);
+  }, [sessions, activeSessionId, switchSession, emitSessionChange, onSessionSelect]);
 
   const handleStartRename = useCallback((session: any, e: React.MouseEvent) => {
     e.stopPropagation();

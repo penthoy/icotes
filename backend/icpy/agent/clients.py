@@ -8,32 +8,9 @@ google_api_key = os.getenv('GOOGLE_API_KEY')
 deepseek_api_key = os.getenv('DEEPSEEK_API_KEY')
 groq_api_key = os.getenv('GROQ_API_KEY')
 anthropic_api_key = os.getenv('ANTHROPIC_API_KEY')
+moonshot_api_key = os.getenv('MOONSHOT_API_KEY')
+ollama_url = os.getenv('OLLAMA_URL')
 mailersend_api_key = os.environ.get('MAILERSEND_API_KEY')
-
-# if mailersend_api_key:
-#     print(f"Mailersend API Key exists and begins {mailersend_api_key[:8]}")
-# else:
-#     print("Mailersend API Key not set")
-
-# if openai_api_key:
-#     print(f"OpenAI API Key exists and begins {openai_api_key[:8]}")
-# else:
-#     print("OpenAI API Key not set")
-
-# if google_api_key:
-#     print(f"Google API Key exists and begins {google_api_key[:2]}")
-# else:
-#     print("Google API Key not set (and this is optional)")
-
-# if deepseek_api_key:
-#     print(f"DeepSeek API Key exists and begins {deepseek_api_key[:3]}")
-# else:
-#     print("DeepSeek API Key not set (and this is optional)")
-
-# if groq_api_key:
-#     print(f"Groq API Key exists and begins {groq_api_key[:4]}")
-# else:
-#     print("Groq API Key not set (and this is optional)")
 
 
 def get_ali_client():
@@ -61,6 +38,10 @@ def get_openrouter_client():
     return OpenAI(
         api_key=openrouter_api_key,
         base_url="https://openrouter.ai/api/v1",
+        default_headers={
+            "HTTP-Referer": "https://github.com/penthoy/icotes",  # Your app's repository URL
+            "X-Title": "icotes",  # Your app's name
+        }
     )
 
 
@@ -134,6 +115,36 @@ def get_anthropic_client():
     return OpenAI(
         api_key=anthropic_api_key,
         base_url="https://api.anthropic.com/v1",
+    )
+
+
+def get_moonshot_client():
+    """
+    Initializes and returns an OpenAI client configured for Moonshot's API.
+    """
+    moonshot_api_key = os.getenv("MOONSHOT_API_KEY")
+    if not moonshot_api_key:
+        raise ValueError("MOONSHOT_API_KEY environment variable is not set.")
+
+    return OpenAI(
+        api_key=moonshot_api_key,
+        base_url="https://api.moonshot.ai/v1",
+    )
+
+
+def get_ollama_client():
+    """
+    Initializes and returns an OpenAI client configured for Ollama's local API.
+    
+    Uses OLLAMA_URL environment variable
+    """
+    ollama_url = os.getenv("OLLAMA_URL")
+    if not ollama_url:
+        raise ValueError("OLLAMA_URL environment variable is not set. Example: http://localhost:11434/v1")
+    
+    return OpenAI(
+        api_key="ollama",  # Ollama uses a fixed API key
+        base_url=ollama_url,
     )
 
 

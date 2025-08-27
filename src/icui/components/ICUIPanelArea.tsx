@@ -107,7 +107,7 @@ export const ICUIPanelArea: React.FC<ICUIPanelAreaProps> = ({
       if (!activePanelId || activePanelId === newId) {
         if (localActiveTabId !== newId) {
           setLocalActiveTabId(newId);
-          onPanelActivate?.(newId);
+          // Do not notify parent here to avoid ping-pong; parent layout will update via panel addition logic
         }
       }
     }
@@ -130,10 +130,11 @@ export const ICUIPanelArea: React.FC<ICUIPanelAreaProps> = ({
 
   // Handle tab operations
   const handleTabActivate = useCallback((tabId: string) => {
+    if (tabId === localActiveTabId) return; // No-op to prevent redundant updates
     // Optimistically update local active state to avoid visual flicker
     setLocalActiveTabId(tabId);
     onPanelActivate?.(tabId);
-  }, [onPanelActivate]);
+  }, [onPanelActivate, localActiveTabId]);
 
   const handleTabClose = useCallback((tabId: string) => {
     onPanelClose?.(tabId);
