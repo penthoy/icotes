@@ -57,19 +57,27 @@ Make sure these repositories exist on Docker Hub:
 
 ## 🚀 How to Trigger
 
-### For New Version
-1. Update version in `package.json`:
-   ```bash
-   # Change version from 1.5.6 to 1.5.7
-   npm version patch  # or minor/major
+### Manual Semantic Versioning
+1. **Decide on version bump** based on changes:
+   - **PATCH** (1.5.6 → 1.5.7): Bug fixes, small improvements
+   - **MINOR** (1.5.6 → 1.6.0): New features, backward compatible
+   - **MAJOR** (1.5.6 → 2.0.0): Breaking changes
+
+2. **Update version in `package.json`** manually:
+   ```json
+   {
+     "version": "1.5.7"
+   }
    ```
 
-2. Push to main or merge PR:
+3. **Commit and push to main**:
    ```bash
+   git add package.json
+   git commit -m "bump version to 1.5.7"
    git push origin main
    ```
 
-3. The workflow will:
+4. The workflow will:
    - Detect version `1.5.7` is new
    - Build both Docker images
    - Push to Docker Hub
@@ -80,7 +88,29 @@ Make sure these repositories exist on Docker Hub:
 - Skip build process
 - Show "Version already exists" message
 
-## 📊 Example Workflow Run
+## � Semantic Versioning Guidelines
+
+Follow semantic versioning principles when manually updating the version:
+
+### Version Format: `MAJOR.MINOR.PATCH`
+
+- **PATCH** (e.g., 1.5.6 → 1.5.7)
+  - Bug fixes that don't break existing functionality
+  - Performance improvements
+  - Documentation updates
+  - Minor code cleanup
+
+- **MINOR** (e.g., 1.5.6 → 1.6.0)  
+  - New features that are backward compatible
+  - New API endpoints that don't break existing ones
+  - Significant feature additions
+
+- **MAJOR** (e.g., 1.5.6 → 2.0.0)
+  - Breaking changes to existing APIs
+  - Removal of deprecated features
+  - Changes that require user action to maintain compatibility
+
+## �📊 Example Workflow Run
 
 ```
 ✅ Version Check: 1.5.7 (new)
@@ -93,22 +123,3 @@ Make sure these repositories exist on Docker Hub:
 📋 Created GitHub release
 🚀 All images pushed to Docker Hub
 ```
-
-## 🔍 Monitoring
-
-- **GitHub Actions Tab**: See all workflow runs
-- **Docker Hub**: Verify images are pushed
-- **Releases Tab**: See auto-created releases
-- **Tags**: See version tags
-
-## 🛠️ Testing
-
-Once secrets are configured, you can test by:
-
-1. Merging your current branch to main (with version 1.5.6)
-2. Or updating to a new version like 1.5.7 and pushing
-
-The workflow will run automatically and you'll see the results in the Actions tab.
-
-## 📁 Files Created
-- `.github/workflows/docker-build-deploy.yml` - The main workflow file
