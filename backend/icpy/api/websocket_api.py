@@ -205,18 +205,28 @@ class WebSocketAPI:
         logger.info("WebSocketAPI shutdown complete")
 
     async def connect_websocket(self, websocket: WebSocket, session_id: str = None, user_id: str = None) -> str:
-        """Connect a WebSocket and initialize the connection.
+        """
+        Accepts and registers a new WebSocket connection, initializes its state, and returns a generated connection ID.
         
-        Args:
-            websocket: The WebSocket connection
-            session_id: Optional session ID
-            user_id: Optional user ID
-            
+        On success this:
+        - accepts the incoming WebSocket,
+        - creates and stores a WebSocketConnection (CONNECTED),
+        - applies a safe default subscription to "fs.*",
+        - updates connection statistics,
+        - sends a `welcome` message to the client,
+        - replays recent session messages if a session_id with history exists,
+        - and publishes a `websocket.connection_established` event to the message broker.
+        
+        Parameters:
+            websocket (WebSocket): The FastAPI WebSocket to accept and register.
+            session_id (str, optional): Session identifier to associate with the connection; used for message replay and session-scoped broadcasts.
+            user_id (str, optional): User identifier to associate with the connection; used for user-scoped broadcasts.
+        
         Returns:
-            Connection ID
-            
+            str: The generated connection ID.
+        
         Raises:
-            Exception: If connection fails
+            Exception: If the maximum number of allowed connections is reached or if accepting, initialization, sending the welcome message, replaying history, or publishing the connection event fails.
         """
         if len(self.connections) >= self.max_connections:
             raise Exception(f"Maximum number of connections ({self.max_connections}) reached")
@@ -521,7 +531,19 @@ class WebSocketAPI:
         })
 
     async def _handle_subscribe(self, connection_id: str, data: Dict[str, Any]):
-        """Handle subscription message."""
+        """
+        Register one or more subscription topics for the given connection and confirm the subscription.
+        
+        Adds the provided topic or list of topics (data['topics'] may be a string or a list of strings) to the connection's subscription set. If the connection_id is unknown the function returns without action. After updating subscriptions it sends a message of type `'subscribed'` containing the accepted topics and a timestamp.
+        
+        Parameters:
+            connection_id (str): Identifier of the active WebSocket connection.
+            data (Dict[str, Any]): Incoming payload; expected to contain a `'topics'` field with a string or list of topic strings.
+        
+        Side effects:
+            - Mutates the connection's subscriptions set.
+            - Sends a `'subscribed'` message to the client via send_message.
+        """
         logger.debug(f"[WebSocketAPI] Processing subscription for connection {connection_id}: {data}")
         
         if connection_id not in self.connections:
@@ -859,7 +881,19 @@ class WebSocketAPI:
             logger.error(f"Error handling workspace event {message.topic}: {e}")
 
     async def _handle_filesystem_event(self, message):
-        """Handle filesystem-related events."""
+        """
+        Handle a filesystem event received from the broker and broadcast it to interested WebSocket subscribers.
+        
+        This extracts the event topic and payload from `message` and publishes a standardized `filesystem_event`
+        payload to all connections subscribed to the `fs.*` topic pattern. The broadcast payload contains:
+        `type` ("filesystem_event"), `event` (the original topic), `data` (the original payload), and a `timestamp`.
+        
+        Parameters:
+            message: An object with `topic` (str) and `payload` (any) attributes representing the broker event.
+        
+        Returns:
+            None
+        """
         try:
             logger.info(f"[WS] Handling filesystem event: {message.topic} - {message.payload}")
             
@@ -877,7 +911,17 @@ class WebSocketAPI:
             logger.error(f"[WS] Error handling filesystem event {message.topic}: {e}")
 
     async def _handle_terminal_event(self, message):
-        """Handle terminal-related events."""
+        """
+        Handle a broker-delivered terminal event by broadcasting it to subscribed WebSocket connections.
+        
+        The incoming `message` is expected to have `topic` (string) and `payload` (arbitrary data). A broadcast is sent to subscribers of the `terminal.*` topic pattern with a payload containing:
+        - type: 'terminal_event'
+        - event: the broker message topic
+        - data: the broker message payload
+        - timestamp: current unix time
+        
+        Exceptions during broadcasting are caught and logged; this coroutine does not raise on broadcast failures.
+        """
         try:
             # Broadcast terminal events to subscribed connections
             await self._broadcast_to_subscribers('terminal.*', {
@@ -909,7 +953,24 @@ class WebSocketAPI:
             logger.error(f"Error handling agent event {message.topic}: {e}")
 
     async def _broadcast_to_subscribers(self, topic_pattern: str, data: Dict[str, Any]):
-        """Broadcast message to connections subscribed to a topic pattern."""
+        """
+        Broadcast a message to all active connections whose subscriptions match a topic pattern.
+        
+        This method iterates active connections and their subscription set, performing wildcard-aware matching in both directions
+        (i.e., a connection subscription may match the provided topic_pattern or the topic_pattern may match the subscription).
+        When a match is found the provided data payload is sent to that connection via send_message; each connection is sent at most once
+        per broadcast (the loop breaks to avoid duplicate sends if multiple subscriptions match).
+        
+        Parameters:
+            topic_pattern (str): The topic or topic pattern to match against connection subscriptions (supports wildcards).
+            data (Dict[str, Any]): The payload to send to matching connections.
+        
+        Side effects:
+            Sends messages asynchronously to matching connections using the WebSocketAPI's send_message method.
+        
+        Returns:
+            None
+        """
         logger.info(f"[WS] Broadcasting to subscribers of pattern '{topic_pattern}': {data}")
         
         sent_count = 0
@@ -926,7 +987,11 @@ class WebSocketAPI:
         logger.info(f"[WS] Broadcast sent to {sent_count} connections")
 
     def _matches_pattern(self, subscription: str, pattern: str) -> bool:
-        """Check if subscription matches pattern."""
+        """
+        Return True if a subscription/topic matches a topic pattern using Unix shell-style wildcards.
+        
+        Matches the subscription string against the given pattern using fnmatch (supports `*`, `?`, character ranges, etc.). `subscription` is typically a client's subscribed topic (e.g., "fs.file_created"); `pattern` is a topic pattern (e.g., "fs.*"). Returns True when the subscription fits the pattern, otherwise False.
+        """
         import fnmatch
         # Check if the pattern matches the subscription
         # For example: pattern='fs.*' should match subscription='fs.file_created'

@@ -409,7 +409,17 @@ _broker_lock: asyncio.Lock = asyncio.Lock()
 
 
 async def get_message_broker() -> MessageBroker:
-    """Get the global message broker instance"""
+    """
+    Return the global singleton MessageBroker, creating and starting it if necessary.
+    
+    This coroutine ensures a single shared in-memory MessageBroker instance is returned across the process.
+    It acquires an async lock to make initialization thread-safe; if no broker exists it instantiates
+    MessageBroker and starts it before returning. Calling this will have the side effect of starting
+    the broker when one does not already exist.
+    
+    Returns:
+        MessageBroker: The running global MessageBroker instance.
+    """
     global _message_broker
     async with _broker_lock:
         if _message_broker is None:

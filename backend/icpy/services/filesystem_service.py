@@ -231,10 +231,13 @@ class FileSystemEventHandler(FileSystemEventHandler):
             self._schedule_async_task(self._handle_file_created(event.src_path))
 
     def on_modified(self, event):
-        """Handle file modification events.
+        """
+        Handle a Watchdog file modification event by scheduling asynchronous processing for non-directory items.
         
-        Args:
-            event: Watchdog file system event
+        This method logs the modification at debug level and, if the event is not for a directory, schedules the coroutine that processes the modified file path.
+        
+        Parameters:
+            event: Watchdog file system event object whose `src_path` is the path to the modified entry and `is_directory` indicates whether the event targets a directory.
         """
         try:
             # Modification events can be very noisy; keep at debug
@@ -257,10 +260,13 @@ class FileSystemEventHandler(FileSystemEventHandler):
         self._schedule_async_task(self._handle_file_deleted(event.src_path, event.is_directory))
 
     def on_moved(self, event):
-        """Handle file move/rename events.
+        """
+        Handle a filesystem move/rename event by scheduling asynchronous processing.
         
-        Args:
-            event: Watchdog file system event
+        Schedules the asynchronous handler that processes a moved file or directory (source path, destination path, and directory flag). Intended to be invoked by Watchdog; the method itself does not block and will return immediately after scheduling.
+        
+        Parameters:
+            event: Watchdog file system event containing `src_path`, `dest_path`, and `is_directory` attributes.
         """
         try:
             self.logger.info(f"[FS] on_moved src={event.src_path} dest={event.dest_path} is_dir={event.is_directory}")
@@ -269,10 +275,18 @@ class FileSystemEventHandler(FileSystemEventHandler):
         self._schedule_async_task(self._handle_file_moved(event.src_path, event.dest_path, event.is_directory))
 
     def _schedule_async_task(self, coro):
-        """Schedule an async task from a synchronous context.
+        """
+        Schedule a coroutine from synchronous code, preferring the current event loop.
         
-        Args:
-            coro: Coroutine to schedule
+        If an asyncio event loop is running, the coroutine is scheduled with loop.create_task and returns immediately.
+        If no loop is running, the coroutine is executed to completion via asyncio.run.
+        Any exception raised when attempting to run the coroutine is caught and logged; the method does not propagate exceptions.
+        
+        Parameters:
+            coro: An awaitable/coroutine to schedule or run.
+        
+        Returns:
+            None
         """
         try:
             loop = asyncio.get_running_loop()
@@ -285,10 +299,16 @@ class FileSystemEventHandler(FileSystemEventHandler):
                 self.logger.error(f"Failed to schedule async task: {e}")
 
     async def _handle_file_created(self, file_path: str):
-        """Handle file creation asynchronously.
+        """
+        Handle a file-creation event asynchronously by publishing a normalized `fs.file_created` event.
         
-        Args:
-            file_path: Path to the created file
+        This coroutine obtains the FileInfo for the created path and, if present, publishes an `fs.file_created`
+        message to the configured message broker with keys: `file_path` (str), `file_info` (dict via FileInfo.to_dict()),
+        and `timestamp` (float, epoch seconds). Errors are caught and logged; the function does not raise.
+        
+        Parameters:
+            file_path: Absolute or workspace-relative path to the created file. Directories are typically filtered
+                by the caller; this handler expects non-directory file creation events.
         """
         try:
             file_info = await self.filesystem_service.get_file_info(file_path)
@@ -304,10 +324,13 @@ class FileSystemEventHandler(FileSystemEventHandler):
             self.logger.error(f"[FS] Error handling file creation {file_path}: {e}")
 
     async def _handle_file_modified(self, file_path: str):
-        """Handle file modification asynchronously.
+        """
+        Handle a file modification event by fetching updated metadata and publishing an `fs.file_modified` event.
         
-        Args:
-            file_path: Path to the modified file
+        If the file's FileInfo can be retrieved, publishes an `fs.file_modified` message containing the file path, serialized `file_info`, and a UNIX timestamp. Exceptions raised during retrieval or publishing are caught and logged; the coroutine does not propagate errors.
+        
+        Parameters:
+            file_path (str): Path of the modified file to process.
         """
         try:
             file_info = await self.filesystem_service.get_file_info(file_path)
@@ -322,11 +345,10 @@ class FileSystemEventHandler(FileSystemEventHandler):
             self.logger.error(f"[FS] Error handling file modification {file_path}: {e}")
 
     async def _handle_file_deleted(self, file_path: str, is_directory: bool):
-        """Handle file deletion asynchronously.
+        """
+        Publish an 'fs.file_deleted' event for a removed filesystem entry.
         
-        Args:
-            file_path: Path to the deleted file
-            is_directory: Whether the deleted item was a directory
+        Asynchronously sends an 'fs.file_deleted' message to the configured message broker containing the deleted item's path, whether it was a directory, and a timestamp.
         """
         try:
             await self.filesystem_service.message_broker.publish('fs.file_deleted', {
@@ -339,12 +361,15 @@ class FileSystemEventHandler(FileSystemEventHandler):
             self.logger.error(f"[FS] Error handling file deletion {file_path}: {e}")
 
     async def _handle_file_moved(self, src_path: str, dest_path: str, is_directory: bool):
-        """Handle file move/rename asynchronously.
+        """
+        Publish a file-moved event for a moved or renamed filesystem item.
         
-        Args:
-            src_path: Original file path
-            dest_path: New file path
-            is_directory: Whether the moved item is a directory
+        Asynchronously retrieves metadata for the destination path (if available) and publishes an 'fs.file_moved' message containing src_path, dest_path, serialized file_info (or None), is_directory, and a timestamp. Errors during retrieval or publish are caught and logged.
+        
+        Parameters:
+            src_path (str): Original path of the moved item.
+            dest_path (str): New path of the moved item.
+            is_directory (bool): True if the moved item is a directory; otherwise False.
         """
         try:
             file_info = await self.filesystem_service.get_file_info(dest_path)
@@ -436,9 +461,12 @@ class FileSystemService:
         logger.info(f"FileSystemService initialized with root_path: {self.root_path}")
 
     async def initialize(self):
-        """Initialize the file system service.
+        """
+        Initialize the FileSystemService.
         
-        Sets up message broker connection, connection manager, and starts file watching.
+        Acquires the message broker and connection manager, starts file watching for the configured root path, and builds the initial on-disk file index. Sets the service's `message_broker` and `connection_manager` attributes as side effects.
+        
+        This is an async method and should be awaited; it may propagate exceptions from broker/connection initialization or file system access.
         """
         self.message_broker = await get_message_broker()
         self.connection_manager = await get_connection_manager()
@@ -452,9 +480,10 @@ class FileSystemService:
         logger.info("[FS] FileSystemService initialized successfully")
 
     async def shutdown(self):
-        """Shutdown the file system service.
+        """
+        Shut down the FileSystemService by stopping filesystem watching and clearing in-memory indices.
         
-        Stops file watching and cleans up resources.
+        This asynchronous method stops the watchdog observer for the service (ending any active path watches) and clears the service's file_index and search_index. Intended for use during application shutdown; it is safe to call multiple times.
         """
         # Stop file watching
         await self._stop_file_watching()
@@ -466,7 +495,13 @@ class FileSystemService:
         logger.info("[FS] FileSystemService shutdown complete")
 
     async def _start_file_watching(self):
-        """Start file system watching for the root path."""
+        """
+        Start watching the service's root_path for filesystem events.
+        
+        Registers the service's FileSystemEventHandler with the internal watchdog Observer (recursive),
+        starts the observer, and records the root path in self.watched_paths. On failure the error is
+        logged and the method does not raise.
+        """
         try:
             self.observer.schedule(self.event_handler, self.root_path, recursive=True)
             self.observer.start()
@@ -476,7 +511,13 @@ class FileSystemService:
             logger.error(f"[FS] Failed to start file watching: {e}")
 
     async def _stop_file_watching(self):
-        """Stop file system watching."""
+        """
+        Stop the watchdog observer and clear tracked watched paths.
+        
+        This asynchronously-invoked method stops the internal Watchdog observer (calls stop() and join()),
+        clears the service's watched_paths set, and logs success. Errors raised while stopping the observer
+        are caught and logged; the method does not raise on failure.
+        """
         try:
             self.observer.stop()
             self.observer.join()
@@ -486,11 +527,10 @@ class FileSystemService:
             logger.error(f"[FS] Error stopping file watching: {e}")
 
     async def rebuild_index(self):
-        """Rebuild the file index.
+        """
+        Rebuild the in-memory file and search indices by rescanning the configured root directory.
         
-        This method clears the current index and rebuilds it by scanning
-        the root directory. Useful for testing or when the file system
-        has changed significantly.
+        This asynchronous operation clears self.file_index and self.search_index, then walks the root_path to repopulate the indices (including content indexing for text/code files). It can be expensive on large trees and should be awaited where callers expect the index to be up-to-date.
         """
         logger.info("[FS] Rebuilding file index...")
         
@@ -504,7 +544,15 @@ class FileSystemService:
         logger.info(f"[FS] File index rebuilt with {len(self.file_index)} files")
 
     async def _build_file_index(self):
-        """Build initial file index by scanning the root directory."""
+        """
+        Scan the service's root_path and populate the in-memory file index and content search index.
+        
+        Walks the root_path (recursively), skipping hidden directories and files. For each visible file it:
+        - obtains a FileInfo via get_file_info and stores it in self.file_index keyed by absolute path,
+        - and, for files classified as FileType.TEXT or FileType.CODE, calls _index_file_content to include their words in the search index.
+        
+        This coroutine performs I/O and updates internal state; errors are caught and logged.
+        """
         try:
             for root, dirs, files in os.walk(self.root_path):
                 # Skip hidden directories
@@ -529,10 +577,16 @@ class FileSystemService:
             logger.error(f"[FS] Error building file index: {e}")
 
     async def _index_file_content(self, file_path: str):
-        """Index file content for search functionality.
+        """
+        Index the textual content of a file and update the service's in-memory search index.
         
-        Args:
-            file_path: Path to the file to index
+        This coroutine reads the file (subject to the service's max_file_size), extracts searchable words, lowercases them, and adds the file path to the search_index entry for each word. Files larger than max_file_size are skipped. Errors are handled internally.
+        
+        Parameters:
+            file_path (str): Absolute or workspace-relative path of the file to index.
+        
+        Returns:
+            None
         """
         try:
             if os.path.getsize(file_path) > self.max_file_size:
@@ -1185,10 +1239,16 @@ _filesystem_service: Optional[FileSystemService] = None
 
 
 async def get_filesystem_service() -> FileSystemService:
-    """Get the global filesystem service instance.
+    """
+    Return the global FileSystemService singleton, creating and initializing it on first call.
+    
+    If the service does not yet exist this function:
+    - Resolves a workspace root in this order: the WORKSPACE_ROOT or ICOTES_WORKSPACE_PATH environment variables; a parent directory containing a `workspace` subdirectory (searched upward from this file); `/app/workspace` (if present); or `./workspace` under the current working directory.
+    - Ensures the resolved workspace directory exists (creates it if necessary) and sets the WORKSPACE_ROOT environment variable to that path.
+    - Instantiates FileSystemService with the resolved root and calls its async initialize().
     
     Returns:
-        FileSystemService instance
+        FileSystemService: The initialized global filesystem service singleton.
     """
     global _filesystem_service
     if _filesystem_service is None:

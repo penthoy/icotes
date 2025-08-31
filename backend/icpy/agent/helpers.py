@@ -938,14 +938,26 @@ def _get_directory_size(directory: str) -> int:
 
 def format_agent_context_for_prompt(context: Dict[str, Any]) -> str:
     """
-    Format the agent context dictionary into a human-readable string 
-    suitable for inclusion in agent system prompts.
+    Return a human-readable, prompt-ready string that summarizes an agent's runtime context.
     
-    Args:
-        context: Context dictionary from create_agent_context()
-        
+    The returned text is formatted for inclusion in system prompts and includes:
+    - current date/time,
+    - workspace root and recommended file/config locations if a workspace is present,
+    - available capabilities (tool count and example tool names),
+    - basic system platform and architecture,
+    - whether the OpenAI API is configured in the ICOTES environment.
+    
+    Parameters:
+        context (Dict[str, Any]): Context as produced by create_agent_context(). Expected keys used by this function include:
+            - 'workspace_root' (str | None)
+            - 'formatted_date' (str)
+            - 'formatted_time' (str)
+            - 'capabilities' (dict) with 'tool_count' (int) and 'available_tool_names' (List[str])
+            - 'system' (dict) with 'platform' and 'architecture'
+            - 'icotes' (dict) with 'openai_api_configured' (bool)
+    
     Returns:
-        Formatted string describing the current context
+        str: Formatted multi-line string suitable for embedding in an agent system prompt.
     """
     workspace_info = f"**Workspace Root**: `{context['workspace_root']}`" if context['workspace_root'] else "**Workspace**: Not detected"
     
