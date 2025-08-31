@@ -243,6 +243,13 @@ class WebSocketAPI:
             if session_id:
                 self.session_connections[session_id].add(connection_id)
             
+            # Apply safe default subscriptions so clients receive critical events even
+            # if they miss initial subscribe timing on first load/reconnect.
+            # Keep this conservative: filesystem events are needed by Explorer UI.
+            default_topics = {"fs.*"}
+            connection.subscriptions.update(default_topics)
+            logger.info(f"[WS] Connection {connection_id} auto-subscribed to defaults: {sorted(default_topics)}")
+
             # Update statistics
             self.stats['total_connections'] += 1
             self.stats['active_connections'] = len(self.connections)
@@ -532,7 +539,7 @@ class WebSocketAPI:
         for topic in topics:
             connection.subscriptions.add(topic)
         
-        logger.info(f"[WebSocketAPI] Connection {connection_id} subscribed to topics: {topics}")
+        logger.info(f"[WS] Connection {connection_id} subscribed to topics: {topics}")
         
         await self.send_message(connection_id, {
             'type': 'subscribed',
@@ -854,7 +861,7 @@ class WebSocketAPI:
     async def _handle_filesystem_event(self, message):
         """Handle filesystem-related events."""
         try:
-            logger.info(f"[WebSocketAPI] Handling filesystem event: {message.topic} - {message.payload}")
+            logger.info(f"[WS] Handling filesystem event: {message.topic} - {message.payload}")
             
             # Broadcast filesystem events to subscribed connections
             await self._broadcast_to_subscribers('fs.*', {
@@ -864,10 +871,10 @@ class WebSocketAPI:
                 'timestamp': time.time()
             })
             
-            logger.info(f"[WebSocketAPI] Filesystem event broadcasted: {message.topic}")
+            logger.info(f"[WS] Filesystem event broadcasted: {message.topic}")
             
         except Exception as e:
-            logger.error(f"Error handling filesystem event {message.topic}: {e}")
+            logger.error(f"[WS] Error handling filesystem event {message.topic}: {e}")
 
     async def _handle_terminal_event(self, message):
         """Handle terminal-related events."""
@@ -903,18 +910,20 @@ class WebSocketAPI:
 
     async def _broadcast_to_subscribers(self, topic_pattern: str, data: Dict[str, Any]):
         """Broadcast message to connections subscribed to a topic pattern."""
-        logger.info(f"[WebSocketAPI] Broadcasting to subscribers of pattern '{topic_pattern}': {data}")
+        logger.info(f"[WS] Broadcasting to subscribers of pattern '{topic_pattern}': {data}")
         
         sent_count = 0
         for connection in self.connections.values():
             for subscription in connection.subscriptions:
-                if self._matches_pattern(subscription, topic_pattern):
-                    logger.info(f"[WebSocketAPI] Sending to connection {connection.id} (subscription: {subscription})")
+                # Subscriptions are usually exact topics; allow wildcard match either way
+                matched = self._matches_pattern(subscription, topic_pattern) or self._matches_pattern(topic_pattern, subscription)
+                if matched:
+                    logger.info(f"[WS] Sending to connection {connection.id} (subscription: {subscription})")
                     await self.send_message(connection.id, data)
                     sent_count += 1
                     break
         
-        logger.info(f"[WebSocketAPI] Broadcast sent to {sent_count} connections")
+        logger.info(f"[WS] Broadcast sent to {sent_count} connections")
 
     def _matches_pattern(self, subscription: str, pattern: str) -> bool:
         """Check if subscription matches pattern."""

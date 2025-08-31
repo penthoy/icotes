@@ -405,14 +405,19 @@ class MessageBroker:
 
 # Global message broker instance
 _message_broker: Optional[MessageBroker] = None
+_broker_lock: asyncio.Lock = asyncio.Lock()
 
 
 async def get_message_broker() -> MessageBroker:
     """Get the global message broker instance"""
     global _message_broker
-    if _message_broker is None:
-        _message_broker = MessageBroker()
-        await _message_broker.start()
+    async with _broker_lock:
+        if _message_broker is None:
+            _message_broker = MessageBroker()
+            await _message_broker.start()
+            logger.info("[MB] Created new in-memory MessageBroker instance")
+        else:
+            logger.debug("[MB] Reusing existing MessageBroker instance")
     return _message_broker
 
 

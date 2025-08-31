@@ -68,8 +68,9 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
   const [editablePath, setEditablePath] = useState<string>(''); // State for editable path
   const [showHiddenFiles, setShowHiddenFiles] = useState(explorerPreferences.getShowHiddenFiles()); // Show hidden files toggle
   const lastLoadTimeRef = useRef(0);
-  const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadDirectoryRef = useRef<(path?: string) => Promise<void>>();
+  const statusHandlerRef = useRef<((payload: any) => Promise<void>) | null>(null);
 
   const { theme } = useTheme();
 
@@ -206,21 +207,29 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
     }
 
     const handleFileSystemEvent = (eventData: any) => {
+      log.debug('ICUIExplorer', '[EXPL] filesystem_event received', { event: eventData?.event, data: eventData?.data });
       if (!eventData?.data) {
         return;
       }
 
       const { event, data } = eventData;
-      const filePath = data.file_path || data.path;
+      // Handle move events by checking both src and dest paths
+      const paths = [data.file_path, data.path, data.dir_path, data.src_path, data.dest_path].filter(
+        (p): p is string => typeof p === 'string' && p.length > 0
+      );
+      const inScope = paths.some(p => p.startsWith(currentPath));
       
       // Only react to changes in the current workspace
-      if (!filePath || !filePath.startsWith(currentPath)) {
+      if (!inScope) {
+        log.debug('ICUIExplorer', '[EXPL] event ignored (outside currentPath)', { paths, currentPath });
         return;
       }
 
       // File system event received for workspace path: ${filePath}
 
-      switch (event) {
+  // Extra debug removed to reduce console noise; structured logs remain via frontend-logger
+
+  switch (event) {
         case 'fs.file_created':
         case 'fs.file_deleted':
         case 'fs.file_moved':
@@ -231,6 +240,7 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
           // For these events, refresh the directory to ensure consistency
           // We debounce to avoid excessive refreshes
           refreshTimeoutRef.current = setTimeout(() => {
+            log.debug('ICUIExplorer', '[EXPL] triggering debounced refresh', { currentPath });
             if (loadDirectoryRef.current) {
               loadDirectoryRef.current(currentPath);
             }
@@ -241,10 +251,12 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
         case 'fs.file_modified':
           // For file modifications, we don't need to refresh the explorer
           // since the structure hasn't changed
+          log.debug('ICUIExplorer', '[EXPL] modification event ignored for tree', { paths });
           break;
         
         default:
           // Unknown event type received
+          log.debug('ICUIExplorer', '[EXPL] unknown filesystem_event', { event });
       }
     };
 
@@ -252,7 +264,7 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
     backendService.on('filesystem_event', handleFileSystemEvent);
 
     // Subscribe to filesystem events - only if connected
-    const subscribeToEvents = async () => {
+  const subscribeToEvents = async () => {
       try {
         const status = await backendService.getConnectionStatus();
         if (!status.connected) {
@@ -261,8 +273,9 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
         }
 
         // console.log('[ICUIExplorer] Subscribing to filesystem events...');
+    log.info('ICUIExplorer', '[EXPL] Subscribing to fs topics');
         await backendService.notify('subscribe', { 
-          topics: ['fs.file_created', 'fs.file_deleted', 'fs.file_moved'] 
+          topics: ['fs.file_created', 'fs.file_deleted', 'fs.file_moved', 'fs.file_modified'] 
         });
         // console.log('[ICUIExplorer] Successfully subscribed to filesystem events');
       } catch (error) {
@@ -276,16 +289,28 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
       try {
         const status = await backendService.getConnectionStatus();
         
-        if (status.connected) {
+          if (status.connected) {
+            log.info('ICUIExplorer', '[EXPL] Initializing subscription on connected');
           await subscribeToEvents();
         } else {
           // Wait for connection and then subscribe
-          const handleConnected = async () => {
-            await subscribeToEvents();
-            backendService.off('connected', handleConnected);
+          statusHandlerRef.current = async (payload: any) => {
+            if (payload?.status === 'connected') {
+                log.info('ICUIExplorer', '[EXPL] Connected, subscribing + refreshing');
+              await subscribeToEvents();
+              // Force a refresh to recover from any missed events while disconnected
+              if (loadDirectoryRef.current) {
+                // Force a refresh on reconnect
+                loadDirectoryRef.current(currentPath);
+              }
+              if (statusHandlerRef.current) {
+                backendService.off('connection_status_changed', statusHandlerRef.current);
+                statusHandlerRef.current = null;
+              }
+            }
           };
 
-          backendService.on('connected', handleConnected);
+          backendService.on('connection_status_changed', statusHandlerRef.current);
         }
       } catch (error) {
         console.error('[ICUIExplorer] Error initializing connection:', error);
@@ -300,16 +325,21 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
         clearTimeout(refreshTimeoutRef.current);
         refreshTimeoutRef.current = null;
       }
-      // Remove event listener
+  // Remove event listener
       backendService.off('filesystem_event', handleFileSystemEvent);
+      if (statusHandlerRef.current) {
+        backendService.off('connection_status_changed', statusHandlerRef.current);
+        statusHandlerRef.current = null;
+      }
       
-      // Unsubscribe from filesystem events
+  // Unsubscribe from filesystem events
       const cleanup = async () => {
         try {
           const status = await backendService.getConnectionStatus();
           if (status.connected) {
+    log.info('ICUIExplorer', '[EXPL] Unsubscribing from fs topics');
             await backendService.notify('unsubscribe', { 
-              topics: ['fs.file_created', 'fs.file_deleted', 'fs.file_moved'] 
+              topics: ['fs.file_created', 'fs.file_deleted', 'fs.file_moved', 'fs.file_modified'] 
             });
           }
         } catch (error) {

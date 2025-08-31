@@ -200,6 +200,7 @@ export class ICUIBackendService extends EventEmitter {
 
     this.enhancedService.on('message', (data: any) => {
       if (data.connectionId === this.connectionId) {
+  log.debug('ICUIBackendService', '[BE] message passthrough', { connectionId: data.connectionId });
         this.handleWebSocketMessage({ data: data.message });
       }
     });
@@ -676,21 +677,30 @@ export class ICUIBackendService extends EventEmitter {
       // Handle different message types
       if (message.type === 'filesystem_event') {
         // Handle filesystem events and emit them for the explorer
-        log.debug('ICUIBackendService', 'Filesystem event received', { event: message.event, data: message.data });
-        // Reduced debug: Only log filesystem events in debug mode
+        log.debug('ICUIBackendService', '[BE] Filesystem event received', { event: message.event, data: message.data });
+        // Emit a payload that matches listener expectations: event + data
+        // Keep a descriptive type for compatibility and include a normalized path
+        const filePath =
+          message.data?.file_path ??
+          message.data?.path ??
+          message.data?.dir_path ??   // directory events
+          message.data?.dest_path ??
+          message.data?.src_path;
+        log.debug('ICUIBackendService', '[BE] Emitting filesystem_event', { event: message.event, path: filePath });
         this.emit('filesystem_event', {
-          type: message.event,
-          path: message.data?.path,
+          type: 'filesystem_event',
+          event: message.event,
+          path: filePath,
           data: message.data
         });
       } else if (message.type === 'subscribed') {
-        log.info('ICUIBackendService', 'Subscription confirmed', { topics: message.topics });
+        log.info('ICUIBackendService', '[BE] Subscription confirmed', { topics: message.topics });
         // Reduced debug: console.log('[ICUIBackendService] Subscription confirmed:', message.topics);
       } else if (message.type === 'unsubscribed') {
-        log.info('ICUIBackendService', 'Unsubscription confirmed', { topics: message.topics });
+        log.info('ICUIBackendService', '[BE] Unsubscription confirmed', { topics: message.topics });
         // Reduced debug: console.log('[ICUIBackendService] Unsubscription confirmed:', message.topics);
       } else if (message.type === 'welcome') {
-        log.info('ICUIBackendService', 'Welcome message received', { connectionId: message.connection_id });
+        log.info('ICUIBackendService', '[BE] Welcome message received', { connectionId: message.connection_id });
         // Reduced debug: console.log('[ICUIBackendService] Welcome message received:', message.connection_id);
       } else if (message.method) {
         this.emit('response', message);
@@ -740,7 +750,7 @@ export class ICUIBackendService extends EventEmitter {
       };
     }
 
-    log.debug('EnhancedICUIBackendService', 'Sending notification', { method, params });
+  log.debug('EnhancedICUIBackendService', '[BE] Sending notification', { method, params });
     console.log('[EnhancedICUIBackendService] Sending notification:', { method, params, message, connectionId: this.connectionId });
 
     try {

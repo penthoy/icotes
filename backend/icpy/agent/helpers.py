@@ -954,7 +954,9 @@ def format_agent_context_for_prompt(context: Dict[str, Any]) -> str:
         workspace_info += """
  - **Agent Files**: `<workspace_root>/.icotes/plugins/<AGENT_NAME>_agent.py`
  - **Configuration**: `<workspace_root>/.icotes/agents.json`
- - **Structure**: Use existing `.icotes/plugins/` directory, do NOT create additional subdirectories"""    time_info = f"**Current Time**: {context['formatted_date']} at {context['formatted_time']}"
+ - **Structure**: Use existing `.icotes/plugins/` directory, do NOT create additional subdirectories"""
+    
+    time_info = f"**Current Time**: {context['formatted_date']} at {context['formatted_time']}"
     
     capabilities = context['capabilities']
     caps_info = f"**Available Capabilities**: {capabilities['tool_count']} tools available"

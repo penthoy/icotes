@@ -35,6 +35,21 @@ fi
 # Ensure logs directory exists
 mkdir -p logs
 echo "📁 Logs directory ready: ./logs/"
+
+# Single-instance guard (development): prevent multiple uvicorn reloaders
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$SCRIPT_DIR"
+PID_FILE="$REPO_ROOT/logs/backend.pid"
+if [ -f "$PID_FILE" ]; then
+    OLD_PID=$(cat "$PID_FILE" 2>/dev/null || true)
+    if [ -n "$OLD_PID" ] && ps -p "$OLD_PID" > /dev/null 2>&1; then
+        echo "❌ Backend already running (PID: $OLD_PID). Stop it first: kill $OLD_PID"
+        exit 1
+    else
+        echo "⚠️  Removing stale PID file: $PID_FILE"
+        rm -f "$PID_FILE"
+    fi
+fi
 echo ""
 
 # Function to cleanup on exit
@@ -152,7 +167,6 @@ echo ""
 
 # Start the backend server in foreground with development features
 echo "🔧 Starting with uv (if available) or fallback to venv..."
-cd backend
 
 # Check if we're using uv or traditional venv
 if command -v uv &> /dev/null && [ -f "pyproject.toml" ]; then
@@ -167,7 +181,7 @@ if command -v uv &> /dev/null && [ -f "pyproject.toml" ]; then
         --reload-dir . \
         --reload-exclude "*.pyc" \
         --reload-exclude "__pycache__" \
-        --log-level debug \
+        --log-config logging.conf \
         --access-log &
 else
     echo "🔧 Falling back to virtual environment..."
@@ -188,12 +202,17 @@ else
         --reload-dir . \
         --reload-exclude "*.pyc" \
         --reload-exclude "__pycache__" \
-        --log-level debug \
-        --access-log \
-        --log-config logging.conf &
+        --log-config logging.conf \
+        --access-log &
 fi
 
 BACKEND_PID=$!
+echo $BACKEND_PID > "$PID_FILE"
+
+trap 'echo; echo "🛑 Stopping dev backend (PID: $(cat "$PID_FILE" 2>/dev/null) )"; kill $(cat "$PID_FILE" 2>/dev/null) 2>/dev/null || true; rm -f "$PID_FILE"; exit 0' SIGINT SIGTERM
 
 # Wait for the backend process
 wait $BACKEND_PID
+EXIT_CODE=$?
+rm -f "$PID_FILE"
+exit $EXIT_CODE

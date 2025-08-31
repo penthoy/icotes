@@ -222,6 +222,11 @@ class FileSystemEventHandler(FileSystemEventHandler):
         Args:
             event: Watchdog file system event
         """
+        try:
+            # Keep creation events at info for visibility
+            self.logger.info(f"[FS] on_created path={event.src_path} is_dir={event.is_directory}")
+        except Exception:
+            pass
         if not event.is_directory:
             self._schedule_async_task(self._handle_file_created(event.src_path))
 
@@ -231,6 +236,11 @@ class FileSystemEventHandler(FileSystemEventHandler):
         Args:
             event: Watchdog file system event
         """
+        try:
+            # Modification events can be very noisy; keep at debug
+            self.logger.debug(f"[FS] on_modified path={event.src_path} is_dir={event.is_directory}")
+        except Exception:
+            pass
         if not event.is_directory:
             self._schedule_async_task(self._handle_file_modified(event.src_path))
 
@@ -240,6 +250,10 @@ class FileSystemEventHandler(FileSystemEventHandler):
         Args:
             event: Watchdog file system event
         """
+        try:
+            self.logger.info(f"[FS] on_deleted path={event.src_path} is_dir={event.is_directory}")
+        except Exception:
+            pass
         self._schedule_async_task(self._handle_file_deleted(event.src_path, event.is_directory))
 
     def on_moved(self, event):
@@ -248,6 +262,10 @@ class FileSystemEventHandler(FileSystemEventHandler):
         Args:
             event: Watchdog file system event
         """
+        try:
+            self.logger.info(f"[FS] on_moved src={event.src_path} dest={event.dest_path} is_dir={event.is_directory}")
+        except Exception:
+            pass
         self._schedule_async_task(self._handle_file_moved(event.src_path, event.dest_path, event.is_directory))
 
     def _schedule_async_task(self, coro):
@@ -275,14 +293,15 @@ class FileSystemEventHandler(FileSystemEventHandler):
         try:
             file_info = await self.filesystem_service.get_file_info(file_path)
             if file_info:
+                # Publish created event (no pre-publish info to reduce duplication)
                 await self.filesystem_service.message_broker.publish('fs.file_created', {
                     'file_path': file_path,
                     'file_info': file_info.to_dict(),
                     'timestamp': time.time()
                 })
-                self.logger.info(f"File created: {file_path}")
+                self.logger.debug(f"[FS] published fs.file_created: {file_path}")
         except Exception as e:
-            self.logger.error(f"Error handling file creation {file_path}: {e}")
+            self.logger.error(f"[FS] Error handling file creation {file_path}: {e}")
 
     async def _handle_file_modified(self, file_path: str):
         """Handle file modification asynchronously.
@@ -298,9 +317,9 @@ class FileSystemEventHandler(FileSystemEventHandler):
                     'file_info': file_info.to_dict(),
                     'timestamp': time.time()
                 })
-                self.logger.debug(f"File modified: {file_path}")
+                self.logger.debug(f"[FS] published fs.file_modified: {file_path}")
         except Exception as e:
-            self.logger.error(f"Error handling file modification {file_path}: {e}")
+            self.logger.error(f"[FS] Error handling file modification {file_path}: {e}")
 
     async def _handle_file_deleted(self, file_path: str, is_directory: bool):
         """Handle file deletion asynchronously.
@@ -315,9 +334,9 @@ class FileSystemEventHandler(FileSystemEventHandler):
                 'is_directory': is_directory,
                 'timestamp': time.time()
             })
-            self.logger.info(f"File deleted: {file_path}")
+            self.logger.debug(f"[FS] published fs.file_deleted: {file_path}")
         except Exception as e:
-            self.logger.error(f"Error handling file deletion {file_path}: {e}")
+            self.logger.error(f"[FS] Error handling file deletion {file_path}: {e}")
 
     async def _handle_file_moved(self, src_path: str, dest_path: str, is_directory: bool):
         """Handle file move/rename asynchronously.
@@ -336,9 +355,9 @@ class FileSystemEventHandler(FileSystemEventHandler):
                 'is_directory': is_directory,
                 'timestamp': time.time()
             })
-            self.logger.info(f"File moved: {src_path} -> {dest_path}")
+            self.logger.debug(f"[FS] published fs.file_moved: {src_path} -> {dest_path}")
         except Exception as e:
-            self.logger.error(f"Error handling file move {src_path} -> {dest_path}: {e}")
+            self.logger.error(f"[FS] Error handling file move {src_path} -> {dest_path}: {e}")
 
 
 class FileSystemService:
@@ -430,7 +449,7 @@ class FileSystemService:
         # Build initial file index
         await self._build_file_index()
         
-        logger.info("FileSystemService initialized successfully")
+        logger.info("[FS] FileSystemService initialized successfully")
 
     async def shutdown(self):
         """Shutdown the file system service.
@@ -444,7 +463,7 @@ class FileSystemService:
         self.file_index.clear()
         self.search_index.clear()
         
-        logger.info("FileSystemService shutdown complete")
+        logger.info("[FS] FileSystemService shutdown complete")
 
     async def _start_file_watching(self):
         """Start file system watching for the root path."""
@@ -452,9 +471,9 @@ class FileSystemService:
             self.observer.schedule(self.event_handler, self.root_path, recursive=True)
             self.observer.start()
             self.watched_paths.add(self.root_path)
-            logger.info(f"Started watching: {self.root_path}")
+            logger.info(f"[FS] Started watching root: {self.root_path}")
         except Exception as e:
-            logger.error(f"Failed to start file watching: {e}")
+            logger.error(f"[FS] Failed to start file watching: {e}")
 
     async def _stop_file_watching(self):
         """Stop file system watching."""
@@ -462,9 +481,9 @@ class FileSystemService:
             self.observer.stop()
             self.observer.join()
             self.watched_paths.clear()
-            logger.info("Stopped file watching")
+            logger.info("[FS] Stopped file watching")
         except Exception as e:
-            logger.error(f"Error stopping file watching: {e}")
+            logger.error(f"[FS] Error stopping file watching: {e}")
 
     async def rebuild_index(self):
         """Rebuild the file index.
@@ -473,7 +492,7 @@ class FileSystemService:
         the root directory. Useful for testing or when the file system
         has changed significantly.
         """
-        logger.info("Rebuilding file index...")
+        logger.info("[FS] Rebuilding file index...")
         
         # Clear existing indices
         self.file_index.clear()
@@ -482,7 +501,7 @@ class FileSystemService:
         # Rebuild the index
         await self._build_file_index()
         
-        logger.info(f"File index rebuilt with {len(self.file_index)} files")
+        logger.info(f"[FS] File index rebuilt with {len(self.file_index)} files")
 
     async def _build_file_index(self):
         """Build initial file index by scanning the root directory."""
@@ -504,9 +523,10 @@ class FileSystemService:
                         if file_info.type in [FileType.TEXT, FileType.CODE]:
                             await self._index_file_content(file_path)
             
-            logger.info(f"Built file index with {len(self.file_index)} files")
+            
+            logger.info(f"[FS] Built file index with {len(self.file_index)} files")
         except Exception as e:
-            logger.error(f"Error building file index: {e}")
+            logger.error(f"[FS] Error building file index: {e}")
 
     async def _index_file_content(self, file_path: str):
         """Index file content for search functionality.
@@ -1172,14 +1192,43 @@ async def get_filesystem_service() -> FileSystemService:
     """
     global _filesystem_service
     if _filesystem_service is None:
-        # Use WORKSPACE_ROOT environment variable or default to parent directory of backend
+        # Resolve WORKSPACE_ROOT robustly and consistently across environments
         import os
-        workspace_root = os.environ.get('WORKSPACE_ROOT')
+        from pathlib import Path
+
+        # 1) Respect explicit env vars if set
+        workspace_root = (
+            os.environ.get('WORKSPACE_ROOT')
+            or os.environ.get('ICOTES_WORKSPACE_PATH')
+        )
+
+        # 2) If not provided, search upwards from this file for a parent that contains a 'workspace' dir
         if not workspace_root:
-            # Default to workspace directory relative to backend
-            backend_dir = os.path.dirname(os.path.abspath(__file__))
-            workspace_root = os.path.join(os.path.dirname(os.path.dirname(backend_dir)), 'workspace')
-        
+            current = Path(__file__).resolve()
+            for parent in list(current.parents):
+                candidate = parent / 'workspace'
+                if candidate.is_dir():
+                    workspace_root = str(candidate)
+                    break
+
+        # 3) Fallbacks commonly used in Docker/dev
+        if not workspace_root:
+            if Path('/app/workspace').exists():
+                workspace_root = '/app/workspace'
+            else:
+                # Last resort: project cwd workspace
+                workspace_root = str(Path.cwd() / 'workspace')
+
+        # Ensure the directory exists to allow watchdog to attach
+        try:
+            Path(workspace_root).mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            logger.error(f"Failed to ensure workspace directory exists at {workspace_root}: {e}")
+
+        # Export for other modules started later in the process
+        os.environ['WORKSPACE_ROOT'] = workspace_root
+        logger.info(f"[FS] Using WORKSPACE_ROOT: {workspace_root}")
+
         _filesystem_service = FileSystemService(root_path=workspace_root)
         await _filesystem_service.initialize()
     return _filesystem_service
