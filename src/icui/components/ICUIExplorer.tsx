@@ -68,7 +68,7 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
   const [editablePath, setEditablePath] = useState<string>(''); // State for editable path
   const [showHiddenFiles, setShowHiddenFiles] = useState(explorerPreferences.getShowHiddenFiles()); // Show hidden files toggle
   const lastLoadTimeRef = useRef(0);
-  const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadDirectoryRef = useRef<(path?: string) => Promise<void>>();
   const statusHandlerRef = useRef<((payload: any) => Promise<void>) | null>(null);
 
@@ -213,11 +213,15 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
       }
 
       const { event, data } = eventData;
-      const filePath = data.file_path || data.path || data.dest_path || data.src_path;
+      // Handle move events by checking both src and dest paths
+      const paths = [data.file_path, data.path, data.dir_path, data.src_path, data.dest_path].filter(
+        (p): p is string => typeof p === 'string' && p.length > 0
+      );
+      const inScope = paths.some(p => p.startsWith(currentPath));
       
       // Only react to changes in the current workspace
-      if (!filePath || !filePath.startsWith(currentPath)) {
-        log.debug('ICUIExplorer', '[EXPL] event ignored (outside currentPath)', { filePath, currentPath });
+      if (!inScope) {
+        log.debug('ICUIExplorer', '[EXPL] event ignored (outside currentPath)', { paths, currentPath });
         return;
       }
 
@@ -247,7 +251,7 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
         case 'fs.file_modified':
           // For file modifications, we don't need to refresh the explorer
           // since the structure hasn't changed
-          log.debug('ICUIExplorer', '[EXPL] modification event ignored for tree', { filePath });
+          log.debug('ICUIExplorer', '[EXPL] modification event ignored for tree', { paths });
           break;
         
         default:

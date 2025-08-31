@@ -680,7 +680,12 @@ export class ICUIBackendService extends EventEmitter {
         log.debug('ICUIBackendService', '[BE] Filesystem event received', { event: message.event, data: message.data });
         // Emit a payload that matches listener expectations: event + data
         // Keep a descriptive type for compatibility and include a normalized path
-        const filePath = message.data?.file_path || message.data?.path || message.data?.dest_path || message.data?.src_path;
+        const filePath =
+          message.data?.file_path ??
+          message.data?.path ??
+          message.data?.dir_path ??   // directory events
+          message.data?.dest_path ??
+          message.data?.src_path;
         log.debug('ICUIBackendService', '[BE] Emitting filesystem_event', { event: message.event, path: filePath });
         this.emit('filesystem_event', {
           type: 'filesystem_event',

@@ -37,7 +37,9 @@ mkdir -p logs
 echo "📁 Logs directory ready: ./logs/"
 
 # Single-instance guard (development): prevent multiple uvicorn reloaders
-PID_FILE="logs/backend.pid"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$SCRIPT_DIR"
+PID_FILE="$REPO_ROOT/logs/backend.pid"
 if [ -f "$PID_FILE" ]; then
     OLD_PID=$(cat "$PID_FILE" 2>/dev/null || true)
     if [ -n "$OLD_PID" ] && ps -p "$OLD_PID" > /dev/null 2>&1; then

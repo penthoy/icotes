@@ -449,7 +449,7 @@ class FileSystemService:
         # Build initial file index
         await self._build_file_index()
         
-    logger.info("[FS] FileSystemService initialized successfully")
+        logger.info("[FS] FileSystemService initialized successfully")
 
     async def shutdown(self):
         """Shutdown the file system service.
@@ -463,7 +463,7 @@ class FileSystemService:
         self.file_index.clear()
         self.search_index.clear()
         
-    logger.info("[FS] FileSystemService shutdown complete")
+        logger.info("[FS] FileSystemService shutdown complete")
 
     async def _start_file_watching(self):
         """Start file system watching for the root path."""

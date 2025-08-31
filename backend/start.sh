@@ -1,5 +1,13 @@
 #!/bin/bash
-# Start the FastAPI backend server (Modern UV Version) with single-instance guard
+# Start the FastAPI backend server     echo "Starting FastAPI backend server (fallback uvicorn)..."
+    # Start uvicorn directly for consistency
+    cd "$SCRIPT_DIR"
+    uvicorn main:app --host "$BACKEND_HOST" --port "$BACKEND_PORT" --log-config logging.conf &
+    echo $! > "$PID_FILE"
+    wait $(cat "$PID_FILE")
+    EXIT_CODE=$?
+    rm -f "$PID_FILE"
+    exit $EXIT_CODE Version) with single-instance guard
 
 # Load environment variables
 if [ -f "../.env" ]; then
