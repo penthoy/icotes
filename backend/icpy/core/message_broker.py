@@ -413,6 +413,9 @@ async def get_message_broker() -> MessageBroker:
     if _message_broker is None:
         _message_broker = MessageBroker()
         await _message_broker.start()
+        logger.info("[MB] Created new in-memory MessageBroker instance")
+    else:
+        logger.debug("[MB] Reusing existing MessageBroker instance")
     return _message_broker
 
 
