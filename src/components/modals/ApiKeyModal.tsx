@@ -27,14 +27,16 @@ interface ApiKeyModalProps {
 
 const API_KEY_GROUPS = {
   'AI Models': [
+    { key: 'OPENROUTER_API_KEY', label: 'OpenRouter API Key', placeholder: 'sk-or-...', description: 'Access multiple AI models via OpenRouter' },
     { key: 'OPENAI_API_KEY', label: 'OpenAI API Key', placeholder: 'sk-...', description: 'Required for OpenAI GPT models' },
     { key: 'ANTHROPIC_API_KEY', label: 'Anthropic API Key', placeholder: 'sk-ant-...', description: 'For Claude models by Anthropic' },
-    { key: 'OPENROUTER_API_KEY', label: 'OpenRouter API Key', placeholder: 'sk-or-...', description: 'Access multiple AI models via OpenRouter' },
     { key: 'GOOGLE_API_KEY', label: 'Google API Key', placeholder: 'AIza...', description: 'For Google Gemini models' },
     { key: 'DEEPSEEK_API_KEY', label: 'DeepSeek API Key', placeholder: 'sk-...', description: 'For DeepSeek AI models' },
     { key: 'GROQ_API_KEY', label: 'Groq API Key', placeholder: 'gsk_...', description: 'For fast inference with Groq' },
     { key: 'CEREBRAS_API_KEY', label: 'Cerebras API Key', placeholder: 'csk-...', description: 'For Cerebras AI models' },
     { key: 'DASHSCOPE_API_KEY', label: 'DashScope API Key', placeholder: 'sk-...', description: 'For Alibaba Cloud AI models' },
+    { key: 'MOONSHOT_API_KEY', label: 'Moonshot AI API Key', placeholder: 'sk-...', description: 'For Moonshot AI models' },
+    { key: 'OLLAMA_URL', label: 'Ollama URL', placeholder: 'http://localhost:11434/v1', description: 'URL endpoint for Ollama local AI models' },
   ],
   'Services': [
     { key: 'MAILERSEND_API_KEY', label: 'MailerSend API Key', placeholder: 'mlsn...', description: 'For email notifications' },
@@ -49,11 +51,22 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose }) => 
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [revealedValues, setRevealedValues] = useState<Record<string, string>>({});
+
+  const getAllCanonicalKeys = (): string[] => {
+    const aiKeys = API_KEY_GROUPS['AI Models'].map(k => k.key);
+    const svcKeys = API_KEY_GROUPS['Services'].map(k => k.key);
+    return [...aiKeys, ...svcKeys];
+  };
 
   useEffect(() => {
     if (isOpen) {
       loadApiKeyStatus();
     }
+    // Cleanup revealed values when modal closes
+    return () => {
+      setRevealedValues({});
+    };
   }, [isOpen]);
 
   const loadApiKeyStatus = async () => {
@@ -61,12 +74,15 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose }) => 
     try {
       const config = await configService.getConfig();
       const baseUrl = config.base_url;
-      
-      const response = await fetch(`${baseUrl}/api/environment/keys`);
+
+      // Request exactly the keys we show in the UI to avoid backend hardcoding
+      const keysParam = encodeURIComponent(getAllCanonicalKeys().join(','));
+      const response = await fetch(`${baseUrl}/api/environment/keys?keys=${keysParam}`);
       const data = await response.json();
       
       if (data.success) {
         setKeyStatus(data.keys);
+  setRevealedValues({});
         console.log('✅ Loaded API key status:', data.keys);
       } else {
         throw new Error(data.error || 'Failed to load API key status');
@@ -91,11 +107,36 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose }) => 
     }));
   };
 
-  const toggleShowKey = (key: string) => {
-    setShowKeys(prev => ({
-      ...prev,
-      [key]: !prev[key]
-    }));
+  const toggleShowKey = async (key: string) => {
+    setShowKeys(prev => ({ ...prev, [key]: !prev[key] }));
+    // If toggling to show and no user-entered value, try to fetch full value (dev/allowed only)
+    const willShow = !showKeys[key];
+    const status = keyStatus[key];
+    const userEntered = (apiKeys[key] || '').length > 0;
+    if (willShow && status?.is_set && !userEntered && !revealedValues[key]) {
+      try {
+        const config = await configService.getConfig();
+        const baseUrl = config.base_url;
+        const resp = await fetch(`${baseUrl}/api/environment/key?key=${encodeURIComponent(key)}`);
+        const data = await resp.json();
+        if (resp.ok && data.success && typeof data.value === 'string') {
+          setRevealedValues(prev => ({ ...prev, [key]: data.value }));
+        } else {
+          // Notify user once per session if reveal is blocked
+          toast({
+            title: 'Reveal disabled',
+            description: 'To reveal full values, enable ALLOW_KEY_REVEAL=true or run backend in development. Masked values will be shown instead.',
+            duration: 4000
+          });
+        }
+      } catch {
+        toast({
+          title: 'Reveal failed',
+          description: 'Could not fetch full value. Showing masked value instead.',
+          duration: 3000
+        });
+      }
+    }
   };
 
   const handleSave = async () => {
@@ -169,6 +210,23 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose }) => 
     const currentValue = apiKeys[key] || '';
     const isVisible = showKeys[key] || false;
 
+    // Compute what to show in the input box
+    // - If the user typed something, respect that and allow toggle text/password
+    // - If nothing typed but key is set, when visible show masked_value as read-only
+    //   (so the eye toggle actually reveals something without leaking the full key)
+    // - Otherwise, keep empty and rely on placeholder
+    let effectiveValue = currentValue;
+    let isReadOnly = false;
+    if (!currentValue && status?.is_set) {
+      if (isVisible) {
+        effectiveValue = revealedValues[key] ?? status.masked_value ?? '';
+        isReadOnly = true; // prevent accidentally editing/saving masked text
+      } else {
+        effectiveValue = '';
+        isReadOnly = false;
+      }
+    }
+
     return (
       <div key={key} className="space-y-2">
         <div className="flex items-center justify-between">
@@ -196,7 +254,8 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose }) => 
             id={key}
             type={isVisible ? "text" : "password"}
             placeholder={status?.is_set ? status.masked_value : placeholder}
-            value={currentValue}
+            value={effectiveValue}
+            readOnly={isReadOnly}
             onChange={(e) => handleKeyChange(key, e.target.value)}
             className="pr-10 text-sm"
           />
@@ -206,8 +265,10 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose }) => 
             size="sm"
             className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
             onClick={() => toggleShowKey(key)}
+            aria-label={isVisible ? `Hide ${label}` : `Show ${label}`}
+            title={isVisible ? 'Hide value' : 'Show value (masked)'}
           >
-            {isVisible ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            {isVisible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
           </Button>
         </div>
         
