@@ -25,6 +25,7 @@ import uuid
 from contextlib import asynccontextmanager
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+import re
 
 # Third-party imports
 import uvicorn
@@ -1197,9 +1198,15 @@ async def get_api_keys_status_endpoint(request: Request):
             ):
                 candidates.append(k)
 
-        # De-duplicate while preserving order
-        seen = set()
-        filtered = [k for k in candidates if not (k in seen or seen.add(k))]
+        # De-duplicate while preserving order (case-insensitive for Windows envs)
+        seen_ci: set[str] = set()
+        filtered: List[str] = []
+        for k in candidates:
+            kk = k.upper()
+            if kk in seen_ci:
+                continue
+            seen_ci.add(kk)
+            filtered.append(k)
 
         return {"success": True, "keys": build_status(filtered)}
         
@@ -1228,6 +1235,10 @@ async def get_api_key_value_endpoint(request: Request):
         if not key:
             raise HTTPException(status_code=400, detail="Missing 'key' query parameter")
 
+        # Basic key format validation to avoid abusive input
+        if not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_\.\-:]{0,127}", key):
+            raise HTTPException(status_code=400, detail="Invalid key format")
+
         # Gate revealing behind:
         #  - Standalone mode (default allow), OR
         #  - Explicit env flag, OR
@@ -1241,6 +1252,20 @@ async def get_api_key_value_endpoint(request: Request):
         if not allow_reveal:
             raise HTTPException(status_code=403, detail="Key reveal disabled. Set ALLOW_KEY_REVEAL=true or run in development.")
 
+        # In SaaS mode, optionally require specific roles to reveal keys
+        if ICPY_AVAILABLE and auth_manager.is_saas_mode():
+            allowed_roles = [r.strip().lower() for r in (os.getenv("KEY_REVEAL_ROLES", "admin,owner")).split(",") if r.strip()]
+            role = (user or {}).get("role", "").lower() if user else ""
+            if allowed_roles and role not in allowed_roles:
+                raise HTTPException(status_code=403, detail="Insufficient role to reveal keys")
+
+        # Enforce allowlist (exact keys) and/or allowed prefixes if provided
+        allowlist = [k.strip() for k in os.getenv("KEY_REVEAL_ALLOWLIST", "").split(",") if k.strip()]
+        prefixes = [p.strip() for p in os.getenv("KEY_REVEAL_PREFIXES", "").split(",") if p.strip()]
+        if allowlist or prefixes:
+            if key not in allowlist and not any(key.startswith(p) for p in prefixes):
+                raise HTTPException(status_code=403, detail="Key not permitted to reveal")
+
         value = os.getenv(key)
         if value is None:
             return {"success": False, "error": f"Key '{key}' not found or not set"}
@@ -1250,11 +1275,12 @@ async def get_api_key_value_endpoint(request: Request):
 
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(
-            f"Error revealing API key value for {request.query_params.get('key','?')}: {e}"
+    except Exception:
+        logger.exception(
+            "Error revealing API key value for %s",
+            request.query_params.get('key','?')
         )
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": "internal_error"}
 
 @app.get("/api/custom-agents/{agent_name}/info")
 async def get_custom_agent_info(agent_name: str):

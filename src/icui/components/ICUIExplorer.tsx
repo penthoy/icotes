@@ -185,7 +185,18 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
             }
             return acc;
           };
-          const expandedPaths = collectExpandedPaths(mergedFiles);
+          const all = collectExpandedPaths(mergedFiles);
+          // Keep only top-most expanded paths (avoid fetching nested children redundantly)
+          const setAll = new Set(all);
+          const expandedPaths = all.filter(p => {
+            const parts = p.split('/').filter(Boolean);
+            let cur = '';
+            for (let i = 0; i < parts.length - 1; i++) {
+              cur += (i === 0 ? '' : '/') + parts[i];
+              if (setAll.has(cur)) return false;
+            }
+            return true;
+          });
           if (expandedPaths.length === 0) return;
           try {
             const results = await Promise.all(
@@ -576,7 +587,18 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
             }
             return acc;
           };
-          const expandedPaths = collectExpandedPaths(mergedFiles);
+          const all = collectExpandedPaths(mergedFiles);
+          // Keep only top-most expanded paths (avoid fetching nested children redundantly)
+          const setAll = new Set(all);
+          const expandedPaths = all.filter(p => {
+            const parts = p.split('/').filter(Boolean);
+            let cur = '';
+            for (let i = 0; i < parts.length - 1; i++) {
+              cur += (i === 0 ? '' : '/') + parts[i];
+              if (setAll.has(cur)) return false;
+            }
+            return true;
+          });
           if (expandedPaths.length === 0) return;
           try {
             const results = await Promise.all(

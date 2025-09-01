@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -52,6 +52,7 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose }) => 
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [revealedValues, setRevealedValues] = useState<Record<string, string>>({});
+  const inFlight = useRef<Record<string, boolean>>({});
 
   const getAllCanonicalKeys = (): string[] => {
     const aiKeys = API_KEY_GROUPS['AI Models'].map(k => k.key);
@@ -66,6 +67,7 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose }) => 
     // Cleanup revealed values when modal closes
     return () => {
       setRevealedValues({});
+  setShowKeys({});
     };
   }, [isOpen]);
 
@@ -76,13 +78,13 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose }) => 
       const baseUrl = config.base_url;
 
       // Request exactly the keys we show in the UI to avoid backend hardcoding
-      const keysParam = encodeURIComponent(getAllCanonicalKeys().join(','));
-      const response = await fetch(`${baseUrl}/api/environment/keys?keys=${keysParam}`);
+      const params = new URLSearchParams({ keys: getAllCanonicalKeys().join(',') });
+      const response = await fetch(`${baseUrl}/api/environment/keys?${params.toString()}`);
       const data = await response.json();
       
       if (data.success) {
         setKeyStatus(data.keys);
-  setRevealedValues({});
+        setRevealedValues({});
         console.log('✅ Loaded API key status:', data.keys);
       } else {
         throw new Error(data.error || 'Failed to load API key status');
@@ -113,8 +115,9 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose }) => 
     const willShow = !showKeys[key];
     const status = keyStatus[key];
     const userEntered = (apiKeys[key] || '').length > 0;
-    if (willShow && status?.is_set && !userEntered && !revealedValues[key]) {
+    if (willShow && status?.is_set && !userEntered && !revealedValues[key] && !inFlight.current[key]) {
       try {
+        inFlight.current[key] = true;
         const config = await configService.getConfig();
         const baseUrl = config.base_url;
         const resp = await fetch(`${baseUrl}/api/environment/key?key=${encodeURIComponent(key)}`);
@@ -135,6 +138,8 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose }) => 
           description: 'Could not fetch full value. Showing masked value instead.',
           duration: 3000
         });
+      } finally {
+        inFlight.current[key] = false;
       }
     }
   };
@@ -256,6 +261,9 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose }) => 
             placeholder={status?.is_set ? status.masked_value : placeholder}
             value={effectiveValue}
             readOnly={isReadOnly}
+            autoComplete="off"
+            autoCorrect="off"
+            spellCheck={false}
             onChange={(e) => handleKeyChange(key, e.target.value)}
             className="pr-10 text-sm"
           />
@@ -266,9 +274,9 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose }) => 
             className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
             onClick={() => toggleShowKey(key)}
             aria-label={isVisible ? `Hide ${label}` : `Show ${label}`}
-            title={isVisible ? 'Hide value' : 'Show value (masked)'}
+            title={isVisible ? 'Hide value' : 'Show value'}
           >
-            {isVisible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+            {isVisible ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
           </Button>
         </div>
         
