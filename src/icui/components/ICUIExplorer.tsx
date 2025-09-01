@@ -69,8 +69,10 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
   const [showHiddenFiles, setShowHiddenFiles] = useState(explorerPreferences.getShowHiddenFiles()); // Show hidden files toggle
   const lastLoadTimeRef = useRef(0);
   const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const loadDirectoryRef = useRef<(path?: string) => Promise<void>>();
+  const loadDirectoryRef = useRef<(path?: string, opts?: { force?: boolean }) => Promise<void>>();
   const statusHandlerRef = useRef<((payload: any) => Promise<void>) | null>(null);
+  // Track expansion state explicitly to avoid losing it when replacing children arrays
+  const expandedPathsRef = useRef<Set<string>>(new Set());
 
   const { theme } = useTheme();
 
@@ -97,28 +99,51 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
     return map;
   }, []);
 
-  // Merge new directory listing with previous state to preserve expanded folders
-  const mergeTreePreserveExpanded = useCallback((prev: FileNode[], next: FileNode[]): FileNode[] => {
-    if (!prev || prev.length === 0) return next;
-    const prevMap = buildNodeMapByPath(prev);
-    const mergeLevel = (nodes: FileNode[]): FileNode[] => nodes.map(node => {
-      const prevNode = prevMap.get(node.path);
-      if (node.type === 'folder') {
-        const isExpanded = Boolean(prevNode?.isExpanded);
-        // Keep existing children for expanded folders (they'll be refreshed separately)
-        const children = isExpanded ? (prevNode?.children || node.children) : node.children;
-        return { ...node, isExpanded, children } as FileNode;
-      }
-      return node;
-    });
-    return mergeLevel(next);
-  }, [buildNodeMapByPath]);
+  // Annotate a tree with expansion flags from expandedPathsRef and optionally reuse previous children
+  const annotateWithExpansion = useCallback((nodes: FileNode[], prevMap?: Map<string, FileNode>, preferNewChildren: boolean = false): FileNode[] => {
+    const prev = prevMap || new Map<string, FileNode>();
+    const annotate = (list: FileNode[]): FileNode[] =>
+      list.map(node => {
+        if (node.type === 'folder') {
+          const shouldExpand = expandedPathsRef.current.has(node.path);
+          const prevNode = prev.get(node.path);
+          // Prefer freshly fetched children when provided (e.g., after a refresh for this path)
+          const rawChildren = preferNewChildren
+            ? (node.children as FileNode[] | undefined)
+            : ((node.children as FileNode[] | undefined) ?? (shouldExpand ? (prevNode?.children as FileNode[] | undefined) : undefined));
+          const children = rawChildren ? annotate(rawChildren as FileNode[]) : rawChildren;
+          return { ...node, isExpanded: shouldExpand, children } as FileNode;
+        }
+        return node;
+      });
+    return annotate(nodes);
+  }, []);
+
+  // Apply children fetch results, keeping expansion flags for nested folders
+  const applyChildrenResults = useCallback((current: FileNode[], results: { path: string; children: FileNode[] }[], prevMap: Map<string, FileNode>): FileNode[] => {
+    const byPath = new Map(results.map(r => [r.path, r.children] as const));
+    const apply = (nodes: FileNode[]): FileNode[] =>
+      nodes.map(node => {
+        if (node.type === 'folder') {
+          // Prefer freshly fetched children when available for this node
+          const replacedChildren = byPath.has(node.path) ? (byPath.get(node.path) as FileNode[]) : (node.children as FileNode[] | undefined);
+          const annotated = replacedChildren ? annotateWithExpansion(replacedChildren, prevMap, true) : replacedChildren;
+          const deepApplied = annotated ? apply(annotated) : annotated;
+          return {
+            ...node,
+            children: deepApplied,
+          } as FileNode;
+        }
+        return node;
+      });
+    return apply(current);
+  }, [annotateWithExpansion]);
 
   // Load directory contents using centralized service
-  const loadDirectory = useCallback(async (path: string = getWorkspaceRoot()) => {
+  const loadDirectory = useCallback(async (path: string = getWorkspaceRoot(), opts?: { force?: boolean }) => {
     // Prevent rapid successive calls (debounce)
     const now = Date.now();
-    if (now - lastLoadTimeRef.current < 100) {
+    if (!opts?.force && now - lastLoadTimeRef.current < 100) {
       return;
     }
     
@@ -133,51 +158,59 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
       }
 
       const directoryContents = await backendService.getDirectoryContents(path, showHiddenFiles);
-      
-      // Instead of merging at setState time, we'll refresh expanded folders after setting the new data
+      // Synchronize expansion set from previous tree (migration from older state flags)
       setFiles(prevFiles => {
         const prevMap = buildNodeMapByPath(prevFiles);
-        const mergedFiles = (directoryContents as FileNode[]).map(node => {
-          const prevNode = prevMap.get(node.path);
-          if (node.type === 'folder' && prevNode?.isExpanded) {
-            return { ...node, isExpanded: true, children: prevNode.children };
-          }
-          return node;
-        });
-        
-        // After state is updated, refresh contents of all expanded folders (any depth)
-        const collectExpanded = (nodes: FileNode[], acc: FileNode[] = []): FileNode[] => {
-          for (const n of nodes) {
-            if (n.type === 'folder' && n.isExpanded) acc.push(n);
-            if (n.children && n.children.length > 0) collectExpanded(n.children as FileNode[], acc);
-          }
-          return acc;
-        };
+        // Seed expansion set from previous tree if empty
+        if (expandedPathsRef.current.size === 0) {
+          const seed = (nodes: FileNode[]) => {
+            for (const n of nodes) {
+              if (n.type === 'folder' && n.isExpanded) {
+                expandedPathsRef.current.add(n.path);
+              }
+              if (n.children && n.children.length) seed(n.children as FileNode[]);
+            }
+          };
+          seed(prevFiles);
+        }
+  const mergedFiles = annotateWithExpansion(directoryContents as FileNode[], prevMap);
+
+        // After setting base tree, refresh contents for all expanded folders (any depth)
         setTimeout(async () => {
-          const expanded = collectExpanded(mergedFiles);
-          if (expanded.length === 0) return;
+          // collect all expanded paths from the current merged tree
+          const collectExpandedPaths = (nodes: FileNode[], acc: string[] = []): string[] => {
+            for (const n of nodes) {
+              if (n.type === 'folder' && expandedPathsRef.current.has(n.path)) acc.push(n.path);
+              if (n.children && n.children.length) collectExpandedPaths(n.children as FileNode[], acc);
+            }
+            return acc;
+          };
+          const all = collectExpandedPaths(mergedFiles);
+          // Keep only top-most expanded paths (avoid fetching nested children redundantly)
+          const setAll = new Set(all);
+          const expandedPaths = all.filter(p => {
+            const parts = p.split('/').filter(Boolean);
+            let cur = '';
+            for (let i = 0; i < parts.length - 1; i++) {
+              cur += (i === 0 ? '' : '/') + parts[i];
+              if (setAll.has(cur)) return false;
+            }
+            return true;
+          });
+          if (expandedPaths.length === 0) return;
           try {
             const results = await Promise.all(
-              expanded.map(async (folder) => ({
-                path: folder.path,
-                children: await backendService.getDirectoryContents(folder.path, showHiddenFiles),
+              expandedPaths.map(async (p) => ({
+                path: p,
+                children: await backendService.getDirectoryContents(p, showHiddenFiles),
               }))
             );
-            setFiles(currentFiles => {
-              const apply = (nodes: FileNode[]): FileNode[] =>
-                nodes.map(node => {
-                  const match = results.find(r => r.path === node.path);
-                  const nextChildren = node.children ? apply(node.children as FileNode[]) : node.children;
-                  if (match) return { ...node, children: match.children };
-                  return node.children ? { ...node, children: nextChildren } : node;
-                });
-              return apply(currentFiles);
-            });
+            setFiles(currentFiles => applyChildrenResults(currentFiles, results, buildNodeMapByPath(currentFiles)));
           } catch (err) {
             console.warn('Failed to refresh expanded folders:', err);
           }
         }, 10);
-        
+
         return mergedFiles;
       });
       
@@ -190,7 +223,7 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [checkConnection, showHiddenFiles, isPathLocked, buildNodeMapByPath]); // Add showHiddenFiles to dependencies  // Store loadDirectory in ref to avoid dependency issues
+  }, [checkConnection, showHiddenFiles, isPathLocked, buildNodeMapByPath, annotateWithExpansion, applyChildrenResults]);
   useEffect(() => {
     loadDirectoryRef.current = loadDirectory;
   }, [loadDirectory]);
@@ -374,9 +407,16 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
           if (node.id === folder.id && node.type === 'folder') {
             if (node.isExpanded) {
               // Collapse folder
+              // Remove this path and any descendants from expansion set
+              expandedPathsRef.current.delete(node.path);
+              // Also prune any descendant paths
+              for (const p of Array.from(expandedPathsRef.current)) {
+                if (p.startsWith(node.path + '/')) expandedPathsRef.current.delete(p);
+              }
               return { ...node, isExpanded: false };
             } else {
               // Expand folder - we'll load children if not already loaded
+              expandedPathsRef.current.add(node.path);
               return { ...node, isExpanded: true };
             }
           }
@@ -403,7 +443,9 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
               const updateWithChildren = (nodes: FileNode[]): FileNode[] => {
                 return nodes.map(node => {
                   if (node.id === folder.id) {
-                    return { ...node, children };
+                    // Annotate children so nested expanded folders remain expanded if present in set
+                    const prevMap = buildNodeMapByPath(prevFiles);
+                    return { ...node, children: annotateWithExpansion(children as FileNode[], prevMap, true) };
                   }
                   if (node.children && node.children.length > 0) {
                     return { ...node, children: updateWithChildren(node.children) };
@@ -422,7 +464,7 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
       
       return updatedFiles;
     });
-  }, [isConnected, findNodeInTree]);
+  }, [isConnected, findNodeInTree, annotateWithExpansion, buildNodeMapByPath]);
 
   // Handle file/folder selection
   const handleItemClick = useCallback(async (item: FileNode) => {
@@ -504,7 +546,12 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
 
   // Handle refresh
   const handleRefresh = useCallback(() => {
-    loadDirectory(currentPath);
+    // Force a full reload via the main loader to ensure visible refresh and spinner
+    if (loadDirectoryRef.current) {
+      loadDirectoryRef.current(currentPath, { force: true });
+    } else {
+      loadDirectory(currentPath, { force: true });
+    }
   }, [currentPath, loadDirectory]);
 
   // Handle toggle hidden files
@@ -521,53 +568,57 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
     backendService.getDirectoryContents(currentPath, newState).then(directoryContents => {
       setFiles(prevFiles => {
         const prevMap = buildNodeMapByPath(prevFiles);
-        const mergedFiles = (directoryContents as FileNode[]).map(node => {
-          const prevNode = prevMap.get(node.path);
-          if (node.type === 'folder' && prevNode?.isExpanded) {
-            return { ...node, isExpanded: true, children: prevNode.children };
-          }
-          return node;
-        });
-        
-        const collectExpanded = (nodes: FileNode[], acc: FileNode[] = []): FileNode[] => {
-          for (const n of nodes) {
-            if (n.type === 'folder' && n.isExpanded) acc.push(n);
-            if (n.children && n.children.length > 0) collectExpanded(n.children as FileNode[], acc);
-          }
-          return acc;
-        };
+        // Seed expansion set from current tree if empty to preserve states during toggle
+        if (expandedPathsRef.current.size === 0) {
+          const seed = (nodes: FileNode[]) => {
+            for (const n of nodes) {
+              if (n.type === 'folder' && n.isExpanded) expandedPathsRef.current.add(n.path);
+              if (n.children && n.children.length) seed(n.children as FileNode[]);
+            }
+          };
+          seed(prevFiles);
+        }
+        const mergedFiles = annotateWithExpansion(directoryContents as FileNode[], prevMap);
         setTimeout(async () => {
-          const expanded = collectExpanded(mergedFiles);
-          if (expanded.length === 0) return;
+          const collectExpandedPaths = (nodes: FileNode[], acc: string[] = []): string[] => {
+            for (const n of nodes) {
+              if (n.type === 'folder' && expandedPathsRef.current.has(n.path)) acc.push(n.path);
+              if (n.children && n.children.length) collectExpandedPaths(n.children as FileNode[], acc);
+            }
+            return acc;
+          };
+          const all = collectExpandedPaths(mergedFiles);
+          // Keep only top-most expanded paths (avoid fetching nested children redundantly)
+          const setAll = new Set(all);
+          const expandedPaths = all.filter(p => {
+            const parts = p.split('/').filter(Boolean);
+            let cur = '';
+            for (let i = 0; i < parts.length - 1; i++) {
+              cur += (i === 0 ? '' : '/') + parts[i];
+              if (setAll.has(cur)) return false;
+            }
+            return true;
+          });
+          if (expandedPaths.length === 0) return;
           try {
             const results = await Promise.all(
-              expanded.map(async (folder) => ({
-                path: folder.path,
-                children: await backendService.getDirectoryContents(folder.path, newState),
+              expandedPaths.map(async (p) => ({
+                path: p,
+                children: await backendService.getDirectoryContents(p, newState),
               }))
             );
-            setFiles(currentFiles => {
-              const apply = (nodes: FileNode[]): FileNode[] =>
-                nodes.map(node => {
-                  const match = results.find(r => r.path === node.path);
-                  const nextChildren = node.children ? apply(node.children as FileNode[]) : node.children;
-                  if (match) return { ...node, children: match.children };
-                  return node.children ? { ...node, children: nextChildren } : node;
-                });
-              return apply(currentFiles);
-            });
+            setFiles(currentFiles => applyChildrenResults(currentFiles, results, buildNodeMapByPath(currentFiles)));
           } catch (err) {
             console.warn('Failed to refresh expanded folders:', err);
           }
         }, 10);
-        
         return mergedFiles;
       });
     }).catch(err => {
       console.error('Failed to refresh directory:', err);
       setError(err instanceof Error ? err.message : 'Failed to refresh directory');
     });
-  }, [currentPath, buildNodeMapByPath]);
+  }, [currentPath, buildNodeMapByPath, annotateWithExpansion, applyChildrenResults]);
 
   // Handle path lock toggle
   const togglePathLock = useCallback(() => {

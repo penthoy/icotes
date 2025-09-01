@@ -18,14 +18,6 @@
       "order": 5,
       "icon": "\ud83d\udee0\ufe0f"
     },
-    "OpenAIDemoAgent": {
-      "enabled": true,
-      "displayName": "OpenAI Demo",
-      "description": "Built-in agent: OpenAI demonstration agent",
-      "category": "Built-in",
-      "order": 1,
-      "icon": "\ud83e\udd16"
-    },
     "OpenRouterAgent": {
       "enabled": true,
       "displayName": "OpenRouter",
@@ -74,11 +66,11 @@
       "order": 2,
       "icon": "\ud83c\udfe0"
     },
-    "deepseek-r1:14b": {
+    "OpenAIAgent": {
       "enabled": true,
-      "displayName": "deepseek-r1:14b",
-      "description": "Auto-discovered agent: deepseek-r1:14b",
-      "category": "General",
+      "displayName": "OpenAIAgent",
+      "description": "Built-in generic gpt-5-mini agent",
+      "category": "Built-in",
       "order": 999
     }
   },
@@ -91,10 +83,6 @@
       "icon": "\ud83e\udd16",
       "order": 1
     },
-    "Tests": {
-      "icon": "\ud83d\udcac",
-      "order": 4
-    },
     "Built-in": {
       "icon": "\ud83e\udde0",
       "order": 3
@@ -103,7 +91,7 @@
   "settings": {
     "showCategories": true,
     "showDescriptions": true,
-    "defaultAgent": "AgentCreator",
+    "defaultAgent": "OpenAIAgent",
     "autoReloadOnChange": true
   }
 }

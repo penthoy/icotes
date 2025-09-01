@@ -25,6 +25,7 @@ import uuid
 from contextlib import asynccontextmanager
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+import re
 
 # Third-party imports
 import uvicorn
@@ -1141,55 +1142,145 @@ async def update_api_keys_endpoint(request: Request):
 
 @app.get("/api/environment/keys")
 async def get_api_keys_status_endpoint(request: Request):
-    """Get the status of API keys (whether they are set or not, without revealing values)."""
+    """Get the status of API keys (whether they are set or not, without revealing values).
+
+    Supports two modes:
+    - Explicit mode: pass `?keys=KEY1,KEY2,...` to check exactly these keys (preferred).
+    - Auto mode: if no keys param, detect likely API-related env vars via simple heuristics.
+    """
     try:
         # Check authentication in SaaS mode
         if auth_manager.is_saas_mode():
             user = get_optional_user(request)
             if not user:
                 raise HTTPException(status_code=401, detail="Authentication required")
-        
-        # Define the API keys we support
-        api_keys = [
-            'OPENAI_API_KEY',
-            'ANTHROPIC_API_KEY',
-            'OPENROUTER_API_KEY', 
-            'GOOGLE_API_KEY',
-            'DEEPSEEK_API_KEY',
-            'GROQ_API_KEY',
-            'CEREBRAS_API_KEY',
-            'DASHSCOPE_API_KEY',
-            'MAILERSEND_API_KEY',
-            'PUSHOVER_USER',
-            'PUSHOVER_TOKEN'
-        ]
-        
-        # Check which keys are set (without revealing values)
-        key_status = {}
-        for key in api_keys:
-            value = os.getenv(key)
-            if value:
-                # Show first 4 chars and mask the rest
-                masked = value[:4] + '*' * (len(value) - 4) if len(value) > 4 else '*' * len(value)
-                key_status[key] = {
-                    "is_set": True,
-                    "masked_value": masked,
-                    "length": len(value)
-                }
-            else:
-                key_status[key] = {
-                    "is_set": False,
-                    "masked_value": "",
-                    "length": 0
-                }
-        
-        return {"success": True, "keys": key_status}
+
+        # Parse explicit keys from query, if provided
+        q = request.query_params.get("keys")
+        explicit_keys: Optional[List[str]] = None
+        if q:
+            explicit_keys = [k.strip() for k in q.split(',') if k.strip()]
+
+        # Helper to build status map for given keys
+        def build_status(keys: List[str]) -> Dict[str, Dict[str, Any]]:
+            status: Dict[str, Dict[str, Any]] = {}
+            for key in keys:
+                value = os.getenv(key)
+                if value:
+                    masked = value[:4] + '*' * (len(value) - 4) if len(value) > 4 else '*' * len(value)
+                    status[key] = {"is_set": True, "masked_value": masked, "length": len(value)}
+                else:
+                    status[key] = {"is_set": False, "masked_value": "", "length": 0}
+            return status
+
+        if explicit_keys:
+            # Explicit mode: only return requested keys
+            return {"success": True, "keys": build_status(explicit_keys)}
+
+        # Auto mode: detect likely API-related keys from environment
+        env_keys = list(os.environ.keys())
+        candidates: List[str] = []
+        for k in env_keys:
+            upper_k = k.upper()
+            if (
+                upper_k.endswith("API_KEY") or
+                upper_k.endswith("_TOKEN") or
+                upper_k.endswith("ACCESS_TOKEN") or
+                upper_k.endswith("_SECRET") or
+                ("API" in upper_k and "KEY" in upper_k)
+            ):
+                candidates.append(k)
+                continue
+            # Include common API base URLs like OLLAMA or OPENAI
+            if (
+                ("OLLAMA" in upper_k or "OPENAI" in upper_k or "ANTHROPIC" in upper_k or "GROQ" in upper_k or "GOOGLE" in upper_k or "MOONSHOT" in upper_k or "DEEPSEEK" in upper_k or "CEREBRAS" in upper_k or "DASHSCOPE" in upper_k)
+                and (upper_k.endswith("_URL") or upper_k.endswith("URL") or upper_k.endswith("API_BASE") or upper_k.endswith("_API_BASE") or upper_k.endswith("BASE_URL"))
+            ):
+                candidates.append(k)
+
+        # De-duplicate while preserving order (case-insensitive for Windows envs)
+        seen_ci: set[str] = set()
+        filtered: List[str] = []
+        for k in candidates:
+            kk = k.upper()
+            if kk in seen_ci:
+                continue
+            seen_ci.add(kk)
+            filtered.append(k)
+
+        return {"success": True, "keys": build_status(filtered)}
         
     except HTTPException:
         raise  # Re-raise HTTP exceptions (like 401)
     except Exception as e:
         logger.error(f"Error getting API key status: {e}")
         return {"success": False, "error": str(e)}
+
+@app.get("/api/environment/key")
+async def get_api_key_value_endpoint(request: Request):
+    """Reveal a full environment value for a given key.
+
+    Security: Allowed in standalone mode by default, and in SaaS/deployment when
+    NODE_ENV=development or ALLOW_KEY_REVEAL=true. This endpoint intentionally avoids
+    logging sensitive values.
+    """
+    try:
+        # SaaS mode auth check
+        if auth_manager.is_saas_mode():
+            user = get_optional_user(request)
+            if not user:
+                raise HTTPException(status_code=401, detail="Authentication required")
+
+        key = request.query_params.get("key")
+        if not key:
+            raise HTTPException(status_code=400, detail="Missing 'key' query parameter")
+
+        # Basic key format validation to avoid abusive input
+        if not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_\.\-:]{0,127}", key):
+            raise HTTPException(status_code=400, detail="Invalid key format")
+
+        # Gate revealing behind:
+        #  - Standalone mode (default allow), OR
+        #  - Explicit env flag, OR
+        #  - Development mode
+        standalone_mode = not (ICPY_AVAILABLE and auth_manager.is_saas_mode())
+        allow_reveal = (
+            standalone_mode
+            or os.getenv("NODE_ENV") == "development"
+            or os.getenv("ALLOW_KEY_REVEAL", "").lower() in ("1", "true", "yes")
+        )
+        if not allow_reveal:
+            raise HTTPException(status_code=403, detail="Key reveal disabled. Set ALLOW_KEY_REVEAL=true or run in development.")
+
+        # In SaaS mode, optionally require specific roles to reveal keys
+        if ICPY_AVAILABLE and auth_manager.is_saas_mode():
+            allowed_roles = [r.strip().lower() for r in (os.getenv("KEY_REVEAL_ROLES", "admin,owner")).split(",") if r.strip()]
+            role = (user or {}).get("role", "").lower() if user else ""
+            if allowed_roles and role not in allowed_roles:
+                raise HTTPException(status_code=403, detail="Insufficient role to reveal keys")
+
+        # Enforce allowlist (exact keys) and/or allowed prefixes if provided
+        allowlist = [k.strip() for k in os.getenv("KEY_REVEAL_ALLOWLIST", "").split(",") if k.strip()]
+        prefixes = [p.strip() for p in os.getenv("KEY_REVEAL_PREFIXES", "").split(",") if p.strip()]
+        if allowlist or prefixes:
+            if key not in allowlist and not any(key.startswith(p) for p in prefixes):
+                raise HTTPException(status_code=403, detail="Key not permitted to reveal")
+
+        value = os.getenv(key)
+        if value is None:
+            return {"success": False, "error": f"Key '{key}' not found or not set"}
+
+        # Do not log the value; only return it to the caller
+        return {"success": True, "key": key, "value": value, "length": len(value)}
+
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception(
+            "Error revealing API key value for %s",
+            request.query_params.get('key','?')
+        )
+        return {"success": False, "error": "internal_error"}
 
 @app.get("/api/custom-agents/{agent_name}/info")
 async def get_custom_agent_info(agent_name: str):
