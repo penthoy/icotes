@@ -14,7 +14,7 @@ import {
 } from '../../../src/icui';
 import type { ICUILayoutConfig } from '../../../src/icui/components/ICUILayout';
 import type { ICUIPanel } from '../../../src/icui/components/ICUIPanelArea';
-import type { ICUIEditorFile } from '../../../src/icui/components/panels/ICUIEditorPanel';
+import type { ICUIEditorFile } from '../../../src/icui/components/archived/ICUIEditorPanel_deprecate';
 import type { ICUIPanelType } from '../../../src/icui/components/ICUIPanelSelector';
 
 interface ICUITestEnhancedProps {

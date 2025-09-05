@@ -11,7 +11,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import ICUIChat from '../../src/icui/components/ICUIChat';
+import ICUIChat from '../../src/icui/components/panels/ICUIChat';
 import { registerWidget, getWidgetForTool, WidgetConfig } from '../../src/icui/services/widgetRegistry';
 import { ToolCallData } from '../../src/icui/components/chat/ToolCallWidget';
 

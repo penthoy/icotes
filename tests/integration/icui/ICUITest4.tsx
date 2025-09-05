@@ -14,7 +14,7 @@ import {
 } from '../../../src/icui';
 import { ICUIPanelArea } from '../../../src/icui/components/archived/ICUIPanelArea_deprecated';
 import { FileData } from '../../../src/components/archived/FileTabs';
-import ICUITerminalPanel from '../../../src/icui/components/panels/ICUITerminalPanel';
+import ICUITerminalPanel from '../../../src/icui/components/archived/ICUITerminalPanel_deprecate';
 import CodeEditor, { SupportedLanguage } from '../../../src/components/archived/CodeEditor';
 import FileExplorer from '../../../src/components/archived/FileExplorer';
 

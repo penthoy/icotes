@@ -18,7 +18,7 @@ import React, { useRef, useEffect, useState, useCallback, useImperativeHandle, f
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
-import { configService } from '../../services/config-service';
+import { configService } from '../../../services/config-service';
 
 // Enhanced clipboard functionality
 class EnhancedClipboard {

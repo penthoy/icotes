@@ -4,10 +4,10 @@
  */
 
 import React, { useState } from 'react';
-import ICUITerminalPanel from '../../../src/icui/components/panels/ICUITerminalPanel';
-import ICUIEditorPanel from '../../../src/icui/components/panels/ICUIEditorPanel';
-import ICUIExplorerPanel from '../../../src/icui/components/panels/ICUIExplorerPanel';
-import ICUIChatPanel from '../../../src/icui/components/panels/ICUIChatPanel';
+import ICUITerminalPanel from '../../../src/icui/components/archived/ICUITerminalPanel_deprecate';
+import ICUIEditorPanel from '../../../src/icui/components/archived/ICUIEditorPanel_deprecate';
+import ICUIExplorerPanel from '../../../src/icui/components/archived/ICUIExplorerPanel_deprecate';
+import ICUIChatPanel from '../../../src/icui/components/archived/ICUIChatPanel_deprecate';
 
 interface ICUIReferenceLayoutsProps {
   className?: string;

@@ -44,8 +44,8 @@ import {
   indentWithTab,
 } from "@codemirror/commands";
 import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
-import { backendService, ICUIFile, useTheme, ConnectionStatus } from '../services';
-import { getWorkspaceRoot } from '../lib';
+import { backendService, ICUIFile, useTheme, ConnectionStatus } from '../../services';
+import { getWorkspaceRoot } from '../../lib';
 import {
   autocompletion,
   completionKeymap,
@@ -71,7 +71,7 @@ import { go } from '@codemirror/lang-go';
 import { StreamLanguage } from '@codemirror/language';
 import { yaml } from '@codemirror/legacy-modes/mode/yaml';
 import { shell } from '@codemirror/legacy-modes/mode/shell';
-import { createICUISyntaxHighlighting, createICUIEnhancedEditorTheme } from '../utils/syntaxHighlighting';
+import { createICUISyntaxHighlighting, createICUIEnhancedEditorTheme } from '../../utils/syntaxHighlighting';
 
 // File interface (using centralized ICUIFile type)
 interface EditorFile extends ICUIFile {

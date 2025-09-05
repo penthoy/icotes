@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import ICUILayout from '../../../src/icui/components/ICUILayout';
-import ICUIEditorPanel from '../../../src/icui/components/panels/ICUIEditorPanel';
+import ICUIEditorPanel from '../../../src/icui/components/archived/ICUIEditorPanel_deprecate';
 import '../../../src/icui/styles/themes/icui-themes.css';
 
 const ICUITest49: React.FC = () => {

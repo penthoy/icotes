@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import { useChatHistory } from '../hooks/useChatHistory';
-import { useChatSessionSync } from '../hooks/useChatSessionSync';
+import { useChatHistory } from '../../hooks/useChatHistory';
+import { useChatSessionSync } from '../../hooks/useChatSessionSync';
 import { Trash2, Edit3, Plus, MessageSquare, Clock, Search } from 'lucide-react';
 
 interface ICUIChatHistoryProps {

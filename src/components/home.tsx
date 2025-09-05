@@ -8,13 +8,13 @@
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { 
   ICUILayout,
-  ICUIChat
+  ICUIChat,
+  ICUIExplorer,
+  ICUITerminal,
+  ICUIEditor,
+  ICUIChatHistory
 } from '../icui';
-// Note: Legacy Layout wrapper removed; ICUILayout is used directly.
-import ICUIExplorer from '../icui/components/ICUIExplorer';
-import ICUITerminal from '../icui/components/ICUITerminal';
-import ICUIEditor, { ICUIEditorRef } from '../icui/components/ICUIEditor';
-import ICUIChatHistory from '../icui/components/ICUIChatHistory';
+import type { ICUIEditorRef } from '../icui';
 import ICUIBaseHeader from '../icui/components/ICUIBaseHeader';
 import ICUIBaseFooter from '../icui/components/ICUIBaseFooter';
 
