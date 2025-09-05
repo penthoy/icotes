@@ -7,7 +7,7 @@
  */
 
 import React, { useState, useCallback } from 'react';
-import { FileMenu } from '../menus/FileMenu';
+import { FileMenu } from '../archived/FileMenu_deprecate';
 import { FileInfo } from '../../services/fileService';
 import { notificationService } from '../../services/notificationService';
 import '../../styles/FileMenu.css';
