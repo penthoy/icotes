@@ -1,19 +1,8 @@
 /**
- * Integrated Home Component - Backend-Connected Application Interface
- * Cleaned up version of home.tsx prepared for ICPY integration
- * 
- * This component is ready for integration with:
- * - ICUIExplorer (existing)
- * - ICUITerminal (existing)  
- * - Simple editor components for now (to be enhanced later)
- * - Backend state synchronization (hooks ready)
- * 
- * Key Changes from Original home.tsx:
- * - Prepared for backend state management (hooks ready but graceful fallback)
- * - Uses existing integration components where available
- * - Simplified structure ready for ICPY backend connection
- * - Added workspace synchronization with WORKSPACE_ROOT from .env
- * - Clean error handling and connection status display
+ * Home (ICUI): Main application shell with header, layout, and footer.
+ * - Uses ICUIBaseHeader as the single source of truth for top menus and theme switcher.
+ * - Renders panels via ICUILayout (Explorer, Editor, Terminal, Chat, etc.).
+
  */
 
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
@@ -21,11 +10,13 @@ import {
   ICUILayout,
   ICUIChat
 } from '../icui';
-import Layout from './Layout';
+// Note: Legacy Layout wrapper removed; ICUILayout is used directly.
 import ICUIExplorer from '../icui/components/ICUIExplorer';
 import ICUITerminal from '../icui/components/ICUITerminal';
 import ICUIEditor, { ICUIEditorRef } from '../icui/components/ICUIEditor';
 import ICUIChatHistory from '../icui/components/ICUIChatHistory';
+import ICUIBaseHeader from '../icui/components/ICUIBaseHeader';
+import ICUIBaseFooter from '../icui/components/ICUIBaseFooter';
 
 import type { ICUILayoutConfig } from '../icui/components/ICUILayout';
 import type { ICUIPanel } from '../icui/components/ICUIPanelArea';
@@ -91,11 +82,16 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
   // Editor ref for imperative control (e.g., opening files from Explorer)
   const editorRef = useRef<ICUIEditorRef>(null);
 
+  // Menu state for integrated menus
+  const [activeMenu, setActiveMenu] = useState<string | null>(null);
+  const [currentFile, setCurrentFile] = useState<any>(null);
+
   // Handle file selection from Explorer - VS Code-like temporary file opening
   const handleFileSelect = useCallback((file: any) => {
     if (file.type === 'file' && editorRef.current) {
       // Single click opens file temporarily (will be replaced by next single click)
       editorRef.current.openFileTemporary(file.path);
+      setCurrentFile(file);
     }
   }, []);
 
@@ -104,8 +100,89 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
     if (file.type === 'file' && editorRef.current) {
       // Double click opens file permanently (will not be replaced by single clicks)
       editorRef.current.openFilePermanent(file.path);
+      setCurrentFile(file);
     }
   }, []);
+
+  const handleTogglePanel = useCallback((panelType: string) => {
+    setPanels(prev => {
+      const panelExists = prev.some(p => p.type === panelType);
+      if (panelExists) {
+        // Remove panel
+        return prev.filter(p => p.type !== panelType);
+      } else {
+        // Add panel - create a basic panel structure
+        const newPanel: ICUIPanel = {
+          id: `${panelType.toLowerCase()}-${Date.now()}`,
+          type: panelType,
+          title: panelType,
+          content: <div>Panel content for {panelType}</div>,
+          closable: true,
+          resizable: true,
+          config: {}
+        };
+        return [...prev, newPanel];
+      }
+    });
+  }, []);
+
+  // Menu action handlers for integrated menu bar
+  const handleMenuItemClick = useCallback((menuId: string, itemId: string) => {
+    console.log(`Menu action: ${menuId} -> ${itemId}`);
+    
+    switch (menuId) {
+      case 'file':
+        switch (itemId) {
+          case 'new':
+            // Trigger file creation through callback
+            console.log('Creating new file...');
+            break;
+          case 'open':
+            // Trigger file open dialog
+            console.log('Opening file dialog...');
+            break;
+          case 'save':
+            // Trigger save current file
+            console.log('Saving current file...');
+            break;
+          case 'save-all':
+            // Trigger save all files
+            console.log('Saving all files...');
+            break;
+          case 'refresh':
+            // Trigger explorer refresh through layout change
+            setLayout(prev => ({
+              ...prev,
+              areas: {
+                ...prev.areas,
+                left: {
+                  ...prev.areas.left,
+                  refreshTrigger: Date.now()
+                }
+              }
+            }));
+            console.log('Refreshing explorer...');
+            break;
+        }
+        break;
+      case 'layout':
+        switch (itemId) {
+          case 'toggle-explorer':
+            handleTogglePanel('Explorer');
+            break;
+          case 'toggle-terminal':
+            handleTogglePanel('Terminal');
+            break;
+          case 'toggle-search':
+            handleTogglePanel('Search');
+            break;
+          case 'toggle-debug':
+            handleTogglePanel('Debug');
+            break;
+        }
+        break;
+    }
+  }, [handleTogglePanel, setLayout]);
 
   // Apply theme classes to document element for proper theme detection
   useEffect(() => {
@@ -195,11 +272,17 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
   ), []);
 
   const chatInstance = useMemo(() => (
-    <ICUIChat className="h-full" />
+    <ICUIChat 
+      className="h-full" 
+      key="main-chat-instance"
+    />
   ), []);
 
   const chatHistoryInstance = useMemo(() => (
-    <ICUIChatHistory className="h-full" />
+    <ICUIChatHistory 
+      className="h-full" 
+      key="main-chat-history-instance"
+    />
   ), []);
 
   // Memoized panel content creators to prevent recreation on layout changes
@@ -211,8 +294,10 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
 
   // Handle panel addition
   const handlePanelAdd = useCallback((panelType: ICUIPanelType, areaId: string) => {
-    // Generate unique ID for the new panel
-    const newPanelId = `${panelType.id}-${Date.now()}`;
+    // Generate unique ID for the new panel - use stable IDs for chat panels
+    const newPanelId = panelType.id === 'chat' || panelType.id === 'chat-history' 
+      ? `${panelType.id}-main` 
+      : `${panelType.id}-${Date.now()}`;
     
     // Create panel content based on type using memoized creators
     let content: React.ReactNode;
@@ -390,32 +475,44 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
   // console.log('Home render - connectionStatus:', connectionStatus);
 
   return (
-    <Layout
-      className={`home-container ${currentThemeInfo.class} ${className}`}
-      appState={{
-        currentTheme,
-        availableThemes: THEME_OPTIONS,
-        files: [], // ICUIEditor manages its own files now
-        connectionStatus: connectionStatus, // Now uses real connection status from editor
-      }}
-      onThemeChange={setCurrentTheme}
-      onLayoutChange={handleLayoutChange}
-      onFileAction={handleFileAction}
-    >
-      {/* Main Layout */}
-      <ICUILayout
-        panels={panels}
-        layout={layout}
-        onLayoutChange={setLayout}
-        enableDragDrop={true}
-        persistLayout={true}
-        layoutKey="icotes"
-        className="h-full w-full"
-        availablePanelTypes={availablePanelTypes}
-        onPanelAdd={handlePanelAdd}
-        showPanelSelector={true}
+    <div className={`flex flex-col h-screen bg-background text-foreground ${className}`}>
+      {/* Integrated Header with Menu Bar and Logo */}
+      <ICUIBaseHeader
+        logo={{
+          src: '/logo.svg',
+          alt: 'ICOTES Logo',
+          className: 'h-5 w-auto'
+        }}
+        currentTheme={currentTheme}
+        availableThemes={THEME_OPTIONS}
+        onThemeChange={setCurrentTheme}
+        onMenuItemClick={handleMenuItemClick}
+        className="flex-shrink-0"
       />
-    </Layout>
+
+      {/* Main content area */}
+      <div className="flex-1 flex overflow-hidden">
+        <ICUILayout
+          panels={panels}
+          layout={layout}
+          onLayoutChange={setLayout}
+          enableDragDrop={true}
+          persistLayout={true}
+          layoutKey="icotes"
+          className="h-full w-full"
+          availablePanelTypes={availablePanelTypes}
+          onPanelAdd={handlePanelAdd}
+          showPanelSelector={true}
+        />
+      </div>
+
+      {/* Integrated Footer */}
+      <ICUIBaseFooter
+        connectionStatus={connectionStatus}
+        statusText={currentFile?.name ? `File: ${currentFile.name}` : 'No file open'}
+        className="flex-shrink-0"
+      />
+    </div>
   );
 };
 

@@ -6,7 +6,7 @@
  */
 
 import React, { useState, useCallback } from 'react';
-import ICUIMenuBar from '../../../src/icui/components/ui/MenuBar';
+import ICUIMenuBar from '../../../src/icui/components/archived/MenuBar_deprecate';
 import { notificationService, useNotifications } from '../../../src/icui/services/notificationService';
 
 const ICUITest6_1: React.FC = () => {
