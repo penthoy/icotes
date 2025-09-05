@@ -9,6 +9,7 @@ import { ICUITest4 } from "../tests/integration/icui/ICUITest4";
 import { ICUITest45 } from "../tests/integration/icui/ICUITest4.5";
 import ICUITest49 from "../tests/integration/icui/ICUITest4.9";
 import ICUITest6 from "../tests/integration/icui/ICUITest6";
+import ICUITest7 from "../tests/integration/icui/ICUITest7";
 import { ICUIFileMenuTest } from "./icui/components/tests/ICUIFileMenuTest";
 import { ICUILayoutMenuTest } from "./icui/components/tests/ICUILayoutMenuTest";
 import ICUIEditorComparison from "../tests/integration/icui/ICUIEditorComparison";
@@ -66,6 +67,7 @@ function App() {
           <Route path="/icui-test4.5" element={<ICUITest45 />} />
           <Route path="/icui-test4.9" element={<ICUITest49 />} />
           <Route path="/icui-test6" element={<ICUITest6 />} />
+          <Route path="/icui-test7" element={<ICUITest7 />} />
           <Route path="/icui-file-menu-test" element={<ICUIFileMenuTest />} />
           <Route path="/icui-layout-menu-test" element={<ICUILayoutMenuTest />} />
           <Route path="/icui-services-test" element={<ICUIServicesTest />} />

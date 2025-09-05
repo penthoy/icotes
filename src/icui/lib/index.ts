@@ -10,3 +10,15 @@ export * from './workspaceUtils';
 
 // Layout and state management
 export * from './icui-layout-state';
+
+// Menu system (Phase 6)
+export * from './menuSchemas';
+export * from './selectionModel';
+export * from './commandRegistry';
+export * from './accessibility';
+export * from './theming';
+
+// Context menu system (Phase 7)
+export * from './contextMenuIntegration';
+export * from './panelRegistry';
+export * from './panelFactory';
