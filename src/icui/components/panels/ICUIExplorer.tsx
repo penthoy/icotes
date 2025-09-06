@@ -247,16 +247,12 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
 
       const { event, data } = eventData;
       // Handle move events by checking both src and dest paths
-      const paths = [data.file_path, data.path, data.dir_path, data.src_path, data.dest_path].filter(
+      // Also include top-level normalized path hint if provided by backend service
+      const paths = [eventData.path, data.file_path, data.path, data.dir_path, data.src_path, data.dest_path].filter(
         (p): p is string => typeof p === 'string' && p.length > 0
       );
-      const inScope = paths.some(p => p.startsWith(currentPath));
-      
-      // Only react to changes in the current workspace
-      if (!inScope) {
-        log.debug('ICUIExplorer', '[EXPL] event ignored (outside currentPath)', { paths, currentPath });
-        return;
-      }
+  // Be robust: if path scope can't be confidently determined, still refresh
+  const inScope = paths.length === 0 || paths.some(p => p.startsWith(currentPath));
 
       // File system event received for workspace path: ${filePath}
 
@@ -264,8 +260,10 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
 
   switch (event) {
         case 'fs.file_created':
+        case 'fs.directory_created':
         case 'fs.file_deleted':
         case 'fs.file_moved':
+        case 'fs.file_copied':
           // Cancel any existing refresh timeout
           if (refreshTimeoutRef.current) {
             clearTimeout(refreshTimeoutRef.current);
@@ -308,7 +306,7 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
         // console.log('[ICUIExplorer] Subscribing to filesystem events...');
     log.info('ICUIExplorer', '[EXPL] Subscribing to fs topics');
         await backendService.notify('subscribe', { 
-          topics: ['fs.file_created', 'fs.file_deleted', 'fs.file_moved', 'fs.file_modified'] 
+          topics: ['fs.file_created', 'fs.directory_created', 'fs.file_deleted', 'fs.file_moved', 'fs.file_copied', 'fs.file_modified'] 
         });
         // console.log('[ICUIExplorer] Successfully subscribed to filesystem events');
       } catch (error) {
@@ -372,7 +370,7 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
           if (status.connected) {
     log.info('ICUIExplorer', '[EXPL] Unsubscribing from fs topics');
             await backendService.notify('unsubscribe', { 
-              topics: ['fs.file_created', 'fs.file_deleted', 'fs.file_moved', 'fs.file_modified'] 
+              topics: ['fs.file_created', 'fs.directory_created', 'fs.file_deleted', 'fs.file_moved', 'fs.file_copied', 'fs.file_modified'] 
             });
           }
         } catch (error) {

@@ -33,7 +33,7 @@ import { ContextMenu, useContextMenu } from '../ui/ContextMenu';
 import { globalCommandRegistry } from '../../lib/commandRegistry';
 import { useExplorerMultiSelect } from '../explorer/MultiSelectHandler';
 import { explorerFileOperations, FileOperationContext } from '../explorer/FileOperations';
-import { createExplorerContextMenu, handleExplorerContextMenuClick, ExplorerMenuContext } from '../explorer/ExplorerContextMenu';
+import { createExplorerContextMenu, handleExplorerContextMenuClick, ExplorerMenuContext, ExplorerMenuExtensions } from '../explorer/ExplorerContextMenu';
 
 interface ICUIEnhancedExplorerProps {
   className?: string;
@@ -43,6 +43,7 @@ interface ICUIEnhancedExplorerProps {
   onFolderCreate?: (path: string) => void;
   onFileDelete?: (path: string) => void;
   onFileRename?: (oldPath: string, newPath: string) => void;
+  extensions?: ExplorerMenuExtensions;
 }
 
 const ICUIEnhancedExplorer: React.FC<ICUIEnhancedExplorerProps> = ({
@@ -53,6 +54,7 @@ const ICUIEnhancedExplorer: React.FC<ICUIEnhancedExplorerProps> = ({
   onFolderCreate,
   onFileDelete,
   onFileRename,
+  extensions,
 }) => {
   const [files, setFiles] = useState<ICUIFileNode[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -74,6 +76,11 @@ const ICUIEnhancedExplorer: React.FC<ICUIEnhancedExplorerProps> = ({
   const loadDirectoryRef = useRef<(path?: string, opts?: { force?: boolean }) => Promise<void>>();
   const statusHandlerRef = useRef<((payload: any) => Promise<void>) | null>(null);
   const expandedPathsRef = useRef<Set<string>>(new Set());
+  
+  // Inline rename state
+  const [renamingFileId, setRenamingFileId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const renameInputRef = useRef<HTMLInputElement>(null);
 
   const { contextMenu, showContextMenu, hideContextMenu } = useContextMenu();
 
@@ -281,6 +288,122 @@ const ICUIEnhancedExplorer: React.FC<ICUIEnhancedExplorerProps> = ({
     loadDirectory();
   }, []);
 
+  // Real-time file system updates via WebSocket (mirror working ICUIExplorer watcher)
+  useEffect(() => {
+    if (!backendService) {
+      return;
+    }
+
+    const handleFileSystemEvent = (eventData: any) => {
+      log.debug('ICUIEnhancedExplorer', '[EXPL+] filesystem_event received', { event: eventData?.event, data: eventData?.data });
+      if (!eventData?.data) {
+        return;
+      }
+
+      const { event, data } = eventData;
+      const paths = [eventData.path, data.file_path, data.path, data.dir_path, data.src_path, data.dest_path].filter(
+        (p): p is string => typeof p === 'string' && p.length > 0
+      );
+
+      switch (event) {
+        case 'fs.file_created':
+        case 'fs.directory_created':
+        case 'fs.file_deleted':
+        case 'fs.file_moved':
+        case 'fs.file_copied': {
+          if (refreshTimeoutRef.current) {
+            clearTimeout(refreshTimeoutRef.current);
+          }
+          // Debounce structural refreshes
+          refreshTimeoutRef.current = setTimeout(() => {
+            log.debug('ICUIEnhancedExplorer', '[EXPL+] triggering debounced refresh', { currentPath, paths });
+            if (loadDirectoryRef.current) {
+              loadDirectoryRef.current(currentPath);
+            }
+            refreshTimeoutRef.current = null;
+          }, 300);
+          break;
+        }
+        case 'fs.file_modified': {
+          // Non-structural; ignore for tree refresh
+          log.debug('ICUIEnhancedExplorer', '[EXPL+] modification event ignored for tree', { paths });
+          break;
+        }
+        default: {
+          log.debug('ICUIEnhancedExplorer', '[EXPL+] unknown filesystem_event', { event });
+        }
+      }
+    };
+
+    backendService.on('filesystem_event', handleFileSystemEvent);
+
+    const topics = ['fs.file_created', 'fs.directory_created', 'fs.file_deleted', 'fs.file_moved', 'fs.file_copied', 'fs.file_modified'];
+
+    const subscribeToEvents = async () => {
+      try {
+        const status = await backendService.getConnectionStatus();
+        if (!status.connected) return;
+        log.info('ICUIEnhancedExplorer', '[EXPL+] Subscribing to fs topics');
+        await backendService.notify('subscribe', { topics });
+      } catch (error) {
+        log.warn('ICUIEnhancedExplorer', 'Failed to subscribe to filesystem events', { error });
+      }
+    };
+
+    const initConnection = async () => {
+      try {
+        const status = await backendService.getConnectionStatus();
+        if (status.connected) {
+          log.info('ICUIEnhancedExplorer', '[EXPL+] Initializing subscription on connected');
+          await subscribeToEvents();
+        } else {
+          statusHandlerRef.current = async (payload: any) => {
+            if (payload?.status === 'connected') {
+              log.info('ICUIEnhancedExplorer', '[EXPL+] Connected, subscribing + refreshing');
+              await subscribeToEvents();
+              if (loadDirectoryRef.current) {
+                loadDirectoryRef.current(currentPath);
+              }
+              if (statusHandlerRef.current) {
+                backendService.off('connection_status_changed', statusHandlerRef.current);
+                statusHandlerRef.current = null;
+              }
+            }
+          };
+          backendService.on('connection_status_changed', statusHandlerRef.current);
+        }
+      } catch (error) {
+        console.error('[ICUIEnhancedExplorer] Error initializing connection:', error);
+      }
+    };
+
+    initConnection();
+
+    return () => {
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current);
+        refreshTimeoutRef.current = null;
+      }
+      backendService.off('filesystem_event', handleFileSystemEvent);
+      if (statusHandlerRef.current) {
+        backendService.off('connection_status_changed', statusHandlerRef.current);
+        statusHandlerRef.current = null;
+      }
+      const cleanup = async () => {
+        try {
+          const status = await backendService.getConnectionStatus();
+          if (status.connected) {
+            log.info('ICUIEnhancedExplorer', '[EXPL+] Unsubscribing from fs topics');
+            await backendService.notify('unsubscribe', { topics });
+          }
+        } catch (error) {
+          log.warn('ICUIEnhancedExplorer', 'Failed to unsubscribe from filesystem events', { error });
+        }
+      };
+      cleanup();
+    };
+  }, [currentPath]);
+
   // Helper function to find a node in the tree
   const findNodeInTree = useCallback((nodes: ICUIFileNode[], nodeId: string): ICUIFileNode | null => {
     for (const node of nodes) {
@@ -410,34 +533,9 @@ const ICUIEnhancedExplorer: React.FC<ICUIEnhancedExplorerProps> = ({
       selectedItems: currentSelection,
     };
 
-    const schema = createExplorerContextMenu(menuContext);
+    const schema = createExplorerContextMenu(menuContext, extensions);
     showContextMenu(event, schema, menuContext);
   }, [isSelected, handleMultiSelectClick, getSelectedItems, currentPath, showContextMenu]);
-
-  // Handle context menu item clicks
-  const handleMenuItemClick = useCallback((item: any) => {
-    const menuContext: ExplorerMenuContext = {
-      panelType: 'explorer',
-      selectedFiles: selectedItems,
-      currentPath,
-      canPaste: explorerFileOperations.canPaste(),
-      isMultiSelect: true,
-      selectedItems,
-    };
-
-    handleExplorerContextMenuClick(item, menuContext, {
-      selectAll,
-      clearSelection,
-    });
-
-    // If it has a commandId, execute it through the command registry
-    if (item.commandId) {
-      globalCommandRegistry.execute(item.commandId, menuContext).catch(error => {
-        console.error('Failed to execute command:', error);
-        setError(error.message);
-      });
-    }
-  }, [selectedItems, currentPath, selectAll, clearSelection]);
 
   // Handle refresh
   const handleRefresh = useCallback(async () => {
@@ -501,6 +599,104 @@ const ICUIEnhancedExplorer: React.FC<ICUIEnhancedExplorerProps> = ({
     }
   }, [currentPath, checkConnection, buildNodeMapByPath, annotateWithExpansion, applyChildrenResults]);
 
+  // Inline rename functions
+  const startRename = useCallback((file: ICUIFileNode) => {
+    setRenamingFileId(file.path);
+    setRenameValue(file.name);
+    // Focus the input after state update
+    setTimeout(() => {
+      if (renameInputRef.current) {
+        renameInputRef.current.focus();
+        renameInputRef.current.select();
+      }
+    }, 0);
+  }, []);
+
+  const cancelRename = useCallback(() => {
+    setRenamingFileId(null);
+    setRenameValue('');
+  }, []);
+
+  const confirmRename = useCallback(async () => {
+    if (!renamingFileId || !renameValue.trim()) {
+      cancelRename();
+      return;
+    }
+
+    const file = flattenedFiles.find(f => f.path === renamingFileId);
+    if (!file || renameValue.trim() === file.name) {
+      cancelRename();
+      return;
+    }
+
+    try {
+      const parentPath = file.path.substring(0, file.path.lastIndexOf('/'));
+      const newPath = `${parentPath}/${renameValue.trim()}`.replace(/\/+/g, '/');
+
+      // Use the same rename logic as FileOperations
+      if (file.type === 'file') {
+        const content = await backendService.readFile(file.path);
+        await backendService.createFile(newPath, content);
+        await backendService.deleteFile(file.path);
+      } else {
+        await backendService.createDirectory(newPath);
+        await backendService.deleteFile(file.path);
+      }
+
+      // Refresh directory and notify parent
+      await loadDirectoryRef.current?.(currentPath, { force: true });
+      onFileRename?.(file.path, newPath);
+      
+      log.info('ICUIEnhancedExplorer', 'Renamed file inline', { oldPath: file.path, newPath });
+    } catch (error) {
+      log.error('ICUIEnhancedExplorer', 'Failed to rename file inline', { oldPath: renamingFileId, newName: renameValue, error });
+      setError(error instanceof Error ? error.message : 'Failed to rename file');
+    } finally {
+      cancelRename();
+    }
+  }, [renamingFileId, renameValue, flattenedFiles, cancelRename, currentPath, onFileRename]);
+
+  const handleRenameKeyDown = useCallback((event: React.KeyboardEvent) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      confirmRename();
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      cancelRename();
+    }
+  }, [confirmRename, cancelRename]);
+
+  // Handle context menu item clicks
+  const handleMenuItemClick = useCallback((item: any) => {
+    const menuContext: ExplorerMenuContext = {
+      panelType: 'explorer',
+      selectedFiles: selectedItems,
+      currentPath,
+      canPaste: explorerFileOperations.canPaste(),
+      isMultiSelect: true,
+      selectedItems,
+    };
+
+    handleExplorerContextMenuClick(item, menuContext, {
+      selectAll,
+      clearSelection,
+    });
+
+    // Handle rename command with inline editing
+    if (item.commandId === 'explorer.rename' && selectedItems.length === 1) {
+      startRename(selectedItems[0]);
+      return;
+    }
+
+    // If it has a commandId, execute it through the command registry
+    if (item.commandId) {
+      globalCommandRegistry.execute(item.commandId, menuContext).catch(error => {
+        console.error('Failed to execute command:', error);
+        setError(error.message);
+      });
+    }
+  }, [selectedItems, currentPath, selectAll, clearSelection, startRename]);
+
   // Handle keyboard navigation
   const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
     switch (event.key) {
@@ -542,10 +738,17 @@ const ICUIEnhancedExplorer: React.FC<ICUIEnhancedExplorerProps> = ({
         event.preventDefault();
         clearSelection();
         break;
+      case 'F2':
+        event.preventDefault();
+        // Rename the first selected file
+        if (selectedItems.length === 1) {
+          startRename(selectedItems[0]);
+        }
+        break;
       default:
         break;
     }
-  }, [handleKeyboardNavigation, selectAll, clearSelection]);
+  }, [handleKeyboardNavigation, selectAll, clearSelection, selectedItems, startRename]);
 
   // Get file icon based on file extension
   const getFileIcon = useCallback((fileName: string) => {
@@ -646,12 +849,38 @@ const ICUIEnhancedExplorer: React.FC<ICUIEnhancedExplorerProps> = ({
               ) : (
                 <Folder className="h-4 w-4 mr-2" style={{ color: 'var(--icui-accent)' }} />
               )}
-              <span className="text-sm truncate" style={{ color: 'var(--icui-text-primary)' }}>{node.name}</span>
+              {renamingFileId === node.path ? (
+                <input
+                  ref={renameInputRef}
+                  type="text"
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  onKeyDown={handleRenameKeyDown}
+                  onBlur={confirmRename}
+                  className="text-sm bg-transparent border border-blue-500 rounded px-1 py-0 flex-1 min-w-0 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  style={{ color: 'var(--icui-text-primary)' }}
+                />
+              ) : (
+                <span className="text-sm truncate" style={{ color: 'var(--icui-text-primary)' }}>{node.name}</span>
+              )}
             </div>
           ) : (
             <div className="flex items-center flex-1 min-w-0">
               <span className="mr-3 text-sm">{getFileIcon(node.name)}</span>
-              <span className="text-sm truncate" style={{ color: 'var(--icui-text-primary)' }}>{node.name}</span>
+              {renamingFileId === node.path ? (
+                <input
+                  ref={renameInputRef}
+                  type="text"
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  onKeyDown={handleRenameKeyDown}
+                  onBlur={confirmRename}
+                  className="text-sm bg-transparent border border-blue-500 rounded px-1 py-0 flex-1 min-w-0 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  style={{ color: 'var(--icui-text-primary)' }}
+                />
+              ) : (
+                <span className="text-sm truncate" style={{ color: 'var(--icui-text-primary)' }}>{node.name}</span>
+              )}
             </div>
           )}
         </div>

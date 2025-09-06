@@ -118,17 +118,18 @@ const ContextMenuItem: React.FC<{
       style={{
         display: 'flex',
         alignItems: 'center',
-        padding: '4px 8px',
+        padding: '8px 12px',
         cursor: isEnabled ? 'pointer' : 'not-allowed',
-        backgroundColor: focused && isEnabled ? 'var(--icui-bg-hover)' : 'transparent',
+        backgroundColor: focused && isEnabled ? 'var(--icui-bg-hover, #404040)' : 'transparent',
         color: isEnabled ? 
-          (item.danger ? 'var(--icui-error)' : 'var(--icui-text-primary)') :
-          'var(--icui-text-secondary)',
+          (item.danger ? 'var(--icui-error, #ff6b6b)' : 'var(--icui-text-primary, #ffffff)') :
+          'var(--icui-text-secondary, #888)',
         fontSize: '14px',
         lineHeight: '1.4',
         userSelect: 'none',
         borderRadius: '4px',
         margin: '1px 4px',
+        whiteSpace: 'nowrap',
       }}
       onClick={handleClick}
       onMouseEnter={handleMouseEnter}
@@ -324,8 +325,8 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
         position: 'fixed',
         top: finalPosition.y,
         left: finalPosition.x,
-        backgroundColor: 'var(--icui-bg-secondary)',
-        border: '1px solid var(--icui-border)',
+        backgroundColor: 'var(--icui-bg-secondary, #2d2d30)',
+        border: '1px solid var(--icui-border, #444)',
         borderRadius: '6px',
         boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
         padding: '4px 0',
@@ -333,6 +334,8 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
         maxWidth: '300px',
         zIndex: 10000,
         outline: 'none',
+        fontFamily: 'system-ui, -apple-system, sans-serif',
+        fontSize: '14px',
       }}
       onKeyDown={handleKeyDown}
       tabIndex={-1}

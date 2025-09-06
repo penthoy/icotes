@@ -3,11 +3,13 @@
  * 
  * Provides context-aware right-click menus for the Explorer panel.
  * Integrates with multi-select and file operations.
+ * Supports extensibility via custom commands and menu groups.
  */
 
 import { MenuSchema, MenuItem, MenuContext } from '../../lib/menuSchemas';
 import { ICUIFileNode } from '../../services';
 import { explorerFileOperations } from './FileOperations';
+import { globalCommandRegistry } from '../../lib/commandRegistry';
 
 export interface ExplorerMenuContext extends MenuContext {
   selectedFiles: ICUIFileNode[];
@@ -17,10 +19,29 @@ export interface ExplorerMenuContext extends MenuContext {
   isMultiSelect: boolean;
 }
 
+export interface CustomMenuGroup {
+  id: string;
+  label?: string;
+  separator?: boolean;
+  position?: 'before' | 'after';
+  anchor?: string; // ID of menu item to position relative to
+  items: MenuItem[];
+  priority?: number; // Lower numbers appear first
+}
+
+export interface ExplorerMenuExtensions {
+  customGroups?: CustomMenuGroup[];
+  customCommands?: string[]; // Command IDs from global registry
+  hiddenItems?: string[]; // Menu item IDs to hide
+}
+
 /**
- * Generate context menu schema for Explorer
+ * Generate context menu schema for Explorer with extensibility support
  */
-export function createExplorerContextMenu(context: ExplorerMenuContext): MenuSchema {
+export function createExplorerContextMenu(
+  context: ExplorerMenuContext, 
+  extensions?: ExplorerMenuExtensions
+): MenuSchema {
   const { selectedFiles, clickedFile, canPaste, isMultiSelect } = context;
   const hasSelection = selectedFiles.length > 0;
   const singleSelection = selectedFiles.length === 1;
@@ -212,9 +233,146 @@ export function createExplorerContextMenu(context: ExplorerMenuContext): MenuSch
     );
   }
 
+  // Apply extensions if provided
+  if (extensions) {
+    // Add custom commands from global registry
+    if (extensions.customCommands) {
+      const customItems: MenuItem[] = [];
+      
+      extensions.customCommands.forEach(commandId => {
+        const command = globalCommandRegistry.getCommand(commandId);
+        if (command && command.category === 'explorer') {
+          customItems.push({
+            id: commandId,
+            label: command.label,
+            icon: command.icon,
+            shortcut: command.shortcut,
+            commandId: command.id,
+            isVisible: () => command.visible !== false,
+            isEnabled: () => command.enabled !== false,
+          });
+        }
+      });
+
+      if (customItems.length > 0) {
+        items.push(
+          {
+            id: 'customSeparator',
+            label: '',
+            separator: true,
+            isVisible: () => true,
+          },
+          ...customItems
+        );
+      }
+    }
+
+    // Insert custom menu groups at specified positions
+    if (extensions.customGroups) {
+      extensions.customGroups
+        .sort((a, b) => (a.priority || 100) - (b.priority || 100))
+        .forEach(group => {
+          const groupItems: MenuItem[] = [];
+
+          // Add group separator/label if specified
+          if (group.separator || group.label) {
+            groupItems.push({
+              id: `${group.id}-separator`,
+              label: group.label || '',
+              separator: true,
+              isVisible: () => true,
+            });
+          }
+
+          // Add group items
+          groupItems.push(...group.items);
+
+          // Insert at specified position
+          if (group.position && group.anchor) {
+            const anchorIndex = items.findIndex(item => item.id === group.anchor);
+            if (anchorIndex !== -1) {
+              const insertIndex = group.position === 'before' ? anchorIndex : anchorIndex + 1;
+              items.splice(insertIndex, 0, ...groupItems);
+            } else {
+              // Fallback: append to end
+              items.push(...groupItems);
+            }
+          } else {
+            // No specific position: append to end
+            items.push(...groupItems);
+          }
+        });
+    }
+
+    // Filter out hidden items
+    if (extensions.hiddenItems) {
+      const hiddenSet = new Set(extensions.hiddenItems);
+      return {
+        id: 'explorer-context-menu',
+        items: items.filter(item => 
+          !hiddenSet.has(item.id) && 
+          (item.isVisible ? item.isVisible(context) : true)
+        ),
+      };
+    }
+  }
+
   return {
     id: 'explorer-context-menu',
     items: items.filter(item => item.isVisible ? item.isVisible(context) : true),
+  };
+}
+
+/**
+ * Register a custom Explorer command
+ */
+export function registerExplorerCommand(
+  id: string,
+  label: string,
+  handler: (context: ExplorerMenuContext) => void | Promise<void>,
+  options: {
+    icon?: string;
+    shortcut?: string;
+    description?: string;
+    enabled?: boolean;
+    visible?: boolean;
+  } = {}
+): void {
+  globalCommandRegistry.register({
+    id,
+    label,
+    handler,
+    category: 'explorer',
+    description: options.description,
+    icon: options.icon,
+    shortcut: options.shortcut,
+    enabled: options.enabled !== false,
+    visible: options.visible !== false,
+  });
+}
+
+/**
+ * Create a custom menu group for Explorer
+ */
+export function createCustomMenuGroup(
+  id: string,
+  items: MenuItem[],
+  options: {
+    label?: string;
+    separator?: boolean;
+    position?: 'before' | 'after';
+    anchor?: string;
+    priority?: number;
+  } = {}
+): CustomMenuGroup {
+  return {
+    id,
+    items,
+    label: options.label,
+    separator: options.separator,
+    position: options.position,
+    anchor: options.anchor,
+    priority: options.priority,
   };
 }
 
