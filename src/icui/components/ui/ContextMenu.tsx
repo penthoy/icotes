@@ -9,7 +9,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { MenuItem, MenuSchema, MenuContext } from '../../lib/menuSchemas';
-import { useTheme } from '../../lib/theming';
 import { getMenuItemAriaProps, useKeyboardNavigation } from '../../lib/accessibility';
 
 export interface ContextMenuProps {
@@ -48,7 +47,6 @@ const ContextMenuItem: React.FC<{
   onOpenSubMenu, 
   onCloseSubMenu 
 }) => {
-  const { theme } = useTheme();
   const itemRef = useRef<HTMLDivElement>(null);
 
   const isVisible = item.isVisible ? item.isVisible(context) : true;
@@ -70,8 +68,8 @@ const ContextMenuItem: React.FC<{
         className="icui-context-menu-separator"
         style={{
           height: '1px',
-          backgroundColor: theme.colors.border.primary,
-          margin: `${theme.spacing.xs} 0`,
+          backgroundColor: 'var(--icui-border)',
+          margin: '4px 0',
         }}
       />
     );
@@ -120,17 +118,17 @@ const ContextMenuItem: React.FC<{
       style={{
         display: 'flex',
         alignItems: 'center',
-        padding: `${theme.spacing.xs} ${theme.spacing.sm}`,
+        padding: '4px 8px',
         cursor: isEnabled ? 'pointer' : 'not-allowed',
-        backgroundColor: focused && isEnabled ? theme.colors.interactive.primaryHover : 'transparent',
+        backgroundColor: focused && isEnabled ? 'var(--icui-bg-hover)' : 'transparent',
         color: isEnabled ? 
-          (item.danger ? theme.colors.status.error : theme.colors.text.primary) :
-          theme.colors.text.disabled,
-        fontSize: theme.typography.fontSize.base,
-        lineHeight: theme.typography.lineHeight.normal,
+          (item.danger ? 'var(--icui-error)' : 'var(--icui-text-primary)') :
+          'var(--icui-text-secondary)',
+        fontSize: '14px',
+        lineHeight: '1.4',
         userSelect: 'none',
-        borderRadius: theme.borderRadius.sm,
-        margin: `1px ${theme.spacing.xs}`,
+        borderRadius: '4px',
+        margin: '1px 4px',
       }}
       onClick={handleClick}
       onMouseEnter={handleMouseEnter}
@@ -141,7 +139,7 @@ const ContextMenuItem: React.FC<{
         <span 
           className="icui-context-menu-icon"
           style={{ 
-            marginRight: theme.spacing.sm,
+            marginRight: '8px',
             fontSize: '14px',
             width: '16px',
             textAlign: 'center',
@@ -162,9 +160,9 @@ const ContextMenuItem: React.FC<{
         <span 
           className="icui-context-menu-shortcut"
           style={{
-            marginLeft: theme.spacing.md,
+            marginLeft: '16px',
             fontSize: '12px',
-            color: theme.colors.text.secondary,
+            color: 'var(--icui-text-secondary)',
           }}
         >
           {item.shortcut}
@@ -175,8 +173,8 @@ const ContextMenuItem: React.FC<{
         <span 
           className="icui-context-menu-arrow"
           style={{
-            marginLeft: theme.spacing.sm,
-            color: theme.colors.text.secondary,
+            marginLeft: '8px',
+            color: 'var(--icui-text-secondary)',
           }}
         >
           ▶
@@ -198,7 +196,6 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   onItemClick,
   anchorElement,
 }) => {
-  const { theme } = useTheme();
   const menuRef = useRef<HTMLDivElement>(null);
   const [state, setState] = useState<ContextMenuState>({
     focusedIndex: -1,
@@ -327,11 +324,11 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
         position: 'fixed',
         top: finalPosition.y,
         left: finalPosition.x,
-        backgroundColor: theme.colors.bg.primary,
-        border: `1px solid ${theme.colors.border.primary}`,
-        borderRadius: theme.borderRadius.md,
-        boxShadow: theme.shadows.lg,
-        padding: `${theme.spacing.xs} 0`,
+        backgroundColor: 'var(--icui-bg-secondary)',
+        border: '1px solid var(--icui-border)',
+        borderRadius: '6px',
+        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
+        padding: '4px 0',
         minWidth: '200px',
         maxWidth: '300px',
         zIndex: 10000,

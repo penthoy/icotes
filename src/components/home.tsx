@@ -9,11 +9,11 @@ import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { 
   ICUILayout,
   ICUIChat,
-  ICUIExplorer,
   ICUITerminal,
   ICUIEditor,
   ICUIChatHistory
 } from '../icui';
+import ICUIEnhancedExplorer from '../icui/components/panels/ICUIEnhancedExplorer';
 import type { ICUIEditorRef } from '../icui';
 import ICUIBaseHeader from '../icui/components/ICUIBaseHeader';
 import ICUIBaseFooter from '../icui/components/ICUIBaseFooter';
@@ -215,6 +215,16 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
     };
   }, [currentTheme]);
 
+  // Initialize Explorer file operations
+  useEffect(() => {
+    import('../icui/components/explorer/FileOperations').then(({ ExplorerFileOperations }) => {
+      const fileOps = ExplorerFileOperations.getInstance();
+      fileOps.registerCommands();
+    }).catch(err => {
+      console.error('Failed to initialize Explorer file operations:', err);
+    });
+  }, []);
+
   // Handle connection status changes from ICUIEditor
   const handleConnectionStatusChange = useCallback((status: {connected: boolean; error?: string; timestamp?: number}) => {
     // Reduced debug: Only log connection errors, not routine status changes
@@ -247,8 +257,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
 
   // Stable panel instances to prevent recreation on layout changes
   const explorerInstance = useMemo(() => (
-    <ICUIExplorer 
-      className="h-full"
+    <ICUIEnhancedExplorer 
       onFileSelect={handleFileSelect}
       onFileDoubleClick={handleFileDoubleClick}
     />
