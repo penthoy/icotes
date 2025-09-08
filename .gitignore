@@ -42,8 +42,6 @@ build/
 # Ignore only top-level core directory
 /core/
 
-.github/
-
 # Environment files
 .env
 .env.local

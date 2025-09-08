@@ -1,0 +1,144 @@
+name: Docker Build and Deploy
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+    types: [ closed ]
+
+env:
+  DOCKER_REGISTRY: docker.io
+  DOCKER_BUILDKIT: 1
+
+permissions:
+  contents: write
+
+jobs:
+  check-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      should-build: ${{ steps.version-check.outputs.should-build }}
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        
+    - name: Extract version from package.json
+      id: version
+      run: |
+        VERSION=$(jq -r .version package.json)
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "📦 Current version: $VERSION"
+    - name: Check if version is new
+      id: version-check
+      run: |
+        VERSION="${{ steps.version.outputs.version }}"
+        
+        # Check if this version tag already exists
+        if git tag -l | grep -q "^v${VERSION}$"; then
+          echo "🏷️  Version v${VERSION} already exists as a tag"
+          echo "should-build=false" >> $GITHUB_OUTPUT
+        else
+          echo "✨ New version detected: v${VERSION}"
+          echo "should-build=true" >> $GITHUB_OUTPUT
+        fi
+
+  docker-build:
+    needs: check-version
+    runs-on: ubuntu-latest
+    if: needs.check-version.outputs.should-build == 'true' && (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.merged == true))
+    concurrency:
+      group: docker-release-${{ needs.check-version.outputs.version }}
+      cancel-in-progress: true
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      
+    - name: Login to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+        
+    - name: Extract version
+      id: version
+      run: |
+        VERSION="${{ needs.check-version.outputs.version }}"
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "📦 Building version: $VERSION"
+        
+    - name: Make build scripts executable
+      run: |
+        chmod +x build/build-docker.sh
+        chmod +x build/build-saas-docker.sh
+        
+    - name: Build and push main Docker image
+      run: |
+        cd build
+        ./build-docker.sh ${{ steps.version.outputs.version }}
+        
+    - name: Build and push SaaS Docker image  
+      run: |
+        cd build
+        ./build-saas-docker.sh ${{ steps.version.outputs.version }}
+        
+    - name: Create version tag
+      run: |
+        VERSION="${{ steps.version.outputs.version }}"
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git tag -a "v${VERSION}" -m "Release version ${VERSION}"
+        git push origin "v${VERSION}"
+        
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        tag_name: v${{ steps.version.outputs.version }}
+        name: Release v${{ steps.version.outputs.version }}
+        body: |
+          🐳 Docker Images Released:
+          - `penthoy/icotes:${{ steps.version.outputs.version }}`
+          - `penthoy/icotes:latest`
+          - `penthoy/icotes_saas:${{ steps.version.outputs.version }}`
+          - `penthoy/icotes_saas:latest`
+          
+          ## Usage
+          
+          **Standalone Mode:**
+          ```bash
+          docker run -p 8000:8000 penthoy/icotes:${{ steps.version.outputs.version }}
+          ```
+          
+          **SaaS Mode:**
+          ```bash
+          docker run -p 8000:8000 \
+            -e AUTH_MODE=saas \
+            -e SUPABASE_JWT_SECRET=your-secret-key \
+            -e UNAUTH_REDIRECT_URL=https://icotes.com \
+            penthoy/icotes_saas:${{ steps.version.outputs.version }}
+          ```
+        draft: false
+        prerelease: false
+
+  notify:
+    needs: [check-version, docker-build]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+    - name: Notify build result
+      run: |
+        if [ "${{ needs.check-version.outputs.should-build }}" == "false" ]; then
+          echo "⏭️  Skipped build - Version ${{ needs.check-version.outputs.version }} already exists"
+        elif [ "${{ needs.docker-build.result }}" == "success" ]; then
+          echo "✅ Successfully built and deployed version ${{ needs.check-version.outputs.version }}"
+        else
+          echo "❌ Build failed for version ${{ needs.check-version.outputs.version }}"
+          exit 1
+        fi

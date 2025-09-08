@@ -1,6 +1,6 @@
 /**
- * ICUI Framework - Base Header Component
- * Base header component that provides common header functionality and can be extended
+ * ICUIBaseHeader: Single source of truth for top menus in Home.
+ * Provides logo slot, menu system, theme selector, and optional layout actions.
  */
 
 import React, { useState, useCallback } from 'react';

@@ -92,7 +92,6 @@ export const BackendContextProvider: React.FC<BackendContextProviderProps> = ({
         const client = await getBackendClient(config);
         setBackendClient(client);
         setIsClientReady(true);
-        console.log('✅ BackendClient initialized in BackendContext');
       } catch (error) {
         console.error('❌ Failed to initialize BackendClient in context:', error);
         setError('Failed to initialize backend client');

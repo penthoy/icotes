@@ -379,8 +379,8 @@ export class ICUIBackendService extends EventEmitter {
     await this.ensureInitialized();
     
     try {
-      // Use REST API for directory creation
-      const url = `${this.baseUrl}/api/directories`;
+      // Use REST API for directory creation via /api/files with type: 'directory'
+      const url = `${this.baseUrl}/api/files`;
       console.log('[EnhancedICUIBackendService] Creating directory at:', url, 'path:', path);
       
       const response = await fetch(url, {
@@ -388,7 +388,7 @@ export class ICUIBackendService extends EventEmitter {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ path }),
+        body: JSON.stringify({ path, type: 'directory', create_dirs: true }),
       });
       
       if (!response.ok) {

@@ -5,6 +5,8 @@
  */
 
 import React, { useRef, useEffect, useState, useCallback } from 'react';
+import { promptService } from '../../services/promptService';
+import { confirmService } from '../../services/confirmService';
 import { getWorkspaceRoot } from '../../lib/workspaceUtils';
 
 interface ICUIExplorerPanelProps {
@@ -147,8 +149,8 @@ const ICUIExplorerPanel: React.FC<ICUIExplorerPanelProps> = ({ className = '' })
 
   // Handle create file
   const handleCreateFile = useCallback(async () => {
-    const fileName = prompt('Enter file name:');
-    if (!fileName) return;
+    const fileName = await promptService.prompt({ title: 'New File', message: 'Enter file name:', placeholder: 'example.txt' });
+    if (!fileName || !fileName.trim()) return;
 
     try {
       const newPath = `${currentPath}/${fileName}`.replace(/\/+/g, '/');
@@ -162,9 +164,8 @@ const ICUIExplorerPanel: React.FC<ICUIExplorerPanelProps> = ({ className = '' })
 
   // Handle delete file
   const handleDeleteFile = useCallback(async (item: FileNode) => {
-    if (!confirm(`Are you sure you want to delete "${item.name}"?`)) {
-      return;
-    }
+    const ok = await confirmService.confirm({ title: 'Delete File', message: `Are you sure you want to delete "${item.name}"?`, danger: true, confirmText: 'Delete' });
+    if (!ok) return;
 
     try {
       await backendClient.current.deleteFile(item.path);

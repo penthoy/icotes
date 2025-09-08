@@ -44,8 +44,8 @@ import {
   indentWithTab,
 } from "@codemirror/commands";
 import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
-import { backendService, ICUIFile, useTheme, ConnectionStatus } from '../services';
-import { getWorkspaceRoot } from '../lib';
+import { backendService, ICUIFile, useTheme, ConnectionStatus } from '../../services';
+import { getWorkspaceRoot } from '../../lib';
 import {
   autocompletion,
   completionKeymap,
@@ -71,7 +71,7 @@ import { go } from '@codemirror/lang-go';
 import { StreamLanguage } from '@codemirror/language';
 import { yaml } from '@codemirror/legacy-modes/mode/yaml';
 import { shell } from '@codemirror/legacy-modes/mode/shell';
-import { createICUISyntaxHighlighting, createICUIEnhancedEditorTheme } from '../utils/syntaxHighlighting';
+import { createICUISyntaxHighlighting, createICUIEnhancedEditorTheme } from '../../utils/syntaxHighlighting';
 
 // File interface (using centralized ICUIFile type)
 interface EditorFile extends ICUIFile {
@@ -840,27 +840,37 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
     }
 
     if (file.modified) {
-      // In a real implementation, you'd show a confirmation dialog
-      const shouldSave = window.confirm(`${file.name} has unsaved changes. Save before closing?`);
-      if (shouldSave && connectionStatus.connected && file.path) {
-        handleSaveFile(fileId);
-      }
+      // Use global confirm dialog
+      // Lazy import to avoid cyc dependency in large file
+      const { confirmService } = require('../../services/confirmService');
+      const shouldSave = (confirmService as typeof import('../../services/confirmService').confirmService)
+        .confirm({ title: 'Unsaved Changes', message: `${file.name} has unsaved changes. Save before closing?`, confirmText: 'Save', cancelText: 'Discard' });
+      // Note: confirm() returns Promise<boolean>, handle in then to keep function sync
+      (async () => {
+        const ok = await shouldSave;
+        if (ok && connectionStatus.connected && file.path) {
+          handleSaveFile(fileId);
+        }
+        // Proceed to close regardless after handling save choice
+        setFiles(prevFiles => prevFiles.filter(f => f.id !== fileId));
+        if (fileId === activeFileId) {
+          const remainingFiles = files.filter(f => f.id !== fileId);
+          if (remainingFiles.length > 0) {
+            setActiveFileId(remainingFiles[0].id);
+          } else {
+            setActiveFileId('');
+          }
+        }
+        onFileClose?.(fileId);
+      })();
+      return; // Defer further logic to async block
     }
-
-    // Remove the file from the files array
+    // If not modified, proceed to close immediately
     setFiles(prevFiles => prevFiles.filter(f => f.id !== fileId));
-    
-    // If closing active file, switch to another file
     if (fileId === activeFileId) {
       const remainingFiles = files.filter(f => f.id !== fileId);
-      if (remainingFiles.length > 0) {
-        setActiveFileId(remainingFiles[0].id);
-      } else {
-        // No files left, clear the active file
-        setActiveFileId('');
-      }
+      setActiveFileId(remainingFiles[0]?.id || '');
     }
-
     onFileClose?.(fileId);
   }, [files, activeFileId, connectionStatus.connected, onFileClose, handleSaveFile]);
 

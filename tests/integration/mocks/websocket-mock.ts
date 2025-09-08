@@ -6,10 +6,7 @@
  * connection state management, and event handling.
  */
 
-// Mock vitest if not available
-const vi = {
-  fn: (mockFn?: any) => mockFn || (() => {})
-};
+import { vi } from 'vitest';
 
 import type { WebSocketMessage, JsonRpcRequest, JsonRpcResponse } from '../../../src/types/backend-types';
 

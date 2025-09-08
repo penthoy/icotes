@@ -16,16 +16,17 @@ export { default as ICUITabContainer } from './components/ICUITabContainer';
 export { ICUILayout } from './components/ICUILayout';
 export { ICUIEnhancedLayout } from './components/archived/ICUIEnhancedLayout_deprecated'; // @deprecated - use ICUILayout
 
-// Core Components (Main ICUI interface components)
-export { default as ICUIChat } from './components/ICUIChat';
-export { default as ICUITerminal } from './components/ICUITerminal';
-export { default as ICUIEditor } from './components/ICUIEditor';
-export { default as ICUIExplorer } from './components/ICUIExplorer';
+// Core Components (Main ICUI interface components) - moved to panels
+export { default as ICUIChat } from './components/panels/ICUIChat';
+export { default as ICUITerminal } from './components/panels/ICUITerminal';
+export { default as ICUIEditor } from './components/panels/ICUIEditor';
+export { default as ICUIExplorer } from './components/panels/ICUIExplorer';
+export { default as ICUIChatHistory } from './components/panels/ICUIChatHistory';
 
 // Core Component Types
-export type { ICUIChatRef } from './components/ICUIChat';
-export type { ICUITerminalRef } from './components/ICUITerminal';
-export type { ICUIEditorRef } from './components/ICUIEditor';
+export type { ICUIChatRef } from './components/panels/ICUIChat';
+export type { ICUITerminalRef } from './components/panels/ICUITerminal';
+export type { ICUIEditorRef } from './components/panels/ICUIEditor';
 
 // Base Layout Components
 export { ICUIBaseHeader } from './components/ICUIBaseHeader';
@@ -34,11 +35,11 @@ export { ICUIBaseFooter } from './components/ICUIBaseFooter';
 // Enhanced Components (New)
 // export { ICUITest1, ICUITest2, ICUITest3, ICUITest4, ICUITest5, ICUITest6, ICUITest7, ICUITest8, ICUITest9, ICUITest10 } from './tests';
 
-// Primary Panels (formerly Enhanced)
-export { default as ICUITerminalPanel } from './components/panels/ICUITerminalPanel';
-export { default as ICUIEditorPanel } from './components/panels/ICUIEditorPanel';
-export { default as ICUIExplorerPanel } from './components/panels/ICUIExplorerPanel';
-export { default as ICUIChatPanel } from './components/panels/ICUIChatPanel';
+// Primary Panels (formerly Enhanced) - DEPRECATED: Moved to archived
+export { default as ICUITerminalPanel } from './components/archived/ICUITerminalPanel_deprecate';
+export { default as ICUIEditorPanel } from './components/archived/ICUIEditorPanel_deprecate';
+export { default as ICUIExplorerPanel } from './components/archived/ICUIExplorerPanel_deprecate';
+export { default as ICUIChatPanel } from './components/archived/ICUIChatPanel_deprecate';
 
 // Hooks
 export { useICUIResponsive } from './hooks/icui-use-responsive';
@@ -143,7 +144,7 @@ export type {
 export type {
   ICUIEditorFile,
   ICUIEditorPanelProps,
-} from './components/panels/ICUIEditorPanel';
+} from './components/archived/ICUIEditorPanel_deprecate';
 
 // Base Layout Component Types
 export type {

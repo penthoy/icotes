@@ -18,7 +18,7 @@ import React, { useRef, useEffect, useState, useCallback, useImperativeHandle, f
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
-import { configService } from '../../services/config-service';
+import { configService } from '../../../services/config-service';
 
 // Enhanced clipboard functionality
 class EnhancedClipboard {
@@ -309,8 +309,6 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
         const config = await configService.getConfig();
         const wsBaseUrl = config.ws_url;
         
-        console.log(`🔗 Using WebSocket URL from config service: ${wsBaseUrl}`);
-        
         // Parse the WebSocket URL to get base URL and construct terminal URL
         const url = new URL(wsBaseUrl);
         
@@ -326,7 +324,6 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
         const baseUrl = `${finalProtocol}//${url.host}`;
         const wsUrl = `${baseUrl}/ws/terminal/${terminalId.current}`;
         
-        console.log(`[ICUITerminal] Connecting to: ${wsUrl}`);
         websocket.current = new WebSocket(wsUrl);
         
       } catch (error) {
@@ -357,7 +354,6 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
           wsUrl = `${protocol}//${host}/ws/terminal/${terminalId.current}`;
         }
         
-        console.log(`[ICUITerminal] Connecting to (fallback): ${wsUrl}`);
         websocket.current = new WebSocket(wsUrl);
       }
       
@@ -570,7 +566,8 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
                    (isDarkTheme ? '#1e1e1e' : '#ffffff');
     
     const styleElement = document.createElement('style');
-    styleElement.id = 'icui-terminal-styles';
+    const styleElementId = `icui-terminal-styles-${terminalId.current}`;
+    styleElement.id = styleElementId;
     styleElement.textContent = `
       .icui-terminal-container .xterm .xterm-viewport {
         background-color: ${bgColor} !important;
@@ -593,7 +590,7 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
       }
     `;
     
-    const existingStyle = document.getElementById('icui-terminal-styles');
+    const existingStyle = document.getElementById(styleElementId);
     if (existingStyle) {
       existingStyle.remove();
     }
@@ -601,7 +598,7 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
     document.head.appendChild(styleElement);
 
     return () => {
-      const elementToRemove = document.getElementById('icui-terminal-styles');
+      const elementToRemove = document.getElementById(styleElementId);
       if (elementToRemove) {
         elementToRemove.remove();
       }

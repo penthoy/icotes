@@ -1,7 +1,7 @@
 {
   "name": "icotes",
   "private": true,
-  "version": "1.5.7",
+  "version": "1.6.0",
   "type": "module",
   "scripts": {
     "dev": "npm run build && cd backend && uv run python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload --log-config logging.conf",

@@ -26,15 +26,15 @@ import {
   ConnectionStatus,
   MessageOptions,
   notificationService 
-} from '../index';
-import { useConfiguredAgents } from '../../hooks/useConfiguredAgents';
-import { CustomAgentDropdown } from './menus/CustomAgentDropdown';
+} from '../../index';
+import { useConfiguredAgents } from '../../../hooks/useConfiguredAgents';
+import { CustomAgentDropdown } from '../menus/CustomAgentDropdown';
 
-import ChatMessage from './chat/ChatMessage';
-import { useChatSearch } from '../hooks/useChatSearch';
-import { useChatSessionSync } from '../hooks/useChatSessionSync';
-import { chatBackendClient } from '../services/chat-backend-client-impl';
-import { useChatHistory } from '../hooks/useChatHistory';
+import ChatMessage from '../chat/ChatMessage';
+import { useChatSearch } from '../../hooks/useChatSearch';
+import { useChatSessionSync } from '../../hooks/useChatSessionSync';
+import { chatBackendClient } from '../../services/chat-backend-client-impl';
+import { useChatHistory } from '../../hooks/useChatHistory';
 
 interface ICUIChatProps {
   className?: string;

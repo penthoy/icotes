@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import ICUITerminalPanel from '../../../src/icui/components/panels/ICUITerminalPanel';
+import ICUITerminalPanel from '../../../src/icui/components/archived/ICUITerminalPanel_deprecate';
 
 export const ICUITerminalTest: React.FC = () => {
   return (

@@ -4,12 +4,13 @@
  * Centralized exports for all ICUI menu components
  */
 
-export { FileMenu } from './FileMenu';
+// Deprecated: re-export archived FileMenu for tests/demos only
+export { FileMenu } from '../archived/FileMenu_deprecate';
 export type { 
   RecentFile,
   FileMenuProps,
   Project 
-} from './FileMenu';
+} from '../archived/FileMenu_deprecate';
 
 export { LayoutMenu } from './LayoutMenu';
 export type {
@@ -17,3 +18,4 @@ export type {
   PanelCreationOption,
   LayoutTemplate
 } from './LayoutMenu';
+ 

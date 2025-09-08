@@ -85,7 +85,6 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose }) => 
       if (data.success) {
         setKeyStatus(data.keys);
         setRevealedValues({});
-        console.log('✅ Loaded API key status:', data.keys);
       } else {
         throw new Error(data.error || 'Failed to load API key status');
       }
@@ -192,7 +191,6 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose }) => 
         // Reload the status to show updated masked values
         await loadApiKeyStatus();
         
-        console.log('✅ API keys updated:', data.updated_keys);
       } else {
         throw new Error(data.error || 'Failed to update API keys');
       }

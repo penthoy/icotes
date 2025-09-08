@@ -7,10 +7,11 @@
  */
 
 import React, { useState, useCallback } from 'react';
-import { FileMenu } from '../menus/FileMenu';
+import { FileMenu } from '../archived/FileMenu_deprecate';
 import { FileInfo } from '../../services/fileService';
 import { notificationService } from '../../services/notificationService';
 import '../../styles/FileMenu.css';
+import { promptService } from '../../services/promptService';
 
 // Mock current file data for testing
 const mockFiles: FileInfo[] = [
@@ -90,9 +91,9 @@ export const ICUIFileMenuTest: React.FC = () => {
   /**
    * Handle save as
    */
-  const handleSaveAsFile = useCallback((file: FileInfo) => {
+  const handleSaveAsFile = useCallback(async (file: FileInfo) => {
     // Simulate save as dialog
-    const newName = prompt('Enter new file name:', file.name);
+    const newName = await promptService.prompt({ title: 'Save As', message: 'Enter new file name:', initialValue: file.name, confirmText: 'Save' });
     if (newName && newName !== file.name) {
       const newFile: FileInfo = {
         ...file,

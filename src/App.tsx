@@ -8,7 +8,10 @@ import { ICUITest3 } from "../tests/integration/icui/ICUITest3";
 import { ICUITest4 } from "../tests/integration/icui/ICUITest4";
 import { ICUITest45 } from "../tests/integration/icui/ICUITest4.5";
 import ICUITest49 from "../tests/integration/icui/ICUITest4.9";
-import ICUITest61 from "../tests/integration/icui/ICUITest6.1";
+import ICUITest6 from "../tests/integration/icui/ICUITest6";
+import ICUITest7 from "../tests/integration/icui/ICUITest7";
+import ICUITest82 from "../tests/integration/icui/ICUITest8.2";
+import ICUITest83 from "../tests/integration/icui/ICUITest8.3_ChatHistory";
 import { ICUIFileMenuTest } from "./icui/components/tests/ICUIFileMenuTest";
 import { ICUILayoutMenuTest } from "./icui/components/tests/ICUILayoutMenuTest";
 import ICUIEditorComparison from "../tests/integration/icui/ICUIEditorComparison";
@@ -30,7 +33,9 @@ function App() {
   // Initialize dynamic configuration on app startup
   useEffect(() => {
     configService.getConfig().then(config => {
-      console.log('🚀 Dynamic configuration initialized:', config);
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🚀 Dynamic configuration initialized:', config);
+      }
     }).catch(err => {
       console.warn('⚠️  Failed to load dynamic configuration:', err);
     });
@@ -65,7 +70,10 @@ function App() {
           <Route path="/icui-test4" element={<ICUITest4 />} />
           <Route path="/icui-test4.5" element={<ICUITest45 />} />
           <Route path="/icui-test4.9" element={<ICUITest49 />} />
-          <Route path="/icui-test6.1" element={<ICUITest61 />} />
+          <Route path="/icui-test6" element={<ICUITest6 />} />
+          <Route path="/icui-test7" element={<ICUITest7 />} />
+          <Route path="/icui-test8.2" element={<ICUITest82 />} />
+          <Route path="/icui-test8.3" element={<ICUITest83 />} />
           <Route path="/icui-file-menu-test" element={<ICUIFileMenuTest />} />
           <Route path="/icui-layout-menu-test" element={<ICUILayoutMenuTest />} />
           <Route path="/icui-services-test" element={<ICUIServicesTest />} />

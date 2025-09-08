@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { gpt5Helper } from '../../../../../src/icui/components/chat/modelhelper/gpt5';
+import { gpt5Helper } from '../../../../../src/icui/components/chat/modelhelper';
 
 const sampleOutput = "**Success**: [{'file': '/home/penthoy/icotes/workspace/README.md-14-# Features at a glance.', 'line': None, 'snippet': None}, {'file': '/home/penthoy/icotes/workspace/README.md-15-', 'line': None, 'snippet': None}]";
 
