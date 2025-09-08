@@ -276,7 +276,7 @@ export class DefaultContextMenus {
           icon: '📋',
           shortcut: 'Ctrl+C',
           commandId: StandardPanelCommands.TERMINAL_COPY_SELECTION,
-          isEnabled: (ctx) => !!ctx.selectedItems?.length,
+          isEnabled: (ctx) => !!ctx.clipboardContent,
         },
         {
           id: 'terminal-paste',

@@ -570,7 +570,8 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
                    (isDarkTheme ? '#1e1e1e' : '#ffffff');
     
     const styleElement = document.createElement('style');
-    styleElement.id = 'icui-terminal-styles';
+    const styleElementId = `icui-terminal-styles-${terminalId.current}`;
+    styleElement.id = styleElementId;
     styleElement.textContent = `
       .icui-terminal-container .xterm .xterm-viewport {
         background-color: ${bgColor} !important;
@@ -593,7 +594,7 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
       }
     `;
     
-    const existingStyle = document.getElementById('icui-terminal-styles');
+    const existingStyle = document.getElementById(styleElementId);
     if (existingStyle) {
       existingStyle.remove();
     }
@@ -601,7 +602,7 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
     document.head.appendChild(styleElement);
 
     return () => {
-      const elementToRemove = document.getElementById('icui-terminal-styles');
+      const elementToRemove = document.getElementById(styleElementId);
       if (elementToRemove) {
         elementToRemove.remove();
       }

@@ -29,7 +29,7 @@ class PromptService {
   private listeners: Set<(req: PromptRequest | null) => void> = new Set();
 
   prompt(options: PromptOptions): Promise<string | null> {
-    const id = `prompt_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const id = `prompt_${crypto.randomUUID()}`;
     const merged: PromptRequest['options'] = {
       confirmText: options.confirmText ?? 'OK',
       cancelText: options.cancelText ?? 'Cancel',

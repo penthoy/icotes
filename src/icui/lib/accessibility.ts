@@ -370,7 +370,7 @@ export class AccessibilityUtils {
    * Generate a unique ID for ARIA relationships
    */
   static generateId(prefix = 'icui'): string {
-    return `${prefix}-${Math.random().toString(36).substr(2, 9)}`;
+    return `${prefix}-${Math.random().toString(36).slice(2, 11)}`;
   }
 
   /**

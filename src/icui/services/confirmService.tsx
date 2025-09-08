@@ -29,7 +29,7 @@ class ConfirmService {
    * Show a confirmation dialog and resolve with true/false.
    */
   confirm(options: ConfirmOptions): Promise<boolean> {
-    const id = `confirm_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const id = `confirm_${crypto.randomUUID()}`;
     const merged: ConfirmRequest['options'] = {
       message: options.message,
       title: options.title,
