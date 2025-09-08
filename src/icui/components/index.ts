@@ -18,6 +18,8 @@ export { ICUIBaseFooter } from './ICUIBaseFooter';
 export { ICUILayoutPresetSelector } from './ICUILayoutPresetSelector';
 export { ICUIPanelSelector } from './ICUIPanelSelector';
 export { default as ICUIEditor } from './panels/ICUIEditor';
+export { default as ICUIExplorer } from './panels/ICUIExplorer';
+export { default as ICUITerminal } from './panels/ICUITerminal';
 export { default as ICUIChat } from './panels/ICUIChat';
 export { default as ICUIChatHistory } from './panels/ICUIChatHistory';
 

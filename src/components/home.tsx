@@ -11,9 +11,9 @@ import {
   ICUIChat,
   ICUITerminal,
   ICUIEditor,
-  ICUIChatHistory
+  ICUIChatHistory,
+  ICUIExplorer
 } from '../icui';
-import ICUIEnhancedExplorer from '../icui/components/panels/ICUIEnhancedExplorer';
 import type { ICUIEditorRef } from '../icui';
 import ICUIBaseHeader from '../icui/components/ICUIBaseHeader';
 import ICUIBaseFooter from '../icui/components/ICUIBaseFooter';
@@ -257,7 +257,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
 
   // Stable panel instances to prevent recreation on layout changes
   const explorerInstance = useMemo(() => (
-    <ICUIEnhancedExplorer 
+    <ICUIExplorer 
       onFileSelect={handleFileSelect}
       onFileDoubleClick={handleFileDoubleClick}
     />

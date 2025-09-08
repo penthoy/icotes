@@ -5,6 +5,8 @@ import { Trash2, Edit3, Plus, MessageSquare, Clock, Search, Copy } from 'lucide-
 import { ContextMenu, useContextMenu } from '../ui/ContextMenu';
 import { createChatHistoryContextMenu, handleChatHistoryContextMenuClick, ChatHistoryMenuContext } from '../menus/ChatHistoryContextMenu';
 import { registerChatHistoryCommands } from '../chat/ChatHistoryOperations';
+import { confirmService } from '../../services/confirmService';
+import { promptService } from '../../services/promptService';
 
 interface ICUIChatHistoryProps {
   className?: string;
@@ -264,12 +266,15 @@ const ICUIChatHistory: React.FC<ICUIChatHistoryProps> = ({
         ? `Are you sure you want to delete the session "${sessionNames}"?`
         : `Are you sure you want to delete ${selectedSessionObjects.length} sessions?`;
       
-      if (confirm(confirmMessage)) {
-        selectedSessionObjects.forEach(session => {
-          deleteSession(session.id);
-        });
-        setSelectedSessions(new Set());
-      }
+      (async () => {
+        const ok = await confirmService.confirm({ title: 'Delete Sessions', message: confirmMessage, danger: true, confirmText: 'Delete' });
+        if (ok) {
+          selectedSessionObjects.forEach(session => {
+            deleteSession(session.id);
+          });
+          setSelectedSessions(new Set());
+        }
+      })();
     } else if (event.ctrlKey && event.key === 'a') {
       // Ctrl+A to select all
       event.preventDefault();
@@ -334,6 +339,14 @@ const ICUIChatHistory: React.FC<ICUIChatHistoryProps> = ({
       className={`flex flex-col h-full ${className}`}
       style={{ backgroundColor: 'var(--icui-bg-primary)' }}
       onKeyDown={handleKeyDown}
+      onClick={(e) => {
+        // Deselect all when clicking on empty space (not on a session card or input)
+        const target = e.target as HTMLElement;
+        if (!target.closest('.icui-chat-session-card') && !target.closest('input,textarea,button,[role="menu"]')) {
+          setSelectedSessions(new Set());
+          lastSelectedRef.current = null;
+        }
+      }}
       tabIndex={-1}
     >
       {/* Header */}
@@ -401,12 +414,15 @@ const ICUIChatHistory: React.FC<ICUIChatHistoryProps> = ({
                     ? `Are you sure you want to delete the session "${sessionNames}"?`
                     : `Are you sure you want to delete ${selectedSessionObjects.length} sessions?`;
                   
-                  if (confirm(confirmMessage)) {
-                    selectedSessionObjects.forEach(session => {
-                      deleteSession(session.id);
-                    });
-                    setSelectedSessions(new Set());
-                  }
+                  (async () => {
+                    const ok = await confirmService.confirm({ title: 'Delete Sessions', message: confirmMessage, danger: true, confirmText: 'Delete' });
+                    if (ok) {
+                      selectedSessionObjects.forEach(session => {
+                        deleteSession(session.id);
+                      });
+                      setSelectedSessions(new Set());
+                    }
+                  })();
                 }}
                 className="p-2 rounded hover:opacity-80 transition-opacity"
                 style={{ backgroundColor: 'var(--icui-text-error)', color: 'white' }}
@@ -494,13 +510,13 @@ const ICUIChatHistory: React.FC<ICUIChatHistoryProps> = ({
               const isSelected = selectedSessions.has(session.id);
               const isEditing = editingId === session.id;
               
-              return (
+        return (
                 <div
                   key={session.id}
                   onClick={(e) => handleSessionClick(session.id, e)}
                   onDoubleClick={(e) => handleSessionDoubleClick(session.id, e)}
                   onContextMenu={(e) => handleContextMenu(e, session.id)}
-                  className={`group relative p-3 rounded-lg cursor-pointer transition-all hover:opacity-80 ${
+                  className={`icui-chat-session-card group relative p-3 rounded-lg cursor-pointer transition-all hover:opacity-80 ${
                     isSelected ? 'ring-2' : ''
                   }`}
                   style={{

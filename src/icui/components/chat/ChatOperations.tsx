@@ -9,6 +9,8 @@ import { globalCommandRegistry, CommandUtils } from '../../lib/commandRegistry';
 import { ChatMessage } from '../../types/chatTypes';
 import { ChatMenuContext } from '../menus/ChatContextMenu';
 import { log } from '../../../services/frontend-logger';
+import { confirmService } from '../../services/confirmService';
+import { promptService } from '../../services/promptService';
 
 export interface ChatOperationContext extends ChatMenuContext {
   refreshChat?: () => Promise<void>;
@@ -248,7 +250,13 @@ export class ChatOperations {
       return;
     }
 
-    const newContent = prompt('Edit message:', context.selectedMessage.content);
+    const newContent = await promptService.prompt({
+      title: 'Edit Message',
+      message: 'Update the message content:',
+      initialValue: context.selectedMessage.content,
+      multiline: true,
+      confirmText: 'Save'
+    });
     if (!newContent?.trim() || newContent.trim() === context.selectedMessage.content) {
       return;
     }
@@ -277,8 +285,8 @@ export class ChatOperations {
       return;
     }
 
-    const confirmed = confirm(`Are you sure you want to delete this message?`);
-    if (!confirmed) return;
+  const confirmed = await confirmService.confirm({ title: 'Delete Message', message: 'Are you sure you want to delete this message?', danger: true, confirmText: 'Delete' });
+  if (!confirmed) return;
 
     try {
       await context.deleteMessage?.(context.selectedMessage.id);
@@ -314,7 +322,12 @@ export class ChatOperations {
    */
   private async renameSession(context?: ChatOperationContext): Promise<void> {
     const currentName = context?.chatId || 'Untitled';
-    const newName = prompt('Enter new session name:', currentName);
+    const newName = await promptService.prompt({
+      title: 'Rename Session',
+      message: 'Enter new session name:',
+      initialValue: currentName,
+      confirmText: 'Rename'
+    });
     if (!newName?.trim() || newName.trim() === currentName) return;
 
     try {
@@ -409,8 +422,8 @@ export class ChatOperations {
       return;
     }
 
-    const confirmed = confirm(`Are you sure you want to clear all ${context.chatMessages.length} messages in this session?`);
-    if (!confirmed) return;
+  const confirmed = await confirmService.confirm({ title: 'Clear Session', message: `Are you sure you want to clear all ${context.chatMessages.length} messages in this session?`, danger: true, confirmText: 'Clear' });
+  if (!confirmed) return;
 
     try {
       await context.clearMessages?.();

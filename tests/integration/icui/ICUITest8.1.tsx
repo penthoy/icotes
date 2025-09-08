@@ -9,7 +9,7 @@
  */
 
 import React, { useState } from 'react';
-import ICUIEnhancedExplorer from '../../../src/icui/components/panels/ICUIEnhancedExplorer';
+import ICUIExplorer from '../../../src/icui/components/panels/ICUIExplorer';
 import { ICUIFileNode } from '../../../src/icui/services';
 
 const ICUITest81: React.FC = () => {
@@ -85,7 +85,7 @@ const ICUITest81: React.FC = () => {
           }}>
             📁 Enhanced Explorer with Multi-Select
           </div>
-          <ICUIEnhancedExplorer
+          <ICUIExplorer
             onFileSelect={handleFileSelect}
             onFileDoubleClick={handleFileDoubleClick}
             onFileCreate={handleFileCreate}

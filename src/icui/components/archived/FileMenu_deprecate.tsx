@@ -9,6 +9,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { FileService, FileInfo } from '../../services/fileService';
 import { notificationService } from '../../services/notificationService';
+import { confirmService } from '../../services/confirmService';
 
 export interface RecentFile {
   id: string;
@@ -292,19 +293,21 @@ export const FileMenu: React.FC<FileMenuProps> = ({
   /**
    * Handle file close
    */
-  const handleCloseFile = useCallback(() => {
+  const handleCloseFile = useCallback(async () => {
     if (!currentFile) {
       notificationService.show('No file to close', 'warning');
       return;
     }
 
     if (currentFile.modified) {
-      // In a real implementation, show save confirmation dialog
-      if (window.confirm(`Save changes to ${currentFile.name}?`)) {
-        handleSaveFile().then(() => {
-          onCloseFile?.(currentFile.id);
-        });
-        return;
+      const shouldSave = await confirmService.confirm({
+        title: 'Unsaved Changes',
+        message: `Save changes to ${currentFile.name}?`,
+        confirmText: 'Save',
+        cancelText: 'Discard'
+      });
+      if (shouldSave) {
+        await handleSaveFile();
       }
     }
 

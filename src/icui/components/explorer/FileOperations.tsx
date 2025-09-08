@@ -8,6 +8,8 @@
 import { Command, CommandUtils, globalCommandRegistry } from '../../lib/commandRegistry';
 import { backendService, ICUIFileNode } from '../../services';
 import { log } from '../../../services/frontend-logger';
+import { confirmService } from '../../services/confirmService';
+import { promptService } from '../../services/promptService';
 
 export interface FileOperationContext {
   selectedFiles: ICUIFileNode[];
@@ -203,8 +205,8 @@ export class ExplorerFileOperations {
       return;
     }
 
-    const fileName = prompt('Enter file name:');
-    if (!fileName?.trim()) return;
+  const fileName = await promptService.prompt({ title: 'New File', message: 'Enter file name:', placeholder: 'example.txt' });
+  if (!fileName || !fileName.trim()) return;
 
     const newPath = `${context.currentPath}/${fileName.trim()}`.replace(/\/+/g, '/');
 
@@ -228,8 +230,8 @@ export class ExplorerFileOperations {
       return;
     }
 
-    const folderName = prompt('Enter folder name:');
-    if (!folderName?.trim()) return;
+  const folderName = await promptService.prompt({ title: 'New Folder', message: 'Enter folder name:', placeholder: 'my-folder' });
+  if (!folderName || !folderName.trim()) return;
 
     const newPath = `${context.currentPath}/${folderName.trim()}`.replace(/\/+/g, '/');
 
@@ -254,8 +256,8 @@ export class ExplorerFileOperations {
     }
 
     const file = context.selectedFiles[0];
-    const newName = prompt('Enter new name:', file.name);
-    if (!newName?.trim() || newName.trim() === file.name) return;
+  const newName = await promptService.prompt({ title: 'Rename', message: 'Enter new name:', initialValue: file.name });
+  if (!newName || !newName.trim() || newName.trim() === file.name) return;
 
     const parentPath = file.path.substring(0, file.path.lastIndexOf('/'));
     const newPath = `${parentPath}/${newName.trim()}`.replace(/\/+/g, '/');
@@ -294,7 +296,8 @@ export class ExplorerFileOperations {
       ? `Are you sure you want to delete "${fileNames}"?`
       : `Are you sure you want to delete ${context.selectedFiles.length} items?`;
 
-    if (!confirm(confirmMessage)) {
+  const ok = await confirmService.confirm({ title: 'Delete Items', message: confirmMessage, danger: true, confirmText: 'Delete' });
+  if (!ok) {
       return;
     }
 

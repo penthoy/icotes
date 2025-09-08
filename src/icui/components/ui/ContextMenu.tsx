@@ -210,7 +210,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   );
 
   // Keyboard navigation
-  const { focusedIndex, handleKeyDown } = useKeyboardNavigation({
+  const { focusedIndex, setFocusedIndex, handleKeyDown } = useKeyboardNavigation({
     items: visibleItems.map((item, index) => ({ 
       id: item.id, 
       disabled: item.isEnabled ? !item.isEnabled(context) : false 
@@ -254,14 +254,9 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
 
   // Handle item selection
   const handleItemClick = useCallback((item: MenuItem) => {
-    if (item.danger) {
-      // Show confirmation dialog for dangerous actions
-      const confirmed = window.confirm(`Are you sure you want to ${item.label.toLowerCase()}?`);
-      if (!confirmed) return;
-    }
-    
-    onItemClick(item);
+    // Close menu immediately; per-item handlers will show any needed confirmations
     onClose();
+    onItemClick(item);
   }, [onItemClick, onClose]);
 
   // Handle submenu operations
@@ -349,7 +344,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
           context={context}
           focused={index === focusedIndex}
           onSelect={handleItemClick}
-          onMouseEnter={() => setState(prev => ({ ...prev, focusedIndex: index }))}
+          onMouseEnter={() => setFocusedIndex(index)}
           onOpenSubMenu={handleOpenSubMenu}
           onCloseSubMenu={handleCloseSubMenu}
         />

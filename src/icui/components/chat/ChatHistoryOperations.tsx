@@ -8,6 +8,8 @@
 import { globalCommandRegistry } from '../../lib/commandRegistry';
 import { ChatHistoryMenuContext, ChatHistorySession } from '../menus/ChatHistoryContextMenu';
 import { log } from '../../../services/frontend-logger';
+import { confirmService } from '../../services/confirmService';
+import { promptService } from '../../services/promptService';
 
 /**
  * Chat History Operations - Default command implementations
@@ -38,7 +40,12 @@ export const chatHistoryOperations = {
     if (selectedSessions.length !== 1) return;
     
     const session = selectedSessions[0];
-    const newName = prompt('Enter new session name:', session.name);
+    const newName = await promptService.prompt({
+      title: 'Rename Session',
+      message: 'Enter new session name:',
+      initialValue: session.name,
+      confirmText: 'Rename'
+    });
     
     if (newName && newName.trim() !== session.name) {
       log.info('ChatHistoryOperations', 'Renaming session', { 
@@ -87,7 +94,7 @@ export const chatHistoryOperations = {
       ? `Are you sure you want to delete the session "${sessionNames}"?`
       : `Are you sure you want to delete ${selectedSessions.length} sessions?`;
     
-    if (confirm(confirmMessage)) {
+  if (await confirmService.confirm({ title: 'Delete Sessions', message: confirmMessage, danger: true, confirmText: 'Delete' })) {
       log.info('ChatHistoryOperations', 'Deleting sessions', { 
         sessionIds: selectedSessions.map(s => s.id),
         count: selectedSessions.length
@@ -177,9 +184,8 @@ export const chatHistoryOperations = {
   async clearAllSessions(context: ChatHistoryMenuContext): Promise<void> {
     const { totalSessions } = context;
     
-    const confirmMessage = `Are you sure you want to delete all ${totalSessions} chat sessions? This action cannot be undone.`;
-    
-    if (confirm(confirmMessage)) {
+  const confirmMessage = `Are you sure you want to delete all ${totalSessions} chat sessions? This action cannot be undone.`;
+  if (await confirmService.confirm({ title: 'Clear All Sessions', message: confirmMessage, danger: true, confirmText: 'Delete All' })) {
       log.info('ChatHistoryOperations', 'Clearing all sessions', { totalSessions });
       
       // Call clear all callback or emit event

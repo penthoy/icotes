@@ -10,6 +10,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { ICUILayoutStateManager } from '../../lib/icui-layout-state';
 import { ICUILayoutPreset, ICUILayoutState, ICUILayoutPresetType } from '../../types/icui-layout-state';
 import { notificationService } from '../../services/notificationService';
+import { confirmService } from '../../services/confirmService';
 
 export interface LayoutMenuProps {
   currentLayout?: ICUILayoutState;
@@ -217,7 +218,8 @@ export const LayoutMenu: React.FC<LayoutMenuProps> = ({
    * Reset layout to default
    */
   const handleResetLayout = useCallback(async () => {
-    if (window.confirm('Reset layout to default? This will discard current layout changes.')) {
+    const ok = await confirmService.confirm({ title: 'Reset Layout', message: 'Reset layout to default? This will discard current layout changes.', danger: true, confirmText: 'Reset' });
+    if (ok) {
       try {
         setIsLoading(true);
         
@@ -293,7 +295,8 @@ export const LayoutMenu: React.FC<LayoutMenuProps> = ({
     const preset = customLayouts.find(p => p.id === presetId);
     if (!preset) return;
 
-    if (window.confirm(`Delete "${preset.name}" layout? This cannot be undone.`)) {
+    const ok = await confirmService.confirm({ title: 'Delete Layout', message: `Delete "${preset.name}" layout? This cannot be undone.`, danger: true, confirmText: 'Delete' });
+    if (ok) {
       try {
         setIsLoading(true);
         

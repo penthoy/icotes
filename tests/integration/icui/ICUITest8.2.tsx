@@ -6,7 +6,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import ICUIEnhancedExplorer from '../../../src/icui/components/panels/ICUIEnhancedExplorer';
+import ICUIExplorer from '../../../src/icui/components/archived/ICUIExplorer_deprecate';
 import { 
   registerExplorerCommand, 
   createCustomMenuGroup, 
@@ -278,9 +278,8 @@ const ICUITest82: React.FC = () => {
       </div>
       
       <div style={{ flex: 1, overflow: 'hidden' }}>
-        <ICUIEnhancedExplorer
+        <ICUIExplorer
           className="h-full"
-          extensions={explorerExtensions}
           onFileSelect={(file: ICUIFileNode) => {
             addMessage(`File selected: ${file.name}`);
             log.info('ICUITest8.2', 'File selected', { file: file.name });
