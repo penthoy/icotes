@@ -19,6 +19,12 @@ export interface FileOperationContext {
   onFolderCreate?: (path: string) => void;
   onFileDelete?: (path: string) => void;
   onFileRename?: (oldPath: string, newPath: string) => void;
+  /**
+   * When invoking a command from a context menu on a specific folder, this path
+   * represents the intended parent directory for creation commands.
+   * Falls back to currentPath when not provided.
+   */
+  targetDirectoryPath?: string;
 }
 
 /**
@@ -205,10 +211,35 @@ export class ExplorerFileOperations {
       return;
     }
 
-  const fileName = await promptService.prompt({ title: 'New File', message: 'Enter file name:', placeholder: 'example.txt' });
-  if (!fileName || !fileName.trim()) return;
+    const fileName = await promptService.prompt({ title: 'New File', message: 'Enter file name:', placeholder: 'example.txt' });
+    if (!fileName || !fileName.trim()) return;
 
-    const newPath = `${context.currentPath}/${fileName.trim()}`.replace(/\/+/g, '/');
+    const trimmed = fileName.trim();
+
+    // Determine base directory for creation (context menu right-click aware)
+    let baseDir = (context.targetDirectoryPath || context.currentPath || '/').replace(/\/+$/, '');
+    if (baseDir === '') baseDir = '/';
+
+    // Guard: prevent path traversal attempts
+    if (trimmed.includes('..')) {
+      alert('Invalid file name.');
+      return;
+    }
+
+    try {
+      // Pre-flight: check for name collision in target directory
+      const siblings = await backendService.getDirectoryContents(baseDir, true).catch(() => [] as ICUIFileNode[]);
+      const conflict = siblings.find(s => s.name === trimmed);
+      if (conflict) {
+        alert(`A ${conflict.type === 'folder' ? 'folder' : 'file'} named "${trimmed}" already exists here.`);
+        return;
+      }
+    } catch (e) {
+      // Non-fatal; continue (best-effort collision detection)
+      log.warn('ExplorerFileOperations', 'Directory listing failed during collision check', { baseDir, error: e });
+    }
+
+    const newPath = `${baseDir}/${trimmed}`.replace(/\/+/g, '/');
 
     try {
       await backendService.createFile(newPath);
@@ -230,10 +261,31 @@ export class ExplorerFileOperations {
       return;
     }
 
-  const folderName = await promptService.prompt({ title: 'New Folder', message: 'Enter folder name:', placeholder: 'my-folder' });
-  if (!folderName || !folderName.trim()) return;
+    const folderName = await promptService.prompt({ title: 'New Folder', message: 'Enter folder name:', placeholder: 'my-folder' });
+    if (!folderName || !folderName.trim()) return;
 
-    const newPath = `${context.currentPath}/${folderName.trim()}`.replace(/\/+/g, '/');
+    const trimmed = folderName.trim();
+
+    let baseDir = (context.targetDirectoryPath || context.currentPath || '/').replace(/\/+$/, '');
+    if (baseDir === '') baseDir = '/';
+
+    if (trimmed.includes('..')) {
+      alert('Invalid folder name.');
+      return;
+    }
+
+    try {
+      const siblings = await backendService.getDirectoryContents(baseDir, true).catch(() => [] as ICUIFileNode[]);
+      const conflict = siblings.find(s => s.name === trimmed);
+      if (conflict) {
+        alert(`A ${conflict.type === 'folder' ? 'folder' : 'file'} named "${trimmed}" already exists here.`);
+        return;
+      }
+    } catch (e) {
+      log.warn('ExplorerFileOperations', 'Directory listing failed during folder collision check', { baseDir, error: e });
+    }
+
+    const newPath = `${baseDir}/${trimmed}`.replace(/\/+/g, '/');
 
     try {
       await backendService.createDirectory(newPath);

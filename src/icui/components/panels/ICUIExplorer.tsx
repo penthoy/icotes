@@ -531,7 +531,9 @@ const ICUIEnhancedExplorer: React.FC<ICUIEnhancedExplorerProps> = ({
       canPaste: explorerFileOperations.canPaste(),
       isMultiSelect: true,
       selectedItems: currentSelection,
-    };
+      // Provide folder path for creation commands: if right-click on folder, create inside it
+      targetDirectoryPath: clickedFile && clickedFile.type === 'folder' ? clickedFile.path : currentPath,
+    } as any;
 
     const schema = createExplorerContextMenu(menuContext, extensions);
     showContextMenu(event, schema, menuContext);
@@ -668,6 +670,7 @@ const ICUIEnhancedExplorer: React.FC<ICUIEnhancedExplorerProps> = ({
 
   // Handle context menu item clicks
   const handleMenuItemClick = useCallback((item: any) => {
+    const clickedFolder = selectedItems.length === 1 && selectedItems[0].type === 'folder' ? selectedItems[0] : undefined;
     const menuContext: ExplorerMenuContext = {
       panelType: 'explorer',
       selectedFiles: selectedItems,
@@ -675,7 +678,8 @@ const ICUIEnhancedExplorer: React.FC<ICUIEnhancedExplorerProps> = ({
       canPaste: explorerFileOperations.canPaste(),
       isMultiSelect: true,
       selectedItems,
-    };
+      targetDirectoryPath: clickedFolder ? clickedFolder.path : currentPath,
+    } as any;
 
     handleExplorerContextMenuClick(item, menuContext, {
       selectAll,

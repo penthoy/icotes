@@ -6,6 +6,7 @@
  */
 
 import React from 'react';
+import { randomId } from '../../icui/lib/id';
 
 export interface PromptOptions {
   title?: string;
@@ -31,7 +32,7 @@ class PromptService {
     = [];
 
   prompt(options: PromptOptions): Promise<string | null> {
-    const id = `prompt_${crypto.randomUUID()}`;
+    const id = randomId('prompt');
     const merged: PromptRequest['options'] = {
       confirmText: options.confirmText ?? 'OK',
       cancelText: options.cancelText ?? 'Cancel',

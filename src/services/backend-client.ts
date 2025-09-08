@@ -317,23 +317,27 @@ export class BackendClient {
    * Get file info
    */
   async getFileInfo(path: string): Promise<FileInfo> {
-    return this.makeRequest(`/api/filesystem/info?path=${encodeURIComponent(path)}`);
+  const response = await this.makeRequest(`/api/files/info?path=${encodeURIComponent(path)}`);
+  return response.data as FileInfo;
   }
 
   /**
    * Read file from filesystem
    */
   async readFile(path: string): Promise<string> {
-    return this.makeRequest(`/api/filesystem/read?path=${encodeURIComponent(path)}`);
+  const response = await this.makeRequest(`/api/files/content?path=${encodeURIComponent(path)}`);
+  // REST API returns { success, data: { path, content } }
+  return (response.data?.content ?? '') as string;
   }
 
   /**
    * Write file to filesystem
    */
   async writeFile(path: string, content: string): Promise<void> {
-    return this.makeRequest('/api/filesystem/write', {
+    // REST API uses POST /api/files for create/write and PUT /api/files for update
+    return this.makeRequest('/api/files', {
       method: 'POST',
-      body: JSON.stringify({ path, content })
+      body: JSON.stringify({ path, content, encoding: 'utf-8', create_dirs: true })
     });
   }
 
@@ -341,9 +345,10 @@ export class BackendClient {
    * Create directory
    */
   async createDirectory(path: string): Promise<void> {
-    return this.makeRequest('/api/filesystem/directory', {
+    // REST API uses POST /api/files with type: 'directory'
+    return this.makeRequest('/api/files', {
       method: 'POST',
-      body: JSON.stringify({ path })
+      body: JSON.stringify({ path, type: 'directory', create_dirs: true })
     });
   }
 
@@ -351,9 +356,9 @@ export class BackendClient {
    * Delete file or directory
    */
   async deleteFileSystem(path: string): Promise<void> {
-    return this.makeRequest('/api/filesystem/delete', {
-      method: 'DELETE',
-      body: JSON.stringify({ path })
+    // REST API uses DELETE /api/files?path=...
+    return this.makeRequest(`/api/files?path=${encodeURIComponent(path)}`, {
+      method: 'DELETE'
     });
   }
 
@@ -361,19 +366,22 @@ export class BackendClient {
    * Move/rename file or directory
    */
   async moveFileSystem(oldPath: string, newPath: string): Promise<void> {
-    return this.makeRequest('/api/filesystem/move', {
-      method: 'POST',
-      body: JSON.stringify({ old_path: oldPath, new_path: newPath })
-    });
+  // Not exposed in REST API yet; implement via write+delete or add proper endpoint server-side.
+  // For now, throw a clear error to avoid silent failures.
+  throw new Error('Move operation not supported by REST API');
   }
 
   /**
    * Search files
    */
   async searchFiles(query: string, path?: string): Promise<FileSearchResult[]> {
-    const params = new URLSearchParams({ query });
-    if (path) params.append('path', path);
-    return this.makeRequest(`/api/filesystem/search?${params}`);
+    const body: any = { query };
+    if (path) body.path = path;
+    const response = await this.makeRequest('/api/files/search', {
+      method: 'POST',
+      body: JSON.stringify(body)
+    });
+    return response.data as FileSearchResult[];
   }
 
   // Terminal Operations

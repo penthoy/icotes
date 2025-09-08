@@ -6,6 +6,7 @@
  */
 
 import React from 'react';
+import { randomId } from '../../icui/lib/id';
 
 export interface ConfirmOptions {
   title?: string;
@@ -29,7 +30,7 @@ class ConfirmService {
    * Show a confirmation dialog and resolve with true/false.
    */
   confirm(options: ConfirmOptions): Promise<boolean> {
-    const id = `confirm_${crypto.randomUUID()}`;
+    const id = randomId('confirm');
     const merged: ConfirmRequest['options'] = {
       message: options.message,
       title: options.title,
