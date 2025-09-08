@@ -134,7 +134,9 @@ export class PanelRegistry {
     const existing = this.panels.get(panelType);
     if (!existing) return false;
 
-    const updated = { ...existing, ...updates };
+  // Prevent changing immutable identifiers (id/type) via updates
+  const { id: _ignoreId, type: _ignoreType, ...rest } = updates;
+  const updated: PanelMetadata = { ...existing, ...rest, id: existing.id, type: existing.type };
     this.panels.set(panelType, updated);
     this.emit({ type: 'panel-updated', panelType, metadata: updated });
     return true;

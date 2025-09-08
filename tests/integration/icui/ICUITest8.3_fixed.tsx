@@ -171,16 +171,15 @@ const ICUITest83: React.FC = () => {
     if (!contextMenu) return;
     
     // Execute the command via the global command registry
-    globalCommandRegistry.execute(item.id, contextMenu.context)
+    const commandId = (item as any).commandId || item.id;
+    globalCommandRegistry.execute(commandId, contextMenu.context)
       .then(() => {
         addMessage(`Context menu action: ${item.label} executed`);
       })
       .catch((error) => {
-        log.warn('ICUITest8.3', 'Command execution failed', { commandId: item.id, error });
-        addMessage(`Error: Command ${item.id} failed - ${error.message}`);
+        log.warn('ICUITest8.3', 'Command execution failed', { commandId, error });
+        addMessage(`Error: Command ${commandId} failed - ${error.message}`);
       });
-    
-    hideContextMenu();
   }, [contextMenu, hideContextMenu]);
 
   useEffect(() => {
@@ -209,7 +208,7 @@ const ICUITest83: React.FC = () => {
       canRename: true,
       canDelete: true,
       canExport: true,
-      sessionId: 'test-session-123',
+      chatId: 'test-session-123',
       messageCount: chatMessages.length
     };
 

@@ -49,6 +49,9 @@ jobs:
     needs: check-version
     runs-on: ubuntu-latest
     if: needs.check-version.outputs.should-build == 'true' && (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.merged == true))
+    concurrency:
+      group: docker-release-${{ needs.check-version.outputs.version }}
+      cancel-in-progress: true
     
     steps:
     - name: Checkout code

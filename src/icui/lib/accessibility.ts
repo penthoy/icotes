@@ -6,6 +6,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
+import type React from 'react';
 
 /**
  * ARIA roles for ICUI components
@@ -210,7 +211,7 @@ export function useKeyboardNavigation(options: {
     const downKey = isVertical ? 'ArrowDown' : 'ArrowRight';
 
     switch (event.key) {
-      case upKey:
+    case upKey:
         event.preventDefault();
         setFocusedIndex(prev => {
           let newIndex = prev - 1;
@@ -232,11 +233,11 @@ export function useKeyboardNavigation(options: {
             }
           }
           
-          return Math.max(0, newIndex);
+      return newIndex >= 0 ? newIndex : prev;
         });
         break;
 
-      case downKey:
+    case downKey:
         event.preventDefault();
         setFocusedIndex(prev => {
           let newIndex = prev + 1;
@@ -258,7 +259,7 @@ export function useKeyboardNavigation(options: {
             }
           }
           
-          return Math.min(items.length - 1, newIndex);
+      return newIndex < items.length ? newIndex : prev;
         });
         break;
 

@@ -27,6 +27,8 @@ export interface PromptRequest {
 class PromptService {
   private current: PromptRequest | null = null;
   private listeners: Set<(req: PromptRequest | null) => void> = new Set();
+  private queue: Array<{ id: string; options: PromptRequest['options']; resolve: (v: string | null) => void }>
+    = [];
 
   prompt(options: PromptOptions): Promise<string | null> {
     const id = `prompt_${crypto.randomUUID()}`;
@@ -36,16 +38,25 @@ class PromptService {
       ...options,
     };
     return new Promise(resolve => {
-      this.current = { id, options: merged, resolve };
-      this.emit();
+      if (this.current) {
+        this.queue.push({ id, options: merged, resolve });
+      } else {
+        this.current = { id, options: merged, resolve };
+        this.emit();
+      }
     });
   }
 
   resolve(value: string | null): void {
     if (!this.current) return;
     const { resolve } = this.current;
-    this.current = null;
-    try { resolve(value); } finally { this.emit(); }
+    try {
+      resolve(value);
+    } finally {
+      const next = this.queue.shift();
+      this.current = next ? { id: next.id, options: next.options, resolve: next.resolve } : null;
+      this.emit();
+    }
   }
 
   getCurrent(): PromptRequest | null { return this.current; }

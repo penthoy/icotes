@@ -6,6 +6,7 @@
  */
 
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { z } from 'zod';
 
 /**
  * Theme definitions
@@ -559,15 +560,112 @@ export class ThemeUtils {
    */
   static validateTheme(theme: unknown): theme is Theme {
     if (!theme || typeof theme !== 'object') return false;
-    
-    const t = theme as any;
-    return (
-      typeof t.name === 'string' &&
-      typeof t.displayName === 'string' &&
-      (t.type === 'light' || t.type === 'dark') &&
-      t.colors && typeof t.colors === 'object' &&
-      t.spacing && typeof t.spacing === 'object' &&
-      t.typography && typeof t.typography === 'object'
-    );
+
+    // Define a strict schema to validate nested properties
+    const colorGroup = z.object({
+      primary: z.string(),
+      secondary: z.string(),
+      tertiary: z.string(),
+      inverse: z.string(),
+      overlay: z.string().optional(),
+      focus: z.string().optional(),
+      error: z.string().optional(),
+      success: z.string().optional(),
+      warning: z.string().optional(),
+      info: z.string().optional(),
+      link: z.string().optional(),
+      disabled: z.string().optional(),
+      danger: z.string().optional(),
+      dangerHover: z.string().optional(),
+      dangerActive: z.string().optional(),
+      primaryHover: z.string().optional(),
+      primaryActive: z.string().optional(),
+      secondaryHover: z.string().optional(),
+      secondaryActive: z.string().optional(),
+      keyword: z.string().optional(),
+      string: z.string().optional(),
+      number: z.string().optional(),
+      comment: z.string().optional(),
+      function: z.string().optional(),
+      variable: z.string().optional(),
+      type: z.string().optional(),
+    }).partial({ overlay: true });
+
+    const ThemeSchema = z.object({
+      name: z.string(),
+      displayName: z.string(),
+      type: z.union([z.literal('light'), z.literal('dark')]),
+      colors: z.object({
+        bg: z.object({
+          primary: z.string(),
+          secondary: z.string(),
+          tertiary: z.string(),
+          inverse: z.string(),
+          overlay: z.string(),
+        }),
+        text: z.object({
+          primary: z.string(),
+          secondary: z.string(),
+          tertiary: z.string(),
+          inverse: z.string(),
+          link: z.string(),
+          disabled: z.string(),
+        }),
+        border: z.object({
+          primary: z.string(),
+          secondary: z.string(),
+          focus: z.string(),
+          error: z.string(),
+          success: z.string(),
+          warning: z.string(),
+        }),
+        interactive: z.object({
+          primary: z.string(),
+          primaryHover: z.string(),
+          primaryActive: z.string(),
+          secondary: z.string(),
+          secondaryHover: z.string(),
+          secondaryActive: z.string(),
+          danger: z.string(),
+          dangerHover: z.string(),
+          dangerActive: z.string(),
+        }),
+        status: z.object({
+          error: z.string(),
+          success: z.string(),
+          warning: z.string(),
+          info: z.string(),
+        }),
+        syntax: z.object({
+          keyword: z.string(),
+          string: z.string(),
+          number: z.string(),
+          comment: z.string(),
+          function: z.string(),
+          variable: z.string(),
+          type: z.string(),
+        }),
+      }),
+      spacing: z.object({
+        xs: z.string(),
+        sm: z.string(),
+        md: z.string(),
+        lg: z.string(),
+        xl: z.string(),
+        xxl: z.string(),
+      }),
+      typography: z.object({
+        fontFamily: z.object({ sans: z.string(), mono: z.string() }),
+        fontSize: z.object({ xs: z.string(), sm: z.string(), base: z.string(), lg: z.string(), xl: z.string(), xxl: z.string() }),
+        fontWeight: z.object({ normal: z.string(), medium: z.string(), semibold: z.string(), bold: z.string() }),
+        lineHeight: z.object({ tight: z.string(), normal: z.string(), relaxed: z.string() }),
+      }),
+      shadows: z.object({ sm: z.string(), md: z.string(), lg: z.string(), xl: z.string() }),
+      borderRadius: z.object({ none: z.string(), sm: z.string(), md: z.string(), lg: z.string(), full: z.string() }),
+      animations: z.object({ fast: z.string(), normal: z.string(), slow: z.string() }),
+    });
+
+    const result = ThemeSchema.safeParse(theme);
+    return result.success;
   }
 }
