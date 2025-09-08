@@ -222,7 +222,13 @@ export class ExplorerFileOperations {
 
     // Guard: prevent path traversal attempts
     if (trimmed.includes('..')) {
-      alert('Invalid file name.');
+      // Use themed confirm dialog instead of alert
+      await confirmService.confirm({
+        title: 'Invalid Name',
+        message: 'The file name contains an invalid path sequence (..).',
+        confirmText: 'OK',
+        cancelText: 'Cancel'
+      });
       return;
     }
 
@@ -231,7 +237,12 @@ export class ExplorerFileOperations {
       const siblings = await backendService.getDirectoryContents(baseDir, true).catch(() => [] as ICUIFileNode[]);
       const conflict = siblings.find(s => s.name === trimmed);
       if (conflict) {
-        alert(`A ${conflict.type === 'folder' ? 'folder' : 'file'} named "${trimmed}" already exists here.`);
+        await confirmService.confirm({
+          title: 'Name Conflict',
+          message: `A ${conflict.type === 'folder' ? 'folder' : 'file'} named "${trimmed}" already exists here.`,
+          confirmText: 'OK',
+          cancelText: 'Cancel'
+        });
         return;
       }
     } catch (e) {
@@ -270,7 +281,12 @@ export class ExplorerFileOperations {
     if (baseDir === '') baseDir = '/';
 
     if (trimmed.includes('..')) {
-      alert('Invalid folder name.');
+      await confirmService.confirm({
+        title: 'Invalid Name',
+        message: 'The folder name contains an invalid path sequence (..).',
+        confirmText: 'OK',
+        cancelText: 'Cancel'
+      });
       return;
     }
 
@@ -278,7 +294,12 @@ export class ExplorerFileOperations {
       const siblings = await backendService.getDirectoryContents(baseDir, true).catch(() => [] as ICUIFileNode[]);
       const conflict = siblings.find(s => s.name === trimmed);
       if (conflict) {
-        alert(`A ${conflict.type === 'folder' ? 'folder' : 'file'} named "${trimmed}" already exists here.`);
+        await confirmService.confirm({
+          title: 'Name Conflict',
+          message: `A ${conflict.type === 'folder' ? 'folder' : 'file'} named "${trimmed}" already exists here.`,
+          confirmText: 'OK',
+          cancelText: 'Cancel'
+        });
         return;
       }
     } catch (e) {

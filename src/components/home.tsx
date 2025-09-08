@@ -244,8 +244,6 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
     { id: 'terminal', name: 'Terminal', icon: '💻', description: 'Integrated terminal' },
     { id: 'chat', name: 'AI Assistant', icon: '🤖', description: 'AI-powered code assistant' },
     { id: 'chat-history', name: 'Chat History', icon: '💬', description: 'Manage chat sessions and history' },
-    { id: 'output', name: 'Output', icon: '📤', description: 'Build and execution output' },
-    { id: 'debug', name: 'Debug Console', icon: '🐛', description: 'Debug console and variables' },
   ];
 
   // Stable panel instances to prevent recreation on layout changes
@@ -318,12 +316,6 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
         break;
       case 'chat-history':
         content = createChatHistoryContent();
-        break;
-      case 'output':
-        content = <div className="h-full p-4" style={{ backgroundColor: 'var(--icui-bg-primary)', color: 'var(--icui-text-primary)' }}>Output Panel - Build and execution output will appear here</div>;
-        break;
-      case 'debug':
-        content = <div className="h-full p-4" style={{ backgroundColor: 'var(--icui-bg-primary)', color: 'var(--icui-text-primary)' }}>Debug Console - Debug information and variables will appear here</div>;
         break;
       default:
         content = <div className="h-full p-4" style={{ backgroundColor: 'var(--icui-bg-primary)', color: 'var(--icui-text-primary)' }}>Custom Panel: {panelType.name}</div>;
