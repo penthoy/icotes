@@ -309,8 +309,6 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
         const config = await configService.getConfig();
         const wsBaseUrl = config.ws_url;
         
-        console.log(`🔗 Using WebSocket URL from config service: ${wsBaseUrl}`);
-        
         // Parse the WebSocket URL to get base URL and construct terminal URL
         const url = new URL(wsBaseUrl);
         
@@ -326,7 +324,6 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
         const baseUrl = `${finalProtocol}//${url.host}`;
         const wsUrl = `${baseUrl}/ws/terminal/${terminalId.current}`;
         
-        console.log(`[ICUITerminal] Connecting to: ${wsUrl}`);
         websocket.current = new WebSocket(wsUrl);
         
       } catch (error) {
@@ -357,7 +354,6 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
           wsUrl = `${protocol}//${host}/ws/terminal/${terminalId.current}`;
         }
         
-        console.log(`[ICUITerminal] Connecting to (fallback): ${wsUrl}`);
         websocket.current = new WebSocket(wsUrl);
       }
       

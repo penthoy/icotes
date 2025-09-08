@@ -33,7 +33,9 @@ function App() {
   // Initialize dynamic configuration on app startup
   useEffect(() => {
     configService.getConfig().then(config => {
-      console.log('🚀 Dynamic configuration initialized:', config);
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🚀 Dynamic configuration initialized:', config);
+      }
     }).catch(err => {
       console.warn('⚠️  Failed to load dynamic configuration:', err);
     });

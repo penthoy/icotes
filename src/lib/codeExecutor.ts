@@ -49,7 +49,9 @@ export class CodeExecutorWebSocket {
         this.ws = new WebSocket(this.url);
 
         this.ws.onopen = () => {
-          console.log('WebSocket connected');
+          if (process.env.NODE_ENV === 'development') {
+            console.log('WebSocket connected');
+          }
           this.reconnectAttempts = 0;
           resolve();
         };
@@ -60,7 +62,9 @@ export class CodeExecutorWebSocket {
         };
 
         this.ws.onclose = () => {
-          console.log('WebSocket disconnected');
+          if (process.env.NODE_ENV === 'development') {
+            console.log('WebSocket disconnected');
+          }
           this.handleReconnect();
         };
 

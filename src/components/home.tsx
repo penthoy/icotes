@@ -128,26 +128,20 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
 
   // Menu action handlers for integrated menu bar
   const handleMenuItemClick = useCallback((menuId: string, itemId: string) => {
-    console.log(`Menu action: ${menuId} -> ${itemId}`);
-    
     switch (menuId) {
       case 'file':
         switch (itemId) {
           case 'new':
             // Trigger file creation through callback
-            console.log('Creating new file...');
             break;
           case 'open':
             // Trigger file open dialog
-            console.log('Opening file dialog...');
             break;
           case 'save':
             // Trigger save current file
-            console.log('Saving current file...');
             break;
           case 'save-all':
             // Trigger save all files
-            console.log('Saving all files...');
             break;
           case 'refresh':
             // Trigger explorer refresh through layout change
@@ -161,7 +155,6 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
                 }
               }
             }));
-            console.log('Refreshing explorer...');
             break;
         }
         break;
@@ -455,23 +448,18 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
     switch (action) {
       case 'new':
         // TODO: Implement file creation dialog or delegate to editor
-        console.log('File creation delegated to ICUIEditor');
         break;
       case 'open':
         // TODO: Implement file open dialog
-        console.log('Open file dialog not implemented yet');
         break;
       case 'save':
         // TODO: Implement save action or delegate to editor
-        console.log('Save action delegated to ICUIEditor');
         break;
       case 'save-as':
         // TODO: Implement save as dialog
-        console.log('Save as dialog not implemented yet');
         break;
       case 'exit':
         // TODO: Implement exit confirmation
-        console.log('Exit confirmation not implemented yet');
         break;
     }
   }, []);

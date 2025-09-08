@@ -1,5 +1,12 @@
 # Working Features
 
+## Recently Finished (September 2025)
+
+### Git Panel Plan Implementation (September 2025)
+- **Task**: Scaffold Git integration plan for ICUI framework
+- **Key Insight**: Created comprehensive Git service architecture with backend REST endpoints, WebSocket events, and minimal MVP frontend panel. Established foundation for Git status, stage/unstage, commit, and diff operations within ICUI ecosystem
+- **Files**: `docs/plans/git_plan.md`, backend Git service endpoints, `src/icui/components/panels/ICUIGit.tsx`
+
 ## Recently Finished (August 2025)
 
 ### Code Refactoring and Debug Output Cleanup (August 2025)

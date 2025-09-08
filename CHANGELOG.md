@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### September 2025 - Git Panel Integration Planning
+
+- **Git Panel Infrastructure**: Comprehensive Git integration plan scaffolded for ICUI framework
+  - **Backend Architecture**: Designed Git service with REST endpoints for status, staging, commits, and diff operations
+  - **WebSocket Events**: Planned real-time Git status updates and repository change notifications  
+  - **Frontend Panel**: Created minimal MVP `ICUIGit.tsx` panel with core Git operations interface
+  - **File Modified**: `docs/plans/git_plan.md`
+
 #### August 2025 - Code Refactoring and Debug Output Cleanup
 
 - **Code Refactoring**: Clean up legacy "Enhanced" naming conventions
