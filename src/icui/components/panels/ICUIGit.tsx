@@ -211,15 +211,30 @@ const ICUIGit: React.FC<ICUIGitProps> = ({
   }, [loadStatus]);
 
   const handleCommit = useCallback(async () => {
-    if (!commitMessage.trim()) {
+    const message = commitMessage.trim();
+    if (!message) {
       setError('Commit message is required');
       return;
     }
-    
+
+    // Auto-stage if user has only unstaged/untracked changes
+    const needsAutoStage = status.staged.length === 0 && (status.unstaged.length > 0 || status.untracked.length > 0);
+    const pathsToStage = needsAutoStage ? [...status.unstaged.map(f => f.path), ...status.untracked.map(f => f.path)] : [];
+
     try {
       setLoading(true);
+      if (needsAutoStage && pathsToStage.length > 0) {
+        const staged = await backendService.scmStage(pathsToStage);
+        if (!staged) {
+          setError('Failed to auto-stage changes before commit');
+          setLoading(false);
+          return;
+        }
+        await loadStatus();
+      }
+
       const success = await backendService.scmCommit(
-        commitMessage.trim(),
+        message,
         commitOptions.amend,
         commitOptions.signoff
       );
@@ -237,7 +252,7 @@ const ICUIGit: React.FC<ICUIGitProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [commitMessage, commitOptions, loadAll]);
+  }, [commitMessage, commitOptions, status.staged.length, status.unstaged.length, status.untracked.length, loadAll, loadStatus]);
 
   // ==================== Branch Operations ====================
   
@@ -318,9 +333,13 @@ const ICUIGit: React.FC<ICUIGitProps> = ({
     [status.unstaged, status.untracked]
   );
 
+  const hasAnyChanges = useMemo(() => (
+    status.staged.length + status.unstaged.length + status.untracked.length
+  ) > 0, [status.staged.length, status.unstaged.length, status.untracked.length]);
+
   const canCommit = useMemo(() => 
-    status.staged.length > 0 && commitMessage.trim().length > 0,
-    [status.staged.length, commitMessage]
+    hasAnyChanges && commitMessage.trim().length > 0,
+    [hasAnyChanges, commitMessage]
   );
 
   const totalChanges = useMemo(() => 
@@ -544,24 +563,23 @@ const ICUIGit: React.FC<ICUIGitProps> = ({
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto">
-        {/* Changes Section */}
-        <div className="border-b">
-          <button
-            onClick={() => toggleSection('changes')}
-            className="w-full flex items-center justify-between p-3 hover:bg-gray-50 dark:hover:bg-gray-800"
-          >
-            <div className="flex items-center space-x-2">
-              {expandedSections.changes ? (
-                <ChevronDown className="h-4 w-4" />
-              ) : (
-                <ChevronRight className="h-4 w-4" />
-              )}
-              <span className="text-sm font-medium">
-                Changes ({allUnstagedFiles.length})
-              </span>
-            </div>
-            
-            {allUnstagedFiles.length > 0 && (
+        {/* Changes Section - hide entirely if empty */}
+        {allUnstagedFiles.length > 0 && (
+          <div className="border-b">
+            <button
+              onClick={() => toggleSection('changes')}
+              className="w-full flex items-center justify-between p-3 hover:bg-gray-50 dark:hover:bg-gray-800"
+            >
+              <div className="flex items-center space-x-2">
+                {expandedSections.changes ? (
+                  <ChevronDown className="h-4 w-4" />
+                ) : (
+                  <ChevronRight className="h-4 w-4" />
+                )}
+                <span className="text-sm font-medium">
+                  Changes ({allUnstagedFiles.length})
+                </span>
+              </div>
               <Button
                 size="sm"
                 variant="ghost"
@@ -574,51 +592,43 @@ const ICUIGit: React.FC<ICUIGitProps> = ({
               >
                 <Plus className="h-3 w-3" />
               </Button>
+            </button>
+            {expandedSections.changes && (
+              <div className="pb-2">
+                {allUnstagedFiles.map((file) => (
+                  <FileItem
+                    key={file.path}
+                    file={file}
+                    isStaged={false}
+                    onStage={() => handleStage([file.path])}
+                    onUnstage={() => handleUnstage([file.path])}
+                    onDiscard={() => handleDiscard([file.path])}
+                    onShowDiff={() => handleShowDiff(file.path)}
+                    onOpen={() => onFileOpen?.(file.path)}
+                  />
+                ))}
+              </div>
             )}
-          </button>
-          
-          {expandedSections.changes && (
-            <div className="pb-2">
-              {allUnstagedFiles.map((file) => (
-                <FileItem
-                  key={file.path}
-                  file={file}
-                  isStaged={false}
-                  onStage={() => handleStage([file.path])}
-                  onUnstage={() => handleUnstage([file.path])}
-                  onDiscard={() => handleDiscard([file.path])}
-                  onShowDiff={() => handleShowDiff(file.path)}
-                  onOpen={() => onFileOpen?.(file.path)}
-                />
-              ))}
-              
-              {allUnstagedFiles.length === 0 && (
-                <div className="p-4 text-center text-gray-500 text-sm">
-                  No changes
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+          </div>
+        )}
 
-        {/* Staged Changes Section */}
-        <div className="border-b">
-          <button
-            onClick={() => toggleSection('staged')}
-            className="w-full flex items-center justify-between p-3 hover:bg-gray-50 dark:hover:bg-gray-800"
-          >
-            <div className="flex items-center space-x-2">
-              {expandedSections.staged ? (
-                <ChevronDown className="h-4 w-4" />
-              ) : (
-                <ChevronRight className="h-4 w-4" />
-              )}
-              <span className="text-sm font-medium">
-                Staged Changes ({status.staged.length})
-              </span>
-            </div>
-            
-            {status.staged.length > 0 && (
+        {/* Staged Changes Section - hide entirely if empty */}
+        {status.staged.length > 0 && (
+          <div className="border-b">
+            <button
+              onClick={() => toggleSection('staged')}
+              className="w-full flex items-center justify-between p-3 hover:bg-gray-50 dark:hover:bg-gray-800"
+            >
+              <div className="flex items-center space-x-2">
+                {expandedSections.staged ? (
+                  <ChevronDown className="h-4 w-4" />
+                ) : (
+                  <ChevronRight className="h-4 w-4" />
+                )}
+                <span className="text-sm font-medium">
+                  Staged Changes ({status.staged.length})
+                </span>
+              </div>
               <Button
                 size="sm"
                 variant="ghost"
@@ -631,32 +641,25 @@ const ICUIGit: React.FC<ICUIGitProps> = ({
               >
                 <Minus className="h-3 w-3" />
               </Button>
+            </button>
+            {expandedSections.staged && (
+              <div className="pb-2">
+                {status.staged.map((file) => (
+                  <FileItem
+                    key={file.path}
+                    file={file}
+                    isStaged={true}
+                    onStage={() => handleStage([file.path])}
+                    onUnstage={() => handleUnstage([file.path])}
+                    onDiscard={() => handleDiscard([file.path])}
+                    onShowDiff={() => handleShowDiff(file.path)}
+                    onOpen={() => onFileOpen?.(file.path)}
+                  />
+                ))}
+              </div>
             )}
-          </button>
-          
-          {expandedSections.staged && (
-            <div className="pb-2">
-              {status.staged.map((file) => (
-                <FileItem
-                  key={file.path}
-                  file={file}
-                  isStaged={true}
-                  onStage={() => handleStage([file.path])}
-                  onUnstage={() => handleUnstage([file.path])}
-                  onDiscard={() => handleDiscard([file.path])}
-                  onShowDiff={() => handleShowDiff(file.path)}
-                  onOpen={() => onFileOpen?.(file.path)}
-                />
-              ))}
-              
-              {status.staged.length === 0 && (
-                <div className="p-4 text-center text-gray-500 text-sm">
-                  No staged changes
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Commit Section */}
@@ -703,6 +706,7 @@ const ICUIGit: React.FC<ICUIGitProps> = ({
             size="sm"
             onClick={handleCommit}
             disabled={!canCommit || loading}
+            title={!hasAnyChanges ? 'No changes to commit' : (commitMessage.trim().length === 0 ? 'Enter a commit message' : (loading ? 'Working...' : 'Commit changes'))}
             className="flex items-center space-x-1"
           >
             <GitCommit className="h-3 w-3" />
