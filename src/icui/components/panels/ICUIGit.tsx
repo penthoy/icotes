@@ -612,27 +612,40 @@ const ICUIGit: React.FC<ICUIGitProps> = ({
             </div>
             
             <div className="flex items-center space-x-1">
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={handlePull}
-                title="Pull"
-                className="h-6 w-6 p-0"
-                disabled={loading}
-              >
-                <Download className="h-3 w-3" />
-              </Button>
-              
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => handlePush()}
-                title="Push"
-                className="h-6 w-6 p-0"
-                disabled={loading}
-              >
-                <Upload className="h-3 w-3" />
-              </Button>
+              <div className="relative">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={handlePull}
+                  title={repoInfo.behind > 0 ? `Pull (${repoInfo.behind} behind)` : 'Pull'}
+                  className="h-6 w-6 p-0"
+                  disabled={loading || repoInfo.behind === 0}
+                >
+                  <Download className="h-3 w-3" />
+                </Button>
+                {repoInfo.behind > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-blue-500 text-white rounded-full text-[10px] px-1 leading-tight">
+                    {repoInfo.behind}
+                  </span>
+                )}
+              </div>
+              <div className="relative">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => handlePush()}
+                  title={repoInfo.ahead > 0 ? `Push (${repoInfo.ahead} ahead)` : 'Push'}
+                  className="h-6 w-6 p-0"
+                  disabled={loading || repoInfo.ahead === 0}
+                >
+                  <Upload className="h-3 w-3" />
+                </Button>
+                {repoInfo.ahead > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-green-600 text-white rounded-full text-[10px] px-1 leading-tight">
+                    {repoInfo.ahead}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
           
@@ -647,11 +660,7 @@ const ICUIGit: React.FC<ICUIGitProps> = ({
               <Button size="sm" onClick={handleCreateBranch} disabled={!newBranchName.trim() || loading} className="h-6 px-2 text-xs">Create</Button>
             </div>
           )}
-          {repoInfo.remotes.length > 0 && (
-            <p className="text-xs text-gray-500 truncate">
-              {repoInfo.remotes[0].url}
-            </p>
-          )}
+          {/* Remote URL removed to avoid exposing credentials/PAT. Branch name shown above is sufficient. */}
         </div>
       )}
 
