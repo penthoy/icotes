@@ -49,12 +49,14 @@ interface ICUIGitProps {
   className?: string;
   onFileSelect?: (path: string) => void;
   onFileOpen?: (path: string) => void;
+  onOpenDiffPatch?: (path: string) => void; // Phase 4 integration: open diff in editor
 }
 
 const ICUIGit: React.FC<ICUIGitProps> = ({
   className = '',
   onFileSelect,
   onFileOpen,
+  onOpenDiffPatch,
 }) => {
   // State management
   const [repoInfo, setRepoInfo] = useState<GitRepoInfo | null>(null);
@@ -63,6 +65,12 @@ const ICUIGit: React.FC<ICUIGitProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+  // Phase 3 additions
+  const [showBranchInput, setShowBranchInput] = useState(false);
+  const [newBranchName, setNewBranchName] = useState('');
+  const [commitHistory, setCommitHistory] = useState<string[]>([]); // recent commit messages
+  const [showCommitHistory, setShowCommitHistory] = useState(false);
+  const [commitTemplate, setCommitTemplate] = useState('');
   
   // UI state
   const [expandedSections, setExpandedSections] = useState({
@@ -75,7 +83,18 @@ const ICUIGit: React.FC<ICUIGitProps> = ({
     signoff: false
   });
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
-  const [diffPreview, setDiffPreview] = useState<{ path: string; patch: string } | null>(null);
+  // Removed legacy diffPreview modal state – diffs always open in editor tabs now
+
+  // Commit templates (simple conventional commit prefixes)
+  const COMMIT_TEMPLATES = useMemo(() => [
+    'feat: ',
+    'fix: ',
+    'chore: ',
+    'docs: ',
+    'refactor: ',
+    'test: ',
+    'perf: '
+  ], []);
   
   // Refs
   const commitTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -138,6 +157,31 @@ const ICUIGit: React.FC<ICUIGitProps> = ({
   useEffect(() => {
     loadAll();
   }, []);
+
+  // Subscribe to backend SCM websocket events (scm.status_changed, scm.branch_changed)
+  useEffect(() => {
+    const handler = (evt: any) => {
+      const eventType = evt?.event || evt?.type || '';
+      if (eventType.includes('status_changed')) {
+        loadStatus();
+      } else if (eventType.includes('branch_changed')) {
+        loadRepoInfo();
+        loadBranches();
+      } else if (eventType.startsWith('scm.')) {
+        // Fallback: refresh lightweight pieces
+        loadStatus();
+      }
+    };
+
+    // backendService may expose an EventEmitter API
+    try {
+      backendService.on?.('scm_event', handler);
+    } catch (_) { /* ignore */ }
+
+    return () => {
+      try { backendService.off?.('scm_event', handler); } catch (_) { /* ignore */ }
+    };
+  }, [loadStatus, loadRepoInfo, loadBranches]);
 
   // Auto-refresh every 30 seconds
   useEffect(() => {
@@ -240,8 +284,14 @@ const ICUIGit: React.FC<ICUIGitProps> = ({
       );
       
       if (success) {
+        // update recent history (dedupe, cap 10)
+        setCommitHistory(prev => {
+          const next = [message, ...prev.filter(m => m !== message)];
+            return next.slice(0, 10);
+        });
         setCommitMessage('');
         setCommitOptions({ amend: false, signoff: false });
+        setCommitTemplate('');
         await loadAll();
       } else {
         setError('Failed to commit changes');
@@ -307,17 +357,43 @@ const ICUIGit: React.FC<ICUIGitProps> = ({
     }
   }, [loadAll]);
 
+  // Create branch (Phase 3 addition)
+  const handleCreateBranch = useCallback(async () => {
+    const name = newBranchName.trim();
+    if (!name) return;
+    try {
+      setLoading(true);
+      const success = await backendService.scmCheckout(name, true);
+      if (!success) {
+        setError(`Failed to create branch ${name}`);
+        return;
+      }
+      setShowBranchInput(false);
+      setNewBranchName('');
+      await loadAll();
+    } catch (error) {
+      console.error('[ICUIGit] Create branch failed:', error);
+      setError(error instanceof Error ? error.message : `Failed to create branch ${name}`);
+    } finally {
+      setLoading(false);
+    }
+  }, [newBranchName, loadAll]);
+
   // ==================== Diff Preview ====================
   
-  const handleShowDiff = useCallback(async (path: string) => {
-    try {
-      const diff = await backendService.getScmDiff(path);
-      setDiffPreview(diff);
-    } catch (error) {
-      console.error('[ICUIGit] Failed to get diff:', error);
-      setError(error instanceof Error ? error.message : 'Failed to get diff');
+  const handleShowDiff = useCallback((path: string) => {
+    console.log('[ICUIGit] handleShowDiff -> open diff in editor for', path);
+    if (onOpenDiffPatch) {
+      onOpenDiffPatch(path);
+      return;
     }
-  }, []);
+    // Fallback: dispatch global event only (no modal)
+    try {
+      window.dispatchEvent(new CustomEvent('icui:openDiffPatch', { detail: { path } }));
+    } catch (e) {
+      console.warn('[ICUIGit] Global diff event dispatch failed:', e);
+    }
+  }, [onOpenDiffPatch]);
 
   // ==================== UI Helpers ====================
   
@@ -438,6 +514,13 @@ const ICUIGit: React.FC<ICUIGitProps> = ({
     return (
       <div className={`flex flex-col h-full ${className}`}>
         <div className="flex items-center justify-between p-3 border-b">
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setShowBranchInput(s => !s)}
+            title="Create branch"
+            className="h-6 px-1 text-xs"
+          >+branch</Button>
           <h3 className="text-sm font-medium">Source Control</h3>
           <Button
             size="sm"
@@ -553,6 +636,17 @@ const ICUIGit: React.FC<ICUIGitProps> = ({
             </div>
           </div>
           
+          {showBranchInput && (
+            <div className="mt-2 flex items-center space-x-2">
+              <input
+                value={newBranchName}
+                onChange={(e) => setNewBranchName(e.target.value)}
+                placeholder="new-branch-name"
+                className="flex-1 text-xs px-2 py-1 border rounded dark:bg-gray-700"
+              />
+              <Button size="sm" onClick={handleCreateBranch} disabled={!newBranchName.trim() || loading} className="h-6 px-2 text-xs">Create</Button>
+            </div>
+          )}
           {repoInfo.remotes.length > 0 && (
             <p className="text-xs text-gray-500 truncate">
               {repoInfo.remotes[0].url}
@@ -664,6 +758,29 @@ const ICUIGit: React.FC<ICUIGitProps> = ({
 
       {/* Commit Section */}
       <div className="p-3 border-t bg-gray-50 dark:bg-gray-800">
+        <div className="flex items-center justify-between mb-1">
+          <select
+            value={commitTemplate}
+            onChange={(e) => {
+              const val = e.target.value;
+              setCommitTemplate(val);
+              if (val && !commitMessage.startsWith(val)) {
+                setCommitMessage(prev => `${val}${prev}`);
+              }
+            }}
+            className="text-xs border rounded px-1 py-0.5 dark:bg-gray-700"
+          >
+            <option value="">template</option>
+            {COMMIT_TEMPLATES.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-6 px-2 text-xs"
+            onClick={() => setShowCommitHistory(s => !s)}
+            title="Show recent commit messages"
+          >hist</Button>
+        </div>
         <textarea
           ref={commitTextareaRef}
           value={commitMessage}
@@ -672,6 +789,18 @@ const ICUIGit: React.FC<ICUIGitProps> = ({
           rows={3}
           className="w-full p-2 text-sm border rounded resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600"
         />
+        {showCommitHistory && commitHistory.length > 0 && (
+          <div className="mt-2 border rounded bg-white dark:bg-gray-700 max-h-32 overflow-auto">
+            {commitHistory.map(msg => (
+              <button
+                key={msg}
+                onClick={() => { setCommitMessage(msg); setShowCommitHistory(false); }}
+                className="block w-full text-left px-2 py-1 text-xs hover:bg-gray-100 dark:hover:bg-gray-600 truncate"
+                title={msg}
+              >{msg}</button>
+            ))}
+          </div>
+        )}
         
         <div className="flex items-center justify-between mt-2">
           <div className="flex items-center space-x-2 text-xs">
@@ -715,29 +844,7 @@ const ICUIGit: React.FC<ICUIGitProps> = ({
         </div>
       </div>
 
-      {/* Diff Preview Modal */}
-      {diffPreview && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-lg w-11/12 h-5/6 flex flex-col">
-            <div className="flex items-center justify-between p-4 border-b">
-              <h3 className="text-lg font-medium">Diff: {diffPreview.path}</h3>
-              <Button
-                variant="ghost"
-                onClick={() => setDiffPreview(null)}
-                className="h-8 w-8 p-0"
-              >
-                ✕
-              </Button>
-            </div>
-            
-            <div className="flex-1 overflow-auto p-4">
-              <pre className="text-xs font-mono whitespace-pre-wrap">
-                {diffPreview.patch}
-              </pre>
-            </div>
-          </div>
-        </div>
-      )}
+  {/* Legacy diff modal removed: diffs now always open as editor tabs */}
     </div>
   );
 };
