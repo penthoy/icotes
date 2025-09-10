@@ -158,10 +158,11 @@ class WebSocketAPI:
         
         # Subscribe to message broker events
         await self.message_broker.subscribe('ws.*', self._handle_websocket_event)
-        await self.message_broker.subscribe('workspace.*', self._handle_workspace_event)
+    await self.message_broker.subscribe('workspace.*', self._handle_workspace_event)
         await self.message_broker.subscribe('fs.*', self._handle_filesystem_event)
         await self.message_broker.subscribe('terminal.*', self._handle_terminal_event)
         await self.message_broker.subscribe('agents.*', self._handle_agent_event)
+    await self.message_broker.subscribe('scm.*', self._handle_scm_event)
         
         # Start background tasks
         asyncio.create_task(self._cleanup_connections_task())
@@ -907,6 +908,18 @@ class WebSocketAPI:
             
         except Exception as e:
             logger.error(f"Error handling agent event {message.topic}: {e}")
+
+    async def _handle_scm_event(self, message):
+        """Handle source control (SCM) events by broadcasting to interested clients."""
+        try:
+            await self._broadcast_to_subscribers('scm.*', {
+                'type': 'scm_event',
+                'event': message.topic,
+                'data': message.payload,
+                'timestamp': time.time()
+            })
+        except Exception as e:
+            logger.error(f"Error handling SCM event {message.topic}: {e}")
 
     async def _broadcast_to_subscribers(self, topic_pattern: str, data: Dict[str, Any]):
         """Broadcast message to connections subscribed to a topic pattern."""
