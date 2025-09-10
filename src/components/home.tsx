@@ -12,7 +12,8 @@ import {
   ICUITerminal,
   ICUIEditor,
   ICUIChatHistory,
-  ICUIExplorer
+  ICUIExplorer,
+  ICUIGit
 } from '../icui';
 import type { ICUIEditorRef } from '../icui';
 import ICUIBaseHeader from '../icui/components/ICUIBaseHeader';
@@ -244,6 +245,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
     { id: 'terminal', name: 'Terminal', icon: '💻', description: 'Integrated terminal' },
     { id: 'chat', name: 'AI Assistant', icon: '🤖', description: 'AI-powered code assistant' },
     { id: 'chat-history', name: 'Chat History', icon: '💬', description: 'Manage chat sessions and history' },
+    { id: 'git', name: 'Source Control', icon: '🌿', description: 'Git source control management' },
   ];
 
   // Stable panel instances to prevent recreation on layout changes
@@ -285,12 +287,21 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
     />
   ), []);
 
+  const gitInstance = useMemo(() => (
+    <ICUIGit 
+      className="h-full"
+      onFileSelect={handleFileSelect}
+      onFileOpen={handleFileDoubleClick}
+    />
+  ), [handleFileSelect, handleFileDoubleClick]);
+
   // Memoized panel content creators to prevent recreation on layout changes
   const createExplorerContent = useCallback(() => explorerInstance, [explorerInstance]);
   const createEditorContent = useCallback(() => editorInstance, [editorInstance]);
   const createTerminalContent = useCallback(() => terminalInstance, [terminalInstance]);
   const createChatContent = useCallback(() => chatInstance, [chatInstance]);
   const createChatHistoryContent = useCallback(() => chatHistoryInstance, [chatHistoryInstance]);
+  const createGitContent = useCallback(() => gitInstance, [gitInstance]);
 
   // Handle panel addition
   const handlePanelAdd = useCallback((panelType: ICUIPanelType, areaId: string) => {
@@ -316,6 +327,9 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
         break;
       case 'chat-history':
         content = createChatHistoryContent();
+        break;
+      case 'git':
+        content = createGitContent();
         break;
       default:
         content = <div className="h-full p-4" style={{ backgroundColor: 'var(--icui-bg-primary)', color: 'var(--icui-text-primary)' }}>Custom Panel: {panelType.name}</div>;
@@ -346,7 +360,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
         }
       }
     }));
-  }, [createExplorerContent, createEditorContent, createTerminalContent, createChatContent]);
+  }, [createExplorerContent, createEditorContent, createTerminalContent, createChatContent, createGitContent]);
 
   // Initialize panels on mount
   useEffect(() => {

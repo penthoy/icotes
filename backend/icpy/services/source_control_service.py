@@ -418,7 +418,24 @@ async def get_source_control_service() -> SourceControlService:
     global _source_control_service
     if _source_control_service is None:
         fs = await get_filesystem_service()
-        svc = SourceControlService(workspace_root=fs.root_path)
+        
+        # Try to find the Git repository root by walking up from the filesystem root
+        git_root = fs.root_path
+        while git_root and git_root != "/":
+            if os.path.exists(os.path.join(git_root, ".git")):
+                break
+            parent = os.path.dirname(git_root)
+            if parent == git_root:  # Reached filesystem root
+                break
+            git_root = parent
+        
+        # If no .git found, use the filesystem root as fallback
+        if not os.path.exists(os.path.join(git_root, ".git")):
+            git_root = fs.root_path
+            
+        logger.info(f"[SCM] Using Git root: {git_root} (filesystem root: {fs.root_path})")
+        
+        svc = SourceControlService(workspace_root=git_root)
         await svc.initialize()
         _source_control_service = svc
     return _source_control_service

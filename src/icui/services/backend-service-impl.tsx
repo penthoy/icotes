@@ -841,6 +841,292 @@ export class ICUIBackendService extends EventEmitter {
     this.emit('connection_status_changed', { status: 'disconnected' });
   }
 
+  
+  // ==================== SCM (Source Control) Methods ====================
+  
+  /**
+   * Get Git repository information
+   */
+  async getScmRepoInfo(): Promise<any> {
+    try {
+      const url = `${this.baseUrl}/api/scm/repo`;
+      console.log('[ICUIBackendService] Getting SCM repo info from:', url);
+      
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Failed to get repo info: ${response.status} ${response.statusText}`);
+      }
+      
+      const result = await response.json();
+      return result.data;
+    } catch (error) {
+      console.error('[ICUIBackendService] Get SCM repo info failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get Git status (staged/unstaged/untracked files)
+   */
+  async getScmStatus(): Promise<any> {
+    try {
+      const url = `${this.baseUrl}/api/scm/status`;
+      console.log('[ICUIBackendService] Getting SCM status from:', url);
+      
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Failed to get status: ${response.status} ${response.statusText}`);
+      }
+      
+      const result = await response.json();
+      return result.data;
+    } catch (error) {
+      console.error('[ICUIBackendService] Get SCM status failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get Git diff for a file or entire working tree
+   */
+  async getScmDiff(path?: string): Promise<any> {
+    try {
+      const url = new URL(`${this.baseUrl}/api/scm/diff`);
+      if (path) {
+        url.searchParams.set('path', path);
+      }
+      
+      console.log('[ICUIBackendService] Getting SCM diff from:', url.toString());
+      
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Failed to get diff: ${response.status} ${response.statusText}`);
+      }
+      
+      const result = await response.json();
+      return result.data;
+    } catch (error) {
+      console.error('[ICUIBackendService] Get SCM diff failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Stage files for commit
+   */
+  async scmStage(paths: string[]): Promise<boolean> {
+    try {
+      const url = `${this.baseUrl}/api/scm/stage`;
+      console.log('[ICUIBackendService] Staging files:', paths);
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ paths }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to stage files: ${response.status} ${response.statusText}`);
+      }
+      
+      const result = await response.json();
+      return result.data?.ok || false;
+    } catch (error) {
+      console.error('[ICUIBackendService] SCM stage failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Unstage files
+   */
+  async scmUnstage(paths: string[]): Promise<boolean> {
+    try {
+      const url = `${this.baseUrl}/api/scm/unstage`;
+      console.log('[ICUIBackendService] Unstaging files:', paths);
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ paths }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to unstage files: ${response.status} ${response.statusText}`);
+      }
+      
+      const result = await response.json();
+      return result.data?.ok || false;
+    } catch (error) {
+      console.error('[ICUIBackendService] SCM unstage failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Discard changes to files
+   */
+  async scmDiscard(paths: string[]): Promise<boolean> {
+    try {
+      const url = `${this.baseUrl}/api/scm/discard`;
+      console.log('[ICUIBackendService] Discarding changes for files:', paths);
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ paths }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to discard changes: ${response.status} ${response.statusText}`);
+      }
+      
+      const result = await response.json();
+      return result.data?.ok || false;
+    } catch (error) {
+      console.error('[ICUIBackendService] SCM discard failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Commit staged changes
+   */
+  async scmCommit(message: string, amend: boolean = false, signoff: boolean = false): Promise<boolean> {
+    try {
+      const url = `${this.baseUrl}/api/scm/commit`;
+      console.log('[ICUIBackendService] Committing with message:', message);
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ message, amend, signoff }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to commit: ${response.status} ${response.statusText}`);
+      }
+      
+      const result = await response.json();
+      return result.data?.ok || false;
+    } catch (error) {
+      console.error('[ICUIBackendService] SCM commit failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get Git branches
+   */
+  async getScmBranches(): Promise<any> {
+    try {
+      const url = `${this.baseUrl}/api/scm/branches`;
+      console.log('[ICUIBackendService] Getting SCM branches from:', url);
+      
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Failed to get branches: ${response.status} ${response.statusText}`);
+      }
+      
+      const result = await response.json();
+      return result.data;
+    } catch (error) {
+      console.error('[ICUIBackendService] Get SCM branches failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Checkout a branch
+   */
+  async scmCheckout(branch: string, create: boolean = false): Promise<boolean> {
+    try {
+      const url = `${this.baseUrl}/api/scm/checkout`;
+      console.log('[ICUIBackendService] Checking out branch:', branch, 'create:', create);
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ branch, create }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to checkout branch: ${response.status} ${response.statusText}`);
+      }
+      
+      const result = await response.json();
+      return result.data?.ok || false;
+    } catch (error) {
+      console.error('[ICUIBackendService] SCM checkout failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Pull from remote
+   */
+  async scmPull(): Promise<boolean> {
+    try {
+      const url = `${this.baseUrl}/api/scm/pull`;
+      console.log('[ICUIBackendService] Pulling from remote');
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to pull: ${response.status} ${response.statusText}`);
+      }
+      
+      const result = await response.json();
+      return result.data?.ok || false;
+    } catch (error) {
+      console.error('[ICUIBackendService] SCM pull failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Push to remote
+   */
+  async scmPush(setUpstream: boolean = false): Promise<boolean> {
+    try {
+      const url = `${this.baseUrl}/api/scm/push`;
+      console.log('[ICUIBackendService] Pushing to remote, setUpstream:', setUpstream);
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ set_upstream: setUpstream }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to push: ${response.status} ${response.statusText}`);
+      }
+      
+      const result = await response.json();
+      return result.data?.ok || false;
+    } catch (error) {
+      console.error('[ICUIBackendService] SCM push failed:', error);
+      throw error;
+    }
+  }
+
   /**
    * Destroy service and cleanup
    */

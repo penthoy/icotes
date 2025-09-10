@@ -158,11 +158,11 @@ class WebSocketAPI:
         
         # Subscribe to message broker events
         await self.message_broker.subscribe('ws.*', self._handle_websocket_event)
-    await self.message_broker.subscribe('workspace.*', self._handle_workspace_event)
+        await self.message_broker.subscribe('workspace.*', self._handle_workspace_event)
         await self.message_broker.subscribe('fs.*', self._handle_filesystem_event)
         await self.message_broker.subscribe('terminal.*', self._handle_terminal_event)
         await self.message_broker.subscribe('agents.*', self._handle_agent_event)
-    await self.message_broker.subscribe('scm.*', self._handle_scm_event)
+        await self.message_broker.subscribe('scm.*', self._handle_scm_event)
         
         # Start background tasks
         asyncio.create_task(self._cleanup_connections_task())

@@ -208,7 +208,7 @@ class RestAPI:
         self.terminal_service = None
         self.agent_service = None
         self.chat_service = None
-    self.source_control_service = None
+        self.source_control_service = None
         
         # Statistics
         self.stats = {
@@ -376,8 +376,8 @@ class RestAPI:
         # Chat endpoints
         self._register_chat_routes()
 
-    # Source control endpoints
-    self._register_scm_routes()
+        # Source control endpoints
+        self._register_scm_routes()
         
         # Documentation endpoints
         self._register_documentation_routes()
@@ -1142,16 +1142,18 @@ class RestAPI:
 
     def _register_scm_routes(self):
         """Register source control (SCM) routes."""
-
-        if not self.source_control_service:
-            logger.info("[REST] Skipping SCM routes: service not available")
-            return
-
+        logger.info("[REST] Registering SCM routes...")
+        
         @self.app.get("/api/scm/repo")
         async def scm_repo_info():
             try:
+                # Check if service is available at runtime
+                if not self.source_control_service:
+                    raise HTTPException(status_code=503, detail="SCM service not available")
                 data = await self.source_control_service.get_repo_info()
                 return SuccessResponse(data=data)
+            except HTTPException:
+                raise
             except Exception as e:
                 logger.error(f"[SCM] repo info error: {e}")
                 raise HTTPException(status_code=500, detail=str(e))
@@ -1159,8 +1161,12 @@ class RestAPI:
         @self.app.get("/api/scm/status")
         async def scm_status():
             try:
+                if not self.source_control_service:
+                    raise HTTPException(status_code=503, detail="SCM service not available")
                 data = await self.source_control_service.status()
                 return SuccessResponse(data=data)
+            except HTTPException:
+                raise
             except Exception as e:
                 logger.error(f"[SCM] status error: {e}")
                 raise HTTPException(status_code=500, detail=str(e))
@@ -1168,8 +1174,12 @@ class RestAPI:
         @self.app.get("/api/scm/diff")
         async def scm_diff(path: Optional[str] = None):
             try:
+                if not self.source_control_service:
+                    raise HTTPException(status_code=503, detail="SCM service not available")
                 data = await self.source_control_service.diff(path)
                 return SuccessResponse(data=data)
+            except HTTPException:
+                raise
             except Exception as e:
                 logger.error(f"[SCM] diff error: {e}")
                 raise HTTPException(status_code=500, detail=str(e))
@@ -1177,8 +1187,12 @@ class RestAPI:
         @self.app.post("/api/scm/stage")
         async def scm_stage(payload: Dict[str, List[str]]):
             try:
+                if not self.source_control_service:
+                    raise HTTPException(status_code=503, detail="SCM service not available")
                 ok = await self.source_control_service.stage(payload.get("paths", []))
                 return SuccessResponse(data={"ok": ok})
+            except HTTPException:
+                raise
             except Exception as e:
                 logger.error(f"[SCM] stage error: {e}")
                 raise HTTPException(status_code=500, detail=str(e))
@@ -1186,8 +1200,12 @@ class RestAPI:
         @self.app.post("/api/scm/unstage")
         async def scm_unstage(payload: Dict[str, List[str]]):
             try:
+                if not self.source_control_service:
+                    raise HTTPException(status_code=503, detail="SCM service not available")
                 ok = await self.source_control_service.unstage(payload.get("paths", []))
                 return SuccessResponse(data={"ok": ok})
+            except HTTPException:
+                raise
             except Exception as e:
                 logger.error(f"[SCM] unstage error: {e}")
                 raise HTTPException(status_code=500, detail=str(e))

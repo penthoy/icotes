@@ -4,6 +4,7 @@ export { default as ICUIChatHistory } from './ICUIChatHistory';
 export { default as ICUIEditor } from './ICUIEditor';
 export { default as ICUIExplorer } from './ICUIExplorer';
 export { default as ICUITerminal } from './ICUITerminal';
+export { default as ICUIGit } from './ICUIGit';
 
 // Export types
 export type { ICUIEditorRef } from './ICUIEditor';
