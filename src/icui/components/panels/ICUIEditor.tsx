@@ -377,6 +377,73 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
     await openFile(filePath);
   }, [openFile]);
 
+  // Open synthetic diff (for untracked files)
+  const openSyntheticDiff = useCallback(async (filePath: string, patch: string) => {
+    console.log('[ICUIEditor] openSyntheticDiff called for:', filePath);
+    try {
+      setIsLoading(true);
+      const tabId = `diff:${filePath}`;
+      const existingIdx = files.findIndex(f => f.id === tabId);
+      if (existingIdx >= 0) {
+        console.log('[ICUIEditor] Synthetic diff tab already exists, focusing:', tabId);
+        setActiveFileId(tabId);
+        return;
+      }
+      const name = `${filePath.split('/').pop() || filePath} (diff)`;
+      console.log('[ICUIEditor] Creating new synthetic diff tab:', name);
+
+      // Process synthetic diff for highlighting
+      const rawLines = patch.split('\n');
+      const added = new Set<number>();
+      const hunk = new Set<number>();
+      const processed: string[] = [];
+      for (const line of rawLines) {
+        if (line.startsWith('+++ ') || line.startsWith('--- ') || line.startsWith('index ') || line.startsWith('diff ') || line.startsWith('new file mode')) {
+          processed.push(line); // keep file headers as-is
+          continue;
+        }
+        if (line.startsWith('@@')) {
+          hunk.add(processed.length + 1);
+          processed.push(line); // keep hunk header
+          continue;
+        }
+        if (line.startsWith('+') && !line.startsWith('+++ ')) {
+          added.add(processed.length + 1);
+          processed.push(line.slice(1));
+          continue;
+        }
+        processed.push(line); // fallback
+      }
+      const processedPatch = processed.join('\n');
+      const diffFile: EditorFile = {
+        id: tabId,
+        name,
+        language: 'diff',
+        content: processedPatch,
+        modified: false,
+        path: filePath,
+        // @ts-ignore add virtual flags
+        isDiff: true,
+        // @ts-ignore
+        readOnly: true,
+        // @ts-ignore
+        diffKind: 'synthetic',
+        // @ts-ignore
+        originalPath: filePath,
+        __diffMeta: { added, removed: new Set(), hunk, originalPath: filePath }
+      } as any;
+      setFiles(prev => [...prev, diffFile]);
+      setActiveFileId(tabId);
+      console.log('[ICUIEditor] Synthetic diff tab created successfully');
+      EditorNotificationService.show(`Opened diff for ${filePath}`, 'info');
+    } catch (error) {
+      console.error('Failed to open synthetic diff:', error);
+      EditorNotificationService.show(`Failed to open diff: ${error}`, 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [files]);
+
   // Phase 4: Open unified diff patch for a file as a virtual read-only tab
   const openDiffPatch = useCallback(async (filePath: string) => {
     console.log('[ICUIEditor] openDiffPatch called for:', filePath);
@@ -474,9 +541,22 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
         openDiffPatch(path);
       }
     };
+    
+    const syntheticHandler = (e: any) => {
+      const { path, patch } = e?.detail || {};
+      if (typeof path === 'string' && typeof patch === 'string') {
+        console.log('[ICUIEditor] Received synthetic diff event for', path);
+        openSyntheticDiff(path, patch);
+      }
+    };
+    
     window.addEventListener('icui:openDiffPatch', handler as any);
-    return () => window.removeEventListener('icui:openDiffPatch', handler as any);
-  }, [openDiffPatch]);
+    window.addEventListener('icui:openSyntheticDiff', syntheticHandler as any);
+    return () => {
+      window.removeEventListener('icui:openDiffPatch', handler as any);
+      window.removeEventListener('icui:openSyntheticDiff', syntheticHandler as any);
+    };
+  }, [openDiffPatch, openSyntheticDiff]);
 
   // Expose methods via ref for external control
   useImperativeHandle(ref, () => ({

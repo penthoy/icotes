@@ -15,7 +15,7 @@
  */
 
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import { 
+import {
   GitBranch, 
   GitCommit, 
   GitPullRequest,
@@ -26,7 +26,6 @@ import {
   ChevronDown,
   ChevronRight,
   FileText,
-  Eye,
   MoreHorizontal,
   Upload,
   Download,
@@ -41,6 +40,8 @@ import {
   GitStatusType 
 } from '../../types/git-types';
 import { backendService } from '../../services';
+import { confirmService } from '../../services/confirmService';
+import { getWorkspaceRoot } from '../../lib/workspaceUtils';
 import { Button } from '../ui/button';
 import { useTheme } from '../../services';
 import { log } from '../../../services/frontend-logger';
@@ -48,7 +49,7 @@ import { log } from '../../../services/frontend-logger';
 interface ICUIGitProps {
   className?: string;
   onFileSelect?: (path: string) => void;
-  onFileOpen?: (path: string) => void;
+  onFileOpen?: (file: { type: string; path: string; name: string }) => void;
   onOpenDiffPatch?: (path: string) => void; // Phase 4 integration: open diff in editor
 }
 
@@ -84,6 +85,9 @@ const ICUIGit: React.FC<ICUIGitProps> = ({
   });
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
   // Removed legacy diffPreview modal state – diffs always open in editor tabs now
+  const [contextMenu, setContextMenu] = useState<{
+    x: number; y: number; file: GitFileChange; isStaged: boolean;
+  } | null>(null);
 
   // Commit templates (simple conventional commit prefixes)
   const COMMIT_TEMPLATES = useMemo(() => [
@@ -101,6 +105,42 @@ const ICUIGit: React.FC<ICUIGitProps> = ({
   const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   const { theme } = useTheme();
+
+  // ==================== Path Resolution ====================
+  
+  // Helper function to resolve git file paths correctly
+  const resolveGitFilePath = (filePath: string): string => {
+    console.log('🔍 Resolving git file path:', filePath);
+    
+    // If it's already an absolute path, use it
+    if (filePath.startsWith('/')) {
+      console.log('✓ Already absolute path:', filePath);
+      return filePath;
+    }
+    
+    // Get workspace root and derive repo root
+    const workspaceRoot = getWorkspaceRoot(); // e.g., /home/penthoy/icotes/workspace
+    console.log('📂 Workspace root:', workspaceRoot);
+    
+    // Find the repo root by looking for .git directory
+    // Most commonly, repo root is the parent of workspace, but let's detect it properly
+    let repoRoot = workspaceRoot;
+    
+    // If workspace ends with '/workspace', repo is likely the parent
+    if (workspaceRoot.endsWith('/workspace')) {
+      repoRoot = workspaceRoot.slice(0, -10); // Remove '/workspace'
+    } else {
+      // Otherwise, assume workspace is the repo root
+      repoRoot = workspaceRoot;
+    }
+    
+    const resolvedPath = `${repoRoot}/${filePath}`;
+    
+    console.log('📂 Repo root:', repoRoot);
+    console.log('✓ Resolved path:', resolvedPath);
+    
+    return resolvedPath;
+  };
 
   // ==================== Data Loading ====================
   
@@ -232,12 +272,46 @@ const ICUIGit: React.FC<ICUIGitProps> = ({
     }
   }, [loadStatus]);
 
+  const handleDeleteUntracked = useCallback(async (paths: string[]) => {
+    try {
+      const ok = await confirmService.confirm({
+        title: paths.length === 1 ? 'Delete File' : 'Delete Files',
+        message: `Delete ${paths.length} untracked file(s)? This cannot be undone.`,
+        danger: true,
+        confirmText: 'Delete'
+      });
+      if (!ok) return;
+
+      setLoading(true);
+      for (const relativePath of paths) {
+        try {
+          // Resolve relative Git path to absolute path
+          const absolutePath = resolveGitFilePath(relativePath);
+          console.log('[ICUIGit] Deleting untracked file:', relativePath, '->', absolutePath);
+          await backendService.deleteFile(absolutePath);
+        } catch (e) {
+          console.warn('[ICUIGit] Failed deleting untracked file', relativePath, e);
+        }
+      }
+      await loadStatus();
+      setSelectedFiles(new Set());
+    } catch (error) {
+      console.error('[ICUIGit] Delete untracked failed:', error);
+      setError(error instanceof Error ? error.message : 'Failed to delete untracked files');
+    } finally {
+      setLoading(false);
+    }
+  }, [loadStatus]);
+
   const handleDiscard = useCallback(async (paths: string[]) => {
     try {
-      if (!confirm(`Are you sure you want to discard changes to ${paths.length} file(s)? This cannot be undone.`)) {
-        return;
-      }
-      
+      const ok = await confirmService.confirm({
+        title: paths.length === 1 ? 'Discard Changes' : 'Discard Multiple Changes',
+        message: `Discard changes to ${paths.length} file(s)? This cannot be undone.`,
+        danger: true,
+        confirmText: 'Discard'
+      });
+      if (!ok) return;
       setLoading(true);
       const success = await backendService.scmDiscard(paths);
       if (success) {
@@ -381,19 +455,53 @@ const ICUIGit: React.FC<ICUIGitProps> = ({
 
   // ==================== Diff Preview ====================
   
-  const handleShowDiff = useCallback((path: string) => {
+  const handleShowDiff = useCallback(async (path: string) => {
     console.log('[ICUIGit] handleShowDiff -> open diff in editor for', path);
+    
+    // Convert Git relative path to absolute path for diff
+    const absolutePath = resolveGitFilePath(path);
+    console.log('[ICUIGit] Resolved path:', path, '->', absolutePath);
+    
+    // For untracked files, create a synthetic diff showing the entire file as added
+    const file = [...status.unstaged, ...status.untracked, ...status.staged].find(f => f.path === path);
+    if (file && file.status === '?') {
+      console.log('[ICUIGit] Creating synthetic diff for untracked file:', path);
+      try {
+        // Load file content and create a synthetic "added" diff
+        const content = await backendService.readFile(absolutePath);
+        const lines = content.split('\n');
+        const syntheticPatch = [
+          `diff --git a/${path} b/${path}`,
+          'new file mode 100644',
+          'index 0000000..1234567',
+          `--- /dev/null`,
+          `+++ b/${path}`,
+          `@@ -0,0 +1,${lines.length} @@`,
+          ...lines.map(line => `+${line}`)
+        ].join('\n');
+        
+        // Dispatch synthetic diff event with absolute path
+        window.dispatchEvent(new CustomEvent('icui:openSyntheticDiff', { 
+          detail: { path: absolutePath, patch: syntheticPatch } 
+        }));
+        return;
+      } catch (error) {
+        console.warn('[ICUIGit] Failed to create synthetic diff for untracked file:', error);
+        // Fall through to normal diff handling
+      }
+    }
+    
     if (onOpenDiffPatch) {
-      onOpenDiffPatch(path);
+      onOpenDiffPatch(absolutePath);
       return;
     }
     // Fallback: dispatch global event only (no modal)
     try {
-      window.dispatchEvent(new CustomEvent('icui:openDiffPatch', { detail: { path } }));
+      window.dispatchEvent(new CustomEvent('icui:openDiffPatch', { detail: { path: absolutePath } }));
     } catch (e) {
       console.warn('[ICUIGit] Global diff event dispatch failed:', e);
     }
-  }, [onOpenDiffPatch]);
+  }, [onOpenDiffPatch, status.unstaged, status.untracked, status.staged, resolveGitFilePath]);
 
   // ==================== UI Helpers ====================
   
@@ -428,81 +536,27 @@ const ICUIGit: React.FC<ICUIGitProps> = ({
   const FileItem: React.FC<{ 
     file: GitFileChange;
     isStaged: boolean;
-    onStage: () => void;
-    onUnstage: () => void;
-    onDiscard: () => void;
     onShowDiff: () => void;
-    onOpen: () => void;
-  }> = ({ file, isStaged, onStage, onUnstage, onDiscard, onShowDiff, onOpen }) => {
+  }> = ({ file, isStaged, onShowDiff }) => {
     const statusConfig = GIT_STATUS_CONFIG[file.status as GitStatusType] || GIT_STATUS_CONFIG['?'];
-    
+    const filename = file.path.split('/').pop() || file.path;
+    const dir = file.path.slice(0, file.path.length - filename.length).replace(/\/$/, '');
     return (
-      <div className="flex items-center justify-between px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 group">
-        <div className="flex items-center space-x-2 flex-1 min-w-0">
-          <span className={`text-xs font-mono ${statusConfig.color}`}>
-            {statusConfig.icon}
-          </span>
-          <span className="text-sm truncate" title={file.path}>
-            {file.path}
-          </span>
-        </div>
-        
-        <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          {!isStaged && (
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={onStage}
-              title="Stage file"
-              className="h-6 w-6 p-0"
-            >
-              <Plus className="h-3 w-3" />
-            </Button>
-          )}
-          
-          {isStaged && (
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={onUnstage}
-              title="Unstage file"
-              className="h-6 w-6 p-0"
-            >
-              <Minus className="h-3 w-3" />
-            </Button>
-          )}
-          
-          {!isStaged && file.status !== '?' && (
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={onDiscard}
-              title="Discard changes"
-              className="h-6 w-6 p-0"
-            >
-              <RotateCcw className="h-3 w-3" />
-            </Button>
-          )}
-          
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={onShowDiff}
-            title="Show diff"
-            className="h-6 w-6 p-0"
-          >
-            <Eye className="h-3 w-3" />
-          </Button>
-          
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={onOpen}
-            title="Open file"
-            className="h-6 w-6 p-0"
-          >
-            <FileText className="h-3 w-3" />
-          </Button>
+      <div
+        className="flex items-center justify-between px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 group cursor-pointer"
+        onClick={onShowDiff}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          setContextMenu({ x: e.clientX, y: e.clientY, file, isStaged });
+        }}
+        title={`View diff for ${file.path}`}
+      >
+        <div className="flex items-start space-x-2 flex-1 min-w-0">
+          <span className={`text-xs font-mono mt-0.5 ${statusConfig.color}`}>{statusConfig.icon}</span>
+          <div className="flex flex-col min-w-0 leading-tight">
+            <span className="text-sm truncate font-medium">{filename}</span>
+            <span className="text-[10px] text-gray-500 dark:text-gray-400 truncate" title={file.path}>{dir || '.'}</span>
+          </div>
         </div>
       </div>
     );
@@ -703,11 +757,7 @@ const ICUIGit: React.FC<ICUIGitProps> = ({
                     key={file.path}
                     file={file}
                     isStaged={false}
-                    onStage={() => handleStage([file.path])}
-                    onUnstage={() => handleUnstage([file.path])}
-                    onDiscard={() => handleDiscard([file.path])}
                     onShowDiff={() => handleShowDiff(file.path)}
-                    onOpen={() => onFileOpen?.(file.path)}
                   />
                 ))}
               </div>
@@ -752,11 +802,7 @@ const ICUIGit: React.FC<ICUIGitProps> = ({
                     key={file.path}
                     file={file}
                     isStaged={true}
-                    onStage={() => handleStage([file.path])}
-                    onUnstage={() => handleUnstage([file.path])}
-                    onDiscard={() => handleDiscard([file.path])}
                     onShowDiff={() => handleShowDiff(file.path)}
-                    onOpen={() => onFileOpen?.(file.path)}
                   />
                 ))}
               </div>
@@ -854,6 +900,89 @@ const ICUIGit: React.FC<ICUIGitProps> = ({
       </div>
 
   {/* Legacy diff modal removed: diffs now always open as editor tabs */}
+      {contextMenu && (
+        <div
+          className="fixed inset-0 z-50"
+          onClick={() => setContextMenu(null)}
+          onContextMenu={(e) => { e.preventDefault(); setContextMenu(null); }}
+        >
+          <div
+            className="absolute bg-white dark:bg-gray-800 border dark:border-gray-700 rounded shadow-lg py-1 text-sm min-w-[180px]"
+            style={{ top: contextMenu.y, left: contextMenu.x }}
+            role="menu"
+          >
+            {/* Stage / Unstage */}
+            {!contextMenu.isStaged && (
+              <button
+                className="w-full text-left px-3 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center space-x-2"
+                onClick={() => { handleStage([contextMenu.file.path]); setContextMenu(null); }}
+              >
+                <Plus className="h-3 w-3" /> <span>Stage</span>
+              </button>
+            )}
+            {contextMenu.isStaged && (
+              <button
+                className="w-full text-left px-3 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center space-x-2"
+                onClick={() => { handleUnstage([contextMenu.file.path]); setContextMenu(null); }}
+              >
+                <Minus className="h-3 w-3" /> <span>Unstage</span>
+              </button>
+            )}
+            {/* Discard for modified tracked files */}
+            {!contextMenu.isStaged && contextMenu.file.status !== '?' && (
+              <button
+                className="w-full text-left px-3 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center space-x-2"
+                onClick={() => { handleDiscard([contextMenu.file.path]); setContextMenu(null); }}
+              >
+                <RotateCcw className="h-3 w-3" /> <span>Discard Changes</span>
+              </button>
+            )}
+            {/* Delete untracked file */}
+            {!contextMenu.isStaged && contextMenu.file.status === '?' && (
+              <button
+                className="w-full text-left px-3 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center space-x-2"
+                onClick={() => { handleDeleteUntracked([contextMenu.file.path]); setContextMenu(null); }}
+              >
+                <RotateCcw className="h-3 w-3" /> <span>Delete File</span>
+              </button>
+            )}
+            <div className="h-px my-1 bg-gray-200 dark:bg-gray-700" />
+            {/* Open File */}
+            <button
+              className="w-full text-left px-3 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center space-x-2"
+              onClick={() => { 
+                if (onFileOpen) {
+                  // Convert Git relative path to absolute path
+                  const absolutePath = resolveGitFilePath(contextMenu.file.path);
+                  console.log('[ICUIGit] Opening file for editing:', contextMenu.file.path, '->', absolutePath);
+                  
+                  // Create file object that matches ICUIFileNode interface (like Explorer)
+                  const fileNode = { 
+                    id: `git-file-${contextMenu.file.path}`, // Add unique ID
+                    type: 'file' as const, 
+                    path: absolutePath, 
+                    name: contextMenu.file.path.split('/').pop() || contextMenu.file.path 
+                  };
+                  
+                  onFileOpen(fileNode); 
+                } else {
+                  console.error('[ICUIGit] onFileOpen callback is not available');
+                }
+                setContextMenu(null); 
+              }}
+            >
+              <FileText className="h-3 w-3" /> <span>Open File</span>
+            </button>
+            {/* Diff (explicit option) */}
+            <button
+              className="w-full text-left px-3 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center space-x-2"
+              onClick={() => { handleShowDiff(contextMenu.file.path); setContextMenu(null); }}
+            >
+              <span className="text-xs font-mono">Δ</span> <span>Open Diff</span>
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

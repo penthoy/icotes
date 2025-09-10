@@ -52,7 +52,7 @@ const THEME_OPTIONS = [
 const defaultLayout: ICUILayoutConfig = {
   layoutMode: 'h-layout',
   areas: {
-    left: { id: 'left', name: 'Explorer', panelIds: ['explorer'], activePanelId: 'explorer', size: 25, visible: true },
+    left: { id: 'left', name: 'Explorer', panelIds: ['explorer', 'git'], activePanelId: 'explorer', size: 25, visible: true },
     center: { id: 'center', name: 'Editor', panelIds: ['editor'], activePanelId: 'editor', size: 50 },
     right: { id: 'right', name: 'Assistant', panelIds: ['chat'], activePanelId: 'chat', size: 25, visible: true },
     bottom: { id: 'bottom', name: 'Terminal', panelIds: ['terminal'], activePanelId: 'terminal', size: 40 },
@@ -98,10 +98,13 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
 
   // Handle file double-click from Explorer - VS Code-like permanent file opening
   const handleFileDoubleClick = useCallback((file: any) => {
+    console.log('[Home] handleFileDoubleClick called with file:', file.name, 'at path:', file.path);
     if (file.type === 'file' && editorRef.current) {
       // Double click opens file permanently (will not be replaced by single clicks)
       editorRef.current.openFilePermanent(file.path);
       setCurrentFile(file);
+    } else {
+      console.warn('[Home] Cannot open file:', { isFile: file.type === 'file', hasEditorRef: !!editorRef.current });
     }
   }, []);
 
@@ -292,10 +295,16 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
       className="h-full"
       onFileSelect={handleFileSelect}
       onFileOpen={handleFileDoubleClick}
+      onOpenDiffPatch={(path) => {
+        console.log('[Home] onOpenDiffPatch called, editorRef.current:', !!editorRef.current);
+        if (editorRef.current?.openDiffPatch) {
+          editorRef.current.openDiffPatch(path);
+        } else {
+          console.warn('[Home] Editor ref or openDiffPatch method not available');
+        }
+      }}
     />
-  ), [handleFileSelect, handleFileDoubleClick]);
-
-  // Memoized panel content creators to prevent recreation on layout changes
+  ), [handleFileSelect, handleFileDoubleClick]);  // Memoized panel content creators to prevent recreation on layout changes
   const createExplorerContent = useCallback(() => explorerInstance, [explorerInstance]);
   const createEditorContent = useCallback(() => editorInstance, [editorInstance]);
   const createTerminalContent = useCallback(() => terminalInstance, [terminalInstance]);
@@ -374,6 +383,14 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
         content: createExplorerContent()
       },
       {
+        id: 'git',
+        type: 'git', 
+        title: 'Source Control',
+        icon: '🌿',
+        closable: true,
+        content: createGitContent()
+      },
+      {
         id: 'editor',
         type: 'editor',
         title: 'Code Editor',
@@ -399,7 +416,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
       },
     ];
     setPanels(initialPanels);
-  }, [createExplorerContent, createEditorContent, createTerminalContent, createChatContent]);
+  }, [createExplorerContent, createEditorContent, createTerminalContent, createChatContent, createGitContent]);
 
   // Remove editor panel update effect since ICUIEditor manages its own files
 
@@ -408,7 +425,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
     setLayout({
       layoutMode: 'standard',
       areas: {
-        left: { id: 'left', name: 'Explorer', panelIds: ['explorer'], activePanelId: 'explorer', size: 25 },
+        left: { id: 'left', name: 'Explorer', panelIds: ['explorer', 'git'], activePanelId: 'explorer', size: 25 },
         center: { id: 'center', name: 'Editor', panelIds: ['editor'], activePanelId: 'editor', size: 50 },
         right: { id: 'right', name: 'Assistant', panelIds: ['chat'], activePanelId: 'chat', size: 25, visible: true },
         bottom: { id: 'bottom', name: 'Terminal', panelIds: ['terminal'], activePanelId: 'terminal', size: 30 },
@@ -421,7 +438,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
     setLayout({
       layoutMode: 'h-layout',
       areas: {
-        left: { id: 'left', name: 'Explorer', panelIds: ['explorer'], activePanelId: 'explorer', size: 25, visible: true },
+        left: { id: 'left', name: 'Explorer', panelIds: ['explorer', 'git'], activePanelId: 'explorer', size: 25, visible: true },
         center: { id: 'center', name: 'Editor', panelIds: ['editor'], activePanelId: 'editor', size: 50 },
         right: { id: 'right', name: 'Assistant', panelIds: ['chat'], activePanelId: 'chat', size: 25, visible: true },
         bottom: { id: 'bottom', name: 'Terminal', panelIds: ['terminal'], activePanelId: 'terminal', size: 40 },
