@@ -253,8 +253,8 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
       const { file, filePath } = pendingFile;
       const fileWithLanguage = { ...file, language: selectedLanguage };
       
-      // Check if file is already open
-      const existingFileIndex = files.findIndex(f => f.path === filePath);
+  // Check if a NON-diff version of the file is already open (ignore diff tabs sharing path)
+  const existingFileIndex = files.findIndex(f => f.path === filePath && !(f as any).isDiff);
       if (existingFileIndex >= 0) {
         // File is already open, just activate it and update language
         setFiles(prev => prev.map((f, index) => 
@@ -302,8 +302,8 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
       
       const fileWithLanguage = { ...fileData, language: detectedLanguage };
       
-      // Check if file is already open
-      const existingFileIndex = files.findIndex(f => f.path === filePath);
+  // Check if a NON-diff version of the file is already open (ignore diff tabs sharing path)
+  const existingFileIndex = files.findIndex(f => f.path === filePath && !(f as any).isDiff);
       if (existingFileIndex >= 0) {
         // File is already open, just activate it and mark as permanent
         setFiles(prev => prev.map((f, index) => 
