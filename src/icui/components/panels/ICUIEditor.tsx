@@ -1255,6 +1255,14 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
             key={file.id}
     className={`icui-tab ${file.id === activeFileId ? 'active' : ''}`}
             onClick={() => handleActivateFile(file.id)}
+            onMouseDown={(e) => {
+              // Middle-click (wheel button) to close tab - like VS Code and browsers
+              if (e.button === 1) {
+                e.preventDefault();
+                e.stopPropagation();
+                handleCloseFile(file.id);
+              }
+            }}
           >
             <span className={`icui-tab-title ${file.isTemporary ? 'italic' : ''}`}>
               {file.name}
