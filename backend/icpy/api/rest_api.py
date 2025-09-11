@@ -1272,6 +1272,18 @@ class RestAPI:
                 logger.error(f"[SCM] push error: {e}")
                 raise HTTPException(status_code=500, detail=str(e))
 
+        @self.app.post("/api/scm/init")
+        async def scm_init():
+            """Initialize a Git repository in the workspace."""
+            try:
+                if not self.source_control_service:
+                    raise HTTPException(status_code=503, detail="SCM service not available")
+                ok = await self.source_control_service.init_repo()
+                return SuccessResponse(data={"ok": ok}, message="Git repository initialized successfully" if ok else "Failed to initialize Git repository")
+            except Exception as e:
+                logger.error(f"[SCM] init error: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+
         # Session CRUD endpoints
         @self.app.get("/api/chat/sessions")
         async def get_chat_sessions():

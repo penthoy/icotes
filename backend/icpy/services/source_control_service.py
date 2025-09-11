@@ -400,6 +400,33 @@ class SourceControlService:
             await self._publish("scm.status_changed", {"reason": "push", "set_upstream": set_upstream})
         return ok
 
+    async def init_repo(self) -> bool:
+        """Initialize a Git repository in the workspace."""
+        try:
+            # Check if a .git directory already exists
+            git_dir = os.path.join(self.workspace_root, ".git")
+            if os.path.exists(git_dir):
+                logger.info(f"[SCM] Git repository already exists at {git_dir}")
+                return True
+            
+            # Run git init in the workspace root
+            provider = self._ensure_provider()
+            if hasattr(provider, '_run_git'):
+                code, _, err = await provider._run_git("init")
+                if code == 0:
+                    logger.info(f"[SCM] Git repository initialized at {self.workspace_root}")
+                    await self._publish("scm.repo_initialized", {"root": self.workspace_root})
+                    return True
+                else:
+                    logger.error(f"[SCM] Git init failed: {err}")
+                    return False
+            else:
+                logger.error("[SCM] Provider does not support git init operation")
+                return False
+        except Exception as e:
+            logger.error(f"[SCM] Failed to initialize Git repository: {e}")
+            return False
+
     async def _publish(self, topic: str, payload: Dict[str, Any]):
         try:
             if not self._message_broker:

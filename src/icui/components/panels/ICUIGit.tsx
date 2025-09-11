@@ -45,12 +45,14 @@ import { getWorkspaceRoot } from '../../lib/workspaceUtils';
 import { Button } from '../ui/button';
 import { useTheme } from '../../services';
 import { log } from '../../../services/frontend-logger';
+import ICUIGitConnect from '../ICUIGitConnect';
 
 interface ICUIGitProps {
   className?: string;
   onFileSelect?: (path: string) => void;
   onFileOpen?: (file: { type: string; path: string; name: string }) => void;
   onOpenDiffPatch?: (path: string) => void; // Phase 4 integration: open diff in editor
+  onGitRepoStatusChange?: (hasRepo: boolean) => void; // Callback for repo status changes
 }
 
 const ICUIGit: React.FC<ICUIGitProps> = ({
@@ -58,6 +60,7 @@ const ICUIGit: React.FC<ICUIGitProps> = ({
   onFileSelect,
   onFileOpen,
   onOpenDiffPatch,
+  onGitRepoStatusChange,
 }) => {
   // State management
   const [repoInfo, setRepoInfo] = useState<GitRepoInfo | null>(null);
@@ -66,6 +69,8 @@ const ICUIGit: React.FC<ICUIGitProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+  // Simple repo state machine: unknown (initial), present, absent
+  const [repoState, setRepoState] = useState<'unknown' | 'present' | 'absent'>('unknown');
   // Phase 3 additions
   const [showBranchInput, setShowBranchInput] = useState(false);
   const [newBranchName, setNewBranchName] = useState('');
@@ -144,17 +149,39 @@ const ICUIGit: React.FC<ICUIGitProps> = ({
 
   // ==================== Data Loading ====================
   
-  const loadRepoInfo = useCallback(async () => {
+  const loadRepoInfo = useCallback(async (): Promise<boolean> => {
     try {
       const info = await backendService.getScmRepoInfo();
-      setRepoInfo(info);
-      setIsConnected(true);
+      const present = !!(info && (info.branch || info.root || info.repoPath));
+      if (present) {
+        setRepoInfo(info);
+        setIsConnected(true);
+        setRepoState('present');
+        onGitRepoStatusChange?.(true);
+      } else {
+        setRepoInfo(null);
+        setIsConnected(false);
+        setRepoState('absent');
+        onGitRepoStatusChange?.(false);
+      }
+      return present;
     } catch (error) {
       console.warn('[ICUIGit] Failed to load repo info:', error);
       setRepoInfo(null);
       setIsConnected(false);
+      setRepoState('absent');
+      onGitRepoStatusChange?.(false);
+      return false;
     }
-  }, []);
+  }, [onGitRepoStatusChange]);
+
+  // Decide if we should render the connect component (only when clearly no repo)
+  const testMode = import.meta.env.VITE_TEST_GIT_CONNECT === 'true';
+  const showConnect = useMemo(() => {
+    if (testMode) return true;
+    if (repoState === 'unknown') return false; // still detecting
+    return repoState === 'absent';
+  }, [repoState, testMode]);
 
   const loadStatus = useCallback(async () => {
     try {
@@ -162,8 +189,9 @@ const ICUIGit: React.FC<ICUIGitProps> = ({
       setStatus(statusData);
       setError(null);
     } catch (error) {
-      console.error('[ICUIGit] Failed to load status:', error);
-      setError(error instanceof Error ? error.message : 'Failed to load Git status');
+      // If no repo, backend may error – only log at debug level
+      console.warn('[ICUIGit] loadStatus warning:', error);
+      setError(prev => prev || (error instanceof Error ? error.message : 'Failed to load Git status'));
     }
   }, []);
 
@@ -178,24 +206,29 @@ const ICUIGit: React.FC<ICUIGitProps> = ({
 
   const loadAll = useCallback(async () => {
     if (loading) return;
-    
     setLoading(true);
     try {
-      await Promise.all([
-        loadRepoInfo(),
-        loadStatus(),
-        loadBranches()
-      ]);
+      const present = await loadRepoInfo();
+      if (present) {
+        await Promise.all([
+          loadBranches(),
+          loadStatus()
+        ]);
+      } else {
+        // Ensure status lists are empty when no repo
+        setStatus({ staged: [], unstaged: [], untracked: [] });
+      }
     } catch (error) {
       log.error('[ICUIGit] Failed to load Git data:', error);
     } finally {
       setLoading(false);
     }
-  }, [loading, loadRepoInfo, loadStatus, loadBranches]);
+  }, [loading, loadRepoInfo, loadBranches, loadStatus]);
 
   // Initial load
   useEffect(() => {
     loadAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Subscribe to backend SCM websocket events (scm.status_changed, scm.branch_changed)
@@ -226,11 +259,8 @@ const ICUIGit: React.FC<ICUIGitProps> = ({
   // Auto-refresh every 30 seconds
   useEffect(() => {
     const interval = setInterval(() => {
-      if (!loading) {
-        loadStatus();
-      }
+      if (!loading) loadStatus();
     }, 30000);
-
     return () => clearInterval(interval);
   }, [loading, loadStatus]);
 
@@ -564,37 +594,17 @@ const ICUIGit: React.FC<ICUIGitProps> = ({
 
   // ==================== Render ====================
   
-  if (!isConnected) {
+  if (showConnect) {
     return (
-      <div className={`flex flex-col h-full ${className}`}>
-        <div className="flex items-center justify-between p-3 border-b">
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => setShowBranchInput(s => !s)}
-            title="Create branch"
-            className="h-6 px-1 text-xs"
-          >+branch</Button>
-          <h3 className="text-sm font-medium">Source Control</h3>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={loadAll}
-            title="Refresh"
-            className="h-6 w-6 p-0"
-          >
-            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-          </Button>
-        </div>
-        
-        <div className="flex-1 flex items-center justify-center p-4">
-          <div className="text-center text-gray-500">
-            <GitBranch className="h-8 w-8 mx-auto mb-2 opacity-50" />
-            <p className="text-sm">No Git repository detected</p>
-            <p className="text-xs mt-1">Initialize a repository to use source control</p>
-          </div>
-        </div>
-      </div>
+      <ICUIGitConnect
+        className={className}
+        onGitInitialized={async () => {
+          const present = await loadRepoInfo();
+            if (present) {
+              await Promise.all([loadBranches(), loadStatus()]);
+            }
+        }}
+      />
     );
   }
 

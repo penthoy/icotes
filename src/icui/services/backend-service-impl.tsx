@@ -1128,6 +1128,33 @@ export class ICUIBackendService extends EventEmitter {
   }
 
   /**
+   * Initialize a Git repository
+   */
+  async initializeGitRepo(): Promise<boolean> {
+    try {
+      const url = `${this.baseUrl}/api/scm/init`;
+      console.log('[ICUIBackendService] Initializing Git repository');
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to initialize Git repository: ${response.status} ${response.statusText}`);
+      }
+      
+      const result = await response.json();
+      return result.data?.ok || false;
+    } catch (error) {
+      console.error('[ICUIBackendService] Git initialization failed:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Destroy service and cleanup
    */
   destroy(): void {

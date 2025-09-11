@@ -86,6 +86,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
   // Menu state for integrated menus
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [currentFile, setCurrentFile] = useState<any>(null);
+  // Git repo gating removed; ICUIGit handles its own connect logic
 
   // Handle file selection from Explorer - VS Code-like temporary file opening
   const handleFileSelect = useCallback((file: any) => {
@@ -304,13 +305,17 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
         }
       }}
     />
-  ), [handleFileSelect, handleFileDoubleClick]);  // Memoized panel content creators to prevent recreation on layout changes
+  ), [handleFileSelect, handleFileDoubleClick]);
+
   const createExplorerContent = useCallback(() => explorerInstance, [explorerInstance]);
   const createEditorContent = useCallback(() => editorInstance, [editorInstance]);
   const createTerminalContent = useCallback(() => terminalInstance, [terminalInstance]);
   const createChatContent = useCallback(() => chatInstance, [chatInstance]);
   const createChatHistoryContent = useCallback(() => chatHistoryInstance, [chatHistoryInstance]);
-  const createGitContent = useCallback(() => gitInstance, [gitInstance]);
+  const createGitContent = useCallback(() => {
+    // Always show main Git panel (connect disabled)
+    return gitInstance;
+  }, [gitInstance]);
 
   // Handle panel addition
   const handlePanelAdd = useCallback((panelType: ICUIPanelType, areaId: string) => {
