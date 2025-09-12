@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### September 2025 - Git Panel Robustness and UX
+
+- **Robust Git Detection**: Overhauled repository detection to be more resilient.
+  - **Backend**: Updated `source_control_service.py` to use `git rev-parse --show-toplevel`. It now gracefully handles cases where `git` is not installed or the directory is not a git repository, returning `None` instead of crashing. This fixes detection in minimal Docker environments.
+  - **Frontend**: The `ICUIGit.tsx` panel now correctly displays the `ICUIGitConnect.tsx` component when the backend reports no active repository, guiding the user to connect or initialize one.
+- **Improved OAuth Flow**: Enhanced the GitHub connection process.
+  - **Configurable Redirect URI**: Added `VITE_GIT_REDIRECT_URI` and `VITE_GIT_ALLOWED_REDIRECT_ORIGINS` to `.env` to support different development and production environments.
+  - **User Guidance**: The connect panel now provides clear instructions to the user on how to configure their GitHub OAuth application.
+- **PR #27 Feedback Integration**: Addressed multiple review comments for security and correctness.
+  - **Security**: Hardened backend against path traversal attacks in SCM operations.
+  - **Correctness**: Fixed race conditions in tab creation, improved synthetic diff generation, and added necessary `null` checks in the backend.
+  - **Testability**: Introduced `VITE_TEST_GIT_CONNECT` for easier local testing of the connection flow.
+
 #### September 2025 - Git Panel Integration Planning
 
 - **Git Panel Infrastructure**: Comprehensive Git integration plan scaffolded for ICUI framework

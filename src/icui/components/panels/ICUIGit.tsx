@@ -139,9 +139,7 @@ const ICUIGit: React.FC<ICUIGitProps> = ({
     }
   }, [onGitRepoStatusChange]);
 
-  // Decide if we should render the connect component (only when clearly no repo)
-  const testMode = import.meta.env.VITE_TEST_GIT_CONNECT === 'true';
-  const showConnect = useMemo(() => (testMode || repoState === 'absent'), [repoState, testMode]);
+  const showConnect = useMemo(() => (repoState === 'absent'), [repoState]);
 
   const loadStatus = useCallback(async () => {
     try {
