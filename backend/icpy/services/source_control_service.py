@@ -52,7 +52,7 @@ class SourceControlProvider:
         self.timeout = timeout
 
     # Query ops
-    async def get_repo_info(self) -> RepoInfo:
+    async def get_repo_info(self) -> Optional[RepoInfo]:
         raise NotImplementedError
 
     async def status(self) -> Dict[str, Any]:
@@ -288,8 +288,9 @@ class GitSourceControlProvider(SourceControlProvider):
         return {"current": current, "local": branches, "remote": []}
 
     async def checkout(self, branch: str, create: bool = False) -> bool:
-        # Basic branch name validation (avoid injections) - no path separators allowed
-        if not re.match(r"^[A-Za-z0-9._\-]+$", branch):
+        # Validate branch name using git's refname rules
+        code, _, _ = await self._run_git("check-ref-format", "--branch", branch)
+        if code != 0:
             raise ValueError("Invalid branch name")
         args = ["checkout"]
         if create:
@@ -352,7 +353,7 @@ class SourceControlService:
         return self._provider
 
     # Delegating API
-    async def get_repo_info(self) -> Dict[str, Any]:
+    async def get_repo_info(self) -> Optional[Dict[str, Any]]:
         info = await self._ensure_provider().get_repo_info()
         if info is None:
             return None

@@ -824,7 +824,7 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
     });
 
     onFileChange?.(activeFileId, newContent);
-  }, [activeFileId, onFileChange, autoSaveEnabled, autoSaveDelay, files]); // include files for readOnly lookup
+  }, [activeFileId, onFileChange, autoSaveEnabled, autoSaveDelay]); // files dependency removed for performance
 
   // Update the content change handler ref to always have the latest version
   useEffect(() => {

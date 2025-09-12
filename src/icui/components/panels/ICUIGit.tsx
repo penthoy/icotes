@@ -440,14 +440,14 @@ const ICUIGit: React.FC<ICUIGitProps> = ({
 
   // ==================== Diff Preview ====================
   
-  // Helper function to resolve git file paths correctly (moved outside useCallback to avoid dependency issues)
+  // Helper function to resolve git file paths correctly (memoized to avoid dependency issues)
   const resolveGitFilePath = useCallback((filePath: string): string => {
     // If it's already an absolute path, use it
-  if (filePath.startsWith('/')) return filePath;
+    if (filePath.startsWith('/')) return filePath;
     
     // Prefer server-reported Git root; fallback to workspace root
-  const baseRoot = (repoInfo?.root || getWorkspaceRoot());
-  return `${baseRoot.replace(/\/+$/, '')}/${filePath.replace(/^\/+/, '')}`;
+    const baseRoot = (repoInfo?.root || getWorkspaceRoot());
+    return `${baseRoot.replace(/\/+$/, '')}/${filePath.replace(/^\/+/, '')}`;
   }, [repoInfo?.root]);
 
   const handleShowDiff = useCallback(async (path: string) => {
