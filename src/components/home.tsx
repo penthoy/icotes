@@ -12,7 +12,8 @@ import {
   ICUITerminal,
   ICUIEditor,
   ICUIChatHistory,
-  ICUIExplorer
+  ICUIExplorer,
+  ICUIGit
 } from '../icui';
 import type { ICUIEditorRef } from '../icui';
 import ICUIBaseHeader from '../icui/components/ICUIBaseHeader';
@@ -51,7 +52,7 @@ const THEME_OPTIONS = [
 const defaultLayout: ICUILayoutConfig = {
   layoutMode: 'h-layout',
   areas: {
-    left: { id: 'left', name: 'Explorer', panelIds: ['explorer'], activePanelId: 'explorer', size: 25, visible: true },
+    left: { id: 'left', name: 'Explorer', panelIds: ['explorer', 'git'], activePanelId: 'explorer', size: 25, visible: true },
     center: { id: 'center', name: 'Editor', panelIds: ['editor'], activePanelId: 'editor', size: 50 },
     right: { id: 'right', name: 'Assistant', panelIds: ['chat'], activePanelId: 'chat', size: 25, visible: true },
     bottom: { id: 'bottom', name: 'Terminal', panelIds: ['terminal'], activePanelId: 'terminal', size: 40 },
@@ -85,6 +86,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
   // Menu state for integrated menus
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [currentFile, setCurrentFile] = useState<any>(null);
+  // Git repo gating removed; ICUIGit handles its own connect logic
 
   // Handle file selection from Explorer - VS Code-like temporary file opening
   const handleFileSelect = useCallback((file: any) => {
@@ -97,10 +99,13 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
 
   // Handle file double-click from Explorer - VS Code-like permanent file opening
   const handleFileDoubleClick = useCallback((file: any) => {
+    console.log('[Home] handleFileDoubleClick called with file:', file.name, 'at path:', file.path);
     if (file.type === 'file' && editorRef.current) {
       // Double click opens file permanently (will not be replaced by single clicks)
       editorRef.current.openFilePermanent(file.path);
       setCurrentFile(file);
+    } else {
+      console.warn('[Home] Cannot open file:', { isFile: file.type === 'file', hasEditorRef: !!editorRef.current });
     }
   }, []);
 
@@ -244,6 +249,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
     { id: 'terminal', name: 'Terminal', icon: '💻', description: 'Integrated terminal' },
     { id: 'chat', name: 'AI Assistant', icon: '🤖', description: 'AI-powered code assistant' },
     { id: 'chat-history', name: 'Chat History', icon: '💬', description: 'Manage chat sessions and history' },
+    { id: 'git', name: 'Source Control', icon: '🌿', description: 'Git source control management' },
   ];
 
   // Stable panel instances to prevent recreation on layout changes
@@ -285,12 +291,31 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
     />
   ), []);
 
-  // Memoized panel content creators to prevent recreation on layout changes
+  const gitInstance = useMemo(() => (
+    <ICUIGit 
+      className="h-full"
+      onFileSelect={handleFileSelect}
+      onFileOpen={handleFileDoubleClick}
+      onOpenDiffPatch={(path) => {
+        console.log('[Home] onOpenDiffPatch called, editorRef.current:', !!editorRef.current);
+        if (editorRef.current?.openDiffPatch) {
+          editorRef.current.openDiffPatch(path);
+        } else {
+          console.warn('[Home] Editor ref or openDiffPatch method not available');
+        }
+      }}
+    />
+  ), [handleFileSelect, handleFileDoubleClick]);
+
   const createExplorerContent = useCallback(() => explorerInstance, [explorerInstance]);
   const createEditorContent = useCallback(() => editorInstance, [editorInstance]);
   const createTerminalContent = useCallback(() => terminalInstance, [terminalInstance]);
   const createChatContent = useCallback(() => chatInstance, [chatInstance]);
   const createChatHistoryContent = useCallback(() => chatHistoryInstance, [chatHistoryInstance]);
+  const createGitContent = useCallback(() => {
+    // Always show main Git panel (connect disabled)
+    return gitInstance;
+  }, [gitInstance]);
 
   // Handle panel addition
   const handlePanelAdd = useCallback((panelType: ICUIPanelType, areaId: string) => {
@@ -316,6 +341,9 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
         break;
       case 'chat-history':
         content = createChatHistoryContent();
+        break;
+      case 'git':
+        content = createGitContent();
         break;
       default:
         content = <div className="h-full p-4" style={{ backgroundColor: 'var(--icui-bg-primary)', color: 'var(--icui-text-primary)' }}>Custom Panel: {panelType.name}</div>;
@@ -346,7 +374,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
         }
       }
     }));
-  }, [createExplorerContent, createEditorContent, createTerminalContent, createChatContent]);
+  }, [createExplorerContent, createEditorContent, createTerminalContent, createChatContent, createGitContent]);
 
   // Initialize panels on mount
   useEffect(() => {
@@ -358,6 +386,14 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
         icon: '📁',
         closable: true,
         content: createExplorerContent()
+      },
+      {
+        id: 'git',
+        type: 'git', 
+        title: 'Source Control',
+        icon: '🌿',
+        closable: true,
+        content: createGitContent()
       },
       {
         id: 'editor',
@@ -385,7 +421,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
       },
     ];
     setPanels(initialPanels);
-  }, [createExplorerContent, createEditorContent, createTerminalContent, createChatContent]);
+  }, [createExplorerContent, createEditorContent, createTerminalContent, createChatContent, createGitContent]);
 
   // Remove editor panel update effect since ICUIEditor manages its own files
 
@@ -394,7 +430,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
     setLayout({
       layoutMode: 'standard',
       areas: {
-        left: { id: 'left', name: 'Explorer', panelIds: ['explorer'], activePanelId: 'explorer', size: 25 },
+        left: { id: 'left', name: 'Explorer', panelIds: ['explorer', 'git'], activePanelId: 'explorer', size: 25 },
         center: { id: 'center', name: 'Editor', panelIds: ['editor'], activePanelId: 'editor', size: 50 },
         right: { id: 'right', name: 'Assistant', panelIds: ['chat'], activePanelId: 'chat', size: 25, visible: true },
         bottom: { id: 'bottom', name: 'Terminal', panelIds: ['terminal'], activePanelId: 'terminal', size: 30 },
@@ -407,7 +443,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
     setLayout({
       layoutMode: 'h-layout',
       areas: {
-        left: { id: 'left', name: 'Explorer', panelIds: ['explorer'], activePanelId: 'explorer', size: 25, visible: true },
+        left: { id: 'left', name: 'Explorer', panelIds: ['explorer', 'git'], activePanelId: 'explorer', size: 25, visible: true },
         center: { id: 'center', name: 'Editor', panelIds: ['editor'], activePanelId: 'editor', size: 50 },
         right: { id: 'right', name: 'Assistant', panelIds: ['chat'], activePanelId: 'chat', size: 25, visible: true },
         bottom: { id: 'bottom', name: 'Terminal', panelIds: ['terminal'], activePanelId: 'terminal', size: 40 },

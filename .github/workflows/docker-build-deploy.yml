@@ -1,3 +1,7 @@
+# This workflow builds and deploys Docker images when a new version is detected
+# Required secrets: DOCKER_USERNAME, DOCKER_PASSWORD
+# Required token: GITHUB_TOKEN (automatically provided)
+
 name: Docker Build and Deploy
 on:
   push:
@@ -58,7 +62,7 @@ jobs:
     needs: check-version
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    if: needs.check-version.outputs.should-build == 'true' && (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.merged == true)) && secrets.DOCKER_USERNAME != '' && secrets.DOCKER_PASSWORD != ''
+    if: needs.check-version.outputs.should-build == 'true' && (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.merged == true))
     concurrency:
       group: docker-release-${{ needs.check-version.outputs.version }}
       cancel-in-progress: true
@@ -66,6 +70,18 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      
+    - name: Check Docker Hub secrets
+      run: |
+        if [ -z "$DOCKER_USERNAME" ] || [ -z "$DOCKER_PASSWORD" ]; then
+          echo "❌ Docker Hub credentials not available. Skipping Docker operations."
+          echo "Please set DOCKER_USERNAME and DOCKER_PASSWORD secrets in the repository settings."
+          exit 1
+        fi
+        echo "✅ Docker Hub credentials are available"
+      env:
+        DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+        DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
       
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3

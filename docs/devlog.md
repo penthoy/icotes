@@ -1,5 +1,10 @@
 # Working Features
 
+### Git Panel Robustness and UX (September 2025)
+- **Task**: Overhaul the Git panel for robust repository detection and a clear user flow for connecting to GitHub.
+- **Key Insight**: The frontend now intelligently detects if a Git repository is missing or uninitialized and displays a dedicated connection component (`ICUIGitConnect.tsx`). The backend `source_control_service.py` was hardened to gracefully handle environments with no `git` command or uninitialized repositories by using `git rev-parse --show-toplevel` for detection, preventing crashes and ensuring the correct UI state. This resolved a critical bug in Docker environments. Also addressed security and correctness feedback from PR #27, including path traversal protection, race condition fixes, and improved OAuth configuration UX.
+- **Files**: `src/icui/components/panels/ICUIGit.tsx`, `src/icui/components/ICUIGitConnect.tsx`, `backend/icpy/services/source_control_service.py`, `backend/main.py`
+
 ## Recently Finished (September 2025)
 
 ### Git Panel Plan Implementation (September 2025)

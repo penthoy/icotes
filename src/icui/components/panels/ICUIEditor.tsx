@@ -35,6 +35,9 @@ import {
   dropCursor,
   rectangularSelection,
   crosshairCursor,
+  ViewPlugin,
+  Decoration,
+  ViewUpdate
 } from "@codemirror/view";
 import { EditorState, Extension } from "@codemirror/state";
 import {
@@ -76,6 +79,13 @@ import { createICUISyntaxHighlighting, createICUIEnhancedEditorTheme } from '../
 // File interface (using centralized ICUIFile type)
 interface EditorFile extends ICUIFile {
   isTemporary?: boolean; // VS Code-like temporary file state
+  // Diff metadata (only for diff virtual tabs)
+  __diffMeta?: {
+    added: Set<number>;
+    removed: Set<number>;
+    hunk: Set<number>;
+    originalPath?: string;
+  };
 }
 
 
@@ -112,6 +122,7 @@ interface ICUIEditorRef {
   openFile: (filePath: string) => Promise<void>;
   openFileTemporary: (filePath: string) => Promise<void>;
   openFilePermanent: (filePath: string) => Promise<void>;
+  openDiffPatch: (filePath: string) => Promise<void>; // Phase 4: open unified diff as read-only tab
 }
 
 interface ICUIEditorProps {
@@ -242,8 +253,8 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
       const { file, filePath } = pendingFile;
       const fileWithLanguage = { ...file, language: selectedLanguage };
       
-      // Check if file is already open
-      const existingFileIndex = files.findIndex(f => f.path === filePath);
+  // Check if a NON-diff version of the file is already open (ignore diff tabs sharing path)
+  const existingFileIndex = files.findIndex(f => f.path === filePath && !(f as any).isDiff);
       if (existingFileIndex >= 0) {
         // File is already open, just activate it and update language
         setFiles(prev => prev.map((f, index) => 
@@ -291,8 +302,8 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
       
       const fileWithLanguage = { ...fileData, language: detectedLanguage };
       
-      // Check if file is already open
-      const existingFileIndex = files.findIndex(f => f.path === filePath);
+  // Check if a NON-diff version of the file is already open (ignore diff tabs sharing path)
+  const existingFileIndex = files.findIndex(f => f.path === filePath && !(f as any).isDiff);
       if (existingFileIndex >= 0) {
         // File is already open, just activate it and mark as permanent
         setFiles(prev => prev.map((f, index) => 
@@ -363,17 +374,240 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
   }, [files]);
 
   const openFilePermanent = useCallback(async (filePath: string) => {
-    // For permanent files, same as openFile for now
-    // This will be enhanced in the next phases for proper VS Code behavior
     await openFile(filePath);
   }, [openFile]);
+
+  // Open synthetic diff (for untracked files)
+  const openSyntheticDiff = useCallback(async (filePath: string, patch: string) => {
+    console.log('[ICUIEditor] openSyntheticDiff called for:', filePath);
+    try {
+      setIsLoading(true);
+      const tabId = `diff:${filePath}`;
+      
+      let focused = false;
+      const processedResult = (() => {
+        // Process synthetic diff for highlighting
+        const rawLines = patch.split('\n');
+        const added = new Set<number>();
+        const removed = new Set<number>();
+        const hunk = new Set<number>();
+        const processed: string[] = [];
+        
+        for (const line of rawLines) {
+          if (
+            line.startsWith('+++ ') || line.startsWith('--- ') ||
+            line.startsWith('index ') || line.startsWith('diff ') ||
+            line.startsWith('new file mode') || line.startsWith('deleted file mode') ||
+            line.startsWith('rename from') || line.startsWith('rename to') ||
+            line.startsWith('similarity index')
+          ) {
+            processed.push(line); // keep file headers as-is
+            continue;
+          }
+          if (line.startsWith('@@')) {
+            hunk.add(processed.length + 1);
+            processed.push(line); // keep hunk header
+            continue;
+          }
+          if (line.startsWith('+') && !line.startsWith('+++ ')) {
+            added.add(processed.length + 1);
+            processed.push(line.slice(1));
+            continue;
+          }
+          if (line.startsWith('-') && !line.startsWith('--- ')) {
+            removed.add(processed.length + 1);
+            processed.push(line.slice(1));
+            continue;
+          }
+          processed.push(line); // fallback
+        }
+        
+        const processedPatch = processed.join('\n');
+        const name = `${filePath.split('/').pop() || filePath} (diff)`;
+        
+        const diffFile: EditorFile = {
+          id: tabId,
+          name,
+          language: 'diff',
+          content: processedPatch,
+          modified: false,
+          path: filePath,
+          // @ts-ignore add virtual flags
+          isDiff: true,
+          // @ts-ignore
+          readOnly: true,
+          // @ts-ignore
+          diffKind: 'synthetic',
+          // @ts-ignore
+          originalPath: filePath,
+          __diffMeta: { added, removed, hunk, originalPath: filePath }
+        } as any;
+        
+        return diffFile;
+      })();
+
+      setFiles(prev => {
+        if (prev.some(f => f.id === tabId)) {
+          focused = true;
+          return prev;
+        }
+        return [...prev, processedResult];
+      });
+      
+      if (focused) {
+        console.log('[ICUIEditor] Synthetic diff tab already exists, focusing:', tabId);
+        setActiveFileId(tabId);
+        return;
+      }
+      
+      console.log('[ICUIEditor] Creating new synthetic diff tab:', processedResult.name);
+      setActiveFileId(tabId);
+      console.log('[ICUIEditor] Synthetic diff tab created successfully');
+      EditorNotificationService.show(`Opened diff for ${filePath}`, 'info');
+    } catch (error) {
+      console.error('Failed to open synthetic diff:', error);
+      EditorNotificationService.show(`Failed to open diff: ${error}`, 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  // Phase 4: Open unified diff patch for a file as a virtual read-only tab
+  const openDiffPatch = useCallback(async (filePath: string) => {
+    console.log('[ICUIEditor] openDiffPatch called for:', filePath);
+    try {
+      setIsLoading(true);
+      // Reuse existing diff endpoint
+      console.log('[ICUIEditor] Fetching diff from backend...');
+      const diffData = await backendService.getScmDiff(filePath);
+      console.log('[ICUIEditor] Diff data received:', diffData);
+      if (!diffData || typeof diffData.patch !== 'string') {
+        console.warn('[ICUIEditor] No valid diff data:', diffData);
+        EditorNotificationService.show(`No diff available for ${filePath}`, 'warning');
+        return;
+      }
+      const tabId = `diff:${filePath}`;
+      
+      let focused = false;
+      const processedResult = (() => {
+        const name = `${filePath.split('/').pop() || filePath} (diff)`;
+        console.log('[ICUIEditor] Creating new diff tab:', name);
+
+        // Preprocess unified diff for improved syntax highlighting:
+        // - Strip leading diff markers (+, -, space) from code lines
+        // - Record line numbers for added/removed/hunk to apply background decorations
+        const rawLines = diffData.patch.split('\n');
+        const added = new Set<number>();
+        const removed = new Set<number>();
+        const hunk = new Set<number>();
+        const processed: string[] = [];
+        for (const line of rawLines) {
+          if (line.startsWith('+++ ') || line.startsWith('--- ') || line.startsWith('index ') || line.startsWith('diff ')) {
+            processed.push(line); // keep file headers as-is
+            continue;
+          }
+          if (line.startsWith('@@')) {
+            hunk.add(processed.length + 1);
+            processed.push(line); // keep hunk header
+            continue;
+          }
+          if (line.startsWith('+') && !line.startsWith('+++ ')) {
+            added.add(processed.length + 1);
+            processed.push(line.slice(1));
+            continue;
+          }
+          if (line.startsWith('-') && !line.startsWith('--- ')) {
+            removed.add(processed.length + 1);
+            processed.push(line.slice(1));
+            continue;
+          }
+          if (line.startsWith(' ')) {
+            processed.push(line.slice(1)); // unchanged line (unified diff prefix space)
+            continue;
+          }
+          processed.push(line); // fallback
+        }
+        const processedPatch = processed.join('\n');
+        
+        const diffFile: EditorFile = {
+          id: tabId,
+          name,
+          language: 'diff',
+          content: processedPatch,
+          modified: false,
+          path: filePath,
+          // @ts-ignore add virtual flags
+          isDiff: true,
+          // @ts-ignore
+          readOnly: true,
+          // @ts-ignore
+          diffKind: 'patch',
+          // @ts-ignore
+          originalPath: filePath,
+          __diffMeta: { added, removed, hunk, originalPath: filePath }
+        } as any;
+        
+        return diffFile;
+      })();
+
+      setFiles(prev => {
+        if (prev.some(f => f.id === tabId)) {
+          focused = true;
+          return prev;
+        }
+        return [...prev, processedResult];
+      });
+      
+      if (focused) {
+        console.log('[ICUIEditor] Diff tab already exists, focusing:', tabId);
+        setActiveFileId(tabId);
+        return;
+      }
+      
+      setActiveFileId(tabId);
+      console.log('[ICUIEditor] Diff tab created successfully');
+      EditorNotificationService.show(`Opened diff for ${filePath}`, 'info');
+    } catch (error) {
+      console.error('Failed to open diff patch:', error);
+      EditorNotificationService.show(`Failed to open diff: ${error}`, 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  // Listen for global diff open events (fallback when panel prop not passed)
+  useEffect(() => {
+    const handler = (e: any) => {
+      const path = e?.detail?.path;
+      if (typeof path === 'string') {
+        console.log('[ICUIEditor] Received global icui:openDiffPatch event for', path);
+        openDiffPatch(path);
+      }
+    };
+    
+    const syntheticHandler = (e: any) => {
+      const { path, patch } = e?.detail || {};
+      if (typeof path === 'string' && typeof patch === 'string') {
+        console.log('[ICUIEditor] Received synthetic diff event for', path);
+        openSyntheticDiff(path, patch);
+      }
+    };
+    
+    window.addEventListener('icui:openDiffPatch', handler as any);
+    window.addEventListener('icui:openSyntheticDiff', syntheticHandler as any);
+    return () => {
+      window.removeEventListener('icui:openDiffPatch', handler as any);
+      window.removeEventListener('icui:openSyntheticDiff', syntheticHandler as any);
+    };
+  }, [openDiffPatch, openSyntheticDiff]);
 
   // Expose methods via ref for external control
   useImperativeHandle(ref, () => ({
     openFile,
     openFileTemporary, 
-    openFilePermanent
-  }), [openFile, openFileTemporary, openFilePermanent]);
+    openFilePermanent,
+    openDiffPatch
+  }), [openFile, openFileTemporary, openFilePermanent, openDiffPatch]);
 
   // Theme detection (following ICUITerminal pattern with all themes)
   useEffect(() => {
@@ -534,6 +768,11 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
   // Handle content changes with auto-save (FIXED: Stable dependencies to prevent recreation)
   const handleContentChange = useCallback((newContent: string) => {
     if (!activeFileId) return;
+    // Prevent edits to diff/read-only tabs
+    const activeMeta = files.find(f => f.id === activeFileId) as any;
+    if (activeMeta?.readOnly || activeMeta?.isDiff) {
+      return; // ignore modifications
+    }
 
     // Update the content ref immediately to prevent loops
     currentContentRef.current = newContent;
@@ -585,7 +824,7 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
     });
 
     onFileChange?.(activeFileId, newContent);
-  }, [activeFileId, onFileChange, autoSaveEnabled, autoSaveDelay]); // FIXED: Use autoSaveEnabled instead of autoSave
+  }, [activeFileId, onFileChange, autoSaveEnabled, autoSaveDelay]); // files dependency removed for performance
 
   // Update the content change handler ref to always have the latest version
   useEffect(() => {
@@ -599,7 +838,8 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
 
 
   // Create editor extensions (FIXED: Stable function to prevent recreating editor)
-  const createExtensions = useCallback((language: string): Extension[] => {
+  const createExtensions = useCallback((file: EditorFile | undefined): Extension[] => {
+    const language = file?.language || 'text';
     const extensions: Extension[] = [
       lineNumbers(),
       foldGutter(),
@@ -656,8 +896,100 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
       }),
     ];
 
-    // Add language-specific extension directly based on language
-    if (language === 'python') {
+    // Diff highlighting (unified patch) - lightweight decoration pass
+    if (language === 'diff') {
+      const added = Decoration.line({ class: 'cm-diff-added' });
+      const removed = Decoration.line({ class: 'cm-diff-removed' });
+      const hunk = Decoration.line({ class: 'cm-diff-hunk' });
+      const meta = file?.__diffMeta || { added: new Set<number>(), removed: new Set<number>(), hunk: new Set<number>() };
+      const plugin = ViewPlugin.fromClass(class {
+        decorations: any;
+        constructor(view: EditorView) { this.decorations = this.build(view); }
+        update(u: ViewUpdate) { if (u.docChanged) this.decorations = this.build(u.view); }
+        build(view: EditorView) {
+          const ranges: any[] = [];
+          for (let i = 1; i <= view.state.doc.lines; i++) {
+            if (meta.hunk.has(i)) {
+              ranges.push(hunk.range(view.state.doc.line(i).from));
+              continue;
+            }
+            if (meta.added.has(i)) {
+              ranges.push(added.range(view.state.doc.line(i).from));
+              continue;
+            }
+            if (meta.removed.has(i)) {
+              ranges.push(removed.range(view.state.doc.line(i).from));
+              continue;
+            }
+          }
+          return Decoration.set(ranges);
+        }
+      }, { decorations: v => v.decorations });
+      const diffTheme = EditorView.theme({
+        '.cm-diff-added': { backgroundColor: 'rgba(76,175,80,0.18)' },
+        '.cm-diff-removed': { backgroundColor: 'rgba(244,67,54,0.18)' },
+        '.cm-diff-hunk': { backgroundColor: 'rgba(120,120,120,0.25)', fontStyle: 'italic' },
+      });
+      extensions.push(plugin, diffTheme);
+
+      // Attempt to infer underlying language from diff header lines (--- a/path, +++ b/path)
+      try {
+        const underlyingPath = meta.originalPath || '';
+        if (underlyingPath) {
+          const ext = underlyingPath.split('.').pop()?.toLowerCase() || '';
+          // Map to our language identifiers
+          const underlyingLang = (
+            ext === 'tsx' ? 'tsx' :
+            ext === 'ts' ? 'typescript' :
+            ext === 'jsx' ? 'jsx' :
+            ext === 'js' ? 'javascript' :
+            ext === 'py' ? 'python' :
+            ext === 'md' ? 'markdown' :
+            ext === 'json' || ext === 'jsonl' ? 'json' :
+            ext === 'html' || ext === 'htm' ? 'html' :
+            ext === 'css' || ext === 'scss' || ext === 'sass' ? 'css' :
+            ext === 'yaml' || ext === 'yml' ? 'yaml' :
+            ext === 'sh' || ext === 'bash' ? 'shell' :
+            ext === 'cpp' || ext === 'c' || ext === 'hpp' || ext === 'h' ? 'cpp' :
+            ext === 'rs' ? 'rust' :
+            ext === 'go' ? 'go' :
+            'text'
+          );
+          // Push underlying language highlighter AFTER diff decorations so token colors appear within backgrounds
+          if (underlyingLang === 'typescript') {
+            extensions.push(javascript({ typescript: true }));
+          } else if (underlyingLang === 'tsx') {
+            extensions.push(javascript({ typescript: true, jsx: true }));
+          } else if (underlyingLang === 'javascript') {
+            extensions.push(javascript({ jsx: false }));
+          } else if (underlyingLang === 'jsx') {
+            extensions.push(javascript({ jsx: true }));
+          } else if (underlyingLang === 'python') {
+            extensions.push(python());
+          } else if (underlyingLang === 'markdown') {
+            extensions.push(markdown());
+          } else if (underlyingLang === 'json') {
+            extensions.push(json());
+          } else if (underlyingLang === 'html') {
+            extensions.push(html());
+          } else if (underlyingLang === 'css') {
+            extensions.push(css());
+          } else if (underlyingLang === 'yaml') {
+            extensions.push(StreamLanguage.define(yaml));
+          } else if (underlyingLang === 'shell') {
+            extensions.push(StreamLanguage.define(shell));
+          } else if (underlyingLang === 'cpp') {
+            extensions.push(cpp());
+          } else if (underlyingLang === 'rust') {
+            extensions.push(rust());
+          } else if (underlyingLang === 'go') {
+            extensions.push(go());
+          }
+        }
+      } catch (e) {
+        console.warn('[ICUIEditor] Failed underlying language detection for diff:', e);
+      }
+    } else if (language === 'python') {
       extensions.push(python());
     } else if (language === 'javascript' || language === 'typescript') {
       extensions.push(javascript({ typescript: language === 'typescript' }));
@@ -680,11 +1012,11 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
     } else if (language === 'go') {
       extensions.push(go());
     }
-    // Note: For unsupported extensions, fallback to text highlighting
+  // Note: For unsupported extensions (or diff), base theme already applied.
     // Users can manually select a language via the language selector
 
     return extensions;
-  }, [isDarkTheme]); // Only depend on isDarkTheme, not handleContentChange
+  }, [isDarkTheme]); // Only depend on isDarkTheme
 
   // Initialize CodeMirror editor (FIXED: Only recreate on relevant changes)
   useEffect(() => {
@@ -709,7 +1041,13 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
     currentContentRef.current = initialContent;
 
     // Create new editor state
-    const baseExtensions = createExtensions(activeFile.language || 'javascript');
+  const baseExtensions = createExtensions(activeFile);
+    const isDiff = (activeFile as any).isDiff;
+    if ((activeFile as any).readOnly || isDiff) {
+      // Dynamically import readOnly extension only when needed to keep bundle lean
+      // @ts-ignore
+      baseExtensions.push(EditorState.readOnly.of(true));
+    }
 
     // Enable soft wrap ONLY for .jsonl files
     const isJsonl = (activeFile.path || activeFile.name || '').toLowerCase().endsWith('.jsonl');
@@ -960,6 +1298,14 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
             key={file.id}
     className={`icui-tab ${file.id === activeFileId ? 'active' : ''}`}
             onClick={() => handleActivateFile(file.id)}
+            onMouseDown={(e) => {
+              // Middle-click (wheel button) to close tab - like VS Code and browsers
+              if (e.button === 1) {
+                e.preventDefault();
+                e.stopPropagation();
+                handleCloseFile(file.id);
+              }
+            }}
           >
             <span className={`icui-tab-title ${file.isTemporary ? 'italic' : ''}`}>
               {file.name}

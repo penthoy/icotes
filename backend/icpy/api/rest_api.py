@@ -38,7 +38,7 @@ import uvicorn
 from ..core.message_broker import get_message_broker
 from ..core.connection_manager import get_connection_manager
 from ..core.protocol import JsonRpcRequest, JsonRpcResponse, ProtocolError, ErrorCode
-from ..services import get_workspace_service, get_filesystem_service, get_terminal_service, get_agent_service, get_chat_service, get_chat_service
+from ..services import get_workspace_service, get_filesystem_service, get_terminal_service, get_agent_service, get_chat_service, get_chat_service, get_source_control_service
 
 logger = logging.getLogger(__name__)
 
@@ -208,6 +208,7 @@ class RestAPI:
         self.terminal_service = None
         self.agent_service = None
         self.chat_service = None
+        self.source_control_service = None
         
         # Statistics
         self.stats = {
@@ -243,6 +244,10 @@ class RestAPI:
         self.terminal_service = await get_terminal_service()
         self.agent_service = await get_agent_service()
         self.chat_service = get_chat_service()
+        try:
+            self.source_control_service = await get_source_control_service()
+        except Exception as e:
+            logger.warning(f"[REST] Source control service unavailable: {e}")
         
         # Publish initialization event
         await self.message_broker.publish('rest_api.service_initialized', {
@@ -370,6 +375,9 @@ class RestAPI:
         
         # Chat endpoints
         self._register_chat_routes()
+
+        # Source control endpoints
+        self._register_scm_routes()
         
         # Documentation endpoints
         self._register_documentation_routes()
@@ -1130,6 +1138,176 @@ class RestAPI:
                 )
             except Exception as e:
                 logger.error(f"Failed to get chat stats: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+
+    def _register_scm_routes(self):
+        """Register source control (SCM) routes."""
+        logger.info("[REST] Registering SCM routes...")
+        
+        @self.app.get("/api/scm/repo")
+        async def scm_repo_info():
+            try:
+                # Check if service is available at runtime
+                if not self.source_control_service:
+                    raise HTTPException(status_code=503, detail="SCM service not available")
+                data = await self.source_control_service.get_repo_info()
+                return SuccessResponse(data=data)
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error(f"[SCM] repo info error: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+
+        @self.app.get("/api/scm/status")
+        async def scm_status():
+            try:
+                if not self.source_control_service:
+                    raise HTTPException(status_code=503, detail="SCM service not available")
+                data = await self.source_control_service.status()
+                return SuccessResponse(data=data)
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error(f"[SCM] status error: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+
+        @self.app.get("/api/scm/diff")
+        async def scm_diff(path: Optional[str] = None):
+            try:
+                if not self.source_control_service:
+                    raise HTTPException(status_code=503, detail="SCM service not available")
+                data = await self.source_control_service.diff(path)
+                return SuccessResponse(data=data)
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error(f"[SCM] diff error: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+
+        @self.app.post("/api/scm/stage")
+        async def scm_stage(payload: Dict[str, List[str]]):
+            try:
+                if not self.source_control_service:
+                    raise HTTPException(status_code=503, detail="SCM service not available")
+                ok = await self.source_control_service.stage(payload.get("paths", []))
+                return SuccessResponse(data={"ok": ok})
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error(f"[SCM] stage error: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+
+        @self.app.post("/api/scm/unstage")
+        async def scm_unstage(payload: Dict[str, List[str]]):
+            try:
+                if not self.source_control_service:
+                    raise HTTPException(status_code=503, detail="SCM service not available")
+                ok = await self.source_control_service.unstage(payload.get("paths", []))
+                return SuccessResponse(data={"ok": ok})
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error(f"[SCM] unstage error: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+
+        @self.app.post("/api/scm/discard")
+        async def scm_discard(payload: Dict[str, List[str]]):
+            try:
+                if not self.source_control_service:
+                    raise HTTPException(status_code=503, detail="SCM service not available")
+                ok = await self.source_control_service.discard(payload.get("paths", []))
+                return SuccessResponse(data={"ok": ok})
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.exception("[SCM] discard error")
+                raise HTTPException(status_code=500, detail=str(e))
+
+        @self.app.post("/api/scm/commit")
+        async def scm_commit(payload: Dict[str, Any]):
+            try:
+                if not self.source_control_service:
+                    raise HTTPException(status_code=503, detail="SCM service not available")
+                ok = await self.source_control_service.commit(
+                    message=str(payload.get("message", "")),
+                    amend=bool(payload.get("amend", False)),
+                    signoff=bool(payload.get("signoff", False)),
+                )
+                return SuccessResponse(data={"ok": ok})
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.exception("[SCM] commit error")
+                raise HTTPException(status_code=500, detail=str(e))
+
+        @self.app.get("/api/scm/branches")
+        async def scm_branches():
+            try:
+                if not self.source_control_service:
+                    raise HTTPException(status_code=503, detail="SCM service not available")
+                data = await self.source_control_service.branches()
+                return SuccessResponse(data=data)
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.exception("[SCM] branches error")
+                raise HTTPException(status_code=500, detail=str(e))
+
+        @self.app.post("/api/scm/checkout")
+        async def scm_checkout(payload: Dict[str, Any]):
+            try:
+                if not self.source_control_service:
+                    raise HTTPException(status_code=503, detail="SCM service not available")
+                ok = await self.source_control_service.checkout(
+                    branch=str(payload.get("branch", "")),
+                    create=bool(payload.get("create", False)),
+                )
+                return SuccessResponse(data={"ok": ok})
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.exception("[SCM] checkout error")
+                raise HTTPException(status_code=500, detail=str(e))
+
+        @self.app.post("/api/scm/pull")
+        async def scm_pull():
+            try:
+                if not self.source_control_service:
+                    raise HTTPException(status_code=503, detail="SCM service not available")
+                ok = await self.source_control_service.pull()
+                return SuccessResponse(data={"ok": ok})
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.exception("[SCM] pull error")
+                raise HTTPException(status_code=500, detail=str(e))
+
+        @self.app.post("/api/scm/push")
+        async def scm_push(payload: Dict[str, Any] | None = None):
+            try:
+                if not self.source_control_service:
+                    raise HTTPException(status_code=503, detail="SCM service not available")
+                payload = payload or {}
+                ok = await self.source_control_service.push(set_upstream=bool(payload.get("set_upstream", False)))
+                return SuccessResponse(data={"ok": ok})
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.exception("[SCM] push error")
+                raise HTTPException(status_code=500, detail=str(e))
+
+        @self.app.post("/api/scm/init")
+        async def scm_init():
+            """Initialize a Git repository in the workspace."""
+            try:
+                if not self.source_control_service:
+                    raise HTTPException(status_code=503, detail="SCM service not available")
+                ok = await self.source_control_service.init_repo()
+                return SuccessResponse(data={"ok": ok}, message="Git repository initialized successfully" if ok else "Failed to initialize Git repository")
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.exception("[SCM] init error")
                 raise HTTPException(status_code=500, detail=str(e))
 
         # Session CRUD endpoints
