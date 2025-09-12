@@ -150,6 +150,10 @@ class GitSourceControlProvider(SourceControlProvider):
         return None
 
     async def get_repo_info(self) -> RepoInfo:
+        # Detect repository presence using git (handles nested or parent repos)
+        repo_root = await self._repo_root()
+        if not repo_root:
+            return None  # Not inside a Git repository
         # Branch
         code, branch, _ = await self._run_git("branch", "--show-current")
         current_branch = branch.strip() if code == 0 else ""
@@ -160,7 +164,6 @@ class GitSourceControlProvider(SourceControlProvider):
         if code == 0:
             seen = set()
             for line in out.splitlines():
-                # origin	git@github.com:org/repo.git (fetch)
                 parts = line.split()
                 if len(parts) >= 2:
                     name, url = parts[0], parts[1]
@@ -174,7 +177,6 @@ class GitSourceControlProvider(SourceControlProvider):
         ahead = behind = 0
         code, out, _ = await self._run_git("rev-list", "--left-right", "--count", "@{upstream}...HEAD")
         if code != 0:
-            # Try inverse when upstream not set
             code2, out2, _ = await self._run_git("rev-list", "--left-right", "--count", "HEAD...@{upstream}")
             if code2 == 0:
                 left, right = out2.strip().split()
@@ -183,11 +185,10 @@ class GitSourceControlProvider(SourceControlProvider):
             left, right = out.strip().split()
             behind, ahead = int(left), int(right)
 
-        # Clean
         status = await self.status()
         clean = not (status.get("staged") or status.get("unstaged") or status.get("untracked"))
 
-        root = await self._repo_root() or self.workspace_root
+        root = repo_root or self.workspace_root
         return RepoInfo(root=root, branch=current_branch, remotes=remotes, ahead=ahead, behind=behind, clean=clean)
 
     async def status(self) -> Dict[str, Any]:
@@ -202,7 +203,6 @@ class GitSourceControlProvider(SourceControlProvider):
         for line in out.splitlines():
             if not line or line.startswith("#"):
                 continue
-            # Format: "1 <xy> N... <src> [<dst>]"
             if line.startswith("1 "):
                 parts = line.split()
                 if len(parts) >= 9:
@@ -210,14 +210,11 @@ class GitSourceControlProvider(SourceControlProvider):
                     path = parts[8]
                     x, y = xy[0], xy[1]
                     entry = {"path": path, "status": (x if x != "." else y)}
-                    # x is index (staged), y is worktree (unstaged)
                     if x != ".":
                         staged.append(entry)
                     if y != ".":
-                        # clone to avoid shared dict when both differ
                         unstaged.append({"path": path, "status": y})
             elif line.startswith("? "):
-                # Untracked
                 path = line[2:].strip()
                 untracked.append({"path": path, "status": "?"})
 
@@ -288,7 +285,7 @@ class GitSourceControlProvider(SourceControlProvider):
                     branches.append(current)
                 else:
                     branches.append(line.strip())
-        return {"current": current, "local": branches}
+        return {"current": current, "local": branches, "remote": []}
 
     async def checkout(self, branch: str, create: bool = False) -> bool:
         # Basic branch name validation (avoid injections) - no path separators allowed
@@ -336,6 +333,7 @@ class SourceControlService:
         self.workspace_root = os.path.abspath(workspace_root)
         self._provider: Optional[SourceControlProvider] = None
         self._message_broker = None
+        self.logger = logger  # Use the module-level logger
 
     async def initialize(self):
         self._message_broker = await get_message_broker()
@@ -356,6 +354,8 @@ class SourceControlService:
     # Delegating API
     async def get_repo_info(self) -> Dict[str, Any]:
         info = await self._ensure_provider().get_repo_info()
+        if info is None:
+            return None
         return {
             "root": info.root,
             "branch": info.branch,

@@ -141,11 +141,7 @@ const ICUIGit: React.FC<ICUIGitProps> = ({
 
   // Decide if we should render the connect component (only when clearly no repo)
   const testMode = import.meta.env.VITE_TEST_GIT_CONNECT === 'true';
-  const showConnect = useMemo(() => {
-    if (testMode) return true;
-    if (repoState === 'unknown') return false; // still detecting
-    return repoState === 'absent';
-  }, [repoState, testMode]);
+  const showConnect = useMemo(() => (testMode || repoState === 'absent'), [repoState, testMode]);
 
   const loadStatus = useCallback(async () => {
     try {
@@ -448,35 +444,21 @@ const ICUIGit: React.FC<ICUIGitProps> = ({
   
   // Helper function to resolve git file paths correctly (moved outside useCallback to avoid dependency issues)
   const resolveGitFilePath = useCallback((filePath: string): string => {
-    console.log('🔍 Resolving git file path:', filePath);
-    
     // If it's already an absolute path, use it
-    if (filePath.startsWith('/')) {
-      console.log('✓ Already absolute path:', filePath);
-      return filePath;
-    }
+  if (filePath.startsWith('/')) return filePath;
     
     // Prefer server-reported Git root; fallback to workspace root
-    const baseRoot = (repoInfo?.root || getWorkspaceRoot());
-    console.log('📂 Using repo root:', baseRoot);
-    const resolvedPath = `${baseRoot.replace(/\/+$/, '')}/${filePath.replace(/^\/+/, '')}`;
-    
-    console.log('✓ Resolved path:', resolvedPath);
-    
-    return resolvedPath;
+  const baseRoot = (repoInfo?.root || getWorkspaceRoot());
+  return `${baseRoot.replace(/\/+$/, '')}/${filePath.replace(/^\/+/, '')}`;
   }, [repoInfo?.root]);
 
   const handleShowDiff = useCallback(async (path: string) => {
-    console.log('[ICUIGit] handleShowDiff -> open diff in editor for', path);
-    
     // Convert Git relative path to absolute path for diff
-    const absolutePath = resolveGitFilePath(path);
-    console.log('[ICUIGit] Resolved path:', path, '->', absolutePath);
+  const absolutePath = resolveGitFilePath(path);
     
     // For untracked files, create a synthetic diff showing the entire file as added
     const file = [...status.unstaged, ...status.untracked, ...status.staged].find(f => f.path === path);
     if (file && file.status === '?') {
-      console.log('[ICUIGit] Creating synthetic diff for untracked file:', path);
       try {
         // Load file content and create a synthetic "added" diff
         const content = await backendService.readFile(absolutePath);
@@ -945,7 +927,7 @@ const ICUIGit: React.FC<ICUIGitProps> = ({
                 if (onFileOpen) {
                   // Convert Git relative path to absolute path
                   const absolutePath = resolveGitFilePath(contextMenu.file.path);
-                  console.log('[ICUIGit] Opening file for editing:', contextMenu.file.path, '->', absolutePath);
+                  // Opening file from Git panel
                   
                   // Create file object that matches ICUIFileNode interface (like Explorer)
                   const fileNode = { 
