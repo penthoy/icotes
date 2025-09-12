@@ -29,6 +29,7 @@ const ICUIGitConnect: React.FC<ICUIGitConnectProps> = ({
 }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [redirectWarning, setRedirectWarning] = useState<string | null>(null);
 
   // Check if we're in test mode
   const isTestMode = import.meta.env.VITE_TEST_GIT_CONNECT === 'true';
@@ -62,27 +63,41 @@ const ICUIGitConnect: React.FC<ICUIGitConnectProps> = ({
   }, [onGitInitialized, isTestMode]);
 
   const handleConnectGitHub = useCallback(() => {
-    if (isTestMode) {
-      // Dry run mode - simulate GitHub connection without actually doing it
-      console.log('[ICUIGitConnect] TEST MODE: Would connect to GitHub');
-      alert('TEST MODE: Would open GitHub authorization flow');
-      return;
-    }
-
-    // Get GitHub client ID from environment variables
+    setRedirectWarning(null);
     const clientId = import.meta.env.VITE_GIT_CLIENT_ID;
     if (!clientId) {
       setError('GitHub Client ID not configured');
       return;
     }
 
-    // Open GitHub auth flow in new window
-    const githubAuthUrl = `https://github.com/login/oauth/authorize?client_id=${encodeURIComponent(
-      clientId
-    )}&scope=repo,user:email&redirect_uri=${encodeURIComponent(
-      `${window.location.origin}/auth/github/callback`
-    )}`;
-    
+    // Optional explicit redirect URI (must exactly match the one configured in GitHub OAuth App)
+    const explicitRedirect = import.meta.env.VITE_GIT_REDIRECT_URI as string | undefined;
+    // Optionally allow a list of origins (comma separated) to use dynamic origin callback
+    const allowedOrigins = (import.meta.env.VITE_GIT_ALLOWED_REDIRECT_ORIGINS || '')
+      .split(',')
+      .map(o => o.trim())
+      .filter(Boolean);
+
+    let redirectUri: string | undefined = undefined;
+    if (explicitRedirect) {
+      redirectUri = explicitRedirect; // trusted env override
+    } else if (allowedOrigins.includes(window.location.origin)) {
+      redirectUri = `${window.location.origin}/auth/github/callback`;
+    } else {
+      // Omit redirect_uri param so GitHub falls back to the default configured callback
+      setRedirectWarning(
+        'Redirect URI not whitelisted for this origin. Using app default; configure VITE_GIT_REDIRECT_URI or add this origin in allowed list.'
+      );
+    }
+
+    const params = new URLSearchParams({
+      client_id: clientId,
+      scope: 'repo,user:email'
+    });
+    if (redirectUri) params.set('redirect_uri', redirectUri);
+
+    console.log('[ICUIGitConnect] Opening GitHub OAuth flow', { testMode: isTestMode, redirectUri: redirectUri || '(omitted -> use app default)' });
+    const githubAuthUrl = `https://github.com/login/oauth/authorize?${params.toString()}`;
     window.open(githubAuthUrl, '_blank', 'width=600,height=700');
   }, [isTestMode]);
 
@@ -139,7 +154,7 @@ const ICUIGitConnect: React.FC<ICUIGitConnectProps> = ({
           </div>
         </div>
 
-        {/* Action Buttons */}
+  {/* Action Buttons */}
         <div className="space-y-3 w-full max-w-xs">
           {/* Initialize Git Repository */}
           <Button
@@ -163,9 +178,15 @@ const ICUIGitConnect: React.FC<ICUIGitConnectProps> = ({
             variant="outline"
           >
             <Github className="h-4 w-4" />
-            <span>{isTestMode ? 'Test Connect to GitHub' : 'Connect to GitHub'}</span>
+            <span>Connect to GitHub</span>
             <ExternalLink className="h-3 w-3 ml-auto" />
           </Button>
+
+          {redirectWarning && (
+            <div className="text-[10px] leading-snug p-2 border rounded bg-yellow-50 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-300">
+              {redirectWarning}
+            </div>
+          )}
 
           {/* Open GitHub */}
           <Button

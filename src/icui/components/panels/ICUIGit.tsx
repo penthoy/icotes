@@ -111,42 +111,6 @@ const ICUIGit: React.FC<ICUIGitProps> = ({
   
   const { theme } = useTheme();
 
-  // ==================== Path Resolution ====================
-  
-  // Helper function to resolve git file paths correctly
-  const resolveGitFilePath = (filePath: string): string => {
-    console.log('🔍 Resolving git file path:', filePath);
-    
-    // If it's already an absolute path, use it
-    if (filePath.startsWith('/')) {
-      console.log('✓ Already absolute path:', filePath);
-      return filePath;
-    }
-    
-    // Get workspace root and derive repo root
-    const workspaceRoot = getWorkspaceRoot(); // e.g., /home/penthoy/icotes/workspace
-    console.log('📂 Workspace root:', workspaceRoot);
-    
-    // Find the repo root by looking for .git directory
-    // Most commonly, repo root is the parent of workspace, but let's detect it properly
-    let repoRoot = workspaceRoot;
-    
-    // If workspace ends with '/workspace', repo is likely the parent
-    if (workspaceRoot.endsWith('/workspace')) {
-      repoRoot = workspaceRoot.slice(0, -10); // Remove '/workspace'
-    } else {
-      // Otherwise, assume workspace is the repo root
-      repoRoot = workspaceRoot;
-    }
-    
-    const resolvedPath = `${repoRoot}/${filePath}`;
-    
-    console.log('📂 Repo root:', repoRoot);
-    console.log('✓ Resolved path:', resolvedPath);
-    
-    return resolvedPath;
-  };
-
   // ==================== Data Loading ====================
   
   const loadRepoInfo = useCallback(async (): Promise<boolean> => {
@@ -233,27 +197,24 @@ const ICUIGit: React.FC<ICUIGitProps> = ({
 
   // Subscribe to backend SCM websocket events (scm.status_changed, scm.branch_changed)
   useEffect(() => {
-    const handler = (evt: any) => {
-      const eventType = evt?.event || evt?.type || '';
-      if (eventType.includes('status_changed')) {
-        loadStatus();
-      } else if (eventType.includes('branch_changed')) {
-        loadRepoInfo();
-        loadBranches();
-      } else if (eventType.startsWith('scm.')) {
-        // Fallback: refresh lightweight pieces
-        loadStatus();
-      }
-    };
-
     // backendService may expose an EventEmitter API
     try {
-      backendService.on?.('scm_event', handler);
-    } catch (_) { /* ignore */ }
-
-    return () => {
-      try { backendService.off?.('scm_event', handler); } catch (_) { /* ignore */ }
-    };
+      const onStatus = () => loadStatus();
+      const onBranch = () => { loadRepoInfo(); loadBranches(); };
+      
+      backendService.on?.('scm.status_changed', onStatus);
+      backendService.on?.('scm.branch_changed', onBranch);
+      
+      return () => {
+        try { 
+          backendService.off?.('scm.status_changed', onStatus); 
+          backendService.off?.('scm.branch_changed', onBranch); 
+        } catch (_) { /* ignore */ }
+      };
+    } catch (_) { 
+      /* ignore if EventEmitter methods don't exist */
+      return () => {};
+    }
   }, [loadStatus, loadRepoInfo, loadBranches]);
 
   // Auto-refresh every 30 seconds
@@ -485,6 +446,26 @@ const ICUIGit: React.FC<ICUIGitProps> = ({
 
   // ==================== Diff Preview ====================
   
+  // Helper function to resolve git file paths correctly (moved outside useCallback to avoid dependency issues)
+  const resolveGitFilePath = useCallback((filePath: string): string => {
+    console.log('🔍 Resolving git file path:', filePath);
+    
+    // If it's already an absolute path, use it
+    if (filePath.startsWith('/')) {
+      console.log('✓ Already absolute path:', filePath);
+      return filePath;
+    }
+    
+    // Prefer server-reported Git root; fallback to workspace root
+    const baseRoot = (repoInfo?.root || getWorkspaceRoot());
+    console.log('📂 Using repo root:', baseRoot);
+    const resolvedPath = `${baseRoot.replace(/\/+$/, '')}/${filePath.replace(/^\/+/, '')}`;
+    
+    console.log('✓ Resolved path:', resolvedPath);
+    
+    return resolvedPath;
+  }, [repoInfo?.root]);
+
   const handleShowDiff = useCallback(async (path: string) => {
     console.log('[ICUIGit] handleShowDiff -> open diff in editor for', path);
     

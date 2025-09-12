@@ -1213,63 +1213,87 @@ class RestAPI:
         @self.app.post("/api/scm/discard")
         async def scm_discard(payload: Dict[str, List[str]]):
             try:
+                if not self.source_control_service:
+                    raise HTTPException(status_code=503, detail="SCM service not available")
                 ok = await self.source_control_service.discard(payload.get("paths", []))
                 return SuccessResponse(data={"ok": ok})
+            except HTTPException:
+                raise
             except Exception as e:
-                logger.error(f"[SCM] discard error: {e}")
+                logger.exception("[SCM] discard error")
                 raise HTTPException(status_code=500, detail=str(e))
 
         @self.app.post("/api/scm/commit")
         async def scm_commit(payload: Dict[str, Any]):
             try:
+                if not self.source_control_service:
+                    raise HTTPException(status_code=503, detail="SCM service not available")
                 ok = await self.source_control_service.commit(
                     message=str(payload.get("message", "")),
                     amend=bool(payload.get("amend", False)),
                     signoff=bool(payload.get("signoff", False)),
                 )
                 return SuccessResponse(data={"ok": ok})
+            except HTTPException:
+                raise
             except Exception as e:
-                logger.error(f"[SCM] commit error: {e}")
+                logger.exception("[SCM] commit error")
                 raise HTTPException(status_code=500, detail=str(e))
 
         @self.app.get("/api/scm/branches")
         async def scm_branches():
             try:
+                if not self.source_control_service:
+                    raise HTTPException(status_code=503, detail="SCM service not available")
                 data = await self.source_control_service.branches()
                 return SuccessResponse(data=data)
+            except HTTPException:
+                raise
             except Exception as e:
-                logger.error(f"[SCM] branches error: {e}")
+                logger.exception("[SCM] branches error")
                 raise HTTPException(status_code=500, detail=str(e))
 
         @self.app.post("/api/scm/checkout")
         async def scm_checkout(payload: Dict[str, Any]):
             try:
+                if not self.source_control_service:
+                    raise HTTPException(status_code=503, detail="SCM service not available")
                 ok = await self.source_control_service.checkout(
                     branch=str(payload.get("branch", "")),
                     create=bool(payload.get("create", False)),
                 )
                 return SuccessResponse(data={"ok": ok})
+            except HTTPException:
+                raise
             except Exception as e:
-                logger.error(f"[SCM] checkout error: {e}")
+                logger.exception("[SCM] checkout error")
                 raise HTTPException(status_code=500, detail=str(e))
 
         @self.app.post("/api/scm/pull")
         async def scm_pull():
             try:
+                if not self.source_control_service:
+                    raise HTTPException(status_code=503, detail="SCM service not available")
                 ok = await self.source_control_service.pull()
                 return SuccessResponse(data={"ok": ok})
+            except HTTPException:
+                raise
             except Exception as e:
-                logger.error(f"[SCM] pull error: {e}")
+                logger.exception("[SCM] pull error")
                 raise HTTPException(status_code=500, detail=str(e))
 
         @self.app.post("/api/scm/push")
         async def scm_push(payload: Dict[str, Any] | None = None):
             try:
+                if not self.source_control_service:
+                    raise HTTPException(status_code=503, detail="SCM service not available")
                 payload = payload or {}
                 ok = await self.source_control_service.push(set_upstream=bool(payload.get("set_upstream", False)))
                 return SuccessResponse(data={"ok": ok})
+            except HTTPException:
+                raise
             except Exception as e:
-                logger.error(f"[SCM] push error: {e}")
+                logger.exception("[SCM] push error")
                 raise HTTPException(status_code=500, detail=str(e))
 
         @self.app.post("/api/scm/init")
@@ -1280,8 +1304,10 @@ class RestAPI:
                     raise HTTPException(status_code=503, detail="SCM service not available")
                 ok = await self.source_control_service.init_repo()
                 return SuccessResponse(data={"ok": ok}, message="Git repository initialized successfully" if ok else "Failed to initialize Git repository")
+            except HTTPException:
+                raise
             except Exception as e:
-                logger.error(f"[SCM] init error: {e}")
+                logger.exception("[SCM] init error")
                 raise HTTPException(status_code=500, detail=str(e))
 
         # Session CRUD endpoints

@@ -383,56 +383,84 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
     try {
       setIsLoading(true);
       const tabId = `diff:${filePath}`;
-      const existingIdx = files.findIndex(f => f.id === tabId);
-      if (existingIdx >= 0) {
+      
+      let focused = false;
+      const processedResult = (() => {
+        // Process synthetic diff for highlighting
+        const rawLines = patch.split('\n');
+        const added = new Set<number>();
+        const removed = new Set<number>();
+        const hunk = new Set<number>();
+        const processed: string[] = [];
+        
+        for (const line of rawLines) {
+          if (
+            line.startsWith('+++ ') || line.startsWith('--- ') ||
+            line.startsWith('index ') || line.startsWith('diff ') ||
+            line.startsWith('new file mode') || line.startsWith('deleted file mode') ||
+            line.startsWith('rename from') || line.startsWith('rename to') ||
+            line.startsWith('similarity index')
+          ) {
+            processed.push(line); // keep file headers as-is
+            continue;
+          }
+          if (line.startsWith('@@')) {
+            hunk.add(processed.length + 1);
+            processed.push(line); // keep hunk header
+            continue;
+          }
+          if (line.startsWith('+') && !line.startsWith('+++ ')) {
+            added.add(processed.length + 1);
+            processed.push(line.slice(1));
+            continue;
+          }
+          if (line.startsWith('-') && !line.startsWith('--- ')) {
+            removed.add(processed.length + 1);
+            processed.push(line.slice(1));
+            continue;
+          }
+          processed.push(line); // fallback
+        }
+        
+        const processedPatch = processed.join('\n');
+        const name = `${filePath.split('/').pop() || filePath} (diff)`;
+        
+        const diffFile: EditorFile = {
+          id: tabId,
+          name,
+          language: 'diff',
+          content: processedPatch,
+          modified: false,
+          path: filePath,
+          // @ts-ignore add virtual flags
+          isDiff: true,
+          // @ts-ignore
+          readOnly: true,
+          // @ts-ignore
+          diffKind: 'synthetic',
+          // @ts-ignore
+          originalPath: filePath,
+          __diffMeta: { added, removed, hunk, originalPath: filePath }
+        } as any;
+        
+        return diffFile;
+      })();
+
+      setFiles(prev => {
+        if (prev.some(f => f.id === tabId)) {
+          focused = true;
+          return prev;
+        }
+        return [...prev, processedResult];
+      });
+      
+      if (focused) {
         console.log('[ICUIEditor] Synthetic diff tab already exists, focusing:', tabId);
         setActiveFileId(tabId);
         return;
       }
-      const name = `${filePath.split('/').pop() || filePath} (diff)`;
-      console.log('[ICUIEditor] Creating new synthetic diff tab:', name);
-
-      // Process synthetic diff for highlighting
-      const rawLines = patch.split('\n');
-      const added = new Set<number>();
-      const hunk = new Set<number>();
-      const processed: string[] = [];
-      for (const line of rawLines) {
-        if (line.startsWith('+++ ') || line.startsWith('--- ') || line.startsWith('index ') || line.startsWith('diff ') || line.startsWith('new file mode')) {
-          processed.push(line); // keep file headers as-is
-          continue;
-        }
-        if (line.startsWith('@@')) {
-          hunk.add(processed.length + 1);
-          processed.push(line); // keep hunk header
-          continue;
-        }
-        if (line.startsWith('+') && !line.startsWith('+++ ')) {
-          added.add(processed.length + 1);
-          processed.push(line.slice(1));
-          continue;
-        }
-        processed.push(line); // fallback
-      }
-      const processedPatch = processed.join('\n');
-      const diffFile: EditorFile = {
-        id: tabId,
-        name,
-        language: 'diff',
-        content: processedPatch,
-        modified: false,
-        path: filePath,
-        // @ts-ignore add virtual flags
-        isDiff: true,
-        // @ts-ignore
-        readOnly: true,
-        // @ts-ignore
-        diffKind: 'synthetic',
-        // @ts-ignore
-        originalPath: filePath,
-        __diffMeta: { added, removed: new Set(), hunk, originalPath: filePath }
-      } as any;
-      setFiles(prev => [...prev, diffFile]);
+      
+      console.log('[ICUIEditor] Creating new synthetic diff tab:', processedResult.name);
       setActiveFileId(tabId);
       console.log('[ICUIEditor] Synthetic diff tab created successfully');
       EditorNotificationService.show(`Opened diff for ${filePath}`, 'info');
@@ -442,7 +470,7 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
     } finally {
       setIsLoading(false);
     }
-  }, [files]);
+  }, []);
 
   // Phase 4: Open unified diff patch for a file as a virtual read-only tab
   const openDiffPatch = useCallback(async (filePath: string) => {
@@ -459,68 +487,83 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
         return;
       }
       const tabId = `diff:${filePath}`;
-      const existingIdx = files.findIndex(f => f.id === tabId);
-      if (existingIdx >= 0) {
+      
+      let focused = false;
+      const processedResult = (() => {
+        const name = `${filePath.split('/').pop() || filePath} (diff)`;
+        console.log('[ICUIEditor] Creating new diff tab:', name);
+
+        // Preprocess unified diff for improved syntax highlighting:
+        // - Strip leading diff markers (+, -, space) from code lines
+        // - Record line numbers for added/removed/hunk to apply background decorations
+        const rawLines = diffData.patch.split('\n');
+        const added = new Set<number>();
+        const removed = new Set<number>();
+        const hunk = new Set<number>();
+        const processed: string[] = [];
+        for (const line of rawLines) {
+          if (line.startsWith('+++ ') || line.startsWith('--- ') || line.startsWith('index ') || line.startsWith('diff ')) {
+            processed.push(line); // keep file headers as-is
+            continue;
+          }
+          if (line.startsWith('@@')) {
+            hunk.add(processed.length + 1);
+            processed.push(line); // keep hunk header
+            continue;
+          }
+          if (line.startsWith('+') && !line.startsWith('+++ ')) {
+            added.add(processed.length + 1);
+            processed.push(line.slice(1));
+            continue;
+          }
+          if (line.startsWith('-') && !line.startsWith('--- ')) {
+            removed.add(processed.length + 1);
+            processed.push(line.slice(1));
+            continue;
+          }
+          if (line.startsWith(' ')) {
+            processed.push(line.slice(1)); // unchanged line (unified diff prefix space)
+            continue;
+          }
+          processed.push(line); // fallback
+        }
+        const processedPatch = processed.join('\n');
+        
+        const diffFile: EditorFile = {
+          id: tabId,
+          name,
+          language: 'diff',
+          content: processedPatch,
+          modified: false,
+          path: filePath,
+          // @ts-ignore add virtual flags
+          isDiff: true,
+          // @ts-ignore
+          readOnly: true,
+          // @ts-ignore
+          diffKind: 'patch',
+          // @ts-ignore
+          originalPath: filePath,
+          __diffMeta: { added, removed, hunk, originalPath: filePath }
+        } as any;
+        
+        return diffFile;
+      })();
+
+      setFiles(prev => {
+        if (prev.some(f => f.id === tabId)) {
+          focused = true;
+          return prev;
+        }
+        return [...prev, processedResult];
+      });
+      
+      if (focused) {
         console.log('[ICUIEditor] Diff tab already exists, focusing:', tabId);
         setActiveFileId(tabId);
         return;
       }
-      const name = `${filePath.split('/').pop() || filePath} (diff)`;
-      console.log('[ICUIEditor] Creating new diff tab:', name);
-
-      // Preprocess unified diff for improved syntax highlighting:
-      // - Strip leading diff markers (+, -, space) from code lines
-      // - Record line numbers for added/removed/hunk to apply background decorations
-      const rawLines = diffData.patch.split('\n');
-      const added = new Set<number>();
-      const removed = new Set<number>();
-      const hunk = new Set<number>();
-      const processed: string[] = [];
-      for (const line of rawLines) {
-        if (line.startsWith('+++ ') || line.startsWith('--- ') || line.startsWith('index ') || line.startsWith('diff ')) {
-          processed.push(line); // keep file headers as-is
-          continue;
-        }
-        if (line.startsWith('@@')) {
-          hunk.add(processed.length + 1);
-          processed.push(line); // keep hunk header
-          continue;
-        }
-        if (line.startsWith('+') && !line.startsWith('+++ ')) {
-          added.add(processed.length + 1);
-          processed.push(line.slice(1));
-          continue;
-        }
-        if (line.startsWith('-') && !line.startsWith('--- ')) {
-          removed.add(processed.length + 1);
-          processed.push(line.slice(1));
-          continue;
-        }
-        if (line.startsWith(' ')) {
-          processed.push(line.slice(1)); // unchanged line (unified diff prefix space)
-          continue;
-        }
-        processed.push(line); // fallback
-      }
-      const processedPatch = processed.join('\n');
-      const diffFile: EditorFile = {
-        id: tabId,
-        name,
-        language: 'diff',
-        content: processedPatch,
-        modified: false,
-        path: filePath,
-        // @ts-ignore add virtual flags
-        isDiff: true,
-        // @ts-ignore
-        readOnly: true,
-        // @ts-ignore
-        diffKind: 'patch',
-        // @ts-ignore
-        originalPath: filePath,
-        __diffMeta: { added, removed, hunk, originalPath: filePath }
-      } as any;
-      setFiles(prev => [...prev, diffFile]);
+      
       setActiveFileId(tabId);
       console.log('[ICUIEditor] Diff tab created successfully');
       EditorNotificationService.show(`Opened diff for ${filePath}`, 'info');
@@ -530,7 +573,7 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
     } finally {
       setIsLoading(false);
     }
-  }, [files]);
+  }, []);
 
   // Listen for global diff open events (fallback when panel prop not passed)
   useEffect(() => {

@@ -103,8 +103,18 @@ class GitSourceControlProvider(SourceControlProvider):
             if not p:
                 continue
             # Normalize and ensure within workspace_root
-            abspath = os.path.abspath(os.path.join(self.workspace_root, p)) if not os.path.isabs(p) else os.path.abspath(p)
-            if not abspath.startswith(self.workspace_root):
+            abspath = (
+                os.path.abspath(os.path.join(self.workspace_root, p))
+                if not os.path.isabs(p) else os.path.abspath(p)
+            )
+            try:
+                # Use realpath to resolve symlinks and commonpath for safer containment check
+                workspace_real = os.path.realpath(self.workspace_root)
+                abspath_real = os.path.realpath(abspath)
+                common = os.path.commonpath([abspath_real, workspace_real])
+            except (ValueError, OSError):
+                raise ValueError(f"Path outside workspace: {p}")
+            if common != workspace_real:
                 raise ValueError(f"Path outside workspace: {p}")
             safe.append(os.path.relpath(abspath, self.workspace_root))
         return safe
@@ -120,12 +130,18 @@ class GitSourceControlProvider(SourceControlProvider):
             )
             try:
                 stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=self.timeout)
-            except asyncio.TimeoutError:
-                proc.kill()
-                raise TimeoutError(f"git command timed out: {' '.join(args)}")
+            except asyncio.TimeoutError as e:
+                try:
+                    proc.kill()
+                finally:
+                    try:
+                        await proc.wait()
+                    except Exception:
+                        pass
+                raise TimeoutError(f"git command timed out: {' '.join(args)}") from e
             return proc.returncode, stdout_b.decode("utf-8", errors="replace"), stderr_b.decode("utf-8", errors="replace")
-        except FileNotFoundError:
-            raise RuntimeError("git not found on PATH")
+        except FileNotFoundError as e:
+            raise RuntimeError("git not found on PATH") from e
 
     async def _repo_root(self) -> Optional[str]:
         code, out, _ = await self._run_git("rev-parse", "--show-toplevel")
@@ -275,8 +291,8 @@ class GitSourceControlProvider(SourceControlProvider):
         return {"current": current, "local": branches}
 
     async def checkout(self, branch: str, create: bool = False) -> bool:
-        # Basic branch name validation (avoid injections)
-        if not re.match(r"^[A-Za-z0-9._\-/]+$", branch):
+        # Basic branch name validation (avoid injections) - no path separators allowed
+        if not re.match(r"^[A-Za-z0-9._\-]+$", branch):
             raise ValueError("Invalid branch name")
         args = ["checkout"]
         if create:
