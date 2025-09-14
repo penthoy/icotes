@@ -198,6 +198,8 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
         content,
         sender: 'user',
         timestamp: new Date(),
+        // Phase 2: Include attachments in user message
+        attachments: options.attachments,
         metadata: {
           messageType: 'text',
           agentType: options.agentType || config?.agentType || 'openai'

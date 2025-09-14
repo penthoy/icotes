@@ -50,6 +50,7 @@ rest_api_instance = None
 # Local imports
 try:
     from icpy.api import get_websocket_api, shutdown_websocket_api, get_rest_api, shutdown_rest_api
+    from icpy.api.media import router as media_router
     from icpy.api.rest_api import create_rest_api
     from icpy.core.connection_manager import get_connection_manager
     from icpy.services import get_workspace_service, get_filesystem_service, get_terminal_service, get_agent_service, get_chat_service, get_code_execution_service, get_code_execution_service
@@ -391,6 +392,13 @@ app.add_middleware(
 
 # Mount static files
 mount_static_files(app)
+
+# Register media router (Phase 1 minimal upload/download)
+try:
+    app.include_router(media_router, prefix="/api")
+    logger.info("Media router registered at /api/media")
+except Exception as e:
+    logger.error(f"Failed to register media router: {e}")
 
 # Health check endpoint
 @app.get("/health")

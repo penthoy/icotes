@@ -617,7 +617,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
           {/* Modern Composer - preserves previous layout (textarea on top, controls at bottom) */}
           <div className="icui-composer">
             {/* Body: textarea */}
-            <div className="icui-composer__body">
+            <div className="icui-composer__body" data-chat-input>
               <textarea
                 ref={inputRef}
                 value={inputValue}

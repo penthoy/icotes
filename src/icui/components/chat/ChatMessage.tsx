@@ -15,13 +15,14 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { Copy, Check } from 'lucide-react';
-import { ChatMessage as ChatMessageType, ToolCallMeta } from '../../types/chatTypes';
+import { Copy, Check, Download, FileText, Play, Pause } from 'lucide-react';
+import { ChatMessage as ChatMessageType, ToolCallMeta, MediaAttachment } from '../../types/chatTypes';
 import { useTheme } from '../../hooks/useTheme';
 import { ToolCallData } from './ToolCallWidget';
 import { visit } from 'unist-util-visit';
 import { getWidgetForTool } from '../../services/widgetRegistry';
 import { getActiveModelHelper } from './modelhelper';
+import { mediaService } from '../../services/mediaService';
 
 interface ChatMessageProps {
   message: ChatMessageType;
@@ -38,6 +39,102 @@ interface CodeBlockProps {
 const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', highlightQuery = '' }) => {
   const { isDark } = useTheme();
   const [copiedStates, setCopiedStates] = useState<Record<string, boolean>>({});
+  
+  // Attachment rendering helper
+  const renderAttachment = useCallback((attachment: MediaAttachment, index: number) => {
+    const url = mediaService.getAttachmentUrl(attachment);
+    
+    switch (attachment.kind) {
+      case 'image':
+        return (
+          <div key={attachment.id} className="relative group inline-block mr-2 mb-2">
+            <img
+              src={url}
+              alt={`Attachment ${index + 1}`}
+              className="max-w-xs max-h-64 rounded-lg border shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+              style={{
+                border: '1px solid var(--icui-border-subtle)',
+                backgroundColor: 'var(--icui-bg-secondary)'
+              }}
+              onClick={() => window.open(url, '_blank')}
+            />
+            <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const link = document.createElement('a');
+                  link.href = url;
+                  link.download = attachment.path.split('/').pop() || 'image';
+                  link.click();
+                }}
+                className="p-1 rounded bg-black bg-opacity-50 text-white hover:bg-opacity-70 transition-colors"
+                title="Download image"
+              >
+                <Download size={14} />
+              </button>
+            </div>
+          </div>
+        );
+      
+      case 'audio':
+        return (
+          <div key={attachment.id} className="flex items-center gap-3 p-3 rounded-lg border mb-2 max-w-xs"
+               style={{
+                 border: '1px solid var(--icui-border-subtle)',
+                 backgroundColor: 'var(--icui-bg-secondary)'
+               }}>
+            <audio controls className="flex-1 h-8">
+              <source src={url} type={attachment.mime} />
+              Your browser does not support audio playback.
+            </audio>
+            <button
+              onClick={() => {
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = attachment.path.split('/').pop() || 'audio';
+                link.click();
+              }}
+              className="p-1 rounded hover:bg-opacity-10 hover:bg-current transition-colors"
+              title="Download audio"
+            >
+              <Download size={16} />
+            </button>
+          </div>
+        );
+      
+      case 'file':
+      default:
+        return (
+          <div key={attachment.id} className="flex items-center gap-3 p-3 rounded-lg border mb-2 max-w-xs"
+               style={{
+                 border: '1px solid var(--icui-border-subtle)',
+                 backgroundColor: 'var(--icui-bg-secondary)'
+               }}>
+            <FileText size={20} style={{ color: 'var(--icui-text-secondary)' }} />
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium truncate" style={{ color: 'var(--icui-text-primary)' }}>
+                {attachment.path.split('/').pop() || 'Unknown file'}
+              </div>
+              <div className="text-xs" style={{ color: 'var(--icui-text-secondary)' }}>
+                {(attachment.size / 1024).toFixed(1)} KB
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = attachment.path.split('/').pop() || 'file';
+                link.click();
+              }}
+              className="p-1 rounded hover:bg-opacity-10 hover:bg-current transition-colors"
+              title="Download file"
+            >
+              <Download size={16} />
+            </button>
+          </div>
+        );
+    }
+  }, []);
   
   // Simple remark plugin to wrap matches in <mark>
   const remarkHighlight = useMemo(() => {
@@ -357,6 +454,13 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', high
             {message.content}
           </div>
           
+          {/* User Message Attachments */}
+          {message.attachments && message.attachments.length > 0 && (
+            <div className="mt-3">
+              {message.attachments.map((attachment, index) => renderAttachment(attachment, index))}
+            </div>
+          )}
+          
           {/* User Message Metadata */}
           <div className="flex items-center justify-end mt-2 text-xs" 
                style={{ color: 'var(--icui-text-secondary)' }}>
@@ -427,6 +531,13 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', high
             <div className="flex items-center gap-2 text-sm py-2" style={{ color: 'var(--icui-text-secondary)' }}>
               <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
               <span>Processing tools...</span>
+            </div>
+          )}
+
+          {/* AI Message Attachments */}
+          {message.attachments && message.attachments.length > 0 && (
+            <div className="mt-3">
+              {message.attachments.map((attachment, index) => renderAttachment(attachment, index))}
             </div>
           )}
           

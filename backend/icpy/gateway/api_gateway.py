@@ -31,6 +31,7 @@ from ..core.protocol import (
     create_error_response, get_protocol_handler
 )
 from ..services import get_code_execution_service, get_filesystem_service
+from ..api.media import router as media_router  # Added for media endpoints in test app
 
 logger = logging.getLogger(__name__)
 
@@ -776,6 +777,13 @@ def create_fastapi_app() -> FastAPI:
     
     # Create a wrapper app
     app = FastAPI(title="icpy API Gateway", version="1.0.0")
+
+    # Include media API router directly so tests (and lightweight deployments) have /api/media endpoints
+    # without needing full main.py bootstrap.
+    try:
+        app.include_router(media_router, prefix="/api")
+    except Exception as e:
+        logger.warning(f"Failed to include media router: {e}")
     
     @app.on_event("startup")
     async def startup():

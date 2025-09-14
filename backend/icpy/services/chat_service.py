@@ -59,6 +59,9 @@ class ChatMessage:
     metadata: Dict[str, Any] = field(default_factory=dict)
     agent_id: Optional[str] = None
     session_id: Optional[str] = None
+    # Phase 0 media groundwork: list of attachment metadata dicts
+    # Each attachment dict (Phase 1+) will contain: id, filename, mime_type, size, url (or relative path), and optional thumbnail
+    attachments: List[Dict[str, Any]] = field(default_factory=list)
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization"""
@@ -70,7 +73,8 @@ class ChatMessage:
             'type': self.type.value,
             'metadata': self.metadata,
             'agent_id': self.agent_id,
-            'session_id': self.session_id
+            'session_id': self.session_id,
+            'attachments': self.attachments
         }
     
     @classmethod
@@ -84,7 +88,8 @@ class ChatMessage:
             type=ChatMessageType(data.get('type', 'message')),
             metadata=data.get('metadata', {}),
             agent_id=data.get('agent_id'),
-            session_id=data.get('session_id')
+            session_id=data.get('session_id'),
+            attachments=data.get('attachments', [])
         )
 
 
