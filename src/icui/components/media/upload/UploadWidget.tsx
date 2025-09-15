@@ -9,6 +9,9 @@ import { useMediaUpload, UseMediaUploadReturn, UploadItem as UploadItemType } fr
 import UploadItem from './UploadItem';
 import { X, Upload, FileText, Image, Plus } from 'lucide-react';
 
+// Constants
+const DEFAULT_WIDGET_HEIGHT = 420;
+
 interface UploadWidgetProps {
   isOpen: boolean;
   onClose: () => void;
@@ -30,7 +33,7 @@ export default function UploadWidget({
   className = '',
   externalQueue,
   panelMode = false,
-  initialPosition = { x: 16, y: typeof window !== 'undefined' ? (window.innerHeight - 420) : 100 }
+  initialPosition = { x: 16, y: typeof window !== 'undefined' ? (window.innerHeight - DEFAULT_WIDGET_HEIGHT) : 100 }
 }: UploadWidgetProps) {
   const internal = useMediaUpload();
   const api = externalQueue || internal;

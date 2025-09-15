@@ -209,10 +209,17 @@ class MediaService:
         mem = io.BytesIO()
         with zipfile.ZipFile(mem, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
             for rel in rel_paths:
-                p = self.base_dir / rel
-                if p.exists() and p.is_file():
-                    # Use just filename inside zip to avoid leaking server paths
-                    zf.write(p, arcname=p.name)
+                try:
+                    # Defense-in-depth: validate path doesn't escape media root
+                    p = (self.base_dir / rel).resolve()
+                    p.relative_to(self.base_dir)
+                    if p.exists() and p.is_file():
+                        # Use just filename inside zip to avoid leaking server paths
+                        zf.write(p, arcname=p.name)
+                except (ValueError, OSError):
+                    # Skip invalid paths that escape media root
+                    logger.warning(f"Skipping invalid path in build_zip: {rel}")
+                    continue
         mem.seek(0)
         return mem.read()
 

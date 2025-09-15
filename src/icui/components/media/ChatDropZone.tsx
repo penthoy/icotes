@@ -33,7 +33,6 @@ export function ChatDropZone({ selector = '[data-chat-input]', uploadApi }: Chat
         e.stopPropagation();
         const files = Array.from(e.dataTransfer.files);
         uploadApi.addFiles(files, { context: 'chat' });
-    console.log('[ChatDropZone] Added files via drop:', files.map(f=>f.name));
       }
       setActive(false);
     };

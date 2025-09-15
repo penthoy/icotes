@@ -18,7 +18,7 @@
  */
 
 import React, { useRef, useEffect, useState, useCallback, useImperativeHandle, forwardRef } from 'react';
-import useMediaUpload from '../../hooks/useMediaUpload';
+import { useMediaUpload } from '../../hooks/useMediaUpload';
 import { Square, Send, Paperclip, Mic, Wand2, RefreshCw, Settings } from 'lucide-react';
 import { 
   useChatMessages, 
@@ -440,53 +440,21 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
   target.style.height = `${Math.min(target.scrollHeight, 220)}px`;
   }, []);
 
-  // Drag & Drop (minimal): highlight compose area + queue files
-  useEffect(() => {
-    const compose = chatContainerRef.current?.parentElement?.querySelector('[data-chat-input]');
-    if (!compose) return;
-    const el = compose as HTMLElement;
-    const onDragOver = (e: DragEvent) => {
-      if (!e.dataTransfer) return;
-      if (!Array.from(e.dataTransfer.types).includes('Files')) return;
-      e.preventDefault();
-      el.classList.add('ring', 'ring-blue-400');
-      el.style.background = 'var(--icui-bg-secondary)';
-      el.style.transition = 'background 120ms ease, box-shadow 120ms ease';
-      el.style.boxShadow = '0 0 0 2px var(--icui-border-accent, rgba(59,130,246,0.6)) inset';
-    };
-    const clear = () => {
-      el.classList.remove('ring', 'ring-blue-400');
-      el.style.background = '';
-      el.style.boxShadow = '';
-    };
-    const onDrop = (e: DragEvent) => {
-      if (!e.dataTransfer) return;
-      if (!Array.from(e.dataTransfer.types).includes('Files')) return;
-      e.preventDefault();
-      const files = Array.from(e.dataTransfer.files);
-      files.forEach(file => {
-        const preview = file.type.startsWith('image/') ? URL.createObjectURL(file) : '';
-        const tempId = `staged-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-        setStaged(prev => [...prev, { id: tempId, file, preview }]);
-      });
-      uploadApi.addFiles(e.dataTransfer.files, { context: 'chat' });
-      clear();
-    };
-    el.addEventListener('dragover', onDragOver);
-    el.addEventListener('drop', onDrop);
-    window.addEventListener('dragleave', clear, true);
-    window.addEventListener('drop', clear, true);
-    window.addEventListener('dragend', clear, true);
-    return () => {
-      el.removeEventListener('dragover', onDragOver);
-      el.removeEventListener('drop', onDrop);
-      window.removeEventListener('dragleave', clear, true);
-      window.removeEventListener('drop', clear, true);
-      window.removeEventListener('dragend', clear, true);
-    };
-  }, [uploadApi]);
+  // Drag & Drop handled by ChatDropZone to avoid duplicate enqueues
 
-  const removeStaged = (id: string) => setStaged(prev => prev.filter(s => s.id !== id));
+  const removeStaged = (id: string) => 
+    setStaged(prev => {
+      const item = prev.find(s => s.id === id);
+      if (item?.preview) URL.revokeObjectURL(item.preview);
+      return prev.filter(s => s.id !== id);
+    });
+
+  // Cleanup URLs on unmount
+  const stagedRef = useRef(staged);
+  useEffect(() => { stagedRef.current = staged; }, [staged]);
+  useEffect(() => () => {
+    stagedRef.current.forEach(s => s.preview && URL.revokeObjectURL(s.preview));
+  }, []);
 
   // Clipboard paste (images) -> stage only (upload handled globally to avoid duplicates)
   useEffect(() => {

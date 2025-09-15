@@ -91,7 +91,20 @@ export function useMediaUpload(options: { autoStart?: boolean } = {}): UseMediaU
           updateUpload(id, { status: 'completed', progress: 100, result: direct, abortController: undefined });
           return direct;
         } catch (e) {
-          const msg = e instanceof Error ? e.message : 'Direct upload failed';
+          let msg: string;
+          if (e instanceof Error) {
+            msg = e.message;
+          } else if (typeof e === 'string') {
+            msg = `Direct upload failed: ${e}`;
+          } else if (typeof e === 'object' && e !== null) {
+            try {
+              msg = `Direct upload failed: ${JSON.stringify(e)}`;
+            } catch {
+              msg = `Direct upload failed: ${e.toString()}`;
+            }
+          } else {
+            msg = 'Direct upload failed: Unknown error';
+          }
           updateUpload(id, { status: 'error', error: msg, abortController: undefined });
           throw e;
         }
@@ -267,7 +280,11 @@ export function useMediaUpload(options: { autoStart?: boolean } = {}): UseMediaU
   }, [uploads, autoStart, uploadSingleFile]);
 
   const removeFile = useCallback((id: string) => {
-    setUploads(prev => prev.filter(upload => upload.id !== id));
+    setUploads(prev => {
+      const u = prev.find(x => x.id === id);
+      if (u?.abortController) u.abortController.abort();
+      return prev.filter(upload => upload.id !== id);
+    });
   }, []);
 
   const uploadAll = useCallback(async (): Promise<UploadResult[]> => {

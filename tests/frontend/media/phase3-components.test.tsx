@@ -47,11 +47,15 @@ describe('Phase 3 Media Components', () => {
       vi.clearAllMocks();
     });
 
-    it('renders when open', () => {
+    it('renders header and helper text when open', () => {
       render(<UploadWidget {...defaultProps} />);
       expect(screen.getByText('Upload Files')).toBeInTheDocument();
-      expect(screen.getByText(/Drop files here or/)).toBeInTheDocument();
-      expect(screen.getByText(/browse/)).toBeInTheDocument();
+      // New helper guidance paragraph
+      expect(
+        screen.getByText(/Use the contextual drop zones/)
+      ).toBeInTheDocument();
+      // Primary manual select button
+      expect(screen.getByText('Browse Files')).toBeInTheDocument();
     });
 
     it('hides when closed', () => {

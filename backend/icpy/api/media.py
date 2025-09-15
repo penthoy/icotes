@@ -217,7 +217,23 @@ async def create_zip(body: Dict = Body(...)):
     if not isinstance(paths, list) or not all(isinstance(p, str) for p in paths):
         raise HTTPException(status_code=400, detail="paths must be list[str]")
     service = get_media_service()
-    data = service.build_zip(paths)
+    
+    # Validate all paths are within media root before zipping
+    safe_rel_paths: List[str] = []
+    for rel in paths:
+        try:
+            # Resolve path against media base directory
+            p = (service.base_dir / rel).resolve()
+            # Ensure resolved path is within media root
+            p.relative_to(service.base_dir)
+            if p.is_file():
+                safe_rel_paths.append(rel)
+        except (ValueError, OSError):
+            # Skip invalid paths that escape media root or don't exist
+            logger.warning(f"Skipping invalid path in zip request: {rel}")
+            continue
+    
+    data = service.build_zip(safe_rel_paths)
     return StreamingResponse(io.BytesIO(data), media_type='application/zip', headers={
         'Content-Disposition': 'attachment; filename="media_bundle.zip"'
     })

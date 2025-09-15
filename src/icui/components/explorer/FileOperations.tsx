@@ -184,16 +184,15 @@ export class ExplorerFileOperations {
    */
   unregisterCommands(): void {
     const commandIds = [
-      'explorer.createFile',
-      'explorer.createFolder',
+      'explorer.newFile',
+      'explorer.newFolder',
       'explorer.copy',
       'explorer.cut',
       'explorer.paste',
       'explorer.delete',
       'explorer.duplicate',
       'explorer.rename',
-      'explorer.selectAll',
-      'explorer.clearSelection',
+      // selection actions are not registered via command registry here
       'explorer.refresh',
       'explorer.download',
     ];

@@ -446,17 +446,17 @@ async def fallback_download_file(path: str):  # type: ignore
         # Determine workspace root (parent of backend when launched inside backend)
         current_dir = os.getcwd()
         if os.path.basename(current_dir) == 'backend':
-            workspace_root = os.path.abspath(os.path.join(current_dir, os.pardir))
+            workspace_root = os.path.realpath(os.path.join(current_dir, os.pardir))
         else:
-            workspace_root = os.path.abspath(current_dir)
+            workspace_root = os.path.realpath(current_dir)
         candidates = []
         if os.path.isabs(path):
-            candidates.append(os.path.abspath(path))
+            candidates.append(os.path.realpath(path))
         else:
             # relative to filesystem workspace folder if exists
             fs_root = os.path.join(workspace_root, 'workspace')
-            candidates.append(os.path.abspath(os.path.join(fs_root, path.lstrip('/'))))
-            candidates.append(os.path.abspath(os.path.join(workspace_root, path.lstrip('/'))))
+            candidates.append(os.path.realpath(os.path.join(fs_root, path.lstrip('/'))))
+            candidates.append(os.path.realpath(os.path.join(workspace_root, path.lstrip('/'))))
         resolved = None
         for cand in candidates:
             if os.path.exists(cand):
@@ -466,8 +466,13 @@ async def fallback_download_file(path: str):  # type: ignore
             raise HTTPException(status_code=404, detail="File not found")
         if os.path.isdir(resolved):
             raise HTTPException(status_code=400, detail="Cannot download a directory (use zip)")
-        if not (resolved.startswith(workspace_root)):
-            raise HTTPException(status_code=400, detail="Path outside workspace root")
+        # Use realpath and commonpath for secure path validation
+        try:
+            if os.path.commonpath([workspace_root, resolved]) != workspace_root:
+                raise HTTPException(status_code=400, detail="Path outside workspace root")
+        except ValueError:
+            # Different drives on Windows
+            raise HTTPException(status_code=400, detail="Invalid path")
         filename = os.path.basename(resolved)
         import mimetypes
         mime, _ = mimetypes.guess_type(filename)
