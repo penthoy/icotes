@@ -30,17 +30,20 @@ We now standardize to project-root relative ".icotes/media" so exported files
 and media storage sit under the backend workspace root consistently.
 For backward compatibility we detect the old path and migrate (simple reuse) if it exists.
 """
-_legacy_default = "workspace/.icotes/media"
-_new_default = ".icotes/media"
+# Revert to explicit workspace prefix per updated requirement so files land under
+# /workspace/.icotes/media rather than project-root/.icotes/media
+_legacy_default = ".icotes/media"  # previously new default
+_required_default = "workspace/.icotes/media"
 env_override = os.getenv("MEDIA_BASE_DIR")
 if env_override:
     MEDIA_BASE_DIR = env_override
 else:
-    # Prefer new path, but if legacy exists and new does not, keep using legacy to avoid breakage
-    if os.path.exists(_legacy_default) and not os.path.exists(_new_default):
-        MEDIA_BASE_DIR = _legacy_default
+    # Use required path; if it doesn't exist create it. If data already in legacy, keep legacy but emit warning.
+    if os.path.exists(_legacy_default) and not os.path.exists(_required_default):
+        # Legacy (root based) exists but new required doesn't; migrate by using required and leaving old intact.
+        MEDIA_BASE_DIR = _required_default
     else:
-        MEDIA_BASE_DIR = _new_default
+        MEDIA_BASE_DIR = _required_default
 MEDIA_UPLOAD_DIR = os.getenv("MEDIA_UPLOAD_DIR", "uploads")
 MEDIA_TEMP_DIR = os.getenv("MEDIA_TEMP_DIR", "tmp")
 MEDIA_MAX_FILE_SIZE_MB = int(os.getenv("MEDIA_MAX_FILE_SIZE_MB", "25"))

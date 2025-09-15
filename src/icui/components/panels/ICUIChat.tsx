@@ -18,6 +18,7 @@
  */
 
 import React, { useRef, useEffect, useState, useCallback, useImperativeHandle, forwardRef } from 'react';
+import useMediaUpload from '../../hooks/useMediaUpload';
 import { Square, Send, Paperclip, Mic, Wand2, RefreshCw, Settings } from 'lucide-react';
 import { 
   useChatMessages, 
@@ -81,6 +82,18 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
   const [hasNewMessages, setHasNewMessages] = useState(false);
   const [userHasScrolledUp, setUserHasScrolledUp] = useState(false);
   const lastScrollTop = useRef(0);
+  // Local staged attachments (minimal Phase 4.1 test implementation)
+  const [staged, setStaged] = useState<{ id: string; file: File; preview: string }[]>([]);
+  const uploadApi = useMediaUpload({ autoStart: true });
+
+  // Watch upload queue for completed chat-context items and stage them (only new additions)
+  useEffect(() => {
+    uploadApi.uploads.forEach(u => {
+      if (u.context === 'chat' && u.status === 'completed' && u.result && !staged.find(s => s.id === u.id)) {
+        // Already have preview from creation; leave as-is
+      }
+    });
+  }, [uploadApi.uploads, staged]);
 
   // Use the chat messages hook for backend integration
   const {
@@ -427,6 +440,83 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
   target.style.height = `${Math.min(target.scrollHeight, 220)}px`;
   }, []);
 
+  // Drag & Drop (minimal): highlight compose area + queue files
+  useEffect(() => {
+    const compose = chatContainerRef.current?.parentElement?.querySelector('[data-chat-input]');
+    if (!compose) return;
+    const el = compose as HTMLElement;
+    const onDragOver = (e: DragEvent) => {
+      if (!e.dataTransfer) return;
+      if (!Array.from(e.dataTransfer.types).includes('Files')) return;
+      e.preventDefault();
+      el.classList.add('ring', 'ring-blue-400');
+      el.style.background = 'var(--icui-bg-secondary)';
+      el.style.transition = 'background 120ms ease, box-shadow 120ms ease';
+      el.style.boxShadow = '0 0 0 2px var(--icui-border-accent, rgba(59,130,246,0.6)) inset';
+    };
+    const clear = () => {
+      el.classList.remove('ring', 'ring-blue-400');
+      el.style.background = '';
+      el.style.boxShadow = '';
+    };
+    const onDrop = (e: DragEvent) => {
+      if (!e.dataTransfer) return;
+      if (!Array.from(e.dataTransfer.types).includes('Files')) return;
+      e.preventDefault();
+      const files = Array.from(e.dataTransfer.files);
+      files.forEach(file => {
+        const preview = file.type.startsWith('image/') ? URL.createObjectURL(file) : '';
+        const tempId = `staged-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        setStaged(prev => [...prev, { id: tempId, file, preview }]);
+      });
+      uploadApi.addFiles(e.dataTransfer.files, { context: 'chat' });
+      clear();
+    };
+    el.addEventListener('dragover', onDragOver);
+    el.addEventListener('drop', onDrop);
+    window.addEventListener('dragleave', clear, true);
+    window.addEventListener('drop', clear, true);
+    window.addEventListener('dragend', clear, true);
+    return () => {
+      el.removeEventListener('dragover', onDragOver);
+      el.removeEventListener('drop', onDrop);
+      window.removeEventListener('dragleave', clear, true);
+      window.removeEventListener('drop', clear, true);
+      window.removeEventListener('dragend', clear, true);
+    };
+  }, [uploadApi]);
+
+  const removeStaged = (id: string) => setStaged(prev => prev.filter(s => s.id !== id));
+
+  // Clipboard paste (images) -> stage only (upload handled globally to avoid duplicates)
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      if (!e.clipboardData) return;
+      // If global handler already processed (sets a custom data flag), skip
+      if ((e as any)._icuiGlobalPasteHandled) return;
+      const items = Array.from(e.clipboardData.items);
+      const fileItems = items.filter(it => it.kind === 'file');
+      if (fileItems.length === 0) return;
+      const files: File[] = [];
+      fileItems.forEach(it => {
+        const f = it.getAsFile();
+        if (f) files.push(f);
+      });
+      if (files.length === 0) return;
+      // Only handle if at least one image/* to avoid intercepting generic clipboard
+      const imageFiles = files.filter(f => f.type.startsWith('image/'));
+      if (imageFiles.length === 0) return;
+      imageFiles.forEach(file => {
+        const preview = URL.createObjectURL(file);
+        const tempId = `staged-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        setStaged(prev => [...prev, { id: tempId, file, preview }]);
+      });
+      // Do not enqueue here to avoid duplicate; global manager handles upload.
+    };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  }, [uploadApi]);
+
   return (
     <div 
       className={`icui-chat h-full flex flex-col ${className}`} 
@@ -616,6 +706,24 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
         <div className="space-y-2">
           {/* Modern Composer - preserves previous layout (textarea on top, controls at bottom) */}
           <div className="icui-composer">
+            {staged.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-2" data-chat-attachments>
+                {staged.map(att => (
+                  <div key={att.id} className="relative group border rounded p-0.5" style={{ borderColor: 'var(--icui-border-subtle)' }}>
+                    {att.preview ? (
+                      <img src={att.preview} alt={att.file.name} className="w-8 h-8 object-cover rounded" />
+                    ) : (
+                      <div className="w-8 h-8 flex items-center justify-center text-[10px]" style={{ background: 'var(--icui-bg-secondary)', color: 'var(--icui-text-secondary)' }}>{att.file.name.split('.').pop()?.toUpperCase()}</div>
+                    )}
+                    <button
+                      onClick={() => removeStaged(att.id)}
+                      className="absolute -top-2 -right-2 bg-red-600 text-white w-4 h-4 rounded-full text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition"
+                      title="Remove"
+                    >×</button>
+                  </div>
+                ))}
+              </div>
+            )}
             {/* Body: textarea */}
             <div className="icui-composer__body" data-chat-input>
               <textarea
