@@ -68,11 +68,6 @@ async def export_media(body: Dict = Body(...)):
     attachment_id = body.get('attachment_id')
     dest_path = body.get('dest_path')
     
-    print(f"🔧 [BACKEND EXPORT DEBUG] Received request:")
-    print(f"   attachment_id: {attachment_id}")
-    print(f"   dest_path: '{dest_path}'")
-    print(f"   body: {body}")
-    
     if not attachment_id or dest_path is None:
         raise HTTPException(status_code=400, detail="attachment_id and dest_path required")
 

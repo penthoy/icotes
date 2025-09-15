@@ -60,13 +60,6 @@ if not _base_path.is_absolute():
     else:
         workspace_root = current_dir
     _base_path = workspace_root / _base_path
-    print(f"🔧 [MEDIA SERVICE DEBUG] Media base path resolution:")
-    print(f"   current_dir: {current_dir}")
-    print(f"   workspace_root: {workspace_root}")
-    print(f"   MEDIA_BASE_DIR: {MEDIA_BASE_DIR}")
-    print(f"   resolved _base_path: {_base_path}")
-else:
-    print(f"🔧 [MEDIA SERVICE DEBUG] Using absolute MEDIA_BASE_DIR: {_base_path}")
 
 UPLOAD_PATH = _base_path / MEDIA_UPLOAD_DIR
 TEMP_PATH = _base_path / MEDIA_TEMP_DIR

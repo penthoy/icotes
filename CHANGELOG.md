@@ -22,6 +22,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Correctness**: Fixed race conditions in tab creation, improved synthetic diff generation, and added necessary `null` checks in the backend.
   - **Testability**: Introduced `VITE_TEST_GIT_CONNECT` for easier local testing of the connection flow.
 
+#### September 2025 - Explorer File Download System
+
+- **Right-Click Download Support**: Complete file and folder download functionality from explorer
+  - **Backend Endpoints**: Added `/api/files/download` for single file downloads with proper MIME detection and Content-Disposition headers
+  - **Multi-File Downloads**: Integrated with existing `/api/media/zip` endpoint for folder and batch file downloads
+  - **Context Menu Integration**: Enhanced `ExplorerContextMenu.tsx` with download option for single and multiple selections
+  - **Error Handling**: Added fallback routes and comprehensive error handling for missing files or permissions
+  - **Security**: Path resolution with safety checks to ensure downloads only from workspace directory
+
+- **Chat Media System Improvements**: Enhanced drag & drop and clipboard paste functionality
+  - **Duplicate Upload Fix**: Eliminated duplicate image storage by centralizing uploads through `GlobalUploadManager`
+  - **Clipboard Integration**: Added global window paste listener for seamless image clipboard integration
+  - **UI/UX Enhancements**: Improved drag feedback with filled backgrounds, compact 32px thumbnails, and reliable hover state cleanup
+  - **Storage Path Fix**: Corrected media storage to use workspace-relative paths instead of global media directory
+
+- **File Context Cleanup**: Removed placeholder "Reveal in File Manager" functionality
+  - **Code Removal**: Cleaned up unused `revealInOS` command registration and implementation from `FileOperations.tsx`
+  - **Menu Cleanup**: Removed non-functional context menu item from `ExplorerContextMenu.tsx`
+  - **Error Prevention**: Eliminated potential user confusion from placeholder functionality
+
 #### September 2025 - Git Panel Integration Planning
 
 - **Git Panel Infrastructure**: Comprehensive Git integration plan scaffolded for ICUI framework

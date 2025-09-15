@@ -7,6 +7,16 @@
 
 ## Recently Finished (September 2025)
 
+### Explorer File Download System (September 2025)
+- **Task**: Implement right-click download functionality for files and folders from the explorer
+- **Key Insight**: Added complete download infrastructure with backend endpoints `/api/files/download` for single files and `/api/media/zip` for multi-file/folder archives. Explorer context menu now supports batch downloads with automatic zip creation for multiple selections. Fixed missing imports and added fallback routes for reliability.
+- **Files**: `src/icui/components/explorer/ExplorerContextMenu.tsx`, `src/icui/components/explorer/FileOperations.tsx`, `backend/icpy/api/rest_api.py`, `backend/main.py`
+
+### Chat Media Upload Enhancements (September 2025)
+- **Task**: Complete chat drag & drop and clipboard paste functionality with duplicate fixes
+- **Key Insight**: Unified media upload system with global clipboard paste handling, eliminated duplicate uploads by centralizing through `GlobalUploadManager`, improved drag feedback UX with proper hover states and compact 32px thumbnails. Fixed media storage path to workspace-relative location.
+- **Files**: `src/icui/components/ICUIChat.tsx`, `src/hooks/useMediaUpload.tsx`, `src/icui/components/explorer/ExplorerDropProvider.tsx`, `backend/icpy/api/media.py`
+
 ### Git Panel Plan Implementation (September 2025)
 - **Task**: Scaffold Git integration plan for ICUI framework
 - **Key Insight**: Created comprehensive Git service architecture with backend REST endpoints, WebSocket events, and minimal MVP frontend panel. Established foundation for Git status, stage/unstage, commit, and diff operations within ICUI ecosystem
