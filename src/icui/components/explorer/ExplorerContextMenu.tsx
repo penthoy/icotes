@@ -153,6 +153,16 @@ export function createExplorerContextMenu(
       isVisible: () => true,
     });
 
+    // Download actions (Phase 5)
+    items.push({
+      id: 'download',
+      label: multipleSelection ? `Download ${selectedFiles.length} items` : 'Download',
+      icon: '⬇️',
+      commandId: 'explorer.download',
+      isVisible: () => true,
+      isEnabled: () => true,
+    });
+
     // Reveal in OS (only for single selection)
     items.push({
       id: 'revealInOS',

@@ -169,6 +169,18 @@ export class ExplorerFileOperations {
           description: 'Open the selected file or folder in the system file manager'
         }
       ),
+
+      // Download (Phase 5)
+      CommandUtils.create(
+        'explorer.download',
+        'Download',
+        this.downloadFiles.bind(this),
+        { 
+          category: 'file',
+          icon: '⬇️',
+          description: 'Download the selected files or folders'
+        }
+      ),
     ];
 
     commands.forEach(command => {
@@ -193,6 +205,7 @@ export class ExplorerFileOperations {
       'explorer.paste',
       'explorer.refresh',
       'explorer.revealInOS',
+      'explorer.download',
     ];
 
     commandIds.forEach(commandId => {
@@ -566,6 +579,71 @@ export class ExplorerFileOperations {
     // - macOS: open -R "path"
     // - Linux: xdg-open "parent_path"
     alert(`Reveal in OS: ${file.path}\n(Not implemented in this demo)`);
+  }
+
+  /**
+   * Download selected files (Phase 5)
+   */
+  private async downloadFiles(context?: FileOperationContext): Promise<void> {
+    if (!context || context.selectedFiles.length === 0) {
+      log.warn('ExplorerFileOperations', 'downloadFiles requires selected files');
+      return;
+    }
+
+    try {
+      if (context.selectedFiles.length === 1) {
+        // Single file download
+        const file = context.selectedFiles[0];
+        const url = `/api/files/download?path=${encodeURIComponent(file.path)}`;
+        
+        // Create temporary download link
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = file.name;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        log.info('ExplorerFileOperations', 'Downloaded single file', { path: file.path });
+      } else {
+        // Multiple files - create zip
+        const paths = context.selectedFiles.map(f => f.path);
+        
+        const response = await fetch('/api/media/zip', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ paths }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`Zip creation failed: ${response.statusText}`);
+        }
+
+        // Download the zip
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `files-${Date.now()}.zip`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        URL.revokeObjectURL(url);
+
+        log.info('ExplorerFileOperations', 'Downloaded multiple files as zip', { 
+          count: context.selectedFiles.length,
+          paths 
+        });
+      }
+    } catch (error) {
+      log.error('ExplorerFileOperations', 'Failed to download files', { 
+        files: context.selectedFiles.map(f => f.path),
+        error 
+      });
+      throw error;
+    }
   }
 
   /**

@@ -23,11 +23,13 @@ import asyncio
 import json
 import logging
 import time
+import os
+import mimetypes
 from typing import Dict, List, Any, Optional, Union
 from dataclasses import dataclass, field
 
 from fastapi import FastAPI, HTTPException, Depends, Request, Response, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
@@ -566,6 +568,69 @@ class RestAPI:
             except Exception as e:
                 logger.error(f"Error getting file info: {e}")
                 raise HTTPException(status_code=500, detail=str(e))
+
+        # File download endpoint (Phase 5 - explorer download)
+        @self.app.get("/api/files/download")
+        async def download_file(path: str):  # type: ignore
+            """Download a single file specified by absolute or workspace-relative path.
+
+            The frontend passes the raw file path as displayed in the explorer tree.
+            We allow absolute paths within the workspace root, or relative paths which
+            are resolved against the filesystem service root. Directories are rejected.
+            """
+            try:
+                logger.info(f"[DOWNLOAD] request path param='{path}' cwd='{os.getcwd()}' fs_root='{self.filesystem_service.root_path}'")
+                if not path:
+                    raise HTTPException(status_code=400, detail="path query parameter required")
+                # Determine workspace root (parent of backend dir if running from backend/)
+                current_dir = os.getcwd()
+                if os.path.basename(current_dir) == "backend":
+                    workspace_root = os.path.abspath(os.path.join(current_dir, os.pardir))
+                else:
+                    workspace_root = os.path.abspath(current_dir)
+
+                fs_root = self.filesystem_service.root_path
+
+                candidates = []  # possible absolute paths to try
+
+                # If user supplied absolute path, use it directly first
+                if os.path.isabs(path):
+                    candidates.append(os.path.abspath(path))
+                else:
+                    # Relative to fs_root
+                    candidates.append(os.path.abspath(os.path.join(fs_root, path.lstrip('/'))))
+                    # Relative to workspace root (if different)
+                    if fs_root != workspace_root:
+                        candidates.append(os.path.abspath(os.path.join(workspace_root, path.lstrip('/'))))
+
+                abs_path = None
+                logger.info(f"[DOWNLOAD] candidates={candidates}")
+                for cand in candidates:
+                    if os.path.exists(cand):
+                        abs_path = cand
+                        break
+
+                if abs_path is None:
+                    raise HTTPException(status_code=404, detail="File not found")
+
+                # Security: ensure selected path is inside either fs_root or workspace_root
+                if not (abs_path.startswith(fs_root) or abs_path.startswith(workspace_root)):
+                    raise HTTPException(status_code=400, detail="Path outside workspace root")
+                if os.path.isdir(abs_path):
+                    raise HTTPException(status_code=400, detail="Cannot download a directory (use zip endpoint)")
+
+                filename = os.path.basename(abs_path)
+                import mimetypes
+                mime, _ = mimetypes.guess_type(filename)
+                if not mime:
+                    mime = 'application/octet-stream'
+                logger.info(f"[DOWNLOAD] serving file abs_path='{abs_path}' filename='{filename}' mime='{mime}'")
+                return FileResponse(abs_path, filename=filename, media_type=mime)
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error(f"Error downloading file {path}: {e}")
+                raise HTTPException(status_code=500, detail="Download failed")
 
     def _register_terminal_routes(self):
         """Register terminal-related routes."""
