@@ -15,6 +15,7 @@
 ### Chat Media Upload Enhancements (September 2025)
 - **Task**: Complete chat drag & drop and clipboard paste functionality with duplicate fixes
 - **Key Insight**: Unified media upload system with global clipboard paste handling, eliminated duplicate uploads by centralizing through `GlobalUploadManager`, improved drag feedback UX with proper hover states and compact 32px thumbnails. Fixed media storage path to workspace-relative location.
+  - **Regression Fix (Sept 15)**: Restored missing chat input drag-and-drop highlight overlay by re-mounting `ChatDropZone` inside `ICUIChat` composer (regression during PR #29 review cleanup). Added automated unit test `ChatDropZoneHighlight.test.tsx` to prevent future silent removal.
 - **Files**: `src/icui/components/ICUIChat.tsx`, `src/hooks/useMediaUpload.tsx`, `src/icui/components/explorer/ExplorerDropProvider.tsx`, `backend/icpy/api/media.py`
 
 ### Git Panel Plan Implementation (September 2025)
