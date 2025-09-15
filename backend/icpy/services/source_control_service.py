@@ -432,6 +432,13 @@ class SourceControlService:
                 code, _, err = await provider._run_git("init")
                 if code == 0:
                     logger.info(f"[SCM] Git repository initialized at {self.workspace_root}")
+                    
+                    # Setup git user config if missing (common Docker issue)
+                    await self._setup_git_user_config()
+                    
+                    # Create .gitignore with .icotes exclusion
+                    await self._create_default_gitignore()
+                    
                     await self._publish("scm.repo_initialized", {"root": self.workspace_root})
                     return True
                 else:
@@ -451,6 +458,90 @@ class SourceControlService:
             await self._message_broker.publish(topic, payload)
         except Exception as e:
             logger.error(f"[SCM] Failed to publish {topic}: {e}")
+
+    async def _setup_git_user_config(self) -> None:
+        """Setup git user.name and user.email if not configured (Docker environment fix)."""
+        try:
+            provider = self._ensure_provider()
+            if not hasattr(provider, '_run_git'):
+                return
+                
+            # Check if user.name is configured
+            code, out, _ = await provider._run_git("config", "user.name")
+            if code != 0 or not out.strip():
+                # Set default user.name
+                await provider._run_git("config", "user.name", "ICOTES User")
+                logger.info("[SCM] Set default git user.name")
+            
+            # Check if user.email is configured  
+            code, out, _ = await provider._run_git("config", "user.email")
+            if code != 0 or not out.strip():
+                # Set default user.email
+                await provider._run_git("config", "user.email", "user@icotes.local")
+                logger.info("[SCM] Set default git user.email")
+                
+        except Exception as e:
+            logger.error(f"[SCM] Failed to setup git user config: {e}")
+
+    async def _create_default_gitignore(self) -> None:
+        """Create a default .gitignore file with .icotes exclusion."""
+        try:
+            gitignore_path = os.path.join(self.workspace_root, ".gitignore")
+            if os.path.exists(gitignore_path):
+                # File already exists, append .icotes if not present
+                with open(gitignore_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                if '.icotes' not in content:
+                    with open(gitignore_path, 'a', encoding='utf-8') as f:
+                        f.write('\n# ICOTES workspace metadata\n.icotes/\n')
+                    logger.info("[SCM] Added .icotes exclusion to existing .gitignore")
+            else:
+                # Create new .gitignore with common exclusions
+                gitignore_content = """# ICOTES workspace metadata
+.icotes/
+
+# Common exclusions
+node_modules/
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+*.swp
+*.bak
+.vscode/
+.idea/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+"""
+                with open(gitignore_path, 'w', encoding='utf-8') as f:
+                    f.write(gitignore_content)
+                logger.info("[SCM] Created default .gitignore with .icotes exclusion")
+                
+        except Exception as e:
+            logger.error(f"[SCM] Failed to create .gitignore: {e}")
 
 
 # ------------------------------ Service Singleton -----------------------------
