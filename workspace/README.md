@@ -9,6 +9,13 @@ Do not use this for mission-critical workloads.
 This software is provided "as is," without warranties or support.
 That said, feel free to try it out and share feedback—would love to hear your thoughts. 
 
+# Quick change log
+## [1.8.0] source control panel(GIT) and media handler:
+This is a feature release that adds Git panel and several media support capabilities
+upload and download files, upload with drag and drop file, download with right click on file choose download.
+Please note that chat image support is only on the UI, Agents and tools were not updated to support image, 
+stay tune for up comming agent update for image and multimodality support.
+
 # Features at a glance #
 
 ## Agent Creator ##

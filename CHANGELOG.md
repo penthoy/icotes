@@ -5,11 +5,7 @@ All notable changes to the JavaScript Code Editor project will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-
-### Added
-
-#### September 2025 - Git Panel Robustness and UX
+## [1.8.0] - Git Panel Robustness and UX
 
 - **Robust Git Detection**: Overhauled repository detection to be more resilient.
   - **Backend**: Updated `source_control_service.py` to use `git rev-parse --show-toplevel`. It now gracefully handles cases where `git` is not installed or the directory is not a git repository, returning `None` instead of crashing. This fixes detection in minimal Docker environments.
@@ -290,7 +286,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Updated ICUIEnhancedLayout and ICUIFrameContainer flex structure
   - Panels and footer now scale together maintaining proper attachment
 
-## [1.1.0] - 2024-12-19
+## [0.3.0] - 2024-12-19
 
 ### Added
 - **ICUI Framework Polish**: Complete cleanup and finalization of ICUI terminal panel
@@ -322,7 +318,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Development test scripts: test-terminal-scroll.py, test-terminal-scroll.sh, test-websocket.py, test-terminal.sh
 - Debug console.log statements and development artifacts
 
-## [1.0.0] - 2024-12-18
+## [0.0.2] - 2024-12-18
 
 ### Added
 - Real terminal with PTY support using xterm.js and WebSocket communication
@@ -354,7 +350,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tempo-specific code and dependencies cleanup
 - Unused development artifacts and configurations
 
-## [4.0.0] - 2025-07-08
+## [0.1.0] - 2025-07-08
 
 ### Added
 - ICUITerminalPanel reference implementation with WebSocket connectivity

@@ -1,4 +1,5 @@
-![icotes Code Editor](public/screenshot.png)
+[![icotes Demo Video](https://img.youtube.com/vi/F6yUWMMRcxA/maxresdefault.jpg)](https://www.youtube.com/watch?v=F6yUWMMRcxA)
+
 # icotes is an AI powered coding notebook designed to be flexible and customizable.
 
 ##### This Repository is currently in pre-alpha and under heavy development, if you do decide to test it, please expect there will be tons of bugs, but feel free to join our discord server and ask questions in the server.
@@ -18,6 +19,14 @@
 
 ## Quick Setup
 
+### Docker Installation
+
+```bash
+# Run directly from Docker Hub (works on localhost, LAN, or remote servers)
+docker run -d -p 8000:8000 penthoy/icotes:latest
+
+```
+
 ### One-Command Installation
 
 ```bash
@@ -31,16 +40,6 @@ cd icotes
 
 The setup script is **idempotent** - you can run it multiple times safely to update dependencies or reconfigure the environment.
 
-### Docker Installation
-
-```bash
-# Run directly from Docker Hub (works on localhost, LAN, or remote servers)
-docker run -d --name icotes -p 8000:8000 penthoy/icotes:latest
-
-# For custom port mapping
-docker run -d --name icotes -p 3000:8000 penthoy/icotes:latest
-
-```
 
 **✨ Auto-Configuration**: The Docker image automatically detects the host and port you're accessing from, so it works seamlessly whether you're using:
 - `http://localhost:8000` (local development)
@@ -101,23 +100,9 @@ GROQ_API_KEY=your_groq_api_key_here
 # ... and others
 ```
 
-## Project Structure
-
-```
-icotes/
-├── src/              # React frontend components
-├── backend/          # FastAPI Python backend
-├── workspace/        # Code execution workspace
-├── docs/            # Documentation
-├── .env             # Environment configuration
-├── setup.sh         # Automated setup script
-└── start-dev.sh     # Development server startup
-```
-
 ## Documentation
 
 - [Detailed Setup Guide](docs/SETUP.md)
-- [Project Architecture](docs/architecture.md)
 - [API Documentation](docs/)
 - Invite code on the website: githubprealpha
 ## Tech Stack
