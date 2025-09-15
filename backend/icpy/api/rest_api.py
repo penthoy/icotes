@@ -579,7 +579,6 @@ class RestAPI:
             are resolved against the filesystem service root. Directories are rejected.
             """
             try:
-                logger.info(f"[DOWNLOAD] request path param='{path}' cwd='{os.getcwd()}' fs_root='{self.filesystem_service.root_path}'")
                 if not path:
                     raise HTTPException(status_code=400, detail="path query parameter required")
                 # Determine workspace root (parent of backend dir if running from backend/)
@@ -604,7 +603,6 @@ class RestAPI:
                         candidates.append(os.path.abspath(os.path.join(workspace_root, path.lstrip('/'))))
 
                 abs_path = None
-                logger.info(f"[DOWNLOAD] candidates={candidates}")
                 for cand in candidates:
                     if os.path.exists(cand):
                         abs_path = cand
@@ -624,7 +622,6 @@ class RestAPI:
                 mime, _ = mimetypes.guess_type(filename)
                 if not mime:
                     mime = 'application/octet-stream'
-                logger.info(f"[DOWNLOAD] serving file abs_path='{abs_path}' filename='{filename}' mime='{mime}'")
                 return FileResponse(abs_path, filename=filename, media_type=mime)
             except HTTPException:
                 raise
