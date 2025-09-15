@@ -143,6 +143,24 @@ class MediaService {
   }
 
   /**
+   * Direct upload to workspace path (explorer context) to avoid duplicate media storage.
+   * Uses /media/upload_to endpoint.
+   */
+  async uploadTo(file: File, destPath: string): Promise<UploadResult> {
+    await this.ensureInitialized();
+    const formData = new FormData();
+    formData.append('dest_path', destPath);
+    formData.append('file', file);
+    const response = await fetch(`${this.apiUrl}/media/upload_to`, { method: 'POST', body: formData });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`upload_to failed ${response.status}: ${text}`);
+    }
+    const result = await response.json();
+    return result.attachment;
+  }
+
+  /**
    * List files by type
    */
   async list(type: 'images' | 'audio' | 'files'): Promise<MediaFile[]> {

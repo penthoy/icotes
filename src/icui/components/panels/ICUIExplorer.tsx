@@ -1023,7 +1023,7 @@ const ICUIEnhancedExplorer: React.FC<ICUIEnhancedExplorerProps> = ({
       )}
 
       {/* File tree */}
-  <div className="flex-1 overflow-auto p-1" data-explorer-root style={{ backgroundColor: 'var(--icui-bg-primary)' }}>
+  <div className="flex-1 overflow-auto p-1" data-explorer-root data-current-path={currentPath} style={{ backgroundColor: 'var(--icui-bg-primary)' }}>
         {loading ? (
           <div className="p-4 text-center text-sm" style={{ color: 'var(--icui-text-secondary)' }}>
             Loading directory contents...

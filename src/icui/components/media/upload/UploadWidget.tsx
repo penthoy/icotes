@@ -115,7 +115,7 @@ export default function UploadWidget({
     : `fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 ${className}`;
   return (
     <div className={containerClass} style={panelMode ? { left: pos.x, top: pos.y, width: 480 } : undefined}>
-      <div className={`bg-white rounded-lg shadow-xl ${panelMode ? 'w-full' : 'max-w-2xl w-full mx-4'} max-h-[80vh] flex flex-col select-none`}
+  <div className={`bg-white dark:bg-gray-800 rounded-lg shadow-xl ${panelMode ? 'w-full' : 'max-w-2xl w-full mx-4'} max-h-[80vh] flex flex-col select-none border border-gray-200 dark:border-gray-700`}
            onMouseDown={(e) => {
              if (!panelMode) return;
              const header = (e.target as HTMLElement).closest('[data-upload-header]');
@@ -132,23 +132,23 @@ export default function UploadWidget({
            onMouseUp={() => { dragging.current = false; }}
            onMouseLeave={() => { dragging.current = false; }}>
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b cursor-move" data-upload-header>
+  <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700 cursor-move" data-upload-header>
           <div className="flex items-center gap-2">
-            <Upload size={20} />
-            <h2 className="text-lg font-semibold">Upload Files</h2>
-            <span className="text-sm text-gray-500">
+            <Upload size={20} className="text-gray-700 dark:text-gray-200" />
+            <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Upload Files</h2>
+            <span className="text-sm text-gray-500 dark:text-gray-400">
               ({queue.length}/{maxFiles})
             </span>
           </div>
           <div className="flex gap-2 items-center">
             {panelMode && (
-              <button onClick={() => setMinimized(true)} className="p-1 hover:bg-gray-100 rounded" title="Minimize">
+              <button onClick={() => setMinimized(true)} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-600 dark:text-gray-300" title="Minimize">
                 _
               </button>
             )}
             <button
               onClick={onClose}
-              className="p-1 hover:bg-gray-100 rounded"
+              className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-600 dark:text-gray-300"
               disabled={isUploading}
               aria-label="Close uploader"
             >
@@ -158,7 +158,7 @@ export default function UploadWidget({
         </div>
 
         {/* Removed internal drop zone (now contextual chat/explorer). Provide add button only. */}
-        <div className="px-4 pt-4 text-sm text-gray-500">
+  <div className="px-4 pt-4 text-sm text-gray-500 dark:text-gray-400">
           <p className="mb-2">Use the contextual drop zones (Explorer folders or Chat prompt) to add files. You can also manually select files.</p>
           <button
             onClick={handleSelectFiles}
@@ -167,7 +167,7 @@ export default function UploadWidget({
           >
             <Plus size={14}/> Browse Files
           </button>
-          <p className="mt-2 text-xs">Supports: {allowedTypes.join(', ')}</p>
+          <p className="mt-2 text-xs text-gray-400 dark:text-gray-500">Supports: {allowedTypes.join(', ')}</p>
         </div>
 
         {/* File List */}
@@ -187,11 +187,11 @@ export default function UploadWidget({
         )}
 
         {/* Actions */}
-        <div className="flex items-center justify-between p-4 border-t bg-gray-50">
+  <div className="flex items-center justify-between p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50">
           <div className="flex gap-2">
             <button
               onClick={handleSelectFiles}
-              className="flex items-center gap-2 px-3 py-1 text-sm text-gray-600 hover:text-gray-800"
+              className="flex items-center gap-2 px-3 py-1 text-sm text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-gray-100"
               disabled={isUploading || queue.length >= maxFiles}
             >
               <Plus size={16} />
@@ -201,7 +201,7 @@ export default function UploadWidget({
             {completedUploads.length > 0 && (
               <button
                 onClick={clearCompleted}
-                className="px-3 py-1 text-sm text-gray-600 hover:text-gray-800"
+                className="px-3 py-1 text-sm text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-gray-100"
                 disabled={isUploading}
               >
                 Clear Completed
@@ -212,7 +212,7 @@ export default function UploadWidget({
           <div className="flex gap-2">
             <button
               onClick={onClose}
-              className="px-4 py-2 text-gray-600 hover:text-gray-800"
+              className="px-4 py-2 text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-gray-100"
               disabled={isUploading}
             >
               Cancel

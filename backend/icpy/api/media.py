@@ -5,11 +5,12 @@ Phase 1 minimal endpoints:
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, UploadFile, File, HTTPException, Body
+from fastapi import APIRouter, UploadFile, File, HTTPException, Body, Form
 from fastapi.responses import FileResponse, StreamingResponse
 from typing import Dict, List
 import logging
 from pathlib import Path
+import uuid
 import os
 import shutil
 
@@ -130,6 +131,80 @@ async def export_media(body: Dict = Body(...)):
 
     rel = dest_path_full.relative_to(workspace_root).as_posix()
     return {"success": True, "path": rel}
+
+@router.post("/upload_to")
+async def upload_file_to(dest_path: str = Form(...), file: UploadFile = File(...)) -> Dict:
+    """Directly upload a file to a workspace destination (explorer context).
+
+    This bypasses the central media storage (.icotes/media/*) to avoid creating
+    a duplicate when user intention is to place the file explicitly in the
+    workspace via the Explorer UI (see roadmap In Progress item #1).
+
+    Form fields:
+      dest_path: relative (preferred) or absolute path inside workspace. May be a directory or full file path.
+      file: UploadFile stream
+    Returns a structure similar to /media/upload so frontend queue logic can
+    treat it uniformly, but id is namespaced with "explorer-" as it is not
+    stored in central media repository.
+    """
+    service = get_media_service()
+    data = await file.read()
+    original_filename = file.filename
+    mime_type = file.content_type or 'application/octet-stream'
+
+    # Validate using service private helpers (size & mime) by invoking save_bytes logic partially
+    # We mimic validation without persisting centrally.
+    try:
+        # reuse protected methods indirectly: call _validate & _sanitize_filename
+        service._validate(original_filename, len(data), mime_type)  # type: ignore[attr-defined]
+        safe_name = service._sanitize_filename(original_filename)  # type: ignore[attr-defined]
+    except Exception as e:  # MediaValidationError or other
+        raise HTTPException(status_code=400, detail=str(e))
+
+    # Workspace root resolution (same approach as export_media)
+    current_dir = Path(os.getcwd()).resolve()
+    if current_dir.name == 'backend':
+        workspace_root = current_dir.parent
+    else:
+        workspace_root = current_dir
+
+    if os.path.isabs(dest_path):
+        dest_path_full = Path(dest_path).resolve()
+    else:
+        dest_path_full = (workspace_root / dest_path).resolve()
+
+    # Ensure destination within workspace
+    try:
+        dest_path_full.relative_to(workspace_root)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Destination path outside workspace root")
+
+    # If path ends with '/' or is an existing dir treat as directory
+    if dest_path.endswith('/') or dest_path_full.is_dir():
+        dest_path_full = dest_path_full / safe_name
+
+    # Create parent directories
+    dest_path_full.parent.mkdir(parents=True, exist_ok=True)
+
+    try:
+        with open(dest_path_full, 'wb') as f:
+            f.write(data)
+    except Exception:
+        logger.exception("Direct explorer upload failed")
+        raise HTTPException(status_code=500, detail="Upload failed")
+
+    rel = dest_path_full.relative_to(workspace_root).as_posix()
+    # Build pseudo attachment result
+    pseudo_id = f"explorer-{uuid.uuid4().hex}"
+    return {
+        "attachment": {
+            "id": pseudo_id,
+            "type": "file",
+            "rel_path": rel,
+            "mime": mime_type,
+            "size": len(data),
+        }
+    }
 
 @router.delete("/{kind}/{filename}")
 async def delete_kind_file(kind: str, filename: str):

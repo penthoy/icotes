@@ -84,7 +84,20 @@ export function useMediaUpload(options: { autoStart?: boolean } = {}): UseMediaU
     });
 
     try {
-      // Use XMLHttpRequest for progress tracking
+      // Branch: direct explorer upload with destPath -> use uploadTo endpoint (no central duplicate + export)
+      if (uploadItem.context === 'explorer' && uploadItem.destPath) {
+        try {
+          const direct = await mediaService.uploadTo(file, uploadItem.destPath);
+          updateUpload(id, { status: 'completed', progress: 100, result: direct, abortController: undefined });
+          return direct;
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : 'Direct upload failed';
+          updateUpload(id, { status: 'error', error: msg, abortController: undefined });
+          throw e;
+        }
+      }
+
+      // Default path: central storage first then optional export
       const result = await new Promise<UploadResult>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         const formData = new FormData();
@@ -162,16 +175,7 @@ export function useMediaUpload(options: { autoStart?: boolean } = {}): UseMediaU
         abortController: undefined,
       });
 
-      // Post-processing: explorer export
-      if (uploadItem.context === 'explorer' && uploadItem.destPath && result?.id) {
-        try {
-          await mediaService.exportAttachment(result.id, uploadItem.destPath);
-        } catch (e) {
-          console.error('Export failed', e);
-          updateUpload(id, { status: 'error', error: (e as Error).message });
-          throw e;
-        }
-      }
+  // (export flow removed for explorer direct uploads—handled above)
 
       return result;
     } catch (error) {
