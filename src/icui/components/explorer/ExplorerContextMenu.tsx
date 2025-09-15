@@ -162,16 +162,6 @@ export function createExplorerContextMenu(
       isVisible: () => true,
       isEnabled: () => true,
     });
-
-    // Reveal in OS (only for single selection)
-    items.push({
-      id: 'revealInOS',
-      label: 'Reveal in File Manager',
-      icon: '🔍',
-      commandId: 'explorer.revealInOS',
-      isVisible: () => singleSelection,
-      isEnabled: () => singleSelection,
-    });
   }
 
   // Paste (available when clipboard has content)

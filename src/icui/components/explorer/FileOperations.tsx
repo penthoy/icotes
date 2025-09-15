@@ -159,17 +159,6 @@ export class ExplorerFileOperations {
         }
       ),
 
-      CommandUtils.create(
-        'explorer.revealInOS',
-        'Reveal in File Manager',
-        this.revealInOS.bind(this),
-        { 
-          category: 'view',
-          icon: '🔍',
-          description: 'Open the selected file or folder in the system file manager'
-        }
-      ),
-
       // Download (Phase 5)
       CommandUtils.create(
         'explorer.download',
@@ -195,16 +184,17 @@ export class ExplorerFileOperations {
    */
   unregisterCommands(): void {
     const commandIds = [
-      'explorer.newFile',
-      'explorer.newFolder',
-      'explorer.rename',
-      'explorer.delete',
-      'explorer.duplicate',
+      'explorer.createFile',
+      'explorer.createFolder',
       'explorer.copy',
       'explorer.cut',
       'explorer.paste',
+      'explorer.delete',
+      'explorer.duplicate',
+      'explorer.rename',
+      'explorer.selectAll',
+      'explorer.clearSelection',
       'explorer.refresh',
-      'explorer.revealInOS',
       'explorer.download',
     ];
 
@@ -558,28 +548,7 @@ export class ExplorerFileOperations {
     log.info('ExplorerFileOperations', 'Refreshed directory', { path: context.currentPath });
   }
 
-  /**
-   * Reveal file/folder in OS file manager
-   */
-  private async revealInOS(context?: FileOperationContext): Promise<void> {
-    if (!context || context.selectedFiles.length !== 1) {
-      log.warn('ExplorerFileOperations', 'revealInOS requires exactly one selected file');
-      return;
-    }
 
-    const file = context.selectedFiles[0];
-    
-    // This would require backend support for opening OS file manager
-    // For now, we'll just log the action
-    log.info('ExplorerFileOperations', 'Reveal in OS requested', { path: file.path });
-    
-    // In a real implementation, this would call a backend endpoint
-    // that executes platform-specific commands like:
-    // - Windows: explorer /select,"path"
-    // - macOS: open -R "path"
-    // - Linux: xdg-open "parent_path"
-    alert(`Reveal in OS: ${file.path}\n(Not implemented in this demo)`);
-  }
 
   /**
    * Download selected files (Phase 5)
