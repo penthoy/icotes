@@ -815,7 +815,7 @@ const ICUIEnhancedExplorer: React.FC<ICUIEnhancedExplorerProps> = ({
     
     // Add regular file/folder items with multi-select support
     items.push(...nodes.map(node => (
-      <div key={node.id} className="select-none">
+      <div key={node.id} className="select-none" data-path={node.path} data-type={node.type}>
         <div
           className={`flex items-center cursor-pointer py-1 px-2 rounded-sm group transition-colors`}
           style={{ 
@@ -1023,7 +1023,7 @@ const ICUIEnhancedExplorer: React.FC<ICUIEnhancedExplorerProps> = ({
       )}
 
       {/* File tree */}
-      <div className="flex-1 overflow-auto p-1" style={{ backgroundColor: 'var(--icui-bg-primary)' }}>
+  <div className="flex-1 overflow-auto p-1" data-explorer-root data-current-path={currentPath} style={{ backgroundColor: 'var(--icui-bg-primary)' }}>
         {loading ? (
           <div className="p-4 text-center text-sm" style={{ color: 'var(--icui-text-secondary)' }}>
             Loading directory contents...

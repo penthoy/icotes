@@ -27,6 +27,7 @@ import SimpleExplorer from "../tests/integration/simpleexplorer";
 import SimpleChat from "../tests/integration/simplechat";
 import { BackendContextProvider } from "./contexts/BackendContext";
 import { ChatSessionStoreProvider } from "./icui/state/chatSessionStore";
+import GlobalUploadManager from './icui/components/media/GlobalUploadManager';
 import { configService } from "./services/config-service";
 
 function App() {
@@ -43,6 +44,7 @@ function App() {
 
   return (
     <div>
+      <GlobalUploadManager />
       <Suspense fallback={<p>Loading...</p>}>
         <Routes>
           <Route path="/" element={

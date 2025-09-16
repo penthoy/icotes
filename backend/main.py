@@ -50,6 +50,7 @@ rest_api_instance = None
 # Local imports
 try:
     from icpy.api import get_websocket_api, shutdown_websocket_api, get_rest_api, shutdown_rest_api
+    from icpy.api.media import router as media_router
     from icpy.api.rest_api import create_rest_api
     from icpy.core.connection_manager import get_connection_manager
     from icpy.services import get_workspace_service, get_filesystem_service, get_terminal_service, get_agent_service, get_chat_service, get_code_execution_service, get_code_execution_service
@@ -392,6 +393,13 @@ app.add_middleware(
 # Mount static files
 mount_static_files(app)
 
+# Register media router (Phase 1 minimal upload/download)
+try:
+    app.include_router(media_router, prefix="/api")
+    logger.info("Media router registered at /api/media")
+except Exception as e:
+    logger.error(f"Failed to register media router: {e}")
+
 # Health check endpoint
 @app.get("/health")
 async def health_check(request: Request):
@@ -427,6 +435,55 @@ async def health_check(request: Request):
 async def healthz():
     """Simple health check endpoint for orchestrator probes."""
     return {"status": "ok"}
+
+# Fallback single file download endpoint (mirrors rest_api implementation)
+@app.get("/api/files/download")
+async def fallback_download_file(path: str):  # type: ignore
+    """Serve a file for download (fallback if REST API route not active)."""
+    try:
+        if not path:
+            raise HTTPException(status_code=400, detail="path query parameter required")
+        # Determine workspace root (parent of backend when launched inside backend)
+        current_dir = os.getcwd()
+        if os.path.basename(current_dir) == 'backend':
+            workspace_root = os.path.realpath(os.path.join(current_dir, os.pardir))
+        else:
+            workspace_root = os.path.realpath(current_dir)
+        candidates = []
+        if os.path.isabs(path):
+            candidates.append(os.path.realpath(path))
+        else:
+            # relative to filesystem workspace folder if exists
+            fs_root = os.path.join(workspace_root, 'workspace')
+            candidates.append(os.path.realpath(os.path.join(fs_root, path.lstrip('/'))))
+            candidates.append(os.path.realpath(os.path.join(workspace_root, path.lstrip('/'))))
+        resolved = None
+        for cand in candidates:
+            if os.path.exists(cand):
+                resolved = cand
+                break
+        if not resolved:
+            raise HTTPException(status_code=404, detail="File not found")
+        if os.path.isdir(resolved):
+            raise HTTPException(status_code=400, detail="Cannot download a directory (use zip)")
+        # Use realpath and commonpath for secure path validation
+        try:
+            if os.path.commonpath([workspace_root, resolved]) != workspace_root:
+                raise HTTPException(status_code=400, detail="Path outside workspace root")
+        except ValueError:
+            # Different drives on Windows
+            raise HTTPException(status_code=400, detail="Invalid path")
+        filename = os.path.basename(resolved)
+        import mimetypes
+        mime, _ = mimetypes.guess_type(filename)
+        if not mime:
+            mime = 'application/octet-stream'
+        return FileResponse(resolved, filename=filename, media_type=mime)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[fallback_download] error for path={path}: {e}")
+        raise HTTPException(status_code=500, detail="Download failed")
 
 # Dynamic configuration endpoint for frontend
 @app.get("/api/config")

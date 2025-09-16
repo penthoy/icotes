@@ -153,14 +153,14 @@ export function createExplorerContextMenu(
       isVisible: () => true,
     });
 
-    // Reveal in OS (only for single selection)
+    // Download actions (Phase 5)
     items.push({
-      id: 'revealInOS',
-      label: 'Reveal in File Manager',
-      icon: '🔍',
-      commandId: 'explorer.revealInOS',
-      isVisible: () => singleSelection,
-      isEnabled: () => singleSelection,
+      id: 'download',
+      label: multipleSelection ? `Download ${selectedFiles.length} items` : 'Download',
+      icon: '⬇️',
+      commandId: 'explorer.download',
+      isVisible: () => true,
+      isEnabled: () => true,
     });
   }
 

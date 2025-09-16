@@ -34,11 +34,22 @@ export interface ToolCallMeta {
 }
 
 // Chat message interface
+export interface MediaAttachment {
+  id: string;
+  kind: 'image' | 'audio' | 'file';
+  path: string;
+  mime: string;
+  size: number;
+  meta?: Record<string, any>;
+}
+
 export interface ChatMessage {
   id: string;
   content: string;
   sender: MessageSender;
   timestamp: Date;
+  // Phase 2: Media attachments support
+  attachments?: MediaAttachment[];
   metadata?: {
     agentId?: string;
     agentName?: string;
@@ -105,6 +116,8 @@ export interface MessageOptions {
   framework?: any;
   streaming?: boolean;
   context?: any;
+  // Phase 2: Media attachments support
+  attachments?: MediaAttachment[];
 }
 
 // WebSocket message types
