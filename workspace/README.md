@@ -1,52 +1,204 @@
-#####################
-# Welcome to icotes #
-#####################
+# Fiverr Clone - Freelance Services Marketplace
 
-# Disclaimer #
-This is an MVP and not yet a beta, so bugs and stability issues are expected.
-Some UI elements may be placeholders.
-Do not use this for mission-critical workloads.
-This software is provided "as is," without warranties or support.
-That said, feel free to try it out and share feedback—would love to hear your thoughts. 
+A full-stack demo application that replicates the core functionality of Fiverr.com, built with React.js, Node.js, Express, and MongoDB.
 
-# Quick change log
-## [1.8.0] source control panel(GIT) and media handler:
-This is a feature release that adds Git panel and several media support capabilities
-upload and download files, upload with drag and drop file, download with right click on file choose download.
-Please note that chat image support is only on the UI, Agents and tools were not updated to support image, 
-stay tune for up comming agent update for image and multimodality support.
+## Features
 
-# Features at a glance #
+### User Features
+- 📝 User registration and authentication
+- 👤 User profiles with seller/buyer roles
+- 🔍 Search and filter services by category, price, delivery time
+- ⭐ Rating and review system
+- 💬 Messaging system between buyers and sellers
+- 📦 Order management system
+- 🛒 Three-tier pricing packages (Basic, Standard, Premium)
 
-## Agent Creator ##
-This is the default selected agent. It's a custom agent, and the code lives at
-`workspace/.icotes/plugins/agent_creator_agent.py`. You can modify any part of it to fit your needs.
+### Seller Features
+- 🎨 Create and manage service listings (Gigs)
+- 📊 Track orders and earnings
+- 💬 Communicate with buyers
+- 📈 View gig analytics and performance
 
-The `MODEL_NAME` defaults to `gpt-5-nano`. To use a more capable model, change the `MODEL_NAME`
-constant in the agent implementation or configure it via your environment/runtime settings.
+### Buyer Features
+- 🔎 Browse and search for services
+- 📋 Place orders with custom requirements
+- 💬 Communicate with sellers
+- ⭐ Rate and review completed orders
 
-## Features ##
-Fully working Editor, Terminal and AI agent that can do CRUD operations on the
-File system level, Agent can also run terminal commands and edit any files.
+## Tech Stack
 
-# Index #
-Both the frontend and backend cores are designed as standalone frameworks, with
-middleware/glue code that connects them for flexibility.
+### Frontend
+- React.js 18
+- React Router v6
+- Styled Components
+- React Query for data fetching
+- Axios for API calls
+- React Hook Form for form handling
 
-## ICUI ##
-This is the main frontend framework used for the UI.
-It is designed to be flexible and modular. The arrangement of panels can be reconfigured
-with a JSON file.
+### Backend
+- Node.js
+- Express.js
+- MongoDB with Mongoose
+- JWT Authentication
+- Bcrypt for password hashing
+- Multer for file uploads
 
-## ICPY ##
-This is the Python/FastAPI backend that powers everything behind the scenes.
-It is named ICPY with the intent to explore portions in faster frameworks
-such as Rust or Go later on.
+## Installation
 
-## Hot reload ##
-To add or update an agent:
-1) Create `<AgentName>_agent.py` under the `workspace/.icotes/plugins` folder.
-2) Register it in `.icotes/agents.json`.
-3) The hot-reload system will pick it up automatically, or click the reload button next to the Agent
-   selector in the Chat window to force a reload.
-You can use your updated agent immediately after reload.
+### Prerequisites
+- Node.js (v14 or higher)
+- MongoDB (local or cloud instance)
+- npm or yarn
+
+### Setup Instructions
+
+1. **Clone the repository**
+   ```bash
+   git clone <repository-url>
+   cd fiverr-clone
+   ```
+
+2. **Install dependencies**
+   ```bash
+   npm run install-all
+   ```
+
+3. **Set up environment variables**
+   
+   Create a `.env` file in the root directory:
+   ```env
+   NODE_ENV=development
+   PORT=5000
+   MONGODB_URI=mongodb://localhost:27017/fiverr-clone
+   JWT_SECRET=your-super-secret-jwt-key
+   ```
+
+   Create a `.env` file in the client directory:
+   ```env
+   REACT_APP_API_URL=http://localhost:5000
+   ```
+
+4. **Start MongoDB**
+   Make sure MongoDB is running on your system.
+
+5. **Seed the database (optional)**
+   ```bash
+   node scripts/seedData.js
+   ```
+
+6. **Start the development servers**
+   ```bash
+   npm run dev
+   ```
+   
+   This will start both the backend server (port 5000) and the React development server (port 3000).
+
+## Usage
+
+### Default Users
+After running the seed script, you can log in with these test accounts:
+
+**Sellers:**
+- designer@example.com / password123
+- developer@example.com / password123
+- writer@example.com / password123
+- editor@example.com / password123
+
+**Buyer:**
+- buyer@example.com / password123
+
+### Key Pages
+- **Homepage**: Browse featured services and categories
+- **Search**: Filter and search for services
+- **Gig Details**: View service details and pricing packages
+- **Profile**: User profile with services and reviews
+- **Orders**: Manage orders (for both buyers and sellers)
+- **Create Gig**: Create new service listings (sellers only)
+
+## API Endpoints
+
+### Authentication
+- `POST /api/auth/register` - Register new user
+- `POST /api/auth/login` - Login user
+- `GET /api/auth/me` - Get current user
+
+### Gigs
+- `GET /api/gigs` - Get all gigs (with filtering)
+- `GET /api/gigs/:id` - Get single gig
+- `POST /api/gigs` - Create new gig (protected)
+- `PUT /api/gigs/:id` - Update gig (protected)
+- `DELETE /api/gigs/:id` - Delete gig (protected)
+
+### Users
+- `GET /api/users/:id` - Get user profile
+- `GET /api/users/sellers/top` - Get top sellers
+
+### Orders
+- `GET /api/orders` - Get user orders (protected)
+- `POST /api/orders` - Create order (protected)
+- `GET /api/orders/:id` - Get order details (protected)
+- `POST /api/orders/:id/messages` - Send message (protected)
+- `POST /api/orders/:id/deliver` - Deliver order (protected)
+- `POST /api/orders/:id/complete` - Complete order (protected)
+
+## Project Structure
+
+```
+fiverr-clone/
+├── client/                 # React frontend
+│   ├── public/
+│   ├── src/
+│   │   ├── components/     # Reusable components
+│   │   ├── pages/         # Page components
+│   │   ├── contexts/      # React contexts
+│   │   ├── styles/        # Global styles
+│   │   └── App.js         # Main app component
+│   └── package.json
+├── server/                 # Node.js backend
+│   ├── models/            # MongoDB models
+│   ├── routes/            # API routes
+│   ├── middleware/        # Custom middleware
+│   └── index.js           # Server entry point
+├── scripts/               # Utility scripts
+└── package.json
+```
+
+## Features to Add
+
+This is a demo application with core functionality. Here are some features that could be added:
+
+- [ ] Real-time messaging with WebSocket
+- [ ] File upload functionality
+- [ ] Payment integration (Stripe/PayPal)
+- [ ] Email notifications
+- [ ] Advanced search with Elasticsearch
+- [ ] Admin dashboard
+- [ ] Mobile app (React Native)
+- [ ] Video calling for consultations
+- [ ] Subscription plans
+- [ ] Advanced analytics
+- [ ] Multi-language support
+
+## Contributing
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Disclaimer
+
+This is a demo project created for educational purposes only. It is not intended for production use and does not include all the features, security measures, and optimizations of the real Fiverr platform.
+
+## Support
+
+If you have any questions or need help with the project, feel free to open an issue or contact the maintainers.
+
+---
+
+**Note**: This is a demonstration project showcasing full-stack development skills. The design and functionality are inspired by Fiverr but implemented independently for learning purposes.
