@@ -23,11 +23,13 @@ export { default as ICUIEditor } from './components/panels/ICUIEditor';
 export { default as ICUIExplorer } from './components/panels/ICUIExplorer';
 export { default as ICUIChatHistory } from './components/panels/ICUIChatHistory';
 export { default as ICUIGit } from './components/panels/ICUIGit';
+export { default as ICUIPreview } from './components/panels/ICUIPreview';
 
 // Core Component Types
 export type { ICUIChatRef } from './components/panels/ICUIChat';
 export type { ICUITerminalRef } from './components/panels/ICUITerminal';
 export type { ICUIEditorRef } from './components/panels/ICUIEditor';
+export type { ICUIPreviewRef } from './components/panels/ICUIPreview';
 
 // Base Layout Components
 export { ICUIBaseHeader } from './components/ICUIBaseHeader';

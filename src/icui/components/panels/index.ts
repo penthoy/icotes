@@ -5,11 +5,13 @@ export { default as ICUIEditor } from './ICUIEditor';
 export { default as ICUIExplorer } from './ICUIExplorer';
 export { default as ICUITerminal } from './ICUITerminal';
 export { default as ICUIGit } from './ICUIGit';
+export { default as ICUIPreview } from './ICUIPreview';
 
 // Export types
 export type { ICUIEditorRef } from './ICUIEditor';
 export type { ICUITerminalRef } from './ICUITerminal';
 export type { ICUIChatRef } from './ICUIChat';
+export type { ICUIPreviewRef } from './ICUIPreview';
 
 // DEPRECATED: Legacy panel wrappers - kept for backward compatibility
 export { default as ICUITerminalPanel } from '../archived/ICUITerminalPanel_deprecate';
