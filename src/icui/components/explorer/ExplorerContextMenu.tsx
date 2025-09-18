@@ -49,8 +49,25 @@ export function createExplorerContextMenu(
   const isFile = singleSelection && selectedFiles[0].type === 'file';
   const isFolder = singleSelection && selectedFiles[0].type === 'folder';
   
-  // Check if the selected file is an HTML file for preview
-  const isHtmlFile = isFile && selectedFiles[0].name.toLowerCase().endsWith('.html');
+  // Check if the selected file is previewable
+  const isPreviewableFile = isFile && (() => {
+    const fileName = selectedFiles[0].name.toLowerCase();
+    const previewableExtensions = [
+      '.html', '.htm',           // HTML files
+      '.js', '.mjs',             // JavaScript files  
+      '.ts',                     // TypeScript files
+      '.tsx', '.jsx',            // React/JSX files
+      '.css', '.scss', '.sass',  // Stylesheets
+      '.json',                   // JSON files
+      '.md', '.markdown',        // Markdown files
+      '.txt',                    // Text files
+      '.xml', '.svg',            // XML/SVG files
+      '.vue',                    // Vue files
+      '.php',                    // PHP files
+      '.py',                     // Python files
+    ];
+    return previewableExtensions.some(ext => fileName.endsWith(ext));
+  })();
 
   const items: MenuItem[] = [];
 
@@ -166,8 +183,8 @@ export function createExplorerContextMenu(
       isEnabled: () => true,
     });
 
-    // Preview for HTML files
-    if (isHtmlFile) {
+    // Preview for supported file types
+    if (isPreviewableFile) {
       items.push({
         id: 'preview',
         label: 'Preview',

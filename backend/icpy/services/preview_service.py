@@ -48,6 +48,9 @@ class ProjectType(Enum):
     NEXT = "next"
     VITE = "vite"
     NODE = "node"
+    JAVASCRIPT = "javascript"
+    CSS = "css"
+    MARKDOWN = "markdown"
     PYTHON_FLASK = "python-flask"
     STATIC = "static"
 
@@ -75,6 +78,7 @@ class PreviewProject:
     error: Optional[str] = None
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
+    content_hash: Optional[str] = None
 
 
 class PreviewService:
@@ -96,6 +100,7 @@ class PreviewService:
         self.base_preview_dir.mkdir(exist_ok=True)
         
         self.active_previews: Dict[str, PreviewProject] = {}
+        self.content_hash_to_preview: Dict[str, str] = {}  # Maps content hash to preview ID
         self.port_range = range(3001, 4000)
         self.used_ports: Set[int] = set()
         
@@ -175,6 +180,26 @@ class PreviewService:
         if any(name == "index.html" or name.endswith(".html") for name in file_names):
             return ProjectType.HTML
             
+        # Check for JavaScript/TypeScript files
+        if any(name.endswith((".js", ".mjs", ".ts")) for name in file_names):
+            return ProjectType.JAVASCRIPT
+            
+        # Check for React/JSX files
+        if any(name.endswith((".jsx", ".tsx")) for name in file_names):
+            return ProjectType.REACT
+            
+        # Check for Vue files
+        if any(name.endswith(".vue") for name in file_names):
+            return ProjectType.VUE
+            
+        # Check for CSS files
+        if any(name.endswith((".css", ".scss", ".sass")) for name in file_names):
+            return ProjectType.CSS
+            
+        # Check for Markdown files
+        if any(name.endswith((".md", ".markdown")) for name in file_names):
+            return ProjectType.MARKDOWN
+            
         # Check for Python Flask/Django
         if any(name in ["app.py", "main.py", "manage.py"] for name in file_names):
             return ProjectType.PYTHON_FLASK
@@ -184,41 +209,156 @@ class PreviewService:
 
     def _get_available_port(self) -> int:
         """Get an available port from the port range."""
+        import socket
+        
         for port in self.port_range:
             if port not in self.used_ports:
-                self.used_ports.add(port)
-                return port
+                # Double-check that the port is actually available
+                try:
+                    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                        s.bind(('127.0.0.1', port))
+                        self.used_ports.add(port)
+                        logger.info(f"Allocated port {port}, used ports: {self.used_ports}")
+                        return port
+                except OSError:
+                    logger.warning(f"Port {port} appears to be in use, skipping")
+                    continue
         raise Exception("No available ports in range")
 
     def _release_port(self, port: int):
         """Release a port back to the available pool."""
         self.used_ports.discard(port)
 
+    def _generate_content_hash(self, files: Dict[str, str], project_type: str) -> str:
+        """Generate a hash for the files content to identify identical previews."""
+        # Sort files by name for consistent hashing
+        sorted_files = sorted(files.items())
+        content_str = f"{project_type}:" + ":".join(f"{name}:{content}" for name, content in sorted_files)
+        hash_value = hashlib.md5(content_str.encode()).hexdigest()
+        
+        # Debug logging to see what's being hashed
+        logger.info(f"Generating hash for project_type={project_type}")
+        for name, content in sorted_files:
+            logger.info(f"  File: {name}, Content length: {len(content)}, First 100 chars: {repr(content[:100])}")
+        logger.info(f"  Final content_str length: {len(content_str)}")
+        logger.info(f"  Generated hash: {hash_value}")
+        
+        return hash_value
+
+    def _is_preview_active(self, preview: PreviewProject) -> bool:
+        """Check if a preview is still active and its process is running."""
+        logger.info(f"Checking if preview {preview.id} is active: status={preview.status.value}, has_process={preview.process is not None}")
+        
+        if preview.status not in [PreviewStatus.READY, PreviewStatus.BUILDING]:
+            logger.info(f"Preview {preview.id} is not active: status is {preview.status.value}")
+            return False
+        
+        # Check if process is still running
+        if preview.process:
+            poll_result = preview.process.poll()
+            logger.info(f"Preview {preview.id} process poll result: {poll_result}")
+            if poll_result is not None:
+                # Process has terminated
+                logger.info(f"Preview {preview.id} process has terminated with code {poll_result}")
+                preview.status = PreviewStatus.STOPPED
+                return False
+        else:
+            logger.info(f"Preview {preview.id} has no process")
+        
+        logger.info(f"Preview {preview.id} is active")
+        return True
+
+    async def _find_existing_preview(self, content_hash: str) -> Optional[str]:
+        """Find an existing active preview with the same content hash."""
+        logger.info(f"Looking for existing preview with content hash: {content_hash}")
+        logger.info(f"Current content_hash_to_preview mapping: {self.content_hash_to_preview}")
+        
+        preview_id = self.content_hash_to_preview.get(content_hash)
+        if not preview_id:
+            logger.info(f"No existing preview found for content hash {content_hash}")
+            return None
+        
+        preview = self.active_previews.get(preview_id)
+        if not preview:
+            # Clean up stale mapping
+            logger.info(f"Found stale mapping for content hash {content_hash}, cleaning up")
+            del self.content_hash_to_preview[content_hash]
+            return None
+        
+        if not self._is_preview_active(preview):
+            # Preview is no longer active, clean up
+            logger.info(f"Preview {preview_id} is no longer active, cleaning up")
+            await self._cleanup_preview(preview_id)
+            return None
+        
+        logger.info(f"Reusing existing preview {preview_id} for content hash {content_hash}")
+        return preview_id
+
+    async def _cleanup_preview(self, preview_id: str):
+        """Clean up a preview without going through the full delete process."""
+        if preview_id in self.active_previews:
+            preview = self.active_previews[preview_id]
+            
+            # Stop process if running
+            if preview.process:
+                try:
+                    preview.process.terminate()
+                    preview.process.wait(timeout=1)
+                except:
+                    try:
+                        preview.process.kill()
+                    except:
+                        pass
+            
+            # Release port
+            if preview.port:
+                self._release_port(preview.port)
+            
+            # Remove from mappings
+            del self.active_previews[preview_id]
+            if preview.content_hash and preview.content_hash in self.content_hash_to_preview:
+                if self.content_hash_to_preview[preview.content_hash] == preview_id:
+                    del self.content_hash_to_preview[preview.content_hash]
+
     async def create_preview(self, files: Dict[str, str], project_type: Optional[str] = None) -> str:
         """
-        Create a new preview project.
+        Create a new preview project or return existing one if identical content exists.
         
         Args:
             files: Dictionary of file paths to content
             project_type: Optional project type override
             
         Returns:
-            Preview ID
+            Preview ID (either new or existing)
         """
-        preview_id = str(uuid.uuid4())
         
         try:
             # Detect project type if not provided
             detected_type = ProjectType(project_type) if project_type else self.detect_project_type(files)
             
-            logger.info(f"Creating preview {preview_id} with type {detected_type.value}")
+            # Generate content hash to check for existing previews
+            content_hash = self._generate_content_hash(files, detected_type.value)
+            
+            # Check if we already have an active preview with the same content
+            existing_preview_id = await self._find_existing_preview(content_hash)
+            if existing_preview_id:
+                # Update the timestamp of the existing preview
+                existing_preview = self.active_previews[existing_preview_id]
+                existing_preview.updated_at = time.time()
+                logger.info(f"Reusing preview {existing_preview_id} with URL: {existing_preview.url}")
+                return existing_preview_id
+            
+            # Create new preview
+            preview_id = str(uuid.uuid4())
+            logger.info(f"Creating new preview {preview_id} with type {detected_type.value}")
             
             # Create preview project
             preview = PreviewProject(
                 id=preview_id,
                 project_type=detected_type,
                 status=PreviewStatus.BUILDING,
-                files=files.copy()
+                files=files.copy(),
+                content_hash=content_hash
             )
             
             # Create project directory
@@ -229,8 +369,9 @@ class PreviewService:
             # Write files to disk
             await self._write_files_to_disk(project_dir, files)
             
-            # Store preview
+            # Store preview and content hash mapping
             self.active_previews[preview_id] = preview
+            self.content_hash_to_preview[content_hash] = preview_id
             
             # Start build process
             asyncio.create_task(self._build_and_serve_preview(preview))
@@ -240,6 +381,7 @@ class PreviewService:
                 "preview_id": preview_id,
                 "project_type": detected_type.value,
                 "files_count": len(files),
+                "content_hash": content_hash,
                 "timestamp": time.time()
             })
             
@@ -363,6 +505,11 @@ class PreviewService:
             # Remove from active previews
             del self.active_previews[preview_id]
             
+            # Remove from content hash mapping
+            if preview.content_hash and preview.content_hash in self.content_hash_to_preview:
+                if self.content_hash_to_preview[preview.content_hash] == preview_id:
+                    del self.content_hash_to_preview[preview.content_hash]
+            
             # Publish preview deleted event
             await self.message_broker.publish("preview.deleted", {
                 "preview_id": preview_id,
@@ -408,6 +555,12 @@ class PreviewService:
             # Build based on project type
             if preview.project_type == ProjectType.HTML:
                 await self._serve_static_html(preview, project_dir)
+            elif preview.project_type == ProjectType.JAVASCRIPT:
+                await self._serve_javascript(preview, project_dir)
+            elif preview.project_type == ProjectType.CSS:
+                await self._serve_css(preview, project_dir)
+            elif preview.project_type == ProjectType.MARKDOWN:
+                await self._serve_markdown(preview, project_dir)
             elif preview.project_type == ProjectType.REACT:
                 await self._build_and_serve_react(preview, project_dir)
             elif preview.project_type == ProjectType.VUE:
@@ -425,12 +578,17 @@ class PreviewService:
 
     async def _serve_static_html(self, preview: PreviewProject, project_dir: pathlib.Path):
         """Serve static HTML files."""
-        port = self._get_available_port()
-        preview.port = port
+        # Use existing port if already assigned, otherwise get a new one
+        if not preview.port:
+            port = self._get_available_port()
+            preview.port = port
+        else:
+            port = preview.port
         preview.serve_dir = str(project_dir)
         
         # Start simple HTTP server
         cmd = ["python", "-m", "http.server", str(port)]
+        logger.info(f"Starting preview server with command: {' '.join(cmd)} in directory {project_dir}")
         preview.process = subprocess.Popen(
             cmd,
             cwd=project_dir,
@@ -440,6 +598,17 @@ class PreviewService:
         
         # Wait for server to start
         await asyncio.sleep(2)
+        
+        # Check if the process started successfully
+        if preview.process.poll() is not None:
+            logger.error(f"Preview server failed to start on port {port}, return code: {preview.process.returncode}")
+            # Read stderr for error details
+            stderr = preview.process.stderr.read()
+            logger.error(f"Preview server stderr: {stderr.decode()}")
+            self._release_port(port)
+            return None
+        
+        logger.info(f"Preview server started successfully on port {port}, PID: {preview.process.pid}")
         
         preview.url = f"/preview/{preview.id}/"
         preview.status = PreviewStatus.READY
@@ -529,6 +698,150 @@ class PreviewService:
     async def _build_and_serve_vue(self, preview: PreviewProject, project_dir: pathlib.Path):
         """Build and serve Vue application."""
         # Similar to React but with Vue-specific configuration
+        await self._serve_static_html(preview, project_dir)
+
+    async def _serve_javascript(self, preview: PreviewProject, project_dir: pathlib.Path):
+        """Serve JavaScript files by wrapping them in HTML."""
+        try:
+            port = self._get_available_port()
+            preview.port = port
+            preview.serve_dir = str(project_dir)
+            
+            # Find the main JS file
+            js_files = [f for f in preview.files.keys() if f.endswith(('.js', '.mjs', '.ts'))]
+            main_js = js_files[0] if js_files else 'script.js'
+            
+            # Create an HTML wrapper for the JS file
+            html_content = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JavaScript Preview - {main_js}</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; padding: 20px; }}
+        .js-container {{ max-width: 800px; margin: 0 auto; }}
+        .header {{ background: #f8f9fa; padding: 15px; border-radius: 5px; margin-bottom: 20px; }}
+    </style>
+</head>
+<body>
+    <div class="js-container">
+        <div class="header">
+            <h1>JavaScript Preview</h1>
+            <p>File: <code>{main_js}</code></p>
+        </div>
+        <div id="output"></div>
+    </div>
+    <script src="{main_js}"></script>
+</body>
+</html>"""
+            
+            # Write the HTML wrapper as index.html
+            html_path = project_dir / "index.html"
+            html_path.write_text(html_content, encoding='utf-8')
+            
+            await self._serve_static_html(preview, project_dir)
+        except Exception as e:
+            logger.error(f"Failed to serve JavaScript preview: {e}")
+            raise
+
+    async def _serve_css(self, preview: PreviewProject, project_dir: pathlib.Path):
+        """Serve CSS files by creating a demo HTML page."""
+        port = self._get_available_port()
+        preview.port = port
+        preview.serve_dir = str(project_dir)
+        
+        # Find the main CSS file
+        css_files = [f for f in preview.files.keys() if f.endswith(('.css', '.scss', '.sass'))]
+        main_css = css_files[0] if css_files else 'style.css'
+        
+        # Create an HTML demo page for the CSS
+        html_content = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSS Preview - {main_css}</title>
+    <link rel="stylesheet" href="{main_css}">
+</head>
+<body>
+    <div class="css-preview-container">
+        <header>
+            <h1>CSS Preview</h1>
+            <p>Stylesheet: <code>{main_css}</code></p>
+        </header>
+        <main>
+            <section>
+                <h2>Sample Content</h2>
+                <p>This page demonstrates your CSS styles with sample content.</p>
+                <div class="demo-buttons">
+                    <button class="primary">Primary Button</button>
+                    <button class="secondary">Secondary Button</button>
+                </div>
+                <div class="demo-form">
+                    <form>
+                        <label>Sample Input:</label>
+                        <input type="text" placeholder="Enter text here">
+                        <label>Sample Textarea:</label>
+                        <textarea placeholder="Enter more text here"></textarea>
+                    </form>
+                </div>
+            </section>
+        </main>
+    </div>
+</body>
+</html>"""
+        
+        # Write the HTML demo as index.html
+        html_path = project_dir / "index.html"
+        html_path.write_text(html_content, encoding='utf-8')
+        
+        await self._serve_static_html(preview, project_dir)
+
+    async def _serve_markdown(self, preview: PreviewProject, project_dir: pathlib.Path):
+        """Serve Markdown files by converting them to HTML."""
+        port = self._get_available_port()
+        preview.port = port
+        preview.serve_dir = str(project_dir)
+        
+        # Find the main Markdown file
+        md_files = [f for f in preview.files.keys() if f.endswith(('.md', '.markdown'))]
+        main_md = md_files[0] if md_files else 'README.md'
+        md_content = preview.files.get(main_md, '# No content')
+        
+        # Simple Markdown to HTML conversion (basic)
+        html_content = md_content.replace('\\n', '<br>')
+        html_content = html_content.replace('# ', '<h1>').replace('## ', '<h2>').replace('### ', '<h3>')
+        
+        # Create an HTML page for the Markdown
+        full_html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Markdown Preview - {main_md}</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; line-height: 1.6; max-width: 800px; margin: 0 auto; padding: 20px; }}
+        .md-header {{ background: #f8f9fa; padding: 15px; border-radius: 5px; margin-bottom: 20px; }}
+        .md-content {{ background: white; padding: 20px; border: 1px solid #ddd; border-radius: 5px; }}
+        code {{ background: #f4f4f4; padding: 2px 4px; border-radius: 3px; }}
+    </style>
+</head>
+<body>
+    <div class="md-header">
+        <h1>Markdown Preview</h1>
+        <p>File: <code>{main_md}</code></p>
+    </div>
+    <div class="md-content">
+        {html_content}
+    </div>
+</body>
+</html>"""
+        
+        # Write the HTML as index.html
+        html_path = project_dir / "index.html"
+        html_path.write_text(full_html, encoding='utf-8')
+        
         await self._serve_static_html(preview, project_dir)
 
     async def _periodic_cleanup(self):

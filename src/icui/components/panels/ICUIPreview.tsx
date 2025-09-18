@@ -75,20 +75,48 @@ const ICUIPreview = forwardRef<ICUIPreviewRef, ICUIPreviewProps>(({
       warning: 'bg-yellow-500 text-black',
       info: 'bg-blue-500 text-white'
     };
-    
-    notification.className = `fixed top-4 right-4 px-4 py-2 rounded shadow-lg z-50 transition-opacity ${colors[type]}`;
+
+    notification.className = `fixed top-4 right-4 p-4 rounded-lg shadow-lg z-50 ${colors[type]}`;
     notification.textContent = message;
-    
+    notification.style.zIndex = '99999';
     document.body.appendChild(notification);
-    
+
     setTimeout(() => {
-      notification.style.opacity = '0';
-      setTimeout(() => {
-        if (notification.parentNode) {
-          notification.parentNode.removeChild(notification);
-        }
-      }, 300);
+      notification.remove();
     }, 3000);
+  }, []);
+
+  // Safe clipboard function that handles different environments
+  const copyToClipboard = useCallback(async (text: string): Promise<boolean> => {
+    try {
+      // Try modern Clipboard API first
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+      
+      // Fallback to document.execCommand for older browsers/environments
+      const textArea = document.createElement('textarea');
+      textArea.value = text;
+      textArea.style.position = 'fixed';
+      textArea.style.left = '-999999px';
+      textArea.style.top = '-999999px';
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      
+      const result = document.execCommand('copy');
+      document.body.removeChild(textArea);
+      
+      if (result) {
+        return true;
+      }
+      
+      throw new Error('Copy command failed');
+    } catch (error) {
+      console.error('Failed to copy to clipboard:', error);
+      return false;
+    }
   }, []);
 
   // Project type detection based on file patterns
@@ -122,6 +150,31 @@ const ICUIPreview = forwardRef<ICUIPreviewRef, ICUIPreviewProps>(({
     // Check for static HTML files
     if (fileNames.some(name => name === 'index.html' || name.endsWith('.html'))) {
       return 'html';
+    }
+    
+    // Check for JavaScript/TypeScript files
+    if (fileNames.some(name => name.endsWith('.js') || name.endsWith('.mjs') || name.endsWith('.ts'))) {
+      return 'javascript';
+    }
+    
+    // Check for React/JSX files
+    if (fileNames.some(name => name.endsWith('.jsx') || name.endsWith('.tsx'))) {
+      return 'react';
+    }
+    
+    // Check for Vue files
+    if (fileNames.some(name => name.endsWith('.vue'))) {
+      return 'vue';
+    }
+    
+    // Check for CSS files
+    if (fileNames.some(name => name.endsWith('.css') || name.endsWith('.scss') || name.endsWith('.sass'))) {
+      return 'css';
+    }
+    
+    // Check for Markdown files
+    if (fileNames.some(name => name.endsWith('.md') || name.endsWith('.markdown'))) {
+      return 'markdown';
     }
     
     // Check for Python Flask/Django
@@ -351,15 +404,16 @@ const ICUIPreview = forwardRef<ICUIPreviewRef, ICUIPreviewProps>(({
                                 'var(--icui-accent-warning)',
                 color: 'white'
               }}
-              onClick={() => {
+              onClick={async () => {
                 const fullUrl = previewUrl ? `${window.location.origin}${previewUrl}` : 
                                currentProject.url ? `${window.location.origin}${currentProject.url}` : null;
                 if (fullUrl) {
-                  navigator.clipboard.writeText(fullUrl).then(() => {
+                  const success = await copyToClipboard(fullUrl);
+                  if (success) {
                     showNotification('Preview URL copied to clipboard!', 'success');
-                  }).catch(() => {
+                  } else {
                     showNotification('Failed to copy URL', 'error');
-                  });
+                  }
                 }
               }}
               title="Click to copy full URL to clipboard"

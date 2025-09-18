@@ -850,9 +850,14 @@ async def create_preview(request: PreviewCreateRequest):
         if not preview_status:
             raise HTTPException(status_code=500, detail="Failed to get preview status")
         
+        # Use the URL from the preview status if available, otherwise construct it
+        preview_url = preview_status.get("url") or f"/preview/{preview_id}/"
+        
+        logger.info(f"Preview API returning: ID={preview_id}, URL={preview_url}")
+        
         return PreviewCreateResponse(
             preview_id=preview_id,
-            preview_url=f"/preview/{preview_id}/",
+            preview_url=preview_url,
             project_type=preview_status["project_type"]
         )
         

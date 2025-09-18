@@ -99,11 +99,16 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
       console.log('[Home] Handling preview for file:', filePath);
       
       if (!previewRef.current) {
-        console.error('[Home] Preview ref not available');
-        return;
+        console.error('[Home] Preview ref not available, waiting...');
+        // Wait a bit for the component to mount
+        await new Promise(resolve => setTimeout(resolve, 100));
+        if (!previewRef.current) {
+          console.error('[Home] Preview ref still not available after waiting');
+          return;
+        }
       }
 
-      // Read the HTML file content
+      // Read the file content
       const response = await fetch(`/api/files/content?path=${encodeURIComponent(filePath)}`);
       if (!response.ok) {
         throw new Error(`Failed to read file: ${response.statusText}`);
@@ -113,7 +118,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
       const content = result.data.content;
       const fileName = filePath.split('/').pop() || 'file.html';
       
-      // Create a preview with the HTML file content
+      // Create a preview with the file content
       await previewRef.current.createPreview({
         [fileName]: content
       });
