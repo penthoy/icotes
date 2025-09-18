@@ -48,6 +48,9 @@ export function createExplorerContextMenu(
   const multipleSelection = selectedFiles.length > 1;
   const isFile = singleSelection && selectedFiles[0].type === 'file';
   const isFolder = singleSelection && selectedFiles[0].type === 'folder';
+  
+  // Check if the selected file is an HTML file for preview
+  const isHtmlFile = isFile && selectedFiles[0].name.toLowerCase().endsWith('.html');
 
   const items: MenuItem[] = [];
 
@@ -162,6 +165,18 @@ export function createExplorerContextMenu(
       isVisible: () => true,
       isEnabled: () => true,
     });
+
+    // Preview for HTML files
+    if (isHtmlFile) {
+      items.push({
+        id: 'preview',
+        label: 'Preview',
+        icon: '👁️',
+        commandId: 'explorer.preview',
+        isVisible: () => true,
+        isEnabled: () => true,
+      });
+    }
   }
 
   // Paste (available when clipboard has content)

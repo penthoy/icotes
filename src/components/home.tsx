@@ -16,7 +16,8 @@ import {
   ICUIGit,
   ICUIPreview
 } from '../icui';
-import type { ICUIEditorRef } from '../icui';
+import type { ICUIEditorRef, ICUIPreviewRef } from '../icui';
+import { globalCommandRegistry } from '../icui/lib/commandRegistry';
 import ICUIBaseHeader from '../icui/components/ICUIBaseHeader';
 import ICUIBaseFooter from '../icui/components/ICUIBaseFooter';
 
@@ -83,11 +84,45 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
 
   // Editor ref for imperative control (e.g., opening files from Explorer)
   const editorRef = useRef<ICUIEditorRef>(null);
+  
+  // Preview ref for imperative control (e.g., previewing HTML files from Explorer)
+  const previewRef = useRef<ICUIPreviewRef>(null);
 
   // Menu state for integrated menus
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [currentFile, setCurrentFile] = useState<any>(null);
   // Git repo gating removed; ICUIGit handles its own connect logic
+
+  // Handle HTML file preview from Explorer context menu
+  const handlePreviewFile = useCallback(async (filePath: string) => {
+    try {
+      console.log('[Home] Handling preview for file:', filePath);
+      
+      if (!previewRef.current) {
+        console.error('[Home] Preview ref not available');
+        return;
+      }
+
+      // Read the HTML file content
+      const response = await fetch(`/api/files/content?path=${encodeURIComponent(filePath)}`);
+      if (!response.ok) {
+        throw new Error(`Failed to read file: ${response.statusText}`);
+      }
+      
+      const result = await response.json();
+      const content = result.data.content;
+      const fileName = filePath.split('/').pop() || 'file.html';
+      
+      // Create a preview with the HTML file content
+      await previewRef.current.createPreview({
+        [fileName]: content
+      });
+      
+      console.log('[Home] Preview created successfully for:', fileName);
+    } catch (error) {
+      console.error('[Home] Error previewing file:', error);
+    }
+  }, []);
 
   // Handle file selection from Explorer - VS Code-like temporary file opening
   const handleFileSelect = useCallback((file: any) => {
@@ -214,6 +249,30 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
     };
   }, [currentTheme]);
 
+  // Register preview command for HTML files
+  useEffect(() => {
+    globalCommandRegistry.register({
+      id: 'explorer.preview',
+      label: 'Preview',
+      description: 'Preview HTML file in Live Preview panel',
+      icon: '👁️',
+      category: 'explorer',
+      handler: (context?: any) => {
+        if (context && context.selectedFiles && context.selectedFiles.length > 0) {
+          const selectedFile = context.selectedFiles[0];
+          if (selectedFile.type === 'file' && selectedFile.path) {
+            handlePreviewFile(selectedFile.path);
+          }
+        }
+      }
+    });
+
+    // Cleanup on unmount
+    return () => {
+      globalCommandRegistry.unregister('explorer.preview');
+    };
+  }, [handlePreviewFile]);
+
   // Initialize Explorer file operations
   useEffect(() => {
     import('../icui/components/explorer/FileOperations').then(({ ExplorerFileOperations }) => {
@@ -311,6 +370,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
 
   const previewInstance = useMemo(() => (
     <ICUIPreview
+      ref={previewRef}
       className="h-full"
       autoRefresh={true}
       refreshDelay={1000}

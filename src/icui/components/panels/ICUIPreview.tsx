@@ -455,7 +455,7 @@ const ICUIPreview = forwardRef<ICUIPreviewRef, ICUIPreviewProps>(({
             ref={iframeRef}
             src={previewUrl}
             className="w-full h-full border-0"
-            sandbox="allow-scripts allow-same-origin allow-forms"
+            sandbox="allow-scripts allow-same-origin allow-forms allow-modals"
             title="Live Preview"
             onLoad={() => {
               console.log('Preview iframe loaded');

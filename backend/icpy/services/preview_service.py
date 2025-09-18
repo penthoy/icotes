@@ -99,7 +99,7 @@ class PreviewService:
         self.port_range = range(3001, 4000)
         self.used_ports: Set[int] = set()
         
-        self.message_broker = get_message_broker()
+        self.message_broker = None  # Will be initialized in start()
         self.connection_manager = get_connection_manager()
         
         # Cleanup task
@@ -108,6 +108,9 @@ class PreviewService:
     async def start(self):
         """Start the preview service."""
         logger.info("Starting Preview Service")
+        
+        # Initialize the message broker
+        self.message_broker = await get_message_broker()
         
         # Start periodic cleanup task
         self._cleanup_task = asyncio.create_task(self._periodic_cleanup())
@@ -386,6 +389,16 @@ class PreviewService:
             
             async with aiofiles.open(full_path, 'w', encoding='utf-8') as f:
                 await f.write(content)
+        
+        # For HTML projects with a single HTML file, also create index.html
+        # This ensures the content is served at the root path
+        html_files = [f for f in files.keys() if f.endswith('.html')]
+        if len(html_files) == 1 and 'index.html' not in files:
+            html_file = html_files[0]
+            index_path = project_dir / 'index.html'
+            async with aiofiles.open(index_path, 'w', encoding='utf-8') as f:
+                await f.write(files[html_file])
+            logger.info(f"Created index.html from {html_file} for direct preview access")
 
     async def _build_and_serve_preview(self, preview: PreviewProject):
         """Build and serve a preview project."""
