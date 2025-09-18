@@ -541,8 +541,8 @@ class PreviewService:
                 expired_previews = []
                 
                 for preview_id, preview in self.active_previews.items():
-                    # Clean up previews older than 1 hour
-                    if current_time - preview.updated_at > 3600:
+                    # Clean up previews older than 6 hours (extended for development use)
+                    if current_time - preview.updated_at > 21600:
                         expired_previews.append(preview_id)
                 
                 for preview_id in expired_previews:

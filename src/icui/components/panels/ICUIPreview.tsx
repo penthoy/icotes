@@ -326,15 +326,13 @@ const ICUIPreview = forwardRef<ICUIPreviewRef, ICUIPreviewProps>(({
     clearPreview
   }), [createPreview, updatePreview, clearPreview]);
 
-  // Cleanup on unmount
+  // Cleanup on unmount - only for manual cleanup, not automatic
   useEffect(() => {
     return () => {
-      if (currentProject) {
-        fetch(`/api/preview/${currentProject.id}`, { method: 'DELETE' })
-          .catch(error => console.warn('Failed to cleanup preview on unmount:', error));
-      }
+      // Don't auto-delete preview on unmount to allow external URL access
+      // Users can manually clear using the clear button if needed
     };
-  }, [currentProject]);
+  }, []);
 
   return (
     <div className={`icui-preview-container h-full flex flex-col ${className}`}>
@@ -344,17 +342,31 @@ const ICUIPreview = forwardRef<ICUIPreviewRef, ICUIPreviewProps>(({
         borderColor: 'var(--icui-border-subtle)'
       }}>
         <div className="flex items-center space-x-2">
-          <span className="text-sm font-medium" style={{ color: 'var(--icui-text-primary)' }}>
-            Live Preview
-          </span>
           {currentProject && (
-            <span className="text-xs px-2 py-1 rounded" style={{
-              backgroundColor: currentProject.status === 'ready' ? 'var(--icui-accent-success)' : 
-                              currentProject.status === 'error' ? 'var(--icui-accent-error)' : 
-                              'var(--icui-accent-warning)',
-              color: 'white'
-            }}>
-              {currentProject.projectType} - {currentProject.status}
+            <span 
+              className="text-xs px-2 py-1 rounded font-mono cursor-pointer hover:opacity-80 transition-opacity" 
+              style={{
+                backgroundColor: currentProject.status === 'ready' ? 'var(--icui-accent-success)' : 
+                                currentProject.status === 'error' ? 'var(--icui-accent-error)' : 
+                                'var(--icui-accent-warning)',
+                color: 'white'
+              }}
+              onClick={() => {
+                const fullUrl = previewUrl ? `${window.location.origin}${previewUrl}` : 
+                               currentProject.url ? `${window.location.origin}${currentProject.url}` : null;
+                if (fullUrl) {
+                  navigator.clipboard.writeText(fullUrl).then(() => {
+                    showNotification('Preview URL copied to clipboard!', 'success');
+                  }).catch(() => {
+                    showNotification('Failed to copy URL', 'error');
+                  });
+                }
+              }}
+              title="Click to copy full URL to clipboard"
+            >
+              {previewUrl ? `${window.location.origin}${previewUrl}` : 
+               currentProject.url ? `${window.location.origin}${currentProject.url}` : 
+               `${currentProject.projectType} - ${currentProject.status}`}
             </span>
           )}
           {isLoading && (
@@ -364,22 +376,42 @@ const ICUIPreview = forwardRef<ICUIPreviewRef, ICUIPreviewProps>(({
         
         <div className="flex items-center space-x-2">
           {currentProject && (
-            <button
-              onClick={() => {
-                if (iframeRef.current) {
-                  iframeRef.current.src = iframeRef.current.src;
-                }
-              }}
-              className="px-2 py-1 text-xs rounded transition-colors"
-              style={{
-                backgroundColor: 'var(--icui-bg-primary)',
-                borderColor: 'var(--icui-border-subtle)',
-                color: 'var(--icui-text-primary)'
-              }}
-              title="Refresh preview"
-            >
-              🔄
-            </button>
+            <>
+              <button
+                onClick={() => {
+                  if (iframeRef.current) {
+                    iframeRef.current.src = iframeRef.current.src;
+                  }
+                }}
+                className="px-2 py-1 text-xs rounded transition-colors"
+                style={{
+                  backgroundColor: 'var(--icui-bg-primary)',
+                  borderColor: 'var(--icui-border-subtle)',
+                  color: 'var(--icui-text-primary)'
+                }}
+                title="Refresh preview"
+              >
+                🔄
+              </button>
+              <button
+                onClick={() => {
+                  const fullUrl = previewUrl ? `${window.location.origin}${previewUrl}` : 
+                                 currentProject.url ? `${window.location.origin}${currentProject.url}` : null;
+                  if (fullUrl) {
+                    window.open(fullUrl, '_blank');
+                  }
+                }}
+                className="px-2 py-1 text-xs rounded transition-colors"
+                style={{
+                  backgroundColor: 'var(--icui-bg-primary)',
+                  borderColor: 'var(--icui-border-subtle)',
+                  color: 'var(--icui-text-primary)'
+                }}
+                title="Open preview in new tab"
+              >
+                🔗
+              </button>
+            </>
           )}
           <button
             onClick={clearPreview}
