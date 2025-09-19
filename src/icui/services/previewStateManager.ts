@@ -63,8 +63,22 @@ class PreviewStateManager {
           return this.getDefaultState();
         }
         
+        // Reconstruct currentProject with minimal data + empty files for security
+        let currentProject = null;
+        if (parsed.currentProject) {
+          const cp = parsed.currentProject;
+          currentProject = {
+            id: cp.id || '',
+            projectType: cp.projectType || 'html',
+            status: cp.status || 'building',
+            url: cp.url || '',
+            files: {}, // Don't restore file contents for security
+            error: undefined
+          };
+        }
+        
         return {
-          currentProject: parsed.currentProject || null,
+          currentProject,
           previewUrl: parsed.previewUrl || '',
           error: null, // Don't persist errors
           isLoading: false, // Don't persist loading state
@@ -91,10 +105,14 @@ class PreviewStateManager {
   private saveToStorage(): void {
     try {
       // Only persist the data that should survive across sessions
+      const cp = this.state.currentProject;
+      const minimalProject = cp
+        ? { id: cp.id, projectType: cp.projectType, status: cp.status, url: cp.url }
+        : null;
       const persistentState = {
-        currentProject: this.state.currentProject,
+        currentProject: minimalProject,
         previewUrl: this.state.previewUrl,
-        timestamp: Date.now(), // Add timestamp for expiration
+        timestamp: Date.now(),
       };
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify(persistentState));
     } catch (error) {

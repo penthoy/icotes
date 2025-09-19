@@ -55,16 +55,13 @@ export function createExplorerContextMenu(
     const previewableExtensions = [
       '.html', '.htm',           // HTML files
       '.js', '.mjs',             // JavaScript files  
-      '.ts',                     // TypeScript files
       '.tsx', '.jsx',            // React/JSX files
-      '.css', '.scss', '.sass',  // Stylesheets
-      '.json',                   // JSON files
+  '.css', '.scss', '.sass',  // Stylesheets
       '.md', '.markdown',        // Markdown files
       '.txt',                    // Text files
       '.xml', '.svg',            // XML/SVG files
       '.vue',                    // Vue files
-      '.php',                    // PHP files
-      '.py',                     // Python files
+  // Removed: .ts, .py, .php, .json (require transpilation/runtime or not directly previewable)
     ];
     return previewableExtensions.some(ext => fileName.endsWith(ext));
   })();

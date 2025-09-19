@@ -1,3 +1,44 @@
+# How to Test the Backend (uv)
+
+Use the uv package manager for fast, isolated test runs.
+## Prerequisites
+
+- Python 3.12+
+- uv installed
+Install uv (if missing):
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+export PATH="$HOME/.local/bin:$PATH"
+```
+## Quick Start
+
+From the `backend/` directory:
+```bash
+# Sync dependencies declared in pyproject.toml/uv.lock
+uv sync --frozen --no-dev
+
+# Ensure module discovery works
+export PYTHONPATH=$(pwd)
+
+# Run all tests
+uv run pytest tests/ -v --tb=short
+```
+## Running Specific Tests
+
+- All tests: `uv run pytest tests/ -v --tb=short`
+- Specific suite: `uv run pytest tests/icpy/test_workspace_service.py -v`
+- Pattern match: `uv run pytest tests/ -k "workspace" -v`
+- Stop on first failure: `uv run pytest tests/ -x --tb=short`
+
+## Troubleshooting
+- Import errors: ensure `export PYTHONPATH=$(pwd)` while in `backend/`
+- Missing uv: install as above
+- Clean caches: `rm -rf .pytest_cache/ tests/__pycache__/ tests/icpy/__pycache__/`
+
+## Notes
+- Tests use fixtures; no running server required
+- Some REST API tests may be skipped due to FastAPI version constraints
+- For CI, use `uv sync --frozen --no-dev` then `uv run pytest`
 # Testing Guide for icpy Backend
 
 This guide covers how to run tests using modern `uv` package manager commands.

@@ -30,6 +30,7 @@ import subprocess
 import tempfile
 import time
 import uuid
+import sys
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional, Set, Tuple, Union, Callable
@@ -74,7 +75,7 @@ class PreviewProject:
     serve_dir: Optional[str] = None
     url: Optional[str] = None
     port: Optional[int] = None
-    process: Optional[subprocess.Popen] = None
+    process: Optional[Union[subprocess.Popen, asyncio.subprocess.Process]] = None
     error: Optional[str] = None
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
@@ -143,6 +144,37 @@ class PreviewService:
             "service": "preview",
             "timestamp": time.time()
         })
+
+    # --- Process helpers to support both subprocess.Popen and asyncio.subprocess.Process ---
+    def _process_is_running(self, proc: Union[subprocess.Popen, asyncio.subprocess.Process]) -> bool:
+        """Return True if process is running (no return code yet)."""
+        try:
+            # subprocess.Popen has poll(); asyncio Process has returncode
+            if hasattr(proc, "poll"):
+                return getattr(proc, "poll")() is None
+            return getattr(proc, "returncode", None) is None
+        except Exception:
+            return False
+
+    async def _graceful_stop_process(self, proc: Union[subprocess.Popen, asyncio.subprocess.Process], timeout: float = 1.0) -> None:
+        """Attempt to terminate a process gracefully, then kill after timeout."""
+        try:
+            proc.terminate()
+        except Exception:
+            # Best effort
+            pass
+
+        start = time.time()
+        while time.time() - start < timeout:
+            if not self._process_is_running(proc):
+                return
+            await asyncio.sleep(0.1)
+
+        # Force kill if still running
+        try:
+            proc.kill()
+        except Exception:
+            pass
 
     def detect_project_type(self, files: Dict[str, str]) -> ProjectType:
         """
@@ -234,37 +266,31 @@ class PreviewService:
         # Sort files by name for consistent hashing
         sorted_files = sorted(files.items())
         content_str = f"{project_type}:" + ":".join(f"{name}:{content}" for name, content in sorted_files)
-        hash_value = hashlib.md5(content_str.encode()).hexdigest()
-        
-        # Debug logging to see what's being hashed
-        logger.info(f"Generating hash for project_type={project_type}")
-        for name, content in sorted_files:
-            logger.info(f"  File: {name}, Content length: {len(content)}, First 100 chars: {repr(content[:100])}")
-        logger.info(f"  Final content_str length: {len(content_str)}")
-        logger.info(f"  Generated hash: {hash_value}")
-        
+        hash_value = hashlib.sha256(content_str.encode()).hexdigest()
+        logger.debug(f"Generated hash for project_type={project_type}: {hash_value}")
         return hash_value
 
     def _is_preview_active(self, preview: PreviewProject) -> bool:
         """Check if a preview is still active and its process is running."""
-        logger.info(f"Checking if preview {preview.id} is active: status={preview.status.value}, has_process={preview.process is not None}")
-        
+        logger.info(
+            f"Checking if preview {preview.id} is active: status={preview.status.value}, has_process={preview.process is not None}"
+        )
+
         if preview.status not in [PreviewStatus.READY, PreviewStatus.BUILDING]:
             logger.info(f"Preview {preview.id} is not active: status is {preview.status.value}")
             return False
-        
+
         # Check if process is still running
-        if preview.process:
-            poll_result = preview.process.poll()
-            logger.info(f"Preview {preview.id} process poll result: {poll_result}")
-            if poll_result is not None:
+        if preview.process is not None:
+            if not self._process_is_running(preview.process):
                 # Process has terminated
-                logger.info(f"Preview {preview.id} process has terminated with code {poll_result}")
+                code = getattr(preview.process, "returncode", None)
+                logger.info(f"Preview {preview.id} process has terminated with code {code}")
                 preview.status = PreviewStatus.STOPPED
                 return False
         else:
             logger.info(f"Preview {preview.id} has no process")
-        
+
         logger.info(f"Preview {preview.id} is active")
         return True
 
@@ -302,13 +328,9 @@ class PreviewService:
             # Stop process if running
             if preview.process:
                 try:
-                    preview.process.terminate()
-                    preview.process.wait(timeout=1)
-                except:
-                    try:
-                        preview.process.kill()
-                    except:
-                        pass
+                    await self._graceful_stop_process(preview.process)
+                except Exception:
+                    pass
             
             # Release port
             if preview.port:
@@ -484,10 +506,7 @@ class PreviewService:
             # Stop process if running
             if preview.process:
                 try:
-                    preview.process.terminate()
-                    await asyncio.sleep(1)
-                    if preview.process.poll() is None:
-                        preview.process.kill()
+                    await self._graceful_stop_process(preview.process, timeout=1.0)
                 except Exception as e:
                     logger.warning(f"Failed to stop preview process: {e}")
             
@@ -587,7 +606,8 @@ class PreviewService:
         preview.serve_dir = str(project_dir)
         
         # Start simple HTTP server
-        cmd = ["python", "-m", "http.server", str(port)]
+        # Use the current Python interpreter for portability
+        cmd = [sys.executable, "-m", "http.server", str(port)]
         logger.info(f"Starting preview server with command: {' '.join(cmd)} in directory {project_dir}")
         preview.process = subprocess.Popen(
             cmd,
@@ -656,17 +676,21 @@ class PreviewService:
                     await f.write(json.dumps(package_json, indent=2))
             
             # Install dependencies
-            install_proc = subprocess.Popen(
-                ["npm", "install"],
-                cwd=project_dir,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE
+            env_install = os.environ.copy()
+            env_install["npm_config_ignore_scripts"] = "1"
+            from shutil import which
+            npm_exe = which("npm") or "npm"
+            install_proc = await asyncio.create_subprocess_exec(
+                npm_exe, "install", "--ignore-scripts",
+                cwd=str(project_dir),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env=env_install,
             )
-            
-            install_proc.wait()
-            
-            if install_proc.returncode != 0:
-                raise Exception("npm install failed")
+            rc = await install_proc.wait()
+            if rc != 0:
+                _, err = await install_proc.communicate()
+                raise RuntimeError(f"npm install failed: {err.decode(errors='ignore')[:400]}")
             
             # Start dev server
             port = self._get_available_port()
@@ -675,16 +699,19 @@ class PreviewService:
             env = os.environ.copy()
             env["PORT"] = str(port)
             
-            preview.process = subprocess.Popen(
-                ["npm", "start"],
-                cwd=project_dir,
+            preview.process = await asyncio.create_subprocess_exec(
+                npm_exe, "start",
+                cwd=str(project_dir),
                 env=env,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
             )
-            
-            # Wait for dev server to start
-            await asyncio.sleep(10)
+            # Poll a few times instead of fixed sleep
+            for _ in range(20):
+                if preview.process.returncode is not None:
+                    _, err = await preview.process.communicate()
+                    raise RuntimeError(f"Dev server exited early: {err.decode(errors='ignore')[:400]}")
+                await asyncio.sleep(0.5)
             
             preview.url = f"/preview/{preview.id}/"
             preview.status = PreviewStatus.READY
@@ -810,7 +837,7 @@ class PreviewService:
         md_content = preview.files.get(main_md, '# No content')
         
         # Simple Markdown to HTML conversion (basic)
-        html_content = md_content.replace('\\n', '<br>')
+        html_content = md_content.replace('\n', '<br>')
         html_content = html_content.replace('# ', '<h1>').replace('## ', '<h2>').replace('### ', '<h3>')
         
         # Create an HTML page for the Markdown

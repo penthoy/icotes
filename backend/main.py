@@ -5,8 +5,8 @@ Main entry point for the icotes backend server.
 This module sets up and runs the FastAPI application with WebSocket support
 for the icotes code editor interface.
 
-IMPORTANT: Always run this in the virtual environment!
-Run with: source venv/bin/activate && python main.py
+Recommended: use uv for isolation and speed
+Run with: uv run python main.py
 """
 
 # Standard library imports
@@ -835,6 +835,7 @@ async def execute_code(request: CodeExecutionRequest):
 @app.post("/api/preview/create", response_model=PreviewCreateResponse)
 async def create_preview(request: PreviewCreateRequest):
     """Create a new preview project."""
+    preview_id = None
     try:
         if not ICPY_AVAILABLE:
             raise HTTPException(status_code=500, detail="Preview service not available")
@@ -861,9 +862,11 @@ async def create_preview(request: PreviewCreateRequest):
             project_type=preview_status["project_type"]
         )
         
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error creating preview: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to create preview: {str(e)}")
+        logger.exception(f"Error creating preview with id={preview_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create preview: {str(e)}") from e
 
 @app.post("/api/preview/{preview_id}/update")
 async def update_preview(preview_id: str, request: PreviewUpdateRequest):

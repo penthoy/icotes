@@ -5,13 +5,7 @@
  * This implements Phase 1 of the Live Preview Plans with static file serving and
  * project type detection.
  * 
- *  // Create a new preview
-  const createPreview = useCallback(async (files: Record<string, string>) => {
-    try {
-      updateGlobalState({ isLoading: true, error: null });
-      
-      const projectType = detectProjectType(files);
-      console.log('Detected project type:', projectType);tures:
+ * Features:
  * - Iframe-based preview for client-side applications
  * - Project type auto-detection (HTML, React, Vue, etc.)
  * - Real-time preview updates via WebSocket
@@ -358,7 +352,7 @@ const ICUIPreview = forwardRef<ICUIPreviewRef, ICUIPreviewProps>(({
               updateGlobalState({
                 currentProject: { ...latestProject, status: 'ready' },
                 // Prefer existing previewUrl; fall back to any url provided by status
-                previewUrl: latest.previewUrl || status.preview_url || latestProject.url || latest.previewUrl
+                previewUrl: latest.previewUrl || status.preview_url || latestProject.url
               });
             }
             return;
