@@ -1,6 +1,21 @@
 /**
  * ICUI Enhanced Panel Area Component
- * Provides advanced panel area functionality extracted from ICUITest3/4
+ * Provides advance}) => {
+  const [dragOver, setDragOver] = useState(false);
+  const [isDragging, setIsDragging] = useState(false); // Track if a drag is in progress
+  const dragCounter = useRef(0);
+
+  // Stable local active tab state to avoid ping-pong with fallback logic
+  const [localActiveTabId, setLocalActiveTabId] = useState<string>(() => {
+    return activePanelId || panels[0]?.id || '';
+  });
+
+  // Keep local active tab in sync with prop changes, but don't override unnecessarily
+  useEffect(() => {
+    if (activePanelId && activePanelId !== localActiveTabId && !isDragging) {
+      setLocalActiveTabId(activePanelId);
+    }
+  }, [activePanelId, localActiveTabId, isDragging]);nctionality extracted from ICUITest3/4
  * Handles panel docking, tab management, and drag/drop between areas
  */
 
@@ -61,6 +76,7 @@ export const ICUIPanelArea: React.FC<ICUIPanelAreaProps> = ({
   showPanelSelector = false,
 }) => {
   const [dragOver, setDragOver] = useState(false);
+  const [isDragging, setIsDragging] = useState(false); // Track if a drag is in progress
   const dragCounter = useRef(0);
 
   // Stable local active tab state to avoid ping-pong with fallback logic
@@ -115,6 +131,18 @@ export const ICUIPanelArea: React.FC<ICUIPanelAreaProps> = ({
     prevPanelIdsRef.current = currentIds;
   }, [panels, activePanelId]);
 
+  // Add global dragend listener to clear dragging state if drag is cancelled
+  useEffect(() => {
+    const handleDragEnd = () => {
+      setIsDragging(false);
+    };
+
+    document.addEventListener('dragend', handleDragEnd);
+    return () => {
+      document.removeEventListener('dragend', handleDragEnd);
+    };
+  }, []);
+
   const activePanel = (localActiveTabId ? panels.find(p => p.id === localActiveTabId) : panels[0]);
 
   // Convert panels to tabs
@@ -152,6 +180,7 @@ export const ICUIPanelArea: React.FC<ICUIPanelAreaProps> = ({
     dragCounter.current++;
     if (!dragOver) {
       setDragOver(true);
+      setIsDragging(true); // Mark that we're in a drag operation
     }
   }, [allowDrop, dragOver]);
 
@@ -162,6 +191,7 @@ export const ICUIPanelArea: React.FC<ICUIPanelAreaProps> = ({
     if (dragCounter.current <= 0) {
       dragCounter.current = 0; // Ensure it doesn't go negative
       setDragOver(false);
+      // Don't clear isDragging here - wait for drop or dragend
     }
   }, [allowDrop]);
 
@@ -177,6 +207,7 @@ export const ICUIPanelArea: React.FC<ICUIPanelAreaProps> = ({
     
     e.preventDefault();
     setDragOver(false);
+    setIsDragging(false); // Clear dragging state
     dragCounter.current = 0;
 
     const panelId = e.dataTransfer.getData('application/icui-panel');
@@ -191,8 +222,12 @@ export const ICUIPanelArea: React.FC<ICUIPanelAreaProps> = ({
         return;
       }
       
-      // Optimistically set active tab locally to prevent flicker while parent updates layout
-      setLocalActiveTabId(panelId);
+      // Only set active tab locally after drop is complete, not during drag
+      // This prevents rapid tab switching during drag operations
+      setTimeout(() => {
+        setLocalActiveTabId(panelId);
+      }, 50); // Small delay to ensure drop completes first
+      
       // Dropping panel in different area
       onPanelDrop?.(panelId, sourceAreaId);
     } else if (sourceAreaId === id) {
@@ -257,6 +292,7 @@ export const ICUIPanelArea: React.FC<ICUIPanelAreaProps> = ({
           availablePanelTypes={availablePanelTypes}
           onPanelAdd={onPanelAdd}
           showPanelSelector={showPanelSelector}
+          isDragging={isDragging} // Pass drag state to prevent activation during drag
         />
       </div>
     );

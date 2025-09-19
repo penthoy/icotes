@@ -5,7 +5,13 @@
  * This implements Phase 1 of the Live Preview Plans with static file serving and
  * project type detection.
  * 
- * Key Features:
+ *  // Create a new preview
+  const createPreview = useCallback(async (files: Record<string, string>) => {
+    try {
+      updateGlobalState({ isLoading: true, error: null });
+      
+      const projectType = detectProjectType(files);
+      console.log('Detected project type:', projectType);tures:
  * - Iframe-based preview for client-side applications
  * - Project type auto-detection (HTML, React, Vue, etc.)
  * - Real-time preview updates via WebSocket
@@ -15,20 +21,12 @@
 
 import React, { useState, useRef, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react';
 import { backendService, useTheme } from '../../services';
+import { previewStateManager, type PreviewState, type PreviewProject } from '../../services/previewStateManager';
 
 // Preview types and interfaces
 interface PreviewFile {
   path: string;
   content: string;
-}
-
-interface PreviewProject {
-  id: string;
-  files: Record<string, string>;
-  projectType: string;
-  status: 'building' | 'ready' | 'error';
-  url?: string;
-  error?: string;
 }
 
 interface ICUIPreviewRef {
@@ -54,17 +52,67 @@ const ICUIPreview = forwardRef<ICUIPreviewRef, ICUIPreviewProps>(({
   autoRefresh = true,
   refreshDelay = 1000
 }, ref) => {
-  // State management
-  const [currentProject, setCurrentProject] = useState<PreviewProject | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string>('');
-  const [connectionStatus, setConnectionStatus] = useState<boolean>(false);
+  // Global state management for persistence across component unmount/remount
+  const [globalState, setGlobalState] = useState<PreviewState>(() => previewStateManager.getState());
+  const [isParentResizing, setIsParentResizing] = useState(false);
+  
+  // Subscribe to global state changes
+  useEffect(() => {
+    const unsubscribe = previewStateManager.subscribe(setGlobalState);
+    return unsubscribe;
+  }, []);
+
+  // Extract state values for easy access
+  const { currentProject, isLoading, error, previewUrl, connectionStatus } = globalState;
+  
+  // Update global state helper
+  const updateGlobalState = useCallback((updates: Partial<PreviewState>) => {
+    previewStateManager.updateState(updates);
+  }, []);
   
   // Refs
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const refreshTimerRef = useRef<NodeJS.Timeout | null>(null);
   const { theme } = useTheme();
+
+  // Detect when parent is being resized by checking document cursor
+  useEffect(() => {
+    const checkResizeState = () => {
+      const bodyStyle = window.getComputedStyle(document.body);
+      const cursor = bodyStyle.cursor;
+      const isResizing = cursor.includes('resize') || cursor === 'col-resize' || cursor === 'row-resize';
+      
+      // Only update state if it changed to avoid unnecessary re-renders during drag
+      setIsParentResizing(current => current !== isResizing ? isResizing : current);
+    };
+
+    // Throttle the mutation observer to avoid excessive calls during drag
+    let throttleTimer: NodeJS.Timeout | null = null;
+    const throttledCheck = () => {
+      if (throttleTimer) return;
+      throttleTimer = setTimeout(() => {
+        checkResizeState();
+        throttleTimer = null;
+      }, 16); // ~60fps throttling
+    };
+
+    // Create a MutationObserver to watch for cursor changes
+    const observer = new MutationObserver(throttledCheck);
+    observer.observe(document.body, {
+      attributes: true,
+      attributeFilter: ['style']
+    });
+
+    // Also check on mount
+    checkResizeState();
+
+    return () => {
+      observer.disconnect();
+      if (throttleTimer) {
+        clearTimeout(throttleTimer);
+      }
+    };
+  }, []);
 
   // Notification service
   const showNotification = useCallback((message: string, type: 'success' | 'error' | 'warning' | 'info' = 'info') => {
@@ -189,8 +237,7 @@ const ICUIPreview = forwardRef<ICUIPreviewRef, ICUIPreviewProps>(({
   // Create a new preview
   const createPreview = useCallback(async (files: Record<string, string>) => {
     try {
-      setIsLoading(true);
-      setError(null);
+      updateGlobalState({ isLoading: true, error: null });
       
       const projectType = detectProjectType(files);
       console.log('Detected project type:', projectType);
@@ -221,23 +268,32 @@ const ICUIPreview = forwardRef<ICUIPreviewRef, ICUIPreviewProps>(({
         url: result.preview_url
       };
       
-      setCurrentProject(project);
-      setPreviewUrl(result.preview_url);
+      updateGlobalState({ 
+        currentProject: project, 
+        previewUrl: result.preview_url 
+      });
       
       // Poll for build completion
       await waitForPreviewReady(result.preview_id);
       
-      showNotification(`Preview created for ${projectType} project`, 'success');
-      onPreviewReady?.(result.preview_url);
+      // Re-read state after ready to ensure we have a URL
+      const latest = previewStateManager.getState();
+      const readyUrl = latest.previewUrl || project.url;
+      if (readyUrl) {
+        showNotification(`Preview created for ${projectType} project`, 'success');
+        onPreviewReady?.(readyUrl);
+      } else {
+        console.warn('Preview reported ready but URL is missing');
+      }
       
     } catch (error) {
       console.error('Failed to create preview:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      setError(errorMessage);
+      updateGlobalState({ error: errorMessage });
       showNotification(`Failed to create preview: ${errorMessage}`, 'error');
       onPreviewError?.(errorMessage);
     } finally {
-      setIsLoading(false);
+      updateGlobalState({ isLoading: false });
     }
   }, [detectProjectType, onPreviewReady, onPreviewError, showNotification]);
 
@@ -249,7 +305,7 @@ const ICUIPreview = forwardRef<ICUIPreviewRef, ICUIPreviewProps>(({
     }
     
     try {
-      setIsLoading(true);
+      updateGlobalState({ isLoading: true });
       
       // Send update request to backend
       const response = await fetch(`/api/preview/${currentProject.id}/update`, {
@@ -264,7 +320,9 @@ const ICUIPreview = forwardRef<ICUIPreviewRef, ICUIPreviewProps>(({
         throw new Error(`Failed to update preview: ${response.statusText}`);
       }
       
-      setCurrentProject(prev => prev ? { ...prev, files, status: 'building' } : null);
+      updateGlobalState({ 
+        currentProject: currentProject ? { ...currentProject, files, status: 'building' } : null 
+      });
       
       // Wait for update to complete
       await waitForPreviewReady(currentProject.id);
@@ -281,7 +339,7 @@ const ICUIPreview = forwardRef<ICUIPreviewRef, ICUIPreviewProps>(({
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       showNotification(`Failed to update preview: ${errorMessage}`, 'error');
     } finally {
-      setIsLoading(false);
+      updateGlobalState({ isLoading: false });
     }
   }, [currentProject, createPreview, showNotification]);
 
@@ -293,7 +351,16 @@ const ICUIPreview = forwardRef<ICUIPreviewRef, ICUIPreviewProps>(({
         if (response.ok) {
           const status = await response.json();
           if (status.ready) {
-            setCurrentProject(prev => prev ? { ...prev, status: 'ready' } : null);
+            // Read latest state to avoid stale closure issues
+            const latest = previewStateManager.getState();
+            const latestProject = latest.currentProject;
+            if (latestProject && latestProject.id === previewId) {
+              updateGlobalState({
+                currentProject: { ...latestProject, status: 'ready' },
+                // Prefer existing previewUrl; fall back to any url provided by status
+                previewUrl: latest.previewUrl || status.preview_url || latestProject.url || latest.previewUrl
+              });
+            }
             return;
           }
           if (status.error) {
@@ -319,9 +386,11 @@ const ICUIPreview = forwardRef<ICUIPreviewRef, ICUIPreviewProps>(({
         .catch(error => console.warn('Failed to cleanup preview:', error));
     }
     
-    setCurrentProject(null);
-    setPreviewUrl('');
-    setError(null);
+    updateGlobalState({ 
+      currentProject: null,
+      previewUrl: '',
+      error: null 
+    });
     
     if (iframeRef.current) {
       iframeRef.current.src = 'about:blank';
@@ -354,9 +423,9 @@ const ICUIPreview = forwardRef<ICUIPreviewRef, ICUIPreviewProps>(({
     const checkConnection = async () => {
       try {
         const status = await backendService.getConnectionStatus();
-        setConnectionStatus(status.connected);
+        updateGlobalState({ connectionStatus: status.connected });
       } catch (error) {
-        setConnectionStatus(false);
+        updateGlobalState({ connectionStatus: false });
       }
     };
     
@@ -367,10 +436,11 @@ const ICUIPreview = forwardRef<ICUIPreviewRef, ICUIPreviewProps>(({
 
   // Initialize with initial files
   useEffect(() => {
-    if (Object.keys(initialFiles).length > 0 && connectionStatus) {
+    // Only auto-create if we don't already have a persisted preview
+    if (!currentProject && !previewUrl && Object.keys(initialFiles).length > 0 && connectionStatus) {
       createPreview(initialFiles);
     }
-  }, [initialFiles, connectionStatus, createPreview]);
+  }, [initialFiles, connectionStatus, createPreview, currentProject, previewUrl]);
 
   // Expose methods via ref
   useImperativeHandle(ref, () => ({
@@ -386,6 +456,21 @@ const ICUIPreview = forwardRef<ICUIPreviewRef, ICUIPreviewProps>(({
       // Users can manually clear using the clear button if needed
     };
   }, []);
+
+  // When state is restored (after remount), ensure iframe displays the persisted URL
+  useEffect(() => {
+    if (iframeRef.current && (previewUrl || currentProject?.url)) {
+      const target = previewUrl || currentProject?.url || '';
+      if (iframeRef.current.src !== target) {
+        try {
+          // Avoid double reloads; set src only when different
+          iframeRef.current.src = target;
+        } catch (e) {
+          console.warn('Failed to set iframe src after remount:', e);
+        }
+      }
+    }
+  }, [previewUrl, currentProject?.url]);
 
   return (
     <div className={`icui-preview-container h-full flex flex-col ${className}`}>
@@ -485,6 +570,17 @@ const ICUIPreview = forwardRef<ICUIPreviewRef, ICUIPreviewProps>(({
 
       {/* Preview Content */}
       <div className="flex-1 relative overflow-hidden">
+        {/* Resize overlay - shown when parent is being resized */}
+        {isParentResizing && (
+          <div 
+            className="absolute inset-0 z-10 bg-transparent"
+            style={{ 
+              cursor: 'inherit',
+              pointerEvents: 'auto' 
+            }}
+          />
+        )}
+        
         {error ? (
           <div className="flex items-center justify-center h-full p-4">
             <div className="text-center">
@@ -497,7 +593,7 @@ const ICUIPreview = forwardRef<ICUIPreviewRef, ICUIPreviewProps>(({
               </p>
               <button
                 onClick={() => {
-                  setError(null);
+                  updateGlobalState({ error: null });
                   if (Object.keys(initialFiles).length > 0) {
                     createPreview(initialFiles);
                   }
@@ -539,15 +635,18 @@ const ICUIPreview = forwardRef<ICUIPreviewRef, ICUIPreviewProps>(({
         ) : (
           <iframe
             ref={iframeRef}
-            src={previewUrl}
+            src={previewUrl || currentProject?.url || ''}
             className="w-full h-full border-0"
+            style={{
+              pointerEvents: isParentResizing ? 'none' : 'auto'
+            }}
             sandbox="allow-scripts allow-same-origin allow-forms allow-modals"
             title="Live Preview"
             onLoad={() => {
               console.log('Preview iframe loaded');
             }}
             onError={() => {
-              setError('Failed to load preview');
+              updateGlobalState({ error: 'Failed to load preview' });
             }}
           />
         )}

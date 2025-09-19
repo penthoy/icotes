@@ -33,6 +33,8 @@ export interface ICUITabContainerProps {
   availablePanelTypes?: ICUIPanelType[];
   onPanelAdd?: (panelType: ICUIPanelType) => void;
   showPanelSelector?: boolean;
+  // Drag state to prevent tab activation during drag operations
+  isDragging?: boolean;
 }
 
 export const ICUITabContainer: React.FC<ICUITabContainerProps> = ({
@@ -48,6 +50,7 @@ export const ICUITabContainer: React.FC<ICUITabContainerProps> = ({
   availablePanelTypes,
   onPanelAdd,
   showPanelSelector = false,
+  isDragging = false,
 }) => {
   const [draggedTab, setDraggedTab] = useState<string | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
@@ -93,6 +96,15 @@ export const ICUITabContainer: React.FC<ICUITabContainerProps> = ({
   const requestActivate = useCallback((nextTabId: string) => {
     if (nextTabId === activeTabId) return;
 
+    // Prevent tab activation during drag operations
+    if (isDragging) {
+      if (process.env.NODE_ENV !== 'production') {
+        // eslint-disable-next-line no-console
+        console.debug('[ICUITabContainer] Blocking tab activation during drag operation');
+      }
+      return;
+    }
+
     // Circuit breaker: block if >6 switches within 1000ms window
     const now = Date.now();
     if (now - lastSwitchWindowStartRef.current > 1000) {
@@ -128,7 +140,7 @@ export const ICUITabContainer: React.FC<ICUITabContainerProps> = ({
       }
       debounceTimerRef.current = null;
     }, 100);
-  }, [onTabActivate]);
+  }, [onTabActivate, isDragging]);
 
   useEffect(() => () => {
     if (debounceTimerRef.current) {
