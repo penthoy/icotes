@@ -53,7 +53,7 @@ try:
     from icpy.api.media import router as media_router
     from icpy.api.rest_api import create_rest_api
     from icpy.core.connection_manager import get_connection_manager
-    from icpy.services import get_workspace_service, get_filesystem_service, get_terminal_service, get_agent_service, get_chat_service, get_code_execution_service, get_code_execution_service, get_preview_service
+    from icpy.services import get_workspace_service, get_filesystem_service, get_terminal_service, get_agent_service, get_chat_service, get_code_execution_service, get_preview_service
     from icpy.services.clipboard_service import clipboard_service
     from icpy.agent.custom_agent import get_available_custom_agents, call_custom_agent, call_custom_agent_stream
     from icpy.auth import auth_manager, get_current_user, get_optional_user
@@ -933,11 +933,17 @@ async def delete_preview(preview_id: str):
 
 # Static file serving for previews
 @app.get("/preview/{preview_id}/{file_path:path}")
-async def serve_preview_file(preview_id: str, file_path: str):
+async def serve_preview_file(preview_id: str, file_path: str, request: Request):
     """Serve static files for previews."""
     try:
         if not ICPY_AVAILABLE:
             raise HTTPException(status_code=500, detail="Preview service not available")
+        
+        # Note: Authentication could be added here for SaaS mode if needed
+        # if ICPY_AVAILABLE and auth_manager.is_saas_mode():
+        #     user = get_optional_user(request)
+        #     if not user:
+        #         raise HTTPException(status_code=401, detail="Authentication required")
         
         preview_service = get_preview_service()
         preview_status = await preview_service.get_preview_status(preview_id)
@@ -956,14 +962,17 @@ async def serve_preview_file(preview_id: str, file_path: str):
         # Proxy request to the preview server
         target_url = f"http://localhost:{preview.port}/{file_path}"
         
-        async with aiohttp.ClientSession() as session:
+        timeout = aiohttp.ClientTimeout(total=30)  # 30 second timeout
+        async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.get(target_url) as response:
                 content = await response.read()
                 headers = dict(response.headers)
                 
-                # Remove hop-by-hop headers
+                # Remove hop-by-hop and sensitive headers
                 headers.pop('connection', None)
                 headers.pop('transfer-encoding', None)
+                headers.pop('content-encoding', None)  # Remove encoding since we're returning raw content
+                headers.pop('content-length', None)  # Will be recalculated
                 
                 return Response(
                     content=content,
@@ -973,9 +982,12 @@ async def serve_preview_file(preview_id: str, file_path: str):
         
     except HTTPException:
         raise
+    except aiohttp.ClientError as e:
+        logger.error(f"Preview proxy error for {preview_id}/{file_path}: {e}")
+        raise HTTPException(status_code=502, detail="Preview server connection failed") from e
     except Exception as e:
-        logger.error(f"Error serving preview file {preview_id}/{file_path}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to serve preview file: {str(e)}")
+        logger.exception("Error serving preview file %s/%s", preview_id, file_path)
+        raise HTTPException(status_code=500, detail="Failed to serve preview file") from e
 
 # Frontend logging endpoint
 @app.post("/api/logs/frontend")
