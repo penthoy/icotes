@@ -34,7 +34,7 @@ from fastapi.websockets import WebSocketState
 from ..core.message_broker import get_message_broker
 from ..core.connection_manager import get_connection_manager
 from ..core.protocol import JsonRpcRequest, JsonRpcResponse, ProtocolError, ErrorCode
-from ..services import get_workspace_service, get_filesystem_service, get_terminal_service, get_code_execution_service
+from ..services import get_workspace_service, get_filesystem_service, get_terminal_service, get_code_execution_service, get_preview_service
 
 logger = logging.getLogger(__name__)
 
@@ -371,6 +371,8 @@ class WebSocketAPI:
                 await self._handle_execute(connection_id, data)
             elif message_type == 'execute_streaming':
                 await self._handle_execute_streaming(connection_id, data)
+            elif message_type == 'preview':
+                await self._handle_preview(connection_id, data)
             else:
                 # Generic message handling
                 logger.debug(f"[WebSocketAPI] Handling generic message: {data}")
@@ -797,6 +799,104 @@ class WebSocketAPI:
         except Exception as e:
             logger.error(f"Error in streaming execution for connection {connection_id}: {e}")
             await self.send_error(connection_id, f"Streaming execution error: {str(e)}")
+
+    async def _handle_preview(self, connection_id: str, data: Dict[str, Any]):
+        """Handle preview message."""
+        if connection_id not in self.connections:
+            return
+        
+        try:
+            action = data.get('action', '')
+            preview_id = data.get('preview_id')
+            
+            # Get preview service
+            preview_service = get_preview_service()
+            
+            if action == 'create':
+                files = data.get('files', {})
+                project_type = data.get('project_type')
+                
+                if not files:
+                    await self.send_error(connection_id, "No files provided for preview creation")
+                    return
+                
+                # Create preview
+                new_preview_id = await preview_service.create_preview(files, project_type)
+                
+                # Send success response
+                await self.send_message(connection_id, {
+                    'type': 'preview',
+                    'action': 'created',
+                    'preview_id': new_preview_id,
+                    'timestamp': time.time()
+                })
+                
+            elif action == 'update':
+                if not preview_id:
+                    await self.send_error(connection_id, "No preview_id provided for update")
+                    return
+                
+                files = data.get('files', {})
+                if not files:
+                    await self.send_error(connection_id, "No files provided for preview update")
+                    return
+                
+                # Update preview
+                success = await preview_service.update_preview(preview_id, files)
+                
+                if success:
+                    await self.send_message(connection_id, {
+                        'type': 'preview',
+                        'action': 'updated',
+                        'preview_id': preview_id,
+                        'timestamp': time.time()
+                    })
+                else:
+                    await self.send_error(connection_id, f"Failed to update preview {preview_id}")
+                    
+            elif action == 'status':
+                if not preview_id:
+                    await self.send_error(connection_id, "No preview_id provided for status")
+                    return
+                
+                # Get preview status
+                status = await preview_service.get_preview_status(preview_id)
+                
+                if status:
+                    await self.send_message(connection_id, {
+                        'type': 'preview',
+                        'action': 'status',
+                        'preview_id': preview_id,
+                        'status': status,
+                        'timestamp': time.time()
+                    })
+                else:
+                    await self.send_error(connection_id, f"Preview {preview_id} not found")
+                    
+            elif action == 'delete':
+                if not preview_id:
+                    await self.send_error(connection_id, "No preview_id provided for deletion")
+                    return
+                
+                # Delete preview
+                success = await preview_service.delete_preview(preview_id)
+                
+                if success:
+                    await self.send_message(connection_id, {
+                        'type': 'preview',
+                        'action': 'deleted',
+                        'preview_id': preview_id,
+                        'timestamp': time.time()
+                    })
+                else:
+                    await self.send_error(connection_id, f"Failed to delete preview {preview_id}")
+                    
+            else:
+                await self.send_error(connection_id, f"Unknown preview action: {action}")
+                
+        except Exception as e:
+            logger.error(f"Error handling preview message for connection {connection_id}: {e}")
+            await self.send_error(connection_id, f"Preview error: {str(e)}")
 
     async def _handle_generic_message(self, connection_id: str, data: Dict[str, Any]):
         """Handle generic message by broadcasting to message broker."""

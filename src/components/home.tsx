@@ -13,9 +13,11 @@ import {
   ICUIEditor,
   ICUIChatHistory,
   ICUIExplorer,
-  ICUIGit
+  ICUIGit,
+  ICUIPreview
 } from '../icui';
-import type { ICUIEditorRef } from '../icui';
+import type { ICUIEditorRef, ICUIPreviewRef } from '../icui';
+import { globalCommandRegistry } from '../icui/lib/commandRegistry';
 import ICUIBaseHeader from '../icui/components/ICUIBaseHeader';
 import ICUIBaseFooter from '../icui/components/ICUIBaseFooter';
 
@@ -53,8 +55,8 @@ const defaultLayout: ICUILayoutConfig = {
   layoutMode: 'h-layout',
   areas: {
     left: { id: 'left', name: 'Explorer', panelIds: ['explorer', 'git'], activePanelId: 'explorer', size: 25, visible: true },
-    center: { id: 'center', name: 'Editor', panelIds: ['editor'], activePanelId: 'editor', size: 50 },
-    right: { id: 'right', name: 'Assistant', panelIds: ['chat'], activePanelId: 'chat', size: 25, visible: true },
+    center: { id: 'center', name: 'Editor', panelIds: ['editor', 'preview'], activePanelId: 'editor', size: 50 },
+    right: { id: 'right', name: 'Assistant', panelIds: ['chat', 'chat-history'], activePanelId: 'chat', size: 25, visible: true },
     bottom: { id: 'bottom', name: 'Terminal', panelIds: ['terminal'], activePanelId: 'terminal', size: 40 },
   },
   splitConfig: { 
@@ -82,11 +84,50 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
 
   // Editor ref for imperative control (e.g., opening files from Explorer)
   const editorRef = useRef<ICUIEditorRef>(null);
+  
+  // Preview ref for imperative control (e.g., previewing HTML files from Explorer)
+  const previewRef = useRef<ICUIPreviewRef>(null);
 
   // Menu state for integrated menus
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [currentFile, setCurrentFile] = useState<any>(null);
   // Git repo gating removed; ICUIGit handles its own connect logic
+
+  // Handle HTML file preview from Explorer context menu
+  const handlePreviewFile = useCallback(async (filePath: string) => {
+    try {
+      console.log('[Home] Handling preview for file:', filePath);
+      
+      if (!previewRef.current) {
+        console.error('[Home] Preview ref not available, waiting...');
+        // Wait a bit for the component to mount
+        await new Promise(resolve => setTimeout(resolve, 100));
+        if (!previewRef.current) {
+          console.error('[Home] Preview ref still not available after waiting');
+          return;
+        }
+      }
+
+      // Read the file content
+      const response = await fetch(`/api/files/content?path=${encodeURIComponent(filePath)}`);
+      if (!response.ok) {
+        throw new Error(`Failed to read file: ${response.statusText}`);
+      }
+      
+      const result = await response.json();
+      const content = result.data.content;
+      const fileName = filePath.split('/').pop() || 'file.html';
+      
+      // Create a preview with the file content
+      await previewRef.current.createPreview({
+        [fileName]: content
+      });
+      
+      console.log('[Home] Preview created successfully for:', fileName);
+    } catch (error) {
+      console.error('[Home] Error previewing file:', error);
+    }
+  }, []);
 
   // Handle file selection from Explorer - VS Code-like temporary file opening
   const handleFileSelect = useCallback((file: any) => {
@@ -213,6 +254,30 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
     };
   }, [currentTheme]);
 
+  // Register preview command for HTML files
+  useEffect(() => {
+    globalCommandRegistry.register({
+      id: 'explorer.preview',
+      label: 'Preview',
+      description: 'Preview HTML file in Live Preview panel',
+      icon: '👁️',
+      category: 'explorer',
+      handler: (context?: any) => {
+        if (context && context.selectedFiles && context.selectedFiles.length > 0) {
+          const selectedFile = context.selectedFiles[0];
+          if (selectedFile.type === 'file' && selectedFile.path) {
+            handlePreviewFile(selectedFile.path);
+          }
+        }
+      }
+    });
+
+    // Cleanup on unmount
+    return () => {
+      globalCommandRegistry.unregister('explorer.preview');
+    };
+  }, [handlePreviewFile]);
+
   // Initialize Explorer file operations
   useEffect(() => {
     import('../icui/components/explorer/FileOperations').then(({ ExplorerFileOperations }) => {
@@ -250,6 +315,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
     { id: 'chat', name: 'AI Assistant', icon: '🤖', description: 'AI-powered code assistant' },
     { id: 'chat-history', name: 'Chat History', icon: '💬', description: 'Manage chat sessions and history' },
     { id: 'git', name: 'Source Control', icon: '🌿', description: 'Git source control management' },
+    { id: 'preview', name: 'Live Preview', icon: '🖥️', description: 'Live preview for web applications' },
   ];
 
   // Stable panel instances to prevent recreation on layout changes
@@ -307,6 +373,15 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
     />
   ), [handleFileSelect, handleFileDoubleClick]);
 
+  const previewInstance = useMemo(() => (
+    <ICUIPreview
+      ref={previewRef}
+      className="h-full"
+      autoRefresh={true}
+      refreshDelay={1000}
+    />
+  ), []);
+
   const createExplorerContent = useCallback(() => explorerInstance, [explorerInstance]);
   const createEditorContent = useCallback(() => editorInstance, [editorInstance]);
   const createTerminalContent = useCallback(() => terminalInstance, [terminalInstance]);
@@ -316,6 +391,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
     // Always show main Git panel (connect disabled)
     return gitInstance;
   }, [gitInstance]);
+  const createPreviewContent = useCallback(() => previewInstance, [previewInstance]);
 
   // Handle panel addition
   const handlePanelAdd = useCallback((panelType: ICUIPanelType, areaId: string) => {
@@ -344,6 +420,9 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
         break;
       case 'git':
         content = createGitContent();
+        break;
+      case 'preview':
+        content = createPreviewContent();
         break;
       default:
         content = <div className="h-full p-4" style={{ backgroundColor: 'var(--icui-bg-primary)', color: 'var(--icui-text-primary)' }}>Custom Panel: {panelType.name}</div>;
@@ -404,6 +483,14 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
         content: createEditorContent()
       },
       {
+        id: 'preview',
+        type: 'preview',
+        title: 'Live Preview',
+        icon: '🖥️',
+        closable: true,
+        content: createPreviewContent()
+      },
+      {
         id: 'terminal',
         type: 'terminal',
         title: 'Terminal',
@@ -419,9 +506,17 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
         closable: true,
         content: createChatContent()
       },
+      {
+        id: 'chat-history',
+        type: 'chat-history',
+        title: 'Chat History',
+        icon: '💬',
+        closable: true,
+        content: createChatHistoryContent()
+      },
     ];
     setPanels(initialPanels);
-  }, [createExplorerContent, createEditorContent, createTerminalContent, createChatContent, createGitContent]);
+  }, [createExplorerContent, createEditorContent, createTerminalContent, createChatContent, createGitContent, createPreviewContent, createChatHistoryContent]);
 
   // Remove editor panel update effect since ICUIEditor manages its own files
 
@@ -444,8 +539,8 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
       layoutMode: 'h-layout',
       areas: {
         left: { id: 'left', name: 'Explorer', panelIds: ['explorer', 'git'], activePanelId: 'explorer', size: 25, visible: true },
-        center: { id: 'center', name: 'Editor', panelIds: ['editor'], activePanelId: 'editor', size: 50 },
-        right: { id: 'right', name: 'Assistant', panelIds: ['chat'], activePanelId: 'chat', size: 25, visible: true },
+        center: { id: 'center', name: 'Editor', panelIds: ['editor', 'preview'], activePanelId: 'editor', size: 50 },
+        right: { id: 'right', name: 'Assistant', panelIds: ['chat', 'chat-history'], activePanelId: 'chat', size: 25, visible: true },
         bottom: { id: 'bottom', name: 'Terminal', panelIds: ['terminal'], activePanelId: 'terminal', size: 40 },
       },
       splitConfig: { 

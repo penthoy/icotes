@@ -594,10 +594,11 @@ class StateSyncService:
         return latest_state or {}
     
     def _calculate_checksum(self, state: Dict[str, Any]) -> str:
-        """Calculate a checksum for state data"""
+        """Calculate a checksum for state data using SHA-256 (non-crypto auth)."""
         import hashlib
         state_json = json.dumps(state, sort_keys=True)
-        return hashlib.md5(state_json.encode()).hexdigest()
+        # Use SHA-256 to avoid MD5; still used for integrity/change detection only
+        return hashlib.sha256(state_json.encode()).hexdigest()
     
     async def _detect_conflicts(self, change: StateChange) -> Optional[ConflictInfo]:
         """Detect conflicts with pending changes"""

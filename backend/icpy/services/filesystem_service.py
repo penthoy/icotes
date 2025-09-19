@@ -631,7 +631,8 @@ class FileSystemService:
                 try:
                     async with aiofiles.open(file_path, 'rb') as f:
                         content = await f.read()
-                        content_hash = hashlib.md5(content).hexdigest()
+                        # Use SHA-256 for integrity/change detection (non-crypto auth)
+                        content_hash = hashlib.sha256(content).hexdigest()
                 except Exception:
                     pass  # Ignore hash calculation errors
             

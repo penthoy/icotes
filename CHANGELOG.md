@@ -18,6 +18,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Correctness**: Fixed race conditions in tab creation, improved synthetic diff generation, and added necessary `null` checks in the backend.
   - **Testability**: Introduced `VITE_TEST_GIT_CONNECT` for easier local testing of the connection flow.
 
+#### September 2025 - Live Preview Panel Improvements & Critical Bug Fixes
+
+- **Live Preview Resizer Fix**: Fixed iframe mouse event interference with panel resizers
+  - **Resize Detection**: Added MutationObserver to detect parent resize operations by monitoring document.body cursor changes
+  - **Dynamic Pointer Events**: Iframe pointer events automatically disabled during resize to allow events to pass through to parent resizers
+  - **Transparent Overlay**: Added overlay during resize operations to ensure proper mouse event capture
+  - **Throttled Detection**: Optimized resize detection with 16ms throttling to avoid excessive re-renders during operations
+  - **Enhanced UX**: Panel resizers now work smoothly in both directions regardless of mouse position over iframe content
+
+- **Critical Live Preview Tab Switching Bug Fix**: Resolved rapid tab switching during drag and drop operations
+  - **Root Cause**: Identified excessive tab activation during panel drag operations between dock areas causing infinite switching loops
+  - **Drag State Tracking**: Added `isDragging` state to `ICUIPanelArea` to prevent tab activation during drag operations
+  - **Tab Container Protection**: Enhanced `ICUITabContainer` with drag-aware tab activation blocking
+  - **Global Dragend Listener**: Added document dragend event handler to ensure drag state cleanup if operations are cancelled
+  - **Delayed Activation**: Implemented 50ms delay for tab activation after drop completion to prevent race conditions
+  - **Debug Logging**: Added development-mode logging to track and debug rapid switching events
+  - **Fixed**: Live Preview tabs can now be dragged between dock areas without rapid switching while maintaining all functionality
+
 #### September 2025 - Explorer File Download System
 
 - **Right-Click Download Support**: Complete file and folder download functionality from explorer
@@ -230,6 +248,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Dynamic WebSocket URL construction and consistent port usage
 
 ### Fixed
+- **Live Preview Panel Resizer Issue**: Fixed iframe mouse event capture preventing resizer functionality ✅ RESOLVED
+  - Iframe now automatically disables pointer events during resize operations
+  - Added transparent overlay during resizes to ensure proper mouse event handling
+  - Panel resizers work smoothly in both directions regardless of iframe content interaction
+- **Critical Live Preview Tab Switching Bug**: Fixed rapid tab switching during drag and drop operations ✅ RESOLVED
+  - Added drag state tracking to prevent tab activation during panel movement
+  - Enhanced tab container with drag-aware protection mechanisms
+  - Live Preview tabs can now be dragged between dock areas without rapid switching
+  - Maintains all existing functionality while eliminating infinite switching loops
 - **Simple Explorer API Issues**: Fixed connection and endpoint issues ✅ RESOLVED
   - Backend team confirmed all REST API endpoints are fully functional when run in virtual environment
   - Updated simple-explorer to use correct `/api/health` and `/api/files` endpoints  

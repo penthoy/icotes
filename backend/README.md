@@ -36,16 +36,15 @@ A FastAPI backend for icotes that provides code execution capabilities and WebSo
 2. Set up project environment:
    ```bash
    cd backend
-   uv sync --frozen --no-dev  # Install from requirements.txt
+   uv sync --frozen --no-dev  # Sync from pyproject/uv.lock
    ```
 
 **Alternative manual approach (if uv is not available):**
 
-1. Install Python 3.11+ and pip:
-   ```bash
-   cd backend
-   pip install -r requirements.txt
-   ```
+```bash
+cd backend
+pip install -r requirements.txt
+```
 
 ## Development
 
@@ -54,37 +53,23 @@ A FastAPI backend for icotes that provides code execution capabilities and WebSo
 ```bash
 cd backend
 
-# Run the server
+## Run the server
 uv run python main.py
 
-# Run tests
+## Run tests
 uv run pytest
 
-# Run specific test
+## Run specific test
 uv run pytest tests/icpy/test_agentic_frameworks.py -v
 
-# Execute any Python script
+## Execute any Python script
 uv run python validate_step_6_1.py
 ```
 
-**Alternative approach (without uv):**
-
+For convenience, you can also use:
 ```bash
-cd backend
-
-# Then run any Python commands:
-python main.py
-python -m pytest
-python -c "from icpy.api import get_rest_api"
-```
-3. Start the server:
-   ```bash
-   python main.py
-   ```
-
-Or use the convenience script:
-```bash
-./start.sh
+./start.sh         # uv-aware start with single-instance guard
+./start_with_uv.sh # minimal uv start
 ```
 
 ## API Usage

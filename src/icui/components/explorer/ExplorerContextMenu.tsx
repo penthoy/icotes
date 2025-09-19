@@ -48,6 +48,23 @@ export function createExplorerContextMenu(
   const multipleSelection = selectedFiles.length > 1;
   const isFile = singleSelection && selectedFiles[0].type === 'file';
   const isFolder = singleSelection && selectedFiles[0].type === 'folder';
+  
+  // Check if the selected file is previewable
+  const isPreviewableFile = isFile && (() => {
+    const fileName = selectedFiles[0].name.toLowerCase();
+    const previewableExtensions = [
+      '.html', '.htm',           // HTML files
+      '.js', '.mjs',             // JavaScript files  
+      '.tsx', '.jsx',            // React/JSX files
+  '.css', '.scss', '.sass',  // Stylesheets
+      '.md', '.markdown',        // Markdown files
+      '.txt',                    // Text files
+      '.xml', '.svg',            // XML/SVG files
+      '.vue',                    // Vue files
+  // Removed: .ts, .py, .php, .json (require transpilation/runtime or not directly previewable)
+    ];
+    return previewableExtensions.some(ext => fileName.endsWith(ext));
+  })();
 
   const items: MenuItem[] = [];
 
@@ -162,6 +179,18 @@ export function createExplorerContextMenu(
       isVisible: () => true,
       isEnabled: () => true,
     });
+
+    // Preview for supported file types
+    if (isPreviewableFile) {
+      items.push({
+        id: 'preview',
+        label: 'Preview',
+        icon: '👁️',
+        commandId: 'explorer.preview',
+        isVisible: () => true,
+        isEnabled: () => true,
+      });
+    }
   }
 
   // Paste (available when clipboard has content)
