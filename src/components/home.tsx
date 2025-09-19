@@ -55,8 +55,8 @@ const defaultLayout: ICUILayoutConfig = {
   layoutMode: 'h-layout',
   areas: {
     left: { id: 'left', name: 'Explorer', panelIds: ['explorer', 'git'], activePanelId: 'explorer', size: 25, visible: true },
-    center: { id: 'center', name: 'Editor', panelIds: ['editor'], activePanelId: 'editor', size: 50 },
-    right: { id: 'right', name: 'Assistant', panelIds: ['chat'], activePanelId: 'chat', size: 25, visible: true },
+    center: { id: 'center', name: 'Editor', panelIds: ['editor', 'preview'], activePanelId: 'editor', size: 50 },
+    right: { id: 'right', name: 'Assistant', panelIds: ['chat', 'chat-history'], activePanelId: 'chat', size: 25, visible: true },
     bottom: { id: 'bottom', name: 'Terminal', panelIds: ['terminal'], activePanelId: 'terminal', size: 40 },
   },
   splitConfig: { 
@@ -483,6 +483,14 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
         content: createEditorContent()
       },
       {
+        id: 'preview',
+        type: 'preview',
+        title: 'Live Preview',
+        icon: '🖥️',
+        closable: true,
+        content: createPreviewContent()
+      },
+      {
         id: 'terminal',
         type: 'terminal',
         title: 'Terminal',
@@ -498,9 +506,17 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
         closable: true,
         content: createChatContent()
       },
+      {
+        id: 'chat-history',
+        type: 'chat-history',
+        title: 'Chat History',
+        icon: '💬',
+        closable: true,
+        content: createChatHistoryContent()
+      },
     ];
     setPanels(initialPanels);
-  }, [createExplorerContent, createEditorContent, createTerminalContent, createChatContent, createGitContent]);
+  }, [createExplorerContent, createEditorContent, createTerminalContent, createChatContent, createGitContent, createPreviewContent, createChatHistoryContent]);
 
   // Remove editor panel update effect since ICUIEditor manages its own files
 
@@ -523,8 +539,8 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
       layoutMode: 'h-layout',
       areas: {
         left: { id: 'left', name: 'Explorer', panelIds: ['explorer', 'git'], activePanelId: 'explorer', size: 25, visible: true },
-        center: { id: 'center', name: 'Editor', panelIds: ['editor'], activePanelId: 'editor', size: 50 },
-        right: { id: 'right', name: 'Assistant', panelIds: ['chat'], activePanelId: 'chat', size: 25, visible: true },
+        center: { id: 'center', name: 'Editor', panelIds: ['editor', 'preview'], activePanelId: 'editor', size: 50 },
+        right: { id: 'right', name: 'Assistant', panelIds: ['chat', 'chat-history'], activePanelId: 'chat', size: 25, visible: true },
         bottom: { id: 'bottom', name: 'Terminal', panelIds: ['terminal'], activePanelId: 'terminal', size: 40 },
       },
       splitConfig: { 

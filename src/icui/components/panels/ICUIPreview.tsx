@@ -418,12 +418,28 @@ const ICUIPreview = forwardRef<ICUIPreviewRef, ICUIPreviewProps>(({
     };
   }, [initialFiles, autoRefresh, refreshDelay, currentProject, updatePreview]);
 
-  // Check backend connection
+  // Check backend connection and validate persisted preview
   useEffect(() => {
     const checkConnection = async () => {
       try {
         const status = await backendService.getConnectionStatus();
         updateGlobalState({ connectionStatus: status.connected });
+        
+        // If we have a persisted preview but backend is connected, validate it
+        if (status.connected && currentProject?.id) {
+          try {
+            const response = await fetch(`/api/preview/${currentProject.id}/status`);
+            if (!response.ok) {
+              // Preview no longer exists on backend, clear it
+              console.log('Persisted preview no longer exists on backend, clearing state');
+              previewStateManager.clearState();
+            }
+          } catch (error) {
+            // Preview validation failed, clear it
+            console.log('Failed to validate persisted preview, clearing state');
+            previewStateManager.clearState();
+          }
+        }
       } catch (error) {
         updateGlobalState({ connectionStatus: false });
       }
@@ -432,7 +448,7 @@ const ICUIPreview = forwardRef<ICUIPreviewRef, ICUIPreviewProps>(({
     checkConnection();
     const interval = setInterval(checkConnection, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [currentProject?.id]);
 
   // Initialize with initial files
   useEffect(() => {
@@ -459,18 +475,20 @@ const ICUIPreview = forwardRef<ICUIPreviewRef, ICUIPreviewProps>(({
 
   // When state is restored (after remount), ensure iframe displays the persisted URL
   useEffect(() => {
-    if (iframeRef.current && (previewUrl || currentProject?.url)) {
+    // Only restore iframe if we have both a valid project and connection
+    if (iframeRef.current && connectionStatus && currentProject?.status === 'ready' && (previewUrl || currentProject?.url)) {
       const target = previewUrl || currentProject?.url || '';
-      if (iframeRef.current.src !== target) {
+      if (iframeRef.current.src !== target && target) {
         try {
-          // Avoid double reloads; set src only when different
+          // Avoid double reloads; set src only when different and valid
           iframeRef.current.src = target;
+          console.log('Restored iframe src from persisted state:', target);
         } catch (e) {
           console.warn('Failed to set iframe src after remount:', e);
         }
       }
     }
-  }, [previewUrl, currentProject?.url]);
+  }, [previewUrl, currentProject?.url, currentProject?.status, connectionStatus]);
 
   return (
     <div className={`icui-preview-container h-full flex flex-col ${className}`}>

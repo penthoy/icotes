@@ -54,6 +54,15 @@ class PreviewStateManager {
       const stored = localStorage.getItem(this.STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored);
+        // Add timestamp validation - don't restore state older than 1 hour
+        const maxAge = 60 * 60 * 1000; // 1 hour in milliseconds
+        const now = Date.now();
+        if (parsed.timestamp && (now - parsed.timestamp) > maxAge) {
+          console.log('Preview state expired, starting fresh');
+          localStorage.removeItem(this.STORAGE_KEY);
+          return this.getDefaultState();
+        }
+        
         return {
           currentProject: parsed.currentProject || null,
           previewUrl: parsed.previewUrl || '',
@@ -66,6 +75,10 @@ class PreviewStateManager {
       console.warn('Failed to load preview state from storage:', error);
     }
 
+    return this.getDefaultState();
+  }
+
+  private getDefaultState(): PreviewState {
     return {
       currentProject: null,
       previewUrl: '',
@@ -81,6 +94,7 @@ class PreviewStateManager {
       const persistentState = {
         currentProject: this.state.currentProject,
         previewUrl: this.state.previewUrl,
+        timestamp: Date.now(), // Add timestamp for expiration
       };
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify(persistentState));
     } catch (error) {
@@ -130,20 +144,24 @@ class PreviewStateManager {
 
   // Clear all state (for manual clear operations)
   clearState(): void {
-    this.state = {
-      currentProject: null,
-      previewUrl: '',
-      error: null,
-      isLoading: false,
-      connectionStatus: false,
-    };
-    this.saveToStorage();
+    this.state = this.getDefaultState();
+    localStorage.removeItem(this.STORAGE_KEY); // Remove from storage completely
     this.notifyListeners();
   }
 
   // Check if there's a persisted preview available
   hasPersistedPreview(): boolean {
     return !!(this.state.currentProject && this.state.previewUrl);
+  }
+
+  // Invalidate state if it seems stale (for browser refresh scenarios)
+  invalidateIfStale(): void {
+    // If we have a persisted project but no active connection status yet,
+    // it might be stale from a previous session
+    if (this.state.currentProject && !this.state.connectionStatus) {
+      console.log('Detected potentially stale preview state, clearing');
+      this.clearState();
+    }
   }
 }
 
