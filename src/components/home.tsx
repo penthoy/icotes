@@ -312,7 +312,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
     { id: 'explorer', name: 'Explorer', icon: '📁', description: 'File and folder browser' },
     { id: 'editor', name: 'Code Editor', icon: '📝', description: 'Code editor with syntax highlighting' },
     { id: 'terminal', name: 'Terminal', icon: '💻', description: 'Integrated terminal' },
-    { id: 'chat', name: 'AI Assistant', icon: '🤖', description: 'AI-powered code assistant' },
+    { id: 'chat', name: 'Chat', icon: '🤖', description: 'AI-powered code assistant' },
     { id: 'chat-history', name: 'Chat History', icon: '💬', description: 'Manage chat sessions and history' },
     { id: 'git', name: 'Source Control', icon: '🌿', description: 'Git source control management' },
     { id: 'preview', name: 'Live Preview', icon: '🖥️', description: 'Live preview for web applications' },
@@ -340,20 +340,6 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
   const terminalInstance = useMemo(() => (
     <ICUITerminal 
       className="h-full"
-    />
-  ), []);
-
-  const chatInstance = useMemo(() => (
-    <ICUIChat 
-      className="h-full" 
-      key="main-chat-instance"
-    />
-  ), []);
-
-  const chatHistoryInstance = useMemo(() => (
-    <ICUIChatHistory 
-      className="h-full" 
-      key="main-chat-history-instance"
     />
   ), []);
 
@@ -385,8 +371,20 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
   const createExplorerContent = useCallback(() => explorerInstance, [explorerInstance]);
   const createEditorContent = useCallback(() => editorInstance, [editorInstance]);
   const createTerminalContent = useCallback(() => terminalInstance, [terminalInstance]);
-  const createChatContent = useCallback(() => chatInstance, [chatInstance]);
-  const createChatHistoryContent = useCallback(() => chatHistoryInstance, [chatHistoryInstance]);
+  // Create unique Chat instances for each panel to avoid connection conflicts
+  const createChatContent = useCallback(() => (
+    <ICUIChat 
+      className="h-full" 
+      key={`chat-${Date.now()}-${Math.random()}`}
+    />
+  ), []);
+  // Create unique Chat History instances for each panel
+  const createChatHistoryContent = useCallback(() => (
+    <ICUIChatHistory 
+      className="h-full" 
+      key={`chat-history-${Date.now()}-${Math.random()}`}
+    />
+  ), []);
   const createGitContent = useCallback(() => {
     // Always show main Git panel (connect disabled)
     return gitInstance;
@@ -395,10 +393,8 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
 
   // Handle panel addition
   const handlePanelAdd = useCallback((panelType: ICUIPanelType, areaId: string) => {
-    // Generate unique ID for the new panel - use stable IDs for chat panels
-    const newPanelId = panelType.id === 'chat' || panelType.id === 'chat-history' 
-      ? `${panelType.id}-main` 
-      : `${panelType.id}-${Date.now()}`;
+    // Generate unique ID for the new panel - create truly unique IDs for all panels
+    const newPanelId = `${panelType.id}-${Date.now()}-${Math.random().toString(36).substring(2)}`;
     
     // Create panel content based on type using memoized creators
     let content: React.ReactNode;

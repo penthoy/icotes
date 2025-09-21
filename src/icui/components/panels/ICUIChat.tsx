@@ -71,6 +71,19 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
   onMessageReceived,
   onConnectionStatusChange
 }, ref) => {
+  // Debug logging for component lifecycle
+  const componentId = useRef(`ICUIChat-${Date.now()}-${Math.random().toString(36).substring(2)}`);
+  
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[${componentId.current}] Chat component mounted, autoConnect: ${autoConnect}`);
+    }
+    return () => {
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[${componentId.current}] Chat component unmounted`);
+      }
+    };
+  }, [autoConnect]);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -251,6 +264,9 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
 
   // Notify parent of connection status changes
   useEffect(() => {
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[${componentId.current}] Connection status changed:`, connectionStatus);
+    }
     onConnectionStatusChange?.(connectionStatus);
   }, [connectionStatus, onConnectionStatusChange]);
 
@@ -258,14 +274,25 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
   useEffect(() => {
     // Initialize from chat client once on mount
     if (chatBackendClient.currentSession) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[${componentId.current}] Initializing with existing session: ${chatBackendClient.currentSession}`);
+      }
       setCurrentSessionId(chatBackendClient.currentSession);
       // Ensure connection if we suppressed autoConnect earlier
       if (!isConnected) {
-        connect().catch(() => {/* noop */});
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`[${componentId.current}] Attempting to connect for existing session`);
+        }
+        connect().catch((error) => {
+          console.error(`[${componentId.current}] Failed to connect for existing session:`, error);
+        });
       }
     }
 
     const cleanup = onSessionChange((sessionId, action, sessionName) => {
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[${componentId.current}] Session change event:`, { sessionId, action, sessionName });
+      }
       if (action === 'switch' || action === 'create') {
         if (sessionId !== currentSessionId) {
           setCurrentSessionId(sessionId);
@@ -276,7 +303,12 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
           jumpToLatest();
         }
         if (!isConnected) {
-          connect().catch(() => {/* noop */});
+          if (process.env.NODE_ENV === 'development') {
+            console.log(`[${componentId.current}] Attempting to connect for session change`);
+          }
+          connect().catch((error) => {
+            console.error(`[${componentId.current}] Failed to connect for session change:`, error);
+          });
         }
       }
     });

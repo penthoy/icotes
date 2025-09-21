@@ -169,6 +169,9 @@ export class ChatBackendClient {
     // Enhanced service event handlers
     this.enhancedService.on('connection_opened', (data: any) => {
       log.info('ChatBackendClient', 'Enhanced service connected', data);
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[ChatBackendClient] Connection opened:', data);
+      }
       this.reconnectAttempts = 0;
       this.isDisconnecting = false;
       
@@ -198,6 +201,9 @@ export class ChatBackendClient {
 
     this.enhancedService.on('connection_closed', (data: any) => {
       log.info('ChatBackendClient', 'Enhanced service disconnected', data);
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[ChatBackendClient] Connection closed:', data);
+      }
       
       this.notifyStatus({
         connected: false,
@@ -1025,6 +1031,23 @@ export class ChatBackendClient {
     };
     
     this.statusCallbacks.push(adaptedCallback);
+
+    // Immediately emit current status so late subscribers reflect accurate state
+    try {
+      const current: ChatStatus = {
+        connected: this.isConnected,
+        timestamp: new Date(),
+        chat: {
+          sessionId: this.currentSessionId || this.generateSessionId(),
+          agentId: this.selectedAgent,
+          model: undefined as any,
+        },
+        error: undefined,
+      };
+      adaptedCallback(current);
+    } catch (e) {
+      // best-effort; ignore
+    }
   }
 
   onMessage(callback: (message: ChatMessage) => void): void {

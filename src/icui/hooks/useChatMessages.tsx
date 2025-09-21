@@ -164,18 +164,45 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
   const connect = useCallback(async (): Promise<boolean> => {
     try {
       const client = getClient();
-      if (client.isConnected || isConnectingRef.current) return true;
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[useChatMessages] Connect called, current state:', {
+          isConnected: client.isConnected,
+          isConnecting: isConnectingRef.current,
+          isInitialized: isInitializedRef.current
+        });
+      }
+      
+      // If already connected, still ensure this hook instance initializes once
+      if (client.isConnected) {
+        if (!isInitializedRef.current) {
+          if (process.env.NODE_ENV === 'development') {
+            console.log('[useChatMessages] Client already connected; running one-time initialize for this consumer');
+          }
+          await initialize();
+          isInitializedRef.current = true;
+        }
+        return true;
+      }
+
+      if (isConnectingRef.current) return true;
       isConnectingRef.current = true;
+      
       const success = await client.connectWebSocket();
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[useChatMessages] Connect result:', success);
+      }
       
       if (success && !isInitializedRef.current) {
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[useChatMessages] Initializing after successful connection');
+        }
         await initialize();
         isInitializedRef.current = true;
       }
       
-    return success;
+      return success;
     } catch (error) {
-      console.error('Failed to connect:', error);
+      console.error('[useChatMessages] Failed to connect:', error);
       return false;
     } finally {
       isConnectingRef.current = false;
