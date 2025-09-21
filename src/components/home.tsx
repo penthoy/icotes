@@ -501,7 +501,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
       {
         id: 'chat',
         type: 'chat',
-        title: 'AI Assistant',
+        title: 'Chat',
         icon: '🤖',
         closable: true,
         content: createChatContent()
