@@ -77,7 +77,9 @@ export class CodeExecutorWebSocket {
   private handleReconnect() {
     if (this.reconnectAttempts < this.maxReconnectAttempts) {
       this.reconnectAttempts++;
-      console.log(`Attempting to reconnect... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`Attempting to reconnect... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+      }
       
       setTimeout(() => {
         this.connect().catch(console.error);

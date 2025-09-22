@@ -1,5 +1,21 @@
 # Working Features
 
+### December 2025 - Agent System Improvements & Centralization
+
+- **Advanced Kimi Agent Robustness**: Significantly improved Kimi agent reliability with advanced message handling, normalization, streaming state management, tool-call loop protection, and context-aware prompting using Moonshot API v1 best practices.
+
+- **Agent System Code Centralization**: Created shared helpers system in `backend/icpy/agent/helpers.py` centralizing BASE_SYSTEM_PROMPT_TEMPLATE, message normalization functions, canonical message list for streaming, and shared utilities across all agent implementations.
+
+- **Multi-Agent Improvements Rollout**: Successfully ported Kimi agent's advanced prompting, message handling, and normalization improvements to GroqKimiAgent, OpenAIAgent, and CerebrasQwenAgent, ensuring consistent behavior and robustness across all agent types.
+
+- **Tool-Call Loop Protection**: Implemented optional tool-call loop detection with configurable cap (default 10, opt-in via TOOL_CALL_LOOP_CAP environment variable) to prevent infinite loops in web_search and other tools while maintaining conversation state integrity.
+
+- **Agent Selector Fix**: Fixed critical agent selection bug where users were automatically switched to undefined/invalid agents, implemented proper fallback to 'kimi' agent, and added validation to ensure only valid agent types are selected.
+
+- **Performance & Streaming Optimizations**: Enhanced streaming response handling with canonical message list management, eliminated duplicate message issues, optimized backend response processing, and improved frontend rendering for better user experience.
+
+- **Code Quality & Architecture**: Consolidated shared functionality, eliminated code duplication across agent implementations, established consistent patterns for message normalization and tool handling, and improved overall maintainability of the agent system.
+
 ### Git Panel Robustness and UX (September 2025)
 - **Task**: Overhaul the Git panel for robust repository detection and a clear user flow for connecting to GitHub.
 - **Key Insight**: The frontend now intelligently detects if a Git repository is missing or uninitialized and displays a dedicated connection component (`ICUIGitConnect.tsx`). The backend `source_control_service.py` was hardened to gracefully handle environments with no `git` command or uninitialized repositories by using `git rev-parse --show-toplevel` for detection, preventing crashes and ensuring the correct UI state. This resolved a critical bug in Docker environments. Also addressed security and correctness feedback from PR #27, including path traversal protection, race condition fixes, and improved OAuth configuration UX.

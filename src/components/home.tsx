@@ -96,7 +96,9 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
   // Handle HTML file preview from Explorer context menu
   const handlePreviewFile = useCallback(async (filePath: string) => {
     try {
-      console.log('[Home] Handling preview for file:', filePath);
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[Home] Handling preview for file:', filePath);
+      }
       
       if (!previewRef.current) {
         console.error('[Home] Preview ref not available, waiting...');
@@ -180,7 +182,9 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
       // Create a preview with the file content
       await previewRef.current.createPreview(filesMap);
       
-      console.log('[Home] Preview created successfully for:', fileName);
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[Home] Preview created successfully for:', fileName);
+      }
     } catch (error) {
       console.error('[Home] Error previewing file:', error);
     }
@@ -197,7 +201,9 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
 
   // Handle file double-click from Explorer - VS Code-like permanent file opening
   const handleFileDoubleClick = useCallback((file: any) => {
-    console.log('[Home] handleFileDoubleClick called with file:', file.name, 'at path:', file.path);
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[Home] handleFileDoubleClick called with file:', file.name, 'at path:', file.path);
+    }
     if (file.type === 'file' && editorRef.current) {
       // Double click opens file permanently (will not be replaced by single clicks)
       editorRef.current.openFilePermanent(file.path);
@@ -348,7 +354,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
   // Handle connection status changes from ICUIEditor
   const handleConnectionStatusChange = useCallback((status: {connected: boolean; error?: string; timestamp?: number}) => {
     // Reduced debug: Only log connection errors, not routine status changes
-    if (status.error) {
+    if (status.error && process.env.NODE_ENV === 'development') {
       console.log('Home received connection error:', status.error);
     }
     setEditorConnectionStatus(status);
@@ -406,7 +412,9 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
       onFileSelect={handleFileSelect}
       onFileOpen={handleFileDoubleClick}
       onOpenDiffPatch={(path) => {
-        console.log('[Home] onOpenDiffPatch called, editorRef.current:', !!editorRef.current);
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[Home] onOpenDiffPatch called, editorRef.current:', !!editorRef.current);
+        }
         if (editorRef.current?.openDiffPatch) {
           editorRef.current.openDiffPatch(path);
         } else {
