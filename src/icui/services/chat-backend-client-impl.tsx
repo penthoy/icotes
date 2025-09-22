@@ -322,6 +322,8 @@ export class ChatBackendClient {
       streaming?: boolean;
       priority?: 'low' | 'normal' | 'high' | 'critical';
       timeout?: number;
+      // Phase 2: media attachments (pass-through, backend normalizes)
+      attachments?: any[];
     }
   ): Promise<void> {
     if (!this.connectionId || !this.enhancedService) {
@@ -340,7 +342,9 @@ export class ChatBackendClient {
         session_id: sessionId,
         agentType: agentType, // Use the explicit agentType or fallback to agentId
         streaming: streaming,
-        timestamp: new Date()
+        timestamp: new Date(),
+        // Include attachments if provided; backend will normalize
+        attachments: options?.attachments && Array.isArray(options.attachments) ? options.attachments : undefined
       }
     };
 
@@ -506,6 +510,15 @@ export class ChatBackendClient {
         content: msg.content,
         timestamp: new Date(msg.timestamp),
         sender: msg.sender,
+        // Map attachments if present (backend stores as list of dicts)
+        attachments: Array.isArray(msg.attachments) ? msg.attachments.map((a: any) => ({
+          id: a.id || a.attachment_id || a.rel_path || a.path || String(Math.random()),
+          kind: a.kind === 'images' ? 'image' : (a.kind === 'audio' ? 'audio' : 'file'),
+          path: a.relative_path || a.rel_path || a.path || a.url || '',
+          mime: a.mime_type || a.mime || 'application/octet-stream',
+          size: a.size_bytes || a.size || 0,
+          meta: a.meta || undefined
+        })) : undefined,
         metadata: {
           agentId: msg.agentId,
           agentName: msg.agentName,

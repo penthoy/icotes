@@ -31,7 +31,7 @@ export interface UseChatMessagesReturn {
   
   // Actions
   sendMessage: (content: string, options?: MessageOptions) => Promise<void>;
-  sendCustomAgentMessage: (content: string, agentName: string) => Promise<void>;
+  sendCustomAgentMessage: (content: string, agentName: string, options?: MessageOptions) => Promise<void>;
   stopStreaming: () => Promise<void>;
   clearMessages: () => Promise<void>;
   updateConfig: (config: Partial<ChatConfig>) => Promise<void>;
@@ -258,7 +258,7 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
 
   // Send message to custom agent
   // Send message to custom agent - using main branch pattern
-  const sendCustomAgentMessage = useCallback(async (content: string, agentName: string) => {
+  const sendCustomAgentMessage = useCallback(async (content: string, agentName: string, options: MessageOptions = {}) => {
     try {
       const client = getClient();
       
@@ -271,6 +271,8 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
         content,
         sender: 'user',
         timestamp: new Date(),
+        // Include attachments for custom agent as well
+        attachments: options.attachments,
         metadata: {
           messageType: 'text',
           agentType: agentName as any
@@ -284,7 +286,8 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
       
       // Send via existing chat client with custom agent type
       await client.sendMessage(content, {
-        agentType: agentName as any
+        agentType: agentName as any,
+        attachments: options.attachments
       });
     } catch (error) {
       console.error('Failed to send message to custom agent:', error);

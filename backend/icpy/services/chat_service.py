@@ -16,11 +16,14 @@ import sqlite3
 import aiosqlite
 from pathlib import Path
 import os
+import mimetypes
+from urllib.parse import quote
 
 # Internal imports
 from ..core.message_broker import MessageBroker, get_message_broker, Message, MessageType as BrokerMessageType
 from ..core.connection_manager import ConnectionManager, get_connection_manager
 from ..services.agent_service import AgentService, get_agent_service, AgentSessionStatus
+from ..services.media_service import get_media_service
 
 # Custom agent imports
 try:
@@ -190,6 +193,75 @@ class ChatService:
         
         logger.info("Chat service initialized (JSONL storage)")
     
+    def _normalize_attachments(self, raw_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Normalize various frontend attachment shapes into a standard dict.
+
+        Accepted input shapes (best-effort):
+        - From /media/upload: { id, rel_path, mime, size, type? }
+        - From UI model: { id, kind: 'image'|'audio'|'file', path, mime, size }
+        - From legacy: { id, relative_path, mime_type, size_bytes, kind }
+
+        Returns list of dicts with fields:
+        { id, filename, mime_type, size_bytes, relative_path, kind, url? }
+        """
+        normalized: List[Dict[str, Any]] = []
+        try:
+            for item in raw_list:
+                if not isinstance(item, dict):
+                    continue
+                att_id = str(item.get('id') or item.get('attachment_id') or '')
+                # Determine path fields
+                rel_path = item.get('relative_path') or item.get('rel_path') or item.get('path') or ''
+                mime = item.get('mime_type') or item.get('mime') or 'application/octet-stream'
+                size = item.get('size_bytes') or item.get('size') or 0
+                kind = item.get('kind') or item.get('type') or ''
+
+                # Infer kind from mime if not provided
+                if not kind:
+                    if isinstance(mime, str) and mime.startswith('image/'):
+                        kind = 'images'
+                    elif isinstance(mime, str) and mime.startswith('audio/'):
+                        kind = 'audio'
+                    else:
+                        kind = 'files'
+                # Map UI kind names to backend folder names
+                if kind in ('image', 'img'): kind = 'images'
+                if kind in ('file',): kind = 'files'
+
+                # Derive filename from rel_path if present
+                filename = ''
+                if isinstance(rel_path, str) and rel_path:
+                    try:
+                        filename = Path(rel_path).name
+                        # If storage scheme prefixes uuid_, strip it for display filename
+                        if '_' in filename:
+                            filename = filename.split('_', 1)[-1]
+                    except Exception:
+                        filename = rel_path
+
+                # Fallback filename from metadata
+                if not filename:
+                    filename = item.get('filename') or item.get('name') or att_id or 'attachment'
+
+                # Build URL helper (served via /api/media/file/{id} if we have a proper id)
+                url = None
+                if att_id and not str(att_id).startswith('explorer-'):
+                    # Use media file endpoint; UI will call getAttachmentUrl too
+                    url = f"/api/media/file/{quote(att_id)}"
+
+                normalized.append({
+                    'id': att_id or None,
+                    'filename': filename,
+                    'mime_type': mime,
+                    'size_bytes': int(size) if isinstance(size, (int, float, str)) and str(size).isdigit() else size,
+                    'relative_path': rel_path,
+                    'kind': kind,
+                    'url': url
+                })
+        except Exception as e:
+            logger.warning(f"Attachment normalization error: {e}")
+        return normalized
+
     async def _initialize_database(self):
         """Initialize SQLite database for message persistence"""
         try:
@@ -276,14 +348,27 @@ class ChatService:
         if metadata and 'agentType' in metadata:
             agent_type = metadata['agentType']
         
-        # Create user message
+        # Normalize media attachments from metadata (if any)
+        attachments: List[Dict[str, Any]] = []
+        try:
+            raw_attachments = []
+            if metadata and isinstance(metadata, dict):
+                raw_attachments = metadata.get('attachments') or []
+            if isinstance(raw_attachments, list):
+                attachments = self._normalize_attachments(raw_attachments)
+        except Exception as e:
+            logger.warning(f"Failed to normalize attachments: {e}")
+            attachments = []
+
+        # Create user message including normalized attachments
         message = ChatMessage(
             id=str(uuid.uuid4()),
             content=content,
             sender=MessageSender.USER,
             timestamp=datetime.now(timezone.utc).isoformat(),
             metadata=metadata or {},
-            session_id=session_id
+            session_id=session_id,
+            attachments=attachments
         )
         
         # Store message
@@ -369,7 +454,9 @@ class ChatService:
                 'type': 'chat_response',
                 'session_id': user_message.session_id,
                 'system_prompt': self.config.system_prompt,
-                'user_message': user_message.content
+                'user_message': user_message.content,
+                # Include attachments for agent/tooling consumption
+                'attachments': user_message.attachments or []
             }
             logger.info(f"📝 Task description: {task_description}")
             logger.info(f"📝 Task context: {task_context}")
@@ -567,6 +654,43 @@ class ChatService:
                     history_list.append({"role": "user", "content": msg.content})
                 elif msg.sender == MessageSender.AI:
                     history_list.append({"role": "assistant", "content": msg.content})
+
+            # Append current user message as multimodal (include image attachments) so custom agents can see them
+            try:
+                content_parts: List[Dict[str, Any]] = [{"type": "text", "text": user_message.content}]
+                if user_message.attachments:
+                    media = get_media_service()
+                    for att in user_message.attachments:
+                        try:
+                            kind = att.get('kind')
+                            mime = att.get('mime_type') or att.get('mime') or ''
+                            if not ((isinstance(mime, str) and mime.startswith('image/')) or kind in ('image', 'images')):
+                                continue
+                            # Prefer embedding as data URL
+                            rel = att.get('relative_path') or att.get('rel_path') or att.get('path')
+                            data_url = None
+                            if isinstance(rel, str) and rel:
+                                try:
+                                    abs_path = (media.base_dir / rel).resolve()
+                                    abs_path.relative_to(media.base_dir)
+                                    if abs_path.exists() and abs_path.is_file():
+                                        import base64
+                                        with open(abs_path, 'rb') as f:
+                                            b64 = base64.b64encode(f.read()).decode('ascii')
+                                        data_url = f"data:{mime};base64,{b64}"
+                                except Exception:
+                                    data_url = None
+                            if not data_url:
+                                att_id = att.get('id')
+                                if att_id and not str(att_id).startswith('explorer-'):
+                                    data_url = f"/api/media/file/{att_id}"
+                            if data_url:
+                                content_parts.append({"type": "image_url", "image_url": {"url": data_url}})
+                        except Exception:
+                            continue
+                history_list.append({"role": "user", "content": content_parts})
+            except Exception as e:
+                logger.warning(f"Failed to attach multimodal content for custom agent: {e}")
             
             # Prepare streaming response
             full_content = ""
@@ -574,7 +698,8 @@ class ChatService:
             is_first_chunk = True
             
             # Get custom agent stream
-            custom_stream = call_custom_agent_stream(agent_type, user_message.content, history_list)
+            # We pass an empty live message because we've already appended the user's content (with attachments) to history
+            custom_stream = call_custom_agent_stream(agent_type, "", history_list)
             
             # Process streaming response
             async for chunk in custom_stream:

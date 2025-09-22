@@ -37,6 +37,7 @@ import { useChatSearch } from '../../hooks/useChatSearch';
 import { useChatSessionSync } from '../../hooks/useChatSessionSync';
 import { chatBackendClient } from '../../services/chat-backend-client-impl';
 import { useChatHistory } from '../../hooks/useChatHistory';
+import type { MediaAttachment as ChatMediaAttachment } from '../../types/chatTypes';
 
 interface ICUIChatProps {
   className?: string;
@@ -351,8 +352,50 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
 
   // Handle sending a message
   const handleSendMessage = useCallback(async (content?: string, options?: MessageOptions) => {
-    const messageContent = content || inputValue.trim();
-    if (!messageContent) {
+    const messageContent = (content ?? inputValue).trim();
+    // If there are pending uploads in chat context, start them
+    const hasPending = uploadApi.uploads.some(u => u.context === 'chat' && u.status === 'pending');
+    if (hasPending) {
+      try { await uploadApi.uploadAll(); } catch { /* handled inside hook */ }
+    }
+
+    // Wait until all chat-context uploads are no longer pending/uploading (max ~15s)
+    const waitForUploadsToSettle = async (timeoutMs = 15000) => {
+      const start = Date.now();
+      while (Date.now() - start < timeoutMs) {
+        const busy = uploadApi.uploads.some(u => u.context === 'chat' && (u.status === 'pending' || u.status === 'uploading'));
+        if (!busy) break;
+        await new Promise(res => setTimeout(res, 150));
+      }
+    };
+    await waitForUploadsToSettle();
+
+    // Build attachments list from completed uploads in chat context (after settle)
+    const completed = uploadApi.uploads.filter(u => u.context === 'chat' && u.status === 'completed' && u.result);
+    const attachments: ChatMediaAttachment[] = completed.map(u => {
+      const r: any = u.result!;
+      const resKind = (r.kind || r.type || '').toString();
+      const resMime = (r.mime_type || r.mime || '').toString();
+      const resPath = (r.relative_path || r.rel_path || r.path || '').toString();
+      const resSize = (typeof r.size_bytes === 'number' ? r.size_bytes : r.size) as number | undefined;
+      const baseName = resPath ? resPath.split('/').pop() : (r.filename || undefined);
+      const localKind: ChatMediaAttachment['kind'] = (
+        resKind === 'images' || resKind === 'image' || (resMime && resMime.startsWith('image/'))
+      ) ? 'image' : (
+        resKind === 'audio' || (resMime && resMime.startsWith('audio/')) ? 'audio' : 'file'
+      );
+      return {
+        id: r.id,
+        kind: localKind,
+        path: resPath,
+        mime: resMime || 'application/octet-stream',
+        size: typeof resSize === 'number' ? resSize : 0,
+        meta: { source: 'upload', tempUploadId: u.id, filename: baseName }
+      } as ChatMediaAttachment;
+    });
+    const hasText = messageContent.length > 0;
+    const hasAttachments = attachments.length > 0;
+    if (!hasText && !hasAttachments) {
       return;
     }
 
@@ -373,22 +416,29 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
       
       if (isCustomAgent) {
         // Use custom agent API
-        await sendCustomAgentMessage(messageContent, selectedAgent);
+        await sendCustomAgentMessage(messageContent || '(attachment)', selectedAgent, { attachments });
       } else {
         // Use regular chat API with agent options
         const messageOptions: MessageOptions = {
           agentType: selectedAgent as any, // Cast to AgentType
           streaming: true,
+          attachments,
           ...options // Merge with any provided options
         };
         
-        await sendMessage(messageContent, messageOptions);
+        await sendMessage(messageContent || '(attachment)', messageOptions);
       }
       
       // Clear input only if using the input field
       if (!content) {
         setInputValue('');
       }
+      // Clear staged previews and completed uploads from queue after send
+      setStaged(prev => {
+        prev.forEach(s => s.preview && URL.revokeObjectURL(s.preview));
+        return [];
+      });
+      uploadApi.clearCompleted();
       
       // After sending, re-enable auto-scroll and jump smoothly once
       setIsAutoScrollEnabled(true);
@@ -545,7 +595,8 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
         const tempId = `staged-${Date.now()}-${Math.random().toString(36).slice(2)}`;
         setStaged(prev => [...prev, { id: tempId, file, preview }]);
       });
-      // Do not enqueue here to avoid duplicate; global manager handles upload.
+      // Enqueue uploads for chat context so they will be included on send
+      uploadApi.addFiles(imageFiles, { context: 'chat' });
     };
     window.addEventListener('paste', onPaste);
     return () => window.removeEventListener('paste', onPaste);
@@ -812,7 +863,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
                     <button
                       className="icui-button"
                       onClick={() => handleSendMessage()}
-                      disabled={!inputValue.trim() || !isConnected || isLoading}
+                      disabled={(!inputValue.trim() && !uploadApi.uploads.some(u => u.context === 'chat')) || !isConnected || isLoading}
                       title="Send message (Enter)"
                     >
                       <Send size={16} />
