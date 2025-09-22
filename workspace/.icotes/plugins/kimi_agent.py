@@ -11,10 +11,46 @@ This is a general-purpose AI assistant that can:
 Uses Moonshot's Kimi models through OpenAI-compatible API.
 """
 
+# Base system prompt for general-purpose assistant
+base_system_prompt = f"""You are KimiAgent, a helpful and versatile AI assistant powered by Moonshot's Kimi models.
+
+**Available Tools:**
+{get_available_tools_summary()}
+
+You can help users with:
+1. **General Questions**: Answer questions on a wide range of topics
+2. **Programming Help**: Write, debug, and explain code in various languages
+3. **File Operations**: Read, write, and modify files using available tools
+4. **Data Analysis**: Help analyze and process data
+5. **Research**: Search for information and provide comprehensive answers
+6. **Writing**: Assist with creative writing, documentation, and content creation
+7. **Problem Solving**: Break down complex problems and provide solutions
+
+**Core Behavior:**
+1. Be helpful, accurate, and informative in your responses
+2. Use tools when appropriate to provide better assistance
+3. Explain your reasoning and approach clearly
+4. Ask for clarification when requests are ambiguous
+5. Provide practical, actionable advice
+
+**Tool Usage:**
+- Use file tools (read_file, create_file, replace_string_in_file) for file operations
+- Use run_in_terminal for executing commands and scripts
+- Use semantic_search to find relevant information in the workspace
+- Always explain briefly what you're doing before using a tool
+
+**Response Style:**
+- Be concise but thorough
+- Use clear formatting and structure
+- Provide examples when helpful
+- Acknowledge limitations when relevant
+
+Focus on being genuinely helpful while using the available tools effectively to enhance your capabilities."""
+
 import json
 import os
 import logging
-from typing import Dict, List, Generator
+from typing import Dict, List, Generator, Any
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -55,6 +91,8 @@ try:
         get_available_tools_summary,
         OpenAIStreamingHandler,
         add_context_to_agent_prompt,
+        flatten_message_content,
+        normalize_history,
     )
 
     DEPENDENCIES_AVAILABLE = True
@@ -109,63 +147,57 @@ def chat(message: str, history: List[Dict[str, str]]) -> Generator[str, None, No
         yield "🚫 KimiAgent dependencies are not available. Please check your setup and try again."
         return
 
-    # Base system prompt for general-purpose assistant
-    base_system_prompt = f"""You are KimiAgent, a helpful and versatile AI assistant powered by Moonshot's Kimi models.
-
-**Available Tools:**
-{get_available_tools_summary()}
-
-You can help users with:
-1. **General Questions**: Answer questions on a wide range of topics
-2. **Programming Help**: Write, debug, and explain code in various languages
-3. **File Operations**: Read, write, and modify files using available tools
-4. **Data Analysis**: Help analyze and process data
-5. **Research**: Search for information and provide comprehensive answers
-6. **Writing**: Assist with creative writing, documentation, and content creation
-7. **Problem Solving**: Break down complex problems and provide solutions
-
-**Core Behavior:**
-1. Be helpful, accurate, and informative in your responses
-2. Use tools when appropriate to provide better assistance
-3. Explain your reasoning and approach clearly
-4. Ask for clarification when requests are ambiguous
-5. Provide practical, actionable advice
-
-**Tool Usage:**
-- Use file tools (read_file, create_file, replace_string_in_file) for file operations
-- Use run_in_terminal for executing commands and scripts
-- Use semantic_search to find relevant information in the workspace
-- Always explain briefly what you're doing before using a tool
-
-**Response Style:**
-- Be concise but thorough
-- Use clear formatting and structure
-- Provide examples when helpful
-- Acknowledge limitations when relevant
-
-Focus on being genuinely helpful while using the available tools effectively to enhance your capabilities."""
-    
     # Add context information to the system prompt with dynamic workspace detection
     system_prompt = add_context_to_agent_prompt(base_system_prompt)
     
+    # Use shared helpers for content/history normalization
+
     try:
         # Get Moonshot client
         client = get_moonshot_client()
         
-        # Handle JSON string history (gradio compatibility)  
-        if isinstance(history, str):
-            history = json.loads(history)
-        
-        # Build conversation messages
+        # Handle JSON string history (gradio compatibility)
+        normalized_history = normalize_history(history)
+
+        # Base conversation messages
         system_message = {"role": "system", "content": system_prompt}
-        messages = [system_message] + history + [{"role": "user", "content": message}]
+        messages: List[Dict[str, str]] = [system_message] + normalized_history
+
+        # Append current user message only if non-empty
+        if isinstance(message, str) and message.strip():
+            messages.append({"role": "user", "content": message})
+        else:
+            logger.info("KimiAgent: Skipping trailing user message because it's empty (provided by caller as \"\")")
+
+        # Final safety filter before sending
+        safe_messages: List[Dict[str, str]] = []
+        dropped = 0
+        for i, m in enumerate(messages):
+            c = m.get("content", "")
+            if m.get("role") == "user" and (not isinstance(c, str) or not c.strip()):
+                dropped += 1
+                logger.warning(f"KimiAgent: Removing empty user message at position {i}")
+                continue
+            # Ensure content is string
+            if not isinstance(c, str):
+                m = {**m, "content": flatten_message_content(c)}
+            safe_messages.append(m)
+        if dropped:
+            logger.info(f"KimiAgent: Dropped {dropped} empty user message(s) before request")
+
+        # Debug preview: roles and content lengths
+        try:
+            preview = "\n".join([f"{i}: {m['role']} len={len(m.get('content','') or '')}" for i, m in enumerate(safe_messages)])
+            logger.debug("KimiAgent: Outbound messages preview\n" + preview)
+        except Exception:
+            pass
         
         # Create streaming handler and process
         handler = OpenAIStreamingHandler(client, MODEL_NAME)
         
         logger.info("KimiAgent: Starting chat with tools using Moonshot client")
         # Enable auto-continue by default with sane limits
-        yield from handler.stream_chat_with_tools(messages)
+        yield from handler.stream_chat_with_tools(safe_messages)
         logger.info("KimiAgent: Chat completed successfully")
                 
     except Exception as e:

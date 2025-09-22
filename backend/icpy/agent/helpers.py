@@ -74,9 +74,104 @@ __all__ = [
     # Utility functions
     'get_available_tools_summary',
     'validate_tool_arguments'
+    ,
+    # Content/history utilities
+    'flatten_message_content',
+    'normalize_history'
 ]
 
 logger = logging.getLogger(__name__)
+
+
+# -----------------------------
+# Generic content/history utils
+# -----------------------------
+def flatten_message_content(content: Any) -> str:
+    """Coerce OpenAI-style content (string, list of parts, or dict) into a plain string.
+
+    - Arrays of parts (e.g., [{type:'text'},{type:'image_url', image_url:{url}}]) are flattened
+      into human-readable text with minimal markers for non-text parts.
+    - Dict content falls back to text field if present, otherwise JSON string.
+    - None -> ""; primitives -> str(value).
+    """
+    try:
+        # Handle array of content parts
+        if isinstance(content, list):
+            parts: List[str] = []
+            for part in content:
+                if not isinstance(part, dict):
+                    parts.append(str(part))
+                    continue
+                ptype = part.get("type")
+                if ptype == "text":
+                    parts.append(str(part.get("text", "")))
+                elif ptype == "image_url":
+                    img = part.get("image_url")
+                    url = None
+                    if isinstance(img, dict):
+                        url = img.get("url")
+                    elif isinstance(img, str):
+                        url = img
+                    parts.append(f"[image: {url}]" if url else "[image]")
+                else:
+                    parts.append(f"[{ptype or 'part'}]")
+            return " ".join([p for p in parts if p])
+        # Dict content -> stringify safely
+        if isinstance(content, dict):
+            if "text" in content and isinstance(content["text"], str):
+                return content["text"]
+            return json.dumps(content)
+        # None -> empty string
+        if content is None:
+            return ""
+        # Primitive -> str
+        return str(content)
+    except Exception:
+        return str(content) if content is not None else ""
+
+
+def normalize_history(
+    raw_history: Any,
+    *,
+    drop_empty_user: bool = True,
+    default_role: str = "user",
+) -> List[Dict[str, str]]:
+    """Normalize a variety of history shapes into a list of {role, content} with string content.
+
+    - Accepts list or JSON string; logs and returns [] for invalid inputs
+    - Flattens non-string content via flatten_message_content
+    - Drops empty content entries (and specifically empty user entries if drop_empty_user is True)
+    """
+    messages: List[Dict[str, str]] = []
+    if not raw_history:
+        return messages
+    try:
+        raw = json.loads(raw_history) if isinstance(raw_history, str) else raw_history
+    except Exception:
+        logger.warning("normalize_history: history is a non-JSON string; ignoring")
+        return messages
+
+    if not isinstance(raw, list):
+        logger.warning("normalize_history: history not a list; ignoring")
+        return messages
+
+    filtered = 0
+    for idx, m in enumerate(raw):
+        try:
+            role = (m or {}).get("role", default_role)
+            content = flatten_message_content((m or {}).get("content"))
+            if not content or not str(content).strip():
+                filtered += 1
+                logger.info(
+                    f"normalize_history: Dropping empty history message at index {idx} with role {role}"
+                )
+                continue
+            messages.append({"role": role, "content": content})
+        except Exception as e:
+            logger.warning(f"normalize_history: Failed to normalize history item {idx}: {e}")
+    if filtered:
+        logger.info(f"normalize_history: Filtered {filtered} empty history messages")
+    return messages
 
 
 class ToolExecutor:
@@ -310,6 +405,60 @@ class OpenAIStreamingHandler:
                 except ValueError:
                     max_continue_rounds = 10
 
+            # Preflight: sanitize messages to avoid provider validation errors
+            def _coerce_content_to_text(val: Any) -> str:
+                try:
+                    if val is None:
+                        return ""
+                    if isinstance(val, str):
+                        return val
+                    if isinstance(val, list):
+                        acc: List[str] = []
+                        for part in val:
+                            if isinstance(part, dict):
+                                t = part.get("type")
+                                if t == "text":
+                                    acc.append(str(part.get("text", "")))
+                                elif t == "image_url":
+                                    img = part.get("image_url")
+                                    url = img.get("url") if isinstance(img, dict) else (img if isinstance(img, str) else None)
+                                    acc.append(f"[image: {url}]" if url else "[image]")
+                                else:
+                                    acc.append(f"[{t or 'part'}]")
+                            else:
+                                acc.append(str(part))
+                        return " ".join([x for x in acc if x])
+                    if isinstance(val, dict):
+                        if "text" in val and isinstance(val["text"], str):
+                            return val["text"]
+                        return json.dumps(val)
+                    return str(val)
+                except Exception:
+                    return str(val) if val is not None else ""
+
+            clean_messages: List[Dict[str, Any]] = []
+            dropped_users = 0
+            for idx, m in enumerate(messages or []):
+                if not isinstance(m, dict):
+                    logger.warning(f"OpenAIStreamingHandler: Non-dict message at index {idx} dropped")
+                    continue
+                role = m.get("role") or "user"
+                content = _coerce_content_to_text(m.get("content"))
+                if role == "user" and not (content and content.strip()):
+                    dropped_users += 1
+                    logger.warning(f"OpenAIStreamingHandler: Dropping empty user message at index {idx}")
+                    continue
+                clean_messages.append({**m, "role": role, "content": content})
+            if dropped_users:
+                logger.info(f"OpenAIStreamingHandler: Dropped {dropped_users} empty user message(s) before request")
+
+            # Log a brief preview at INFO for easier troubleshooting
+            try:
+                preview = "\n".join([f"{i}: {m.get('role')} len={len(m.get('content','') or '')}" for i, m in enumerate(clean_messages)])
+                logger.info("OpenAIStreamingHandler: Outbound messages preview\n" + preview)
+            except Exception:
+                pass
+
             # Get available tools
             tools = self.tool_loader.get_openai_tools()
             
@@ -319,7 +468,7 @@ class OpenAIStreamingHandler:
                 # Determine the correct max tokens parameter based on model
                 api_params = {
                     "model": self.model_name,
-                    "messages": messages,
+                    "messages": clean_messages,
                     "tools": tools if tools else None,
                     "tool_choice": "auto" if tools else None,
                     "stream": True
