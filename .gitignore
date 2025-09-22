@@ -99,6 +99,9 @@ docs/summaries/
 docs/tickets/
 docs/saasplan/
 
+# GitHub workflows
+.github/workflows/
+
 # workspace
 workspace/.icotes/chat_history/
 
