@@ -652,7 +652,7 @@ const ICUIPreview = forwardRef<ICUIPreviewRef, ICUIPreviewProps>(({
             style={{
               pointerEvents: isParentResizing ? 'none' : 'auto'
             }}
-            sandbox="allow-scripts allow-same-origin allow-forms allow-modals"
+            sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-downloads allow-presentation"
             title="Live Preview"
             onLoad={() => {
               console.log('Preview iframe loaded');

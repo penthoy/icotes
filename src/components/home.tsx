@@ -117,11 +117,68 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
       const result = await response.json();
       const content = result.data.content;
       const fileName = filePath.split('/').pop() || 'file.html';
+
+      // NEW: Also include local dependencies (CSS/JS/images) referenced by the HTML
+      // so that simple multi-file snippets render properly in Preview.
+      // This avoids asking the user to manually bundle files.
+      let filesMap: Record<string, string> = { [fileName]: content };
+
+      try {
+        // Only attempt dependency collection for HTML
+        if (/\.html?$/i.test(fileName)) {
+          const dirPath = filePath.slice(0, Math.max(0, filePath.lastIndexOf('/')));
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(content, 'text/html');
+
+          const collectAttr = (selector: string, attr: string) =>
+            Array.from(doc.querySelectorAll(selector))
+              .map((el) => (el as Element).getAttribute(attr) || '')
+              .filter((v) => v && !v.startsWith('http://') && !v.startsWith('https://') && !v.startsWith('//') && !v.startsWith('data:'));
+
+          const cssHrefs = collectAttr('link[rel="stylesheet"][href]', 'href');
+          const jsSrcs = collectAttr('script[src]', 'src');
+          const imgSrcs = collectAttr('img[src]', 'src');
+          const assetPaths = Array.from(new Set([...cssHrefs, ...jsSrcs, ...imgSrcs]));
+
+          const toAbs = (relPath: string) => {
+            try {
+              const base = 'file://' + dirPath.replace(/\\/g, '/') + '/';
+              return new URL(relPath, base).pathname;
+            } catch {
+              return null;
+            }
+          };
+
+          // Fetch each asset from workspace and include with its original relative key
+          await Promise.all(
+            assetPaths.map(async (rel) => {
+              const abs = toAbs(rel);
+              if (!abs) return;
+              try {
+                const resp = await fetch(`/api/files/content?path=${encodeURIComponent(abs)}`);
+                if (!resp.ok) return;
+                const data = await resp.json();
+                // Normalize leading './'
+                const key = rel.replace(/^\.\//, '');
+                filesMap[key] = data.data.content as string;
+              } catch (e) {
+                // Best-effort; missing assets will just 404 in preview server
+                if (process.env.NODE_ENV === 'development') {
+                  console.warn('[Home] Failed to include preview asset:', rel, e);
+                }
+              }
+            })
+          );
+        }
+      } catch (depErr) {
+        // Non-fatal: proceed with base HTML if dependency parsing fails
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('[Home] Dependency collection failed for preview:', depErr);
+        }
+      }
       
       // Create a preview with the file content
-      await previewRef.current.createPreview({
-        [fileName]: content
-      });
+      await previewRef.current.createPreview(filesMap);
       
       console.log('[Home] Preview created successfully for:', fileName);
     } catch (error) {
