@@ -37,10 +37,15 @@ def get_openai_token_param(model_name: str, max_tokens: int) -> dict:
     Returns:
         dict: Dictionary containing the appropriate parameter key and value
     """
-    if "gpt-5" in model_name.lower() or model_name.startswith("o1"):
+    name = (model_name or "").lower()
+    # OpenAI GPT-5+ and o1-style models
+    if "gpt-5" in name or name.startswith("o1"):
         return {"max_completion_tokens": max_tokens}
-    else:
-        return {"max_tokens": max_tokens}
+    # Cerebras chat-completions models use max_completion_tokens per docs
+    if name.startswith("qwen-3-") or name.startswith("llama-") or name.startswith("gpt-oss-"):
+        return {"max_completion_tokens": max_tokens}
+    # Default OpenAI-compatible chat.completions
+    return {"max_tokens": max_tokens}
 
 # Public API exports
 __all__ = [

@@ -76,8 +76,15 @@
     "GroqKimiAgent": {
       "enabled": true,
       "displayName": "GroqKimiAgent",
-      "description": "Auto-discovered agent: GroqKimiAgent",
-      "category": "General",
+      "description": "Very fast coding agent",
+      "category": "Built-in",
+      "order": 999
+    },
+    "CerebrasQwenAgent": {
+      "enabled": true,
+      "displayName": "CerebrasQwenAgent",
+      "description": "Ultra fast coding agent",
+      "category": "Built-in",
       "order": 999
     }
   },

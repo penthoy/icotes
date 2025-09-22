@@ -11,6 +11,7 @@ anthropic_api_key = os.getenv('ANTHROPIC_API_KEY')
 moonshot_api_key = os.getenv('MOONSHOT_API_KEY')
 ollama_url = os.getenv('OLLAMA_URL')
 mailersend_api_key = os.environ.get('MAILERSEND_API_KEY')
+cerb_api_key = os.getenv('CEREBRAS_API_KEY')
 
 
 def get_ali_client():
@@ -100,6 +101,37 @@ def get_groq_client():
         # Use the OpenAI-compatible endpoint as per Groq docs
         base_url="https://api.groq.com/openai/v1",
     )
+
+
+def get_cerebras_client():
+    """
+    Initializes and returns a Cerebras client using the official SDK.
+
+    This client provides an OpenAI-compatible interface:
+    client.chat.completions.create(..., stream=True)
+
+    Requires:
+    - CEREBRAS_API_KEY environment variable
+    - Optional: CEREBRAS_BASE_URL to override the default API URL
+    """
+    api_key = os.getenv("CEREBRAS_API_KEY")
+    if not api_key:
+        raise ValueError("CEREBRAS_API_KEY environment variable is not set.")
+
+    try:
+        # Import inside function to avoid import errors if SDK isn't installed yet
+        from cerebras.cloud.sdk import Cerebras  # type: ignore
+    except Exception as e:
+        raise ImportError(
+            "cerebras-cloud-sdk is not installed. Add 'cerebras_cloud_sdk' to backend/pyproject.toml dependencies and install."
+        ) from e
+
+    # Use top-level configured base URL if provided for consistency
+    return Cerebras(
+        api_key=api_key, 
+        # base_url="https://api.cerebras.ai/v1" Only needed for Openai-compatible endpoint
+    )
+
 
 
 def get_anthropic_client():

@@ -164,6 +164,7 @@ dependencies = [
     { name = "aiofiles" },
     { name = "aiohttp" },
     { name = "aiosqlite" },
+    { name = "cerebras-cloud-sdk" },
     { name = "crewai" },
     { name = "fastapi" },
     { name = "httpx" },
@@ -192,6 +193,7 @@ requires-dist = [
     { name = "aiofiles", specifier = "==24.1.0" },
     { name = "aiohttp", specifier = "==3.10.11" },
     { name = "aiosqlite", specifier = "==0.19.0" },
+    { name = "cerebras-cloud-sdk", specifier = ">=1.30.0" },
     { name = "crewai", specifier = "==0.30.11" },
     { name = "fastapi", specifier = "==0.104.1" },
     { name = "httpx", specifier = "==0.27.2" },
@@ -336,6 +338,23 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/6c/81/3747dad6b14fa2cf53fcf10548cf5aea6913e96fab41a3c198676f8948a5/cachetools-5.5.2.tar.gz", hash = "sha256:1a661caa9175d26759571b2e19580f9d6393969e5dfca11fdb1f947a23e640d4", size = 28380, upload-time = "2025-02-20T21:01:19.524Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/72/76/20fa66124dbe6be5cafeb312ece67de6b61dd91a0247d1ea13db4ebb33c2/cachetools-5.5.2-py3-none-any.whl", hash = "sha256:d26a22bcc62eb95c3beabd9f1ee5e820d3d2704fe2967cbe350e20c8ffcd3f0a", size = 10080, upload-time = "2025-02-20T21:01:16.647Z" },
+]
+
+[[package]]
+name = "cerebras-cloud-sdk"
+version = "1.50.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "anyio" },
+    { name = "distro" },
+    { name = "httpx" },
+    { name = "pydantic" },
+    { name = "sniffio" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/97/5b/1c11c9698d4d0a17d8255dc9dd439ee7cf7f9083a1250358ef298a6ca4fa/cerebras_cloud_sdk-1.50.1.tar.gz", hash = "sha256:10e91d26a08779cdf0b84deac7d1d899e6cf8eb0c89909dd75803a11e7b51caa", size = 121201, upload-time = "2025-09-03T18:26:53.063Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/09/8a/19ea27186bc449ab97e1d1f149b0d712e5d53bb69eb93803792b52abfab1/cerebras_cloud_sdk-1.50.1-py3-none-any.whl", hash = "sha256:2f6c31301762075dd254d66c5f6083375ea4b44efb0d7d3ddd17783df62fd2d6", size = 91779, upload-time = "2025-09-03T18:26:51.781Z" },
 ]
 
 [[package]]
