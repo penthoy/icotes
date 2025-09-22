@@ -103,7 +103,7 @@ def chat(message: str, history: List[Dict[str, str]]) -> Generator[str, None, No
         messages = [system_message] + history + [{"role": "user", "content": message}]
 
         handler = OpenAIStreamingHandler(client, MODEL_NAME)
-    logger.info("OpenRouterAgent: Starting chat with tools using OpenRouter client")
+        logger.info("OpenRouterAgent: Starting chat with tools using OpenRouter client")
         yield from handler.stream_chat_with_tools(messages)
         logger.info("OpenRouterAgent: Chat completed successfully")
 
