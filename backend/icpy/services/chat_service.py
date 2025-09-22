@@ -164,6 +164,16 @@ class ChatService:
         self.active_connections: Set[str] = set()
         self.websocket_connections: Dict[str, Any] = {}  # connection_id -> websocket
         self.config = ChatConfig()
+        # Feature flags (env-driven) for performance tuning
+        self.enable_chunk_batching: bool = os.getenv('ENABLE_CHAT_BATCHING', '0') in ('1', 'true', 'True')
+        self.batch_interval_ms: int = int(os.getenv('CHAT_BATCH_INTERVAL_MS', '100'))
+        self.min_chunk_size: int = int(os.getenv('CHAT_MIN_CHUNK_SIZE', '64'))
+        # Buffered JSONL persistence (flush timer)
+        self.enable_buffered_store: bool = os.getenv('CHAT_BUFFERED_STORE', '0') in ('1', 'true', 'True')
+        self._persist_buffer: Dict[str, List[ChatMessage]] = {}
+        self._persist_lock = asyncio.Lock()
+        self._persist_task: Optional[asyncio.Task] = None
+        self._persist_interval: float = float(int(os.getenv('CHAT_STORE_FLUSH_MS', '250')))/1000.0
         
         # JSONL history root (workspace/.icotes/chat_history)
         try:
@@ -192,6 +202,12 @@ class ChatService:
             self.message_broker.subscribe(BrokerMessageType.AGENT_MESSAGE, self._handle_agent_message)
         
         logger.info("Chat service initialized (JSONL storage)")
+        # Start persistence flusher if enabled
+        if self.enable_buffered_store:
+            try:
+                self._persist_task = asyncio.create_task(self._flush_loop())
+            except RuntimeError:
+                self._persist_task = None
     
     def _normalize_attachments(self, raw_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Normalize various frontend attachment shapes into a standard dict.
@@ -500,7 +516,9 @@ class ChatService:
             message_id = str(uuid.uuid4())
             is_first_chunk = True
             
-            # Execute task and stream results
+            # Execute task and stream results, with optional batching and cooperative yield
+            buffer: List[str] = []
+            last_emit = time.time()
             async for message in agent.execute(task, context):
                 if message.message_type == "text":
                     # Send stream start for first chunk
@@ -511,15 +529,33 @@ class ChatService:
                             reply_to_id
                         )
                         is_first_chunk = False
-                    
-                    # Send incremental update
-                    await self._send_streaming_chunk(
-                        chat_session_id,
-                        message_id,
-                        message.content,  # Send only the new chunk
-                        reply_to_id
-                    )
-                    full_content += message.content
+                    # Accumulate or emit depending on batching settings
+                    chunk = message.content or ""
+                    if self.enable_chunk_batching:
+                        if chunk:
+                            buffer.append(chunk)
+                        now = time.time()
+                        size = sum(len(c) for c in buffer)
+                        if size >= self.min_chunk_size or (now - last_emit) >= (self.batch_interval_ms/1000.0):
+                            batched = ''.join(buffer)
+                            if batched:
+                                await self._send_streaming_chunk(chat_session_id, message_id, batched, reply_to_id)
+                                full_content += batched
+                                buffer.clear()
+                                last_emit = now
+                        # Cooperative yield to avoid tight loop starvation
+                        await asyncio.sleep(0)
+                    else:
+                        # Immediate emit path
+                        await self._send_streaming_chunk(
+                            chat_session_id,
+                            message_id,
+                            chunk,
+                            reply_to_id
+                        )
+                        full_content += chunk
+                        # Small yield to let event loop flush WS
+                        await asyncio.sleep(0)
                 elif message.message_type == "error":
                     logger.error(f"Agent error during streaming: {message.content}")
                     # Send error as part of streaming instead of separate message
@@ -563,6 +599,13 @@ class ChatService:
                     await self._store_message(final_message)
                     return
             
+            # Flush any remaining buffered chunks before ending
+            if self.enable_chunk_batching and buffer:
+                batched = ''.join(buffer)
+                if batched:
+                    await self._send_streaming_chunk(chat_session_id, message_id, batched, reply_to_id)
+                    full_content += batched
+                buffer.clear()
             # Send stream end
             await self._send_streaming_end(
                 chat_session_id,
@@ -952,14 +995,48 @@ class ChatService:
     async def _store_message(self, message: ChatMessage):
         """Store a message to JSONL per session (deprecates SQLite)."""
         try:
-            # Ensure session id exists
             session_id = message.session_id or "default"
-            file_path = self.history_root / f"{session_id}.jsonl"
-            # Append as a single JSON line
-            with open(file_path, 'a', encoding='utf-8') as f:
-                f.write(json.dumps(message.to_dict(), ensure_ascii=False) + "\n")
+            if self.enable_buffered_store:
+                async with self._persist_lock:
+                    self._persist_buffer.setdefault(session_id, []).append(message)
+            else:
+                file_path = self.history_root / f"{session_id}.jsonl"
+                with open(file_path, 'a', encoding='utf-8') as f:
+                    f.write(json.dumps(message.to_dict(), ensure_ascii=False) + "\n")
         except Exception as e:
             logger.error(f"Failed to store message (JSONL): {e}")
+
+    async def _flush_loop(self):
+        """Periodic flusher for buffered persistence."""
+        while True:
+            try:
+                await asyncio.sleep(self._persist_interval)
+                await self._flush_now()
+            except asyncio.CancelledError:
+                # Final flush on cancel
+                await self._flush_now()
+                break
+            except Exception as e:
+                logger.warning(f"Buffered store flush error: {e}")
+
+    async def _flush_now(self):
+        tmp: Dict[str, List[ChatMessage]] = {}
+        async with self._persist_lock:
+            if not self._persist_buffer:
+                return
+            tmp = self._persist_buffer
+            self._persist_buffer = {}
+        # Write outside lock
+        for session_id, items in tmp.items():
+            if not items:
+                continue
+            file_path = self.history_root / f"{session_id}.jsonl"
+            try:
+                with open(file_path, 'a', encoding='utf-8') as f:
+                    for msg in items:
+                        f.write(json.dumps(msg.to_dict(), ensure_ascii=False) + "\n")
+            except Exception as e:
+                logger.error(f"Failed writing batch for session {session_id}: {e}")
     
     async def get_message_history(self, session_id: str = None, limit: int = 50, offset: int = 0) -> List[ChatMessage]:
         """Get message history with pagination from JSONL files.

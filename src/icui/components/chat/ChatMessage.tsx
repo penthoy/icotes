@@ -569,4 +569,21 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', high
   }
 };
 
-export default ChatMessage; 
+// Prevent re-render unless meaningful fields change
+function areEqual(prev: ChatMessageProps, next: ChatMessageProps) {
+  const a = prev.message; const b = next.message;
+  if (a.id !== b.id) return false;
+  if (a.content !== b.content) return false;
+  // Streaming completion flips this flag; it should trigger
+  const aDone = Boolean(a.metadata?.streamComplete); const bDone = Boolean(b.metadata?.streamComplete);
+  if (aDone !== bDone) return false;
+  // Attachments shallow length check
+  const al = Array.isArray(a.attachments) ? a.attachments.length : 0;
+  const bl = Array.isArray(b.attachments) ? b.attachments.length : 0;
+  if (al !== bl) return false;
+  // Highlight query affects rendering
+  if (prev.highlightQuery !== next.highlightQuery) return false;
+  return true;
+}
+
+export default React.memo(ChatMessage, areEqual); 

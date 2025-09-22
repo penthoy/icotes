@@ -74,6 +74,64 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
   const messagesEndRef = useRef<HTMLElement | null>(null);
   const isInitializedRef = useRef(false);
   const isConnectingRef = useRef(false);
+  // Streaming update throttling (50ms batching) to reduce re-renders under high chunk rates
+  const streamingQueueRef = useRef<Map<string, ChatMessage>>(new Map());
+  const flushScheduledRef = useRef<number | null>(null);
+  const lastFlushTsRef = useRef<number>(0);
+  const FLUSH_INTERVAL_MS = 50;
+  // Keep a ref of latest state to build committed arrays without stale closures
+  const stateRef = useRef<{ messages: ChatMessage[] }>({ messages: [] });
+  useEffect(() => { stateRef.current.messages = messages; }, [messages]);
+
+  const scheduleFlush = useCallback(() => {
+    if (flushScheduledRef.current !== null) return;
+    const doFlush = () => {
+      flushScheduledRef.current = null;
+      const queued = streamingQueueRef.current;
+      if (queued.size === 0) return;
+      // Build a new messages array applying latest streaming updates
+      const byId: Record<string, ChatMessage> = Object.create(null);
+      const current = stateRef.current.messages;
+      const next = current.map(m => {
+        byId[m.id] = m;
+        return m;
+      });
+      let changed = false;
+      queued.forEach((val, key) => {
+        if (byId[key]) {
+          const idx = next.findIndex(x => x.id === key);
+          if (idx !== -1) {
+            // Replace with latest content reference to trigger minimal diff
+            next[idx] = val;
+            changed = true;
+          }
+        } else {
+          next.push(val);
+          changed = true;
+        }
+      });
+      queued.clear();
+      if (changed) {
+        setMessages(next.length > maxMessages ? next.slice(-maxMessages) : next);
+      }
+      lastFlushTsRef.current = performance.now();
+    };
+    // Align with animation frame for smoother UI; fallback timer if RAF not available
+    if (typeof window !== 'undefined' && 'requestAnimationFrame' in window) {
+      flushScheduledRef.current = window.requestAnimationFrame(() => {
+        doFlush();
+      }) as unknown as number;
+    } else {
+      // Use globalThis for SSR safety
+      const g: any = typeof globalThis !== 'undefined' ? globalThis : undefined;
+      if (g && typeof g.setTimeout === 'function') {
+        flushScheduledRef.current = g.setTimeout(doFlush, FLUSH_INTERVAL_MS) as unknown as number;
+      } else {
+        // Immediate flush as last resort
+        doFlush();
+      }
+    }
+  }, [maxMessages]);
 
   // Get or create client instance
   const getClient = useCallback(() => {
@@ -81,39 +139,35 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
       clientRef.current = singletonClient;
       
       // Set up message callback
-  clientRef.current.onMessage((message: ChatMessage) => {
+      clientRef.current.onMessage((message: ChatMessage) => {
         // Ignore user messages that are broadcast back
         if (message.sender === 'user') {
           return;
         }
-        
-        setMessages(prevMessages => {
-          // Find existing message by ID
-          const existingIndex = prevMessages.findIndex(m => m.id === message.id);
-          
-          if (existingIndex >= 0) {
-            // Update existing message
-            const updatedMessages = [...prevMessages];
-            updatedMessages[existingIndex] = { ...message };
-            
-            // Apply max messages limit
-            if (updatedMessages.length > maxMessages) {
-              return updatedMessages.slice(-maxMessages);
-            }
-            
-            return updatedMessages;
-          } else {
-            // Add new message
-            const newMessages = [...prevMessages, message];
-            
-            // Apply max messages limit
-            if (newMessages.length > maxMessages) {
-              return newMessages.slice(-maxMessages);
-            }
-            
-            return newMessages;
+        // If this is a streaming update, coalesce updates within 50ms window
+        const isStreaming = Boolean(message.metadata?.isStreaming && !message.metadata?.streamComplete);
+        if (isStreaming) {
+          streamingQueueRef.current.set(message.id, message);
+          // Throttle to ~20fps to cut render pressure
+          const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+          if (now - lastFlushTsRef.current >= FLUSH_INTERVAL_MS) {
+            scheduleFlush();
+          } else if (flushScheduledRef.current === null) {
+            scheduleFlush();
           }
-        });
+        } else {
+          // Non-streaming (or final) messages: commit immediately
+          setMessages(prevMessages => {
+            const existingIndex = prevMessages.findIndex(m => m.id === message.id);
+            if (existingIndex >= 0) {
+              const updatedMessages = [...prevMessages];
+              updatedMessages[existingIndex] = { ...message };
+              return updatedMessages.length > maxMessages ? updatedMessages.slice(-maxMessages) : updatedMessages;
+            }
+            const newMessages = [...prevMessages, message];
+            return newMessages.length > maxMessages ? newMessages.slice(-maxMessages) : newMessages;
+          });
+        }
 
         // Heuristics: if a streaming assistant message arrives, set typing true until completed
         const streaming = message.metadata?.isStreaming && !message.metadata?.streamComplete;
