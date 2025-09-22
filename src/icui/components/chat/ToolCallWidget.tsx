@@ -151,6 +151,20 @@ const ToolCallWidget: React.FC<ToolCallWidgetProps> = ({
             <span className="font-medium text-sm truncate">{toolCall.toolName}</span>
             {getStatusIcon()}
           </div>
+          {/* Quick hint for web_search query when available */}
+          {toolCall.toolName === 'web_search' && (
+            <div className="text-xs mt-0.5 truncate" style={{ color: 'var(--icui-text-secondary)' }}>
+              {(() => {
+                const input = toolCall.input || {};
+                let q: string | undefined = input.query || toolCall.metadata?.query;
+                if (!q && toolCall.metadata?.argsText && typeof toolCall.metadata.argsText === 'string') {
+                  const m = toolCall.metadata.argsText.match(/['\"]query['\"]\s*:\s*['\"]([^'\"]+)['\"]/);
+                  if (m) q = m[1];
+                }
+                return `Query: ${q || '(not provided)'}`;
+              })()}
+            </div>
+          )}
           
           {/* Progress bar for running tools */}
           {toolCall.status === 'running' && typeof toolCall.progress === 'number' && (
