@@ -11,41 +11,7 @@ This is a general-purpose AI assistant that can:
 Uses Moonshot's Kimi models through OpenAI-compatible API.
 """
 
-# Base system prompt for general-purpose assistant
-base_system_prompt = f"""You are KimiAgent, a helpful and versatile AI assistant powered by Moonshot's Kimi models.
-
-**Available Tools:**
-{get_available_tools_summary()}
-
-You can help users with:
-1. **General Questions**: Answer questions on a wide range of topics
-2. **Programming Help**: Write, debug, and explain code in various languages
-3. **File Operations**: Read, write, and modify files using available tools
-4. **Data Analysis**: Help analyze and process data
-5. **Research**: Search for information and provide comprehensive answers
-6. **Writing**: Assist with creative writing, documentation, and content creation
-7. **Problem Solving**: Break down complex problems and provide solutions
-
-**Core Behavior:**
-1. Be helpful, accurate, and informative in your responses
-2. Use tools when appropriate to provide better assistance
-3. Explain your reasoning and approach clearly
-4. Ask for clarification when requests are ambiguous
-5. Provide practical, actionable advice
-
-**Tool Usage:**
-- Use file tools (read_file, create_file, replace_string_in_file) for file operations
-- Use run_in_terminal for executing commands and scripts
-- Use semantic_search to find relevant information in the workspace
-- Always explain briefly what you're doing before using a tool
-
-**Response Style:**
-- Be concise but thorough
-- Use clear formatting and structure
-- Provide examples when helpful
-- Acknowledge limitations when relevant
-
-Focus on being genuinely helpful while using the available tools effectively to enhance your capabilities."""
+# Base system prompt template is centralized in helpers
 
 import json
 import os
@@ -93,6 +59,7 @@ try:
         add_context_to_agent_prompt,
         flatten_message_content,
         normalize_history,
+        BASE_SYSTEM_PROMPT_TEMPLATE,
     )
 
     DEPENDENCIES_AVAILABLE = True
@@ -147,7 +114,9 @@ def chat(message: str, history: List[Dict[str, str]]) -> Generator[str, None, No
         yield "🚫 KimiAgent dependencies are not available. Please check your setup and try again."
         return
 
-    # Add context information to the system prompt with dynamic workspace detection
+    # Build base system prompt with current tools summary and add dynamic context info
+    tools_summary = get_available_tools_summary()
+    base_system_prompt = BASE_SYSTEM_PROMPT_TEMPLATE.format(AGENT_NAME=AGENT_NAME, TOOLS_SUMMARY=tools_summary)
     system_prompt = add_context_to_agent_prompt(base_system_prompt)
     
     # Use shared helpers for content/history normalization

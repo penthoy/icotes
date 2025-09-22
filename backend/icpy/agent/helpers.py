@@ -78,9 +78,46 @@ __all__ = [
     # Content/history utilities
     'flatten_message_content',
     'normalize_history'
+    ,
+    # Prompt templates
+    'BASE_SYSTEM_PROMPT_TEMPLATE'
 ]
 
 logger = logging.getLogger(__name__)
+# -----------------------------
+# Prompt templates
+# -----------------------------
+# Generic base system prompt template for agents. Inject the agent name and tools summary at runtime.
+BASE_SYSTEM_PROMPT_TEMPLATE = """You are {AGENT_NAME}, a helpful and versatile AI assistant.
+
+**Available Tools:**
+{TOOLS_SUMMARY}
+
+**When asked to create an app:**
+- create it under workspace which is your work root unless specified otherwise.
+- Create it using html/css/js by default unless the user specifies otherwise.
+
+**Core Behavior:**
+- Be helpful, accurate, and informative in your responses
+- Use tools when appropriate to provide better assistance
+- Explain your reasoning and approach clearly
+- Ask for clarification when requests are ambiguous
+- Provide practical, actionable advice
+
+**Tool Usage:**
+- Use file tools (read_file, create_file, replace_string_in_file) for file operations
+- Use run_in_terminal for executing commands and scripts
+- Use semantic_search to find relevant information in the workspace
+- Use web_search to find current information from the web
+- Always explain briefly what you're doing before using a tool
+
+**Response Style:**
+- Be concise but thorough
+- Use clear formatting and structure
+- Provide examples when helpful
+- Acknowledge limitations when relevant
+
+Focus on being genuinely helpful while using the available tools effectively to enhance your capabilities."""
 
 
 # -----------------------------
@@ -436,7 +473,8 @@ class OpenAIStreamingHandler:
                 except Exception:
                     return str(val) if val is not None else ""
 
-            clean_messages: List[Dict[str, Any]] = []
+            # Build a canonical conversation list we'll mutate throughout the loop
+            conv: List[Dict[str, Any]] = []
             dropped_users = 0
             for idx, m in enumerate(messages or []):
                 if not isinstance(m, dict):
@@ -448,13 +486,13 @@ class OpenAIStreamingHandler:
                     dropped_users += 1
                     logger.warning(f"OpenAIStreamingHandler: Dropping empty user message at index {idx}")
                     continue
-                clean_messages.append({**m, "role": role, "content": content})
+                conv.append({**m, "role": role, "content": content})
             if dropped_users:
                 logger.info(f"OpenAIStreamingHandler: Dropped {dropped_users} empty user message(s) before request")
 
             # Log a brief preview at INFO for easier troubleshooting
             try:
-                preview = "\n".join([f"{i}: {m.get('role')} len={len(m.get('content','') or '')}" for i, m in enumerate(clean_messages)])
+                preview = "\n".join([f"{i}: {m.get('role')} len={len(m.get('content','') or '')}" for i, m in enumerate(conv)])
                 logger.info("OpenAIStreamingHandler: Outbound messages preview\n" + preview)
             except Exception:
                 pass
@@ -464,11 +502,22 @@ class OpenAIStreamingHandler:
             
             # Start the conversation loop for tool calls
             continue_round = 0
+            # Optional safeguard against runaway tool-call loops (only if env is set)
+            max_tool_loops: Optional[int]
+            try:
+                val = os.environ.get("AGENT_MAX_TOOL_LOOPS")
+                max_tool_loops = int(val) if val is not None else None
+                if max_tool_loops is not None and max_tool_loops <= 0:
+                    # Non-positive disables the cap
+                    max_tool_loops = None
+            except Exception:
+                max_tool_loops = None
+            tool_loop_count = 0
             while True:
                 # Determine the correct max tokens parameter based on model
                 api_params = {
                     "model": self.model_name,
-                    "messages": clean_messages,
+                    "messages": conv,
                     "tools": tools if tools else None,
                     "tool_choice": "auto" if tools else None,
                     "stream": True
@@ -487,22 +536,29 @@ class OpenAIStreamingHandler:
                 
                 # If tool calls are present, handle them and then continue loop
                 if finish_reason == "tool_calls" and tool_calls_list:
+                    tool_loop_count += 1
                     # Handle tool calls
-                    yield from self._handle_tool_calls(messages, collected_chunks, tool_calls_list)
+                    yield from self._handle_tool_calls(conv, collected_chunks, tool_calls_list)
                     
                     yield "\n🔧 **Tool execution complete. Continuing...**\n\n"
+                    if max_tool_loops is not None and tool_loop_count >= max_tool_loops:
+                        logger.warning(
+                            f"OpenAIStreamingHandler: Reached max tool-call loops ({max_tool_loops}). Aborting to prevent infinite loop."
+                        )
+                        yield "\n⚠️ Reached maximum tool-call attempts. Stopping to prevent a loop.\n"
+                        break
                     continue
 
                 # For non-tool responses, append assistant content to the conversation
                 if collected_chunks:
-                    messages.append({"role": "assistant", "content": "".join(collected_chunks)})
+                    conv.append({"role": "assistant", "content": "".join(collected_chunks)})
                 
                 # Auto-continue on token limit
                 if finish_reason == "length" and auto_continue and continue_round < max_continue_rounds:
                     continue_round += 1
                     logger.info(f"Hit token limit; auto-continuing round {continue_round}/{max_continue_rounds}")
                     yield "\n⏭️ Output truncated by token limit. Continuing...\n\n"
-                    messages.append({
+                    conv.append({
                         "role": "user",
                         "content": "Continue exactly where you left off. Do not repeat previous text. Resume immediately and finish the response."
                     })
