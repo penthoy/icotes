@@ -72,6 +72,13 @@
       "description": "Built-in generic gpt-5-mini agent",
       "category": "Built-in",
       "order": 999
+    },
+    "GroqKimiAgent": {
+      "enabled": true,
+      "displayName": "GroqKimiAgent",
+      "description": "Auto-discovered agent: GroqKimiAgent",
+      "category": "General",
+      "order": 999
     }
   },
   "categories": {

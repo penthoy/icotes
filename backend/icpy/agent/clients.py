@@ -97,7 +97,8 @@ def get_groq_client():
 
     return OpenAI(
         api_key=groq_api_key,
-        base_url="https://api.groq.com/v1",
+        # Use the OpenAI-compatible endpoint as per Groq docs
+        base_url="https://api.groq.com/openai/v1",
     )
 
 
