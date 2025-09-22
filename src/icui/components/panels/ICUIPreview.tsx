@@ -69,6 +69,62 @@ const ICUIPreview = forwardRef<ICUIPreviewRef, ICUIPreviewProps>(({
   const refreshTimerRef = useRef<NodeJS.Timeout | null>(null);
   const { theme } = useTheme();
 
+  // Inject theme-aware scrollbar styles into the iframe document
+  const injectScrollbarStyles = useCallback(() => {
+    try {
+      const iframe = iframeRef.current;
+      if (!iframe) return;
+      const doc = iframe.contentDocument || iframe.contentWindow?.document;
+      if (!doc) return;
+
+      // Read colors from the parent theme CSS variables
+      const root = document.documentElement;
+      const computed = getComputedStyle(root);
+      const track = (computed.getPropertyValue('--icui-bg-secondary') || '#1f2430').trim();
+      const thumb = (computed.getPropertyValue('--icui-text-muted') || '#6e7681').trim();
+      const border = (computed.getPropertyValue('--icui-border-subtle') || 'rgba(0,0,0,0.2)').trim();
+
+      // Build CSS for WebKit and Firefox
+      const css = `
+        /* Firefox */
+        html, body { scrollbar-width: thin; scrollbar-color: ${thumb} ${track}; }
+
+        /* WebKit */
+        *::-webkit-scrollbar { width: 10px; height: 10px; }
+        *::-webkit-scrollbar-track { background: ${track}; }
+        *::-webkit-scrollbar-thumb {
+          background: ${thumb};
+          border-radius: 8px;
+          border: 2px solid ${track};
+        }
+        *::-webkit-scrollbar-thumb:hover {
+          background: ${thumb};
+          box-shadow: inset 0 0 0 1px ${border};
+        }
+      `;
+
+      const STYLE_ID = 'icui-injected-scrollbar-style';
+      let styleEl = doc.getElementById(STYLE_ID) as HTMLStyleElement | null;
+      if (!styleEl) {
+        styleEl = doc.createElement('style');
+        styleEl.id = STYLE_ID;
+        styleEl.setAttribute('data-origin', 'icui');
+        doc.head?.appendChild(styleEl);
+      }
+      styleEl.textContent = css;
+    } catch (e) {
+      // Non-fatal; preview still works without custom scrollbars
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('[ICUIPreview] Failed to inject scrollbar styles:', e);
+      }
+    }
+  }, []);
+
+  // Re-apply styles when theme changes
+  useEffect(() => {
+    injectScrollbarStyles();
+  }, [theme, injectScrollbarStyles]);
+
   // Detect when parent is being resized by checking document cursor
   useEffect(() => {
     const checkResizeState = () => {
@@ -656,6 +712,8 @@ const ICUIPreview = forwardRef<ICUIPreviewRef, ICUIPreviewProps>(({
             title="Live Preview"
             onLoad={() => {
               console.log('Preview iframe loaded');
+              // Re-apply theme-aware scrollbar styles on every load/navigation
+              injectScrollbarStyles();
             }}
             onError={() => {
               updateGlobalState({ error: 'Failed to load preview' });

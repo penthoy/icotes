@@ -140,11 +140,13 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
   const { onSessionChange, emitSessionChange } = useChatSessionSync('ICUIChat');
 
   // Chat history management
-  const { createSession, switchSession, sessions, activeSession } = useChatHistory();
+  const { createSession, switchSession, sessions, activeSession, renameSession } = useChatHistory();
 
   // Track the globally-selected session (source: shared chat client + session sync)
   const [currentSessionId, setCurrentSessionId] = useState<string>(chatBackendClient.currentSession || '');
   const [currentSessionName, setCurrentSessionName] = useState<string | undefined>(undefined);
+  const [isRenamingTitle, setIsRenamingTitle] = useState(false);
+  const [tempTitle, setTempTitle] = useState('');
 
   // Compute title by preferring the most-recent event-provided name, then sessions list
   const sessionTitle = (() => {
@@ -153,6 +155,37 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
     const match = sessions.find(s => s.id === currentSessionId);
     return match?.name || 'Untitled Chat';
   })();
+
+  // Start inline rename on header title
+  const beginRenameTitle = useCallback(() => {
+    if (!currentSessionId) return;
+    setIsRenamingTitle(true);
+    setTempTitle(sessionTitle);
+  }, [currentSessionId, sessionTitle]);
+
+  const cancelRenameTitle = useCallback(() => {
+    setIsRenamingTitle(false);
+    setTempTitle('');
+  }, []);
+
+  const saveRenameTitle = useCallback(async () => {
+    const next = tempTitle.trim();
+    setIsRenamingTitle(false);
+    if (!currentSessionId) return;
+    if (!next || next === sessionTitle) {
+      setTempTitle('');
+      return;
+    }
+    try {
+      await renameSession(currentSessionId, next);
+      // Update local title immediately; store event will also propagate
+      setCurrentSessionName(next);
+    } catch (e) {
+      console.error('Failed to rename session from Chat header:', e);
+    } finally {
+      setTempTitle('');
+    }
+  }, [currentSessionId, tempTitle, renameSession, sessionTitle]);
 
   // Get available custom agents
   const { agents: configuredAgents, isLoading: agentsLoading, error: agentsError } = useConfiguredAgents();
@@ -547,18 +580,49 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
           borderBottomColor: 'var(--icui-border-subtle)' 
         }}
       >
-        <div className="flex items-center space-x-3">
+        <div
+          className="flex items-center space-x-3 select-none"
+          onDoubleClick={() => { if (currentSessionId) beginRenameTitle(); }}
+          title={currentSessionId ? 'Double‑click to rename • Enter to save • Esc to cancel' : 'Create or select a chat to rename'}
+        >
           {/* Connection Status Indicator */}
           <div className={`w-2 h-2 rounded-full transition-colors ${
             isConnected ? 'bg-green-500' : 'bg-red-500'
           }`} />
           
-          {/* Current Session Name */}
-          <span className="text-sm" style={{ 
-            color: isConnected ? 'var(--icui-text-primary)' : 'var(--icui-text-error)' 
-          }}>
-            {isConnected ? sessionTitle : 'Disconnected'}
-          </span>
+          {/* Current Session Name / Inline Rename */}
+          {isConnected ? (
+            isRenamingTitle ? (
+              <input
+                value={tempTitle}
+                onChange={(e) => setTempTitle(e.target.value)}
+                onBlur={saveRenameTitle}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') saveRenameTitle();
+                  if (e.key === 'Escape') cancelRenameTitle();
+                }}
+                className="text-sm px-2 py-0.5 rounded border bg-transparent outline-none"
+                style={{ 
+                  color: 'var(--icui-text-primary)',
+                  borderColor: 'var(--icui-border-subtle)'
+                }}
+                autoFocus
+              />
+            ) : (
+              <span
+                className="text-sm cursor-text"
+                style={{ color: 'var(--icui-text-primary)' }}
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'F2') beginRenameTitle();
+                }}
+              >
+                {sessionTitle}
+              </span>
+            )
+          ) : (
+            <span className="text-sm" style={{ color: 'var(--icui-text-error)' }}>Disconnected</span>
+          )}
         </div>
 
         {/* Actions */}
