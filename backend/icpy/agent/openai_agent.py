@@ -96,14 +96,14 @@ def chat(message: str, history: List[Dict[str, str]]) -> Generator[str, None, No
         yield "🚫 OpenAIAgent dependencies are not available. Please check your setup and try again."
         return
 
-    base_system_prompt = f"""You are {AGENT_NAME}, a helpful and capable AI assistant powered by OpenAI models.
-
-**Available Tools:**
-{get_available_tools_summary()}
-
-Follow best practices, be concise but helpful, and call tools when they improve your answer."""
-
-    system_prompt = add_context_to_agent_prompt(base_system_prompt)
+    # Keep the system prompt stable to allow provider-side caching; avoid injecting
+    # dynamic context like timestamps or environment details.
+    base_system_prompt = (
+        f"You are {AGENT_NAME}, a helpful and capable AI assistant powered by OpenAI models. "
+        "Be concise but helpful; call tools when they improve your answer."
+    )
+    tools_summary = get_available_tools_summary()
+    system_prompt = base_system_prompt + "\n\n" + "**Available Tools:**\n" + tools_summary
 
     try:
         client = get_openai_client()

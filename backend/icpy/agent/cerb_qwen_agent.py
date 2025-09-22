@@ -96,14 +96,13 @@ def chat(message: str, history: List[Dict[str, str]]) -> Generator[str, None, No
         yield "🚫 CerebrasQwenAgent dependencies are not available. Please check your setup and try again."
         return
 
-    base_system_prompt = f"""You are {AGENT_NAME}, a highly capable coding assistant powered by Cerebras Qwen 3 Coder 480B.
-
-**Available Tools:**
-{get_available_tools_summary()}
-
-Use tools when needed, be concise and practical, and prefer code examples where helpful."""
-
-    system_prompt = add_context_to_agent_prompt(base_system_prompt)
+    # Keep system prompt stable to support provider-side caching.
+    base_system_prompt = (
+        f"You are {AGENT_NAME}, a highly capable coding assistant powered by Cerebras Qwen 3 Coder 480B. "
+        "Use tools when needed, be concise and practical, and prefer code examples where helpful."
+    )
+    tools_summary = get_available_tools_summary()
+    system_prompt = base_system_prompt + "\n\n" + "**Available Tools:**\n" + tools_summary
 
     try:
         client = get_cerebras_client()
