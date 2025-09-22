@@ -219,6 +219,10 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
     try {
       const client = getClient();
       
+      // Immediately reflect that the assistant is working to provide instant feedback
+      // This will be overridden by real typing/stream events from the backend
+      setIsTyping(true);
+
       // Add user message immediately to UI
       const userMessage: ChatMessage = {
         id: `user_${Date.now()}_${Math.random().toString(36).substring(2)}`,
@@ -247,6 +251,8 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
     } catch (error) {
       console.error('Failed to send message:', error);
       notificationService.error('Failed to send message');
+      // Reset typing state on error so the indicator doesn't get stuck
+      setIsTyping(false);
     }
   }, [getClient, config, maxMessages]);
 
@@ -256,6 +262,9 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
     try {
       const client = getClient();
       
+      // Instant UI feedback
+      setIsTyping(true);
+
       // Add user message immediately to UI
       const userMessage: ChatMessage = {
         id: `user_${Date.now()}_${Math.random().toString(36).substring(2)}`,
@@ -280,6 +289,7 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
     } catch (error) {
       console.error('Failed to send message to custom agent:', error);
       notificationService.error(`Failed to send message to ${agentName}`);
+      setIsTyping(false);
     }
   }, [getClient, maxMessages]);
 
