@@ -174,6 +174,15 @@ class ChatService:
         self._persist_lock = asyncio.Lock()
         self._persist_task: Optional[asyncio.Task] = None
         self._persist_interval: float = float(int(os.getenv('CHAT_STORE_FLUSH_MS', '250')))/1000.0
+
+        # Prompt/token safety controls
+        # IMPORTANT: Inline base64 image data massively increases token count.
+        # Default to URL-based embedding. Allow opting-in to small inline images via env.
+        self.embed_image_data_urls: bool = os.getenv('CHAT_EMBED_IMAGE_DATA_URL', '0') in ('1', 'true', 'True')
+        self.max_inline_image_kb: int = int(os.getenv('CHAT_MAX_INLINE_IMAGE_KB', '64'))  # only if embed_image_data_urls is true
+        # Soft guardrails for prompt size (approx tokens ~= chars/4)
+        self.max_input_tokens_est: int = int(os.getenv('CHAT_MAX_INPUT_TOKENS', '200000'))  # keep under provider limits (e.g., 272k)
+        self.max_input_chars: int = int(os.getenv('CHAT_MAX_INPUT_CHARS', str(self.max_input_tokens_est * 4)))
         
         # JSONL history root (workspace/.icotes/chat_history)
         try:
@@ -707,30 +716,55 @@ class ChatService:
                         try:
                             kind = att.get('kind')
                             mime = att.get('mime_type') or att.get('mime') or ''
+                            # Only process images for multimodal content parts
                             if not ((isinstance(mime, str) and mime.startswith('image/')) or kind in ('image', 'images')):
                                 continue
-                            # Prefer embedding as data URL
-                            rel = att.get('relative_path') or att.get('rel_path') or att.get('path')
-                            data_url = None
-                            if isinstance(rel, str) and rel:
-                                try:
-                                    abs_path = (media.base_dir / rel).resolve()
-                                    abs_path.relative_to(media.base_dir)
-                                    if abs_path.exists() and abs_path.is_file():
-                                        import base64
-                                        with open(abs_path, 'rb') as f:
-                                            b64 = base64.b64encode(f.read()).decode('ascii')
-                                        data_url = f"data:{mime};base64,{b64}"
-                                except Exception:
-                                    data_url = None
-                            if not data_url:
-                                att_id = att.get('id')
-                                if att_id and not str(att_id).startswith('explorer-'):
-                                    data_url = f"/api/media/file/{att_id}"
-                            if data_url:
-                                content_parts.append({"type": "image_url", "image_url": {"url": data_url}})
+
+                            # Prefer URL embedding to keep token counts low
+                            image_url: Optional[str] = None
+                            att_id = att.get('id')
+                            if att_id and not str(att_id).startswith('explorer-'):
+                                image_url = f"/api/media/file/{att_id}"
+
+                            # Optional: inline very small images as data URLs if explicitly enabled
+                            # and below size threshold
+                            if not image_url and self.embed_image_data_urls:
+                                rel = att.get('relative_path') or att.get('rel_path') or att.get('path')
+                                if isinstance(rel, str) and rel:
+                                    try:
+                                        abs_path = (media.base_dir / rel).resolve()
+                                        abs_path.relative_to(media.base_dir)
+                                        if abs_path.exists() and abs_path.is_file():
+                                            size_kb = max(1, int(abs_path.stat().st_size / 1024))
+                                            if size_kb <= self.max_inline_image_kb:
+                                                import base64
+                                                with open(abs_path, 'rb') as f:
+                                                    b64 = base64.b64encode(f.read()).decode('ascii')
+                                                image_url = f"data:{mime};base64,{b64}"
+                                            else:
+                                                logger.info(
+                                                    f"Skipping inline image (>{self.max_inline_image_kb}KB): {abs_path.name} ~{size_kb}KB"
+                                                )
+                                    except Exception:
+                                        image_url = image_url  # no-op; keep any prior URL
+
+                            if image_url:
+                                content_parts.append({"type": "image_url", "image_url": {"url": image_url}})
                         except Exception:
                             continue
+
+                # Soft guard: if composed parts are too large, drop images first
+                try:
+                    approx_chars = len(json.dumps(content_parts))
+                except Exception:
+                    approx_chars = sum(len(str(p)) for p in content_parts)
+                if approx_chars > self.max_input_chars:
+                    # Keep only text to avoid context explosion
+                    content_parts = [p for p in content_parts if p.get('type') == 'text']
+                    logger.warning(
+                        f"Prompt content exceeded max chars (~{self.max_input_chars}); dropping images for this message"
+                    )
+
                 history_list.append({"role": "user", "content": content_parts})
             except Exception as e:
                 logger.warning(f"Failed to attach multimodal content for custom agent: {e}")

@@ -303,6 +303,19 @@ class OpenAIAgentWrapper(BaseAgentWrapper):
             context_str = f"Context: {context}\n\n{prompt}"
             return [{"role": "user", "content": context_str}]
 
+        # Soft guard: if the message would be too large, drop image parts first
+        max_tokens_est = int(os.getenv('CHAT_MAX_INPUT_TOKENS', '200000'))
+        max_chars = int(os.getenv('CHAT_MAX_INPUT_CHARS', str(max_tokens_est * 4)))
+        try:
+            approx_chars = len(__import__('json').dumps(content_parts))
+        except Exception:
+            approx_chars = sum(len(str(p)) for p in content_parts)
+        if approx_chars > max_chars:
+            content_parts = [p for p in content_parts if p.get('type') == 'text']
+            logger.warning(
+                "OpenAI prompt content exceeded configured size; images dropped to avoid context_length_exceeded"
+            )
+
         # If we only have text (no valid image parts), include a tiny context note
         if len(content_parts) == 1:
             context_str = f"Context: {context}\n\n{prompt}"
@@ -312,9 +325,10 @@ class OpenAIAgentWrapper(BaseAgentWrapper):
 
     def _attachment_to_image_part(self, att: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Convert an attachment dict to an image_url content part when possible.
-
-        Prefers embedding data URLs to avoid public accessibility requirements. Falls back
-        to the API endpoint reference if data cannot be read.
+        
+        Preference order:
+        1) Use internal API URL (/api/media/file/{id}) to avoid massive prompts
+        2) Optionally inline as data URL only when explicitly enabled and file is small
         """
         try:
             if not isinstance(att, dict):
@@ -324,28 +338,37 @@ class OpenAIAgentWrapper(BaseAgentWrapper):
             if not ((isinstance(mime, str) and mime.startswith('image')) or kind == 'images'):
                 return None
 
-            # Try to read file bytes from media service base dir using relative_path
-            rel = att.get('relative_path') or att.get('rel_path') or att.get('path')
-            if isinstance(rel, str) and rel:
-                try:
-                    # Lazy import to avoid hard dependency
-                    from ..services.media_service import get_media_service
-                    service = get_media_service()
-                    abs_path = (service.base_dir / rel).resolve()
-                    # Ensure it's under media root
-                    abs_path.relative_to(service.base_dir)
-                    if abs_path.exists() and abs_path.is_file():
-                        with open(abs_path, 'rb') as f:
-                            b64 = base64.b64encode(f.read()).decode('ascii')
-                        data_url = f"data:{mime};base64,{b64}"
-                        return {"type": "image_url", "image_url": {"url": data_url}}
-                except Exception:
-                    pass
-
-            # Fallback to API URL by id (works only if OpenAI can fetch it)
+            # Prefer API URL by id (lightweight prompt)
             att_id = att.get('id')
             if att_id and not str(att_id).startswith('explorer-'):
                 return {"type": "image_url", "image_url": {"url": f"/api/media/file/{att_id}"}}
+
+            # Optional small-inline fallback if allowed
+            if os.getenv('CHAT_EMBED_IMAGE_DATA_URL', '0') in ('1', 'true', 'True'):
+                max_kb = int(os.getenv('CHAT_MAX_INLINE_IMAGE_KB', '64'))
+                # Try to read file bytes from media service base dir using relative_path
+                rel = att.get('relative_path') or att.get('rel_path') or att.get('path')
+                if isinstance(rel, str) and rel:
+                    try:
+                        # Lazy import to avoid hard dependency
+                        from ..services.media_service import get_media_service
+                        service = get_media_service()
+                        abs_path = (service.base_dir / rel).resolve()
+                        # Ensure it's under media root
+                        abs_path.relative_to(service.base_dir)
+                        if abs_path.exists() and abs_path.is_file():
+                            size_kb = max(1, int(abs_path.stat().st_size / 1024))
+                            if size_kb <= max_kb:
+                                with open(abs_path, 'rb') as f:
+                                    b64 = base64.b64encode(f.read()).decode('ascii')
+                                data_url = f"data:{mime};base64,{b64}"
+                                return {"type": "image_url", "image_url": {"url": data_url}}
+                            else:
+                                logger.info(
+                                    f"Skipping inline image (>{max_kb}KB): {abs_path.name} ~{size_kb}KB"
+                                )
+                    except Exception:
+                        pass
         except Exception:
             return None
         return None
