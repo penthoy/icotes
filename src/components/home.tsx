@@ -54,9 +54,9 @@ const THEME_OPTIONS = [
 const defaultLayout: ICUILayoutConfig = {
   layoutMode: 'h-layout',
   areas: {
-    left: { id: 'left', name: 'Explorer', panelIds: ['explorer', 'git'], activePanelId: 'explorer', size: 25, visible: true },
+    left: { id: 'left', name: 'Explorer', panelIds: ['explorer', 'git'], activePanelId: 'explorer', size: 20, visible: true },
     center: { id: 'center', name: 'Editor', panelIds: ['editor', 'preview'], activePanelId: 'editor', size: 50 },
-    right: { id: 'right', name: 'Assistant', panelIds: ['chat', 'chat-history'], activePanelId: 'chat', size: 25, visible: true },
+    right: { id: 'right', name: 'Assistant', panelIds: ['chat', 'chat-history'], activePanelId: 'chat', size: 30, visible: true },
     bottom: { id: 'bottom', name: 'Terminal', panelIds: ['terminal'], activePanelId: 'terminal', size: 40 },
   },
   splitConfig: { 
@@ -96,7 +96,9 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
   // Handle HTML file preview from Explorer context menu
   const handlePreviewFile = useCallback(async (filePath: string) => {
     try {
-      console.log('[Home] Handling preview for file:', filePath);
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[Home] Handling preview for file:', filePath);
+      }
       
       if (!previewRef.current) {
         console.error('[Home] Preview ref not available, waiting...');
@@ -117,13 +119,72 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
       const result = await response.json();
       const content = result.data.content;
       const fileName = filePath.split('/').pop() || 'file.html';
+
+      // NEW: Also include local dependencies (CSS/JS/images) referenced by the HTML
+      // so that simple multi-file snippets render properly in Preview.
+      // This avoids asking the user to manually bundle files.
+      let filesMap: Record<string, string> = { [fileName]: content };
+
+      try {
+        // Only attempt dependency collection for HTML
+        if (/\.html?$/i.test(fileName)) {
+          const dirPath = filePath.slice(0, Math.max(0, filePath.lastIndexOf('/')));
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(content, 'text/html');
+
+          const collectAttr = (selector: string, attr: string) =>
+            Array.from(doc.querySelectorAll(selector))
+              .map((el) => (el as Element).getAttribute(attr) || '')
+              .filter((v) => v && !v.startsWith('http://') && !v.startsWith('https://') && !v.startsWith('//') && !v.startsWith('data:'));
+
+          const cssHrefs = collectAttr('link[rel="stylesheet"][href]', 'href');
+          const jsSrcs = collectAttr('script[src]', 'src');
+          const imgSrcs = collectAttr('img[src]', 'src');
+          const assetPaths = Array.from(new Set([...cssHrefs, ...jsSrcs, ...imgSrcs]));
+
+          const toAbs = (relPath: string) => {
+            try {
+              const base = 'file://' + dirPath.replace(/\\/g, '/') + '/';
+              return new URL(relPath, base).pathname;
+            } catch {
+              return null;
+            }
+          };
+
+          // Fetch each asset from workspace and include with its original relative key
+          await Promise.all(
+            assetPaths.map(async (rel) => {
+              const abs = toAbs(rel);
+              if (!abs) return;
+              try {
+                const resp = await fetch(`/api/files/content?path=${encodeURIComponent(abs)}`);
+                if (!resp.ok) return;
+                const data = await resp.json();
+                // Normalize leading './'
+                const key = rel.replace(/^\.\//, '');
+                filesMap[key] = data.data.content as string;
+              } catch (e) {
+                // Best-effort; missing assets will just 404 in preview server
+                if (process.env.NODE_ENV === 'development') {
+                  console.warn('[Home] Failed to include preview asset:', rel, e);
+                }
+              }
+            })
+          );
+        }
+      } catch (depErr) {
+        // Non-fatal: proceed with base HTML if dependency parsing fails
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('[Home] Dependency collection failed for preview:', depErr);
+        }
+      }
       
       // Create a preview with the file content
-      await previewRef.current.createPreview({
-        [fileName]: content
-      });
+      await previewRef.current.createPreview(filesMap);
       
-      console.log('[Home] Preview created successfully for:', fileName);
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[Home] Preview created successfully for:', fileName);
+      }
     } catch (error) {
       console.error('[Home] Error previewing file:', error);
     }
@@ -140,7 +201,9 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
 
   // Handle file double-click from Explorer - VS Code-like permanent file opening
   const handleFileDoubleClick = useCallback((file: any) => {
-    console.log('[Home] handleFileDoubleClick called with file:', file.name, 'at path:', file.path);
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[Home] handleFileDoubleClick called with file:', file.name, 'at path:', file.path);
+    }
     if (file.type === 'file' && editorRef.current) {
       // Double click opens file permanently (will not be replaced by single clicks)
       editorRef.current.openFilePermanent(file.path);
@@ -291,7 +354,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
   // Handle connection status changes from ICUIEditor
   const handleConnectionStatusChange = useCallback((status: {connected: boolean; error?: string; timestamp?: number}) => {
     // Reduced debug: Only log connection errors, not routine status changes
-    if (status.error) {
+    if (status.error && process.env.NODE_ENV === 'development') {
       console.log('Home received connection error:', status.error);
     }
     setEditorConnectionStatus(status);
@@ -312,7 +375,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
     { id: 'explorer', name: 'Explorer', icon: '📁', description: 'File and folder browser' },
     { id: 'editor', name: 'Code Editor', icon: '📝', description: 'Code editor with syntax highlighting' },
     { id: 'terminal', name: 'Terminal', icon: '💻', description: 'Integrated terminal' },
-    { id: 'chat', name: 'AI Assistant', icon: '🤖', description: 'AI-powered code assistant' },
+    { id: 'chat', name: 'Chat', icon: '🤖', description: 'AI-powered code assistant' },
     { id: 'chat-history', name: 'Chat History', icon: '💬', description: 'Manage chat sessions and history' },
     { id: 'git', name: 'Source Control', icon: '🌿', description: 'Git source control management' },
     { id: 'preview', name: 'Live Preview', icon: '🖥️', description: 'Live preview for web applications' },
@@ -343,27 +406,15 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
     />
   ), []);
 
-  const chatInstance = useMemo(() => (
-    <ICUIChat 
-      className="h-full" 
-      key="main-chat-instance"
-    />
-  ), []);
-
-  const chatHistoryInstance = useMemo(() => (
-    <ICUIChatHistory 
-      className="h-full" 
-      key="main-chat-history-instance"
-    />
-  ), []);
-
   const gitInstance = useMemo(() => (
     <ICUIGit 
       className="h-full"
       onFileSelect={handleFileSelect}
       onFileOpen={handleFileDoubleClick}
       onOpenDiffPatch={(path) => {
-        console.log('[Home] onOpenDiffPatch called, editorRef.current:', !!editorRef.current);
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[Home] onOpenDiffPatch called, editorRef.current:', !!editorRef.current);
+        }
         if (editorRef.current?.openDiffPatch) {
           editorRef.current.openDiffPatch(path);
         } else {
@@ -385,8 +436,20 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
   const createExplorerContent = useCallback(() => explorerInstance, [explorerInstance]);
   const createEditorContent = useCallback(() => editorInstance, [editorInstance]);
   const createTerminalContent = useCallback(() => terminalInstance, [terminalInstance]);
-  const createChatContent = useCallback(() => chatInstance, [chatInstance]);
-  const createChatHistoryContent = useCallback(() => chatHistoryInstance, [chatHistoryInstance]);
+  // Create unique Chat instances for each panel to avoid connection conflicts
+  const createChatContent = useCallback(() => (
+    <ICUIChat 
+      className="h-full" 
+      key={`chat-${Date.now()}-${Math.random()}`}
+    />
+  ), []);
+  // Create unique Chat History instances for each panel
+  const createChatHistoryContent = useCallback(() => (
+    <ICUIChatHistory 
+      className="h-full" 
+      key={`chat-history-${Date.now()}-${Math.random()}`}
+    />
+  ), []);
   const createGitContent = useCallback(() => {
     // Always show main Git panel (connect disabled)
     return gitInstance;
@@ -395,10 +458,8 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
 
   // Handle panel addition
   const handlePanelAdd = useCallback((panelType: ICUIPanelType, areaId: string) => {
-    // Generate unique ID for the new panel - use stable IDs for chat panels
-    const newPanelId = panelType.id === 'chat' || panelType.id === 'chat-history' 
-      ? `${panelType.id}-main` 
-      : `${panelType.id}-${Date.now()}`;
+    // Generate unique ID for the new panel - create truly unique IDs for all panels
+    const newPanelId = `${panelType.id}-${Date.now()}-${Math.random().toString(36).substring(2)}`;
     
     // Create panel content based on type using memoized creators
     let content: React.ReactNode;
@@ -501,7 +562,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
       {
         id: 'chat',
         type: 'chat',
-        title: 'AI Assistant',
+        title: 'Chat',
         icon: '🤖',
         closable: true,
         content: createChatContent()

@@ -967,13 +967,23 @@ async def serve_preview_file(preview_id: str, file_path: str, request: Request):
             async with session.get(target_url) as response:
                 content = await response.read()
                 headers = dict(response.headers)
-                
+
                 # Remove hop-by-hop and sensitive headers
                 headers.pop('connection', None)
                 headers.pop('transfer-encoding', None)
                 headers.pop('content-encoding', None)  # Remove encoding since we're returning raw content
                 headers.pop('content-length', None)  # Will be recalculated
-                
+
+                # Normalize some common content types so the browser renders correctly in iframe
+                # Some simple servers may return text/plain for .js/.css; correct them here
+                import mimetypes
+                guessed, _ = mimetypes.guess_type(file_path)
+                if guessed:
+                    headers['content-type'] = guessed
+                else:
+                    # Ensure at least a generic text/html for root path
+                    headers.setdefault('content-type', 'text/html; charset=utf-8')
+
                 return Response(
                     content=content,
                     status_code=response.status,

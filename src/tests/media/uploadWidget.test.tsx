@@ -44,15 +44,17 @@ global.fetch = vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resol
 
 describe('GlobalUploadManager', () => {
   beforeEach(() => { vi.useFakeTimers(); });
-  it('opens on dragover with files and handles drop', async () => {
+  it('opens on custom event and multi-file paste', async () => {
     render(<GlobalUploadManager />);
-    const dragEvent = new DragEvent('dragover', { bubbles: true });
-    Object.defineProperty(dragEvent, 'dataTransfer', { value: { types: ['Files'] } });
-    window.dispatchEvent(dragEvent);
-    const file = new File(['hello'], 'f.txt', { type: 'text/plain' });
-    const dropEvent: any = new DragEvent('drop', { bubbles: true });
-    Object.defineProperty(dropEvent, 'dataTransfer', { value: { types: ['Files'], files: [file] } });
-    window.dispatchEvent(dropEvent);
+    // Trigger explicit open request (from Explorer multi-file drop)
+    window.dispatchEvent(new CustomEvent('icotes:open-upload-widget'));
+    await vi.runAllTimersAsync();
+    // Simulate multi-file paste -> should also auto-open and enqueue
+    const f1 = new File(['a'], 'a.txt', { type: 'text/plain' });
+    const f2 = new File(['b'], 'b.txt', { type: 'text/plain' });
+    const pasteEvent: any = new Event('paste');
+    Object.defineProperty(pasteEvent, 'clipboardData', { value: { items: [{ kind: 'file', getAsFile: () => f1 }, { kind: 'file', getAsFile: () => f2 }] } });
+    window.dispatchEvent(pasteEvent);
     await vi.runAllTimersAsync();
   });
 });

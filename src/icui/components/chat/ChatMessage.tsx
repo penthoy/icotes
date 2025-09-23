@@ -43,18 +43,27 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', high
   // Attachment rendering helper
   const renderAttachment = useCallback((attachment: MediaAttachment, index: number) => {
     const url = mediaService.getAttachmentUrl(attachment);
+    const filename = (() => {
+      const raw = (attachment.path ?? '').toString();
+      const last = raw.split('/').pop();
+      return last && last.length > 0 ? last : (attachment.meta?.filename || (attachment.kind === 'image' ? 'image' : attachment.kind === 'audio' ? 'audio' : 'file'));
+    })();
+    const sizeKb = typeof attachment.size === 'number' ? (attachment.size / 1024) : undefined;
     
     switch (attachment.kind) {
       case 'image':
         return (
-          <div key={attachment.id} className="relative group inline-block mr-2 mb-2">
+          <div key={attachment.id} className="relative group inline-block mr-1 mb-1">
             <img
               src={url}
               alt={`Attachment ${index + 1}`}
-              className="max-w-xs max-h-64 rounded-lg border shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+              className="rounded-md border shadow-sm hover:shadow-md transition-shadow cursor-pointer"
               style={{
                 border: '1px solid var(--icui-border-subtle)',
-                backgroundColor: 'var(--icui-bg-secondary)'
+                backgroundColor: 'var(--icui-bg-secondary)',
+                maxWidth: '120px',
+                maxHeight: '120px',
+                objectFit: 'cover'
               }}
               onClick={() => window.open(url, '_blank')}
             />
@@ -64,7 +73,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', high
                   e.stopPropagation();
                   const link = document.createElement('a');
                   link.href = url;
-                  link.download = attachment.path.split('/').pop() || 'image';
+                  link.download = filename;
                   link.click();
                 }}
                 className="p-1 rounded bg-black bg-opacity-50 text-white hover:bg-opacity-70 transition-colors"
@@ -91,7 +100,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', high
               onClick={() => {
                 const link = document.createElement('a');
                 link.href = url;
-                link.download = attachment.path.split('/').pop() || 'audio';
+                link.download = filename;
                 link.click();
               }}
               className="p-1 rounded hover:bg-opacity-10 hover:bg-current transition-colors"
@@ -113,17 +122,17 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', high
             <FileText size={20} style={{ color: 'var(--icui-text-secondary)' }} />
             <div className="flex-1 min-w-0">
               <div className="text-sm font-medium truncate" style={{ color: 'var(--icui-text-primary)' }}>
-                {attachment.path.split('/').pop() || 'Unknown file'}
+                {filename || 'Unknown file'}
               </div>
               <div className="text-xs" style={{ color: 'var(--icui-text-secondary)' }}>
-                {(attachment.size / 1024).toFixed(1)} KB
+                {typeof sizeKb === 'number' ? `${sizeKb.toFixed(1)} KB` : ''}
               </div>
             </div>
             <button
               onClick={() => {
                 const link = document.createElement('a');
                 link.href = url;
-                link.download = attachment.path.split('/').pop() || 'file';
+                link.download = filename || 'file';
                 link.click();
               }}
               className="p-1 rounded hover:bg-opacity-10 hover:bg-current transition-colors"
@@ -560,4 +569,23 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', high
   }
 };
 
-export default ChatMessage; 
+// Prevent re-render unless meaningful fields change
+function areEqual(prev: ChatMessageProps, next: ChatMessageProps) {
+  const a = prev.message; const b = next.message;
+  if (a.id !== b.id) return false;
+  if (a.content !== b.content) return false;
+  // Streaming flags
+  if (Boolean(a.metadata?.streamComplete) !== Boolean(b.metadata?.streamComplete)) return false;
+  if (Boolean(a.metadata?.isStreaming) !== Boolean(b.metadata?.isStreaming)) return false;
+  // Attachments fingerprint (ids/paths/sizes/mimes/kinds)
+  const fp = (m?: ChatMessageType) =>
+    (Array.isArray(m?.attachments) ? m!.attachments.map(att =>
+      `${att.id ?? ''}|${att.path ?? ''}|${att.size ?? ''}|${(att as any).mime ?? ''}|${(att as any).kind ?? ''}`
+    ).join(';') : '');
+  if (fp(a) !== fp(b)) return false;
+  // Highlight query affects rendering
+  if (prev.highlightQuery !== next.highlightQuery) return false;
+  return true;
+}
+
+export default React.memo(ChatMessage, areEqual); 

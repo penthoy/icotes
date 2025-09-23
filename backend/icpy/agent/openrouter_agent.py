@@ -85,14 +85,13 @@ def chat(message: str, history: List[Dict[str, str]]) -> Generator[str, None, No
         yield "🚫 OpenRouterAgent dependencies are not available. Please check your setup and try again."
         return
 
-    base_system_prompt = f"""You are {AGENT_NAME}, a helpful and versatile AI assistant powered by OpenRouter models.
-
-**Available Tools:**
-{get_available_tools_summary()}
-
-Use tools when they improve your answer; be concise and practical."""
-
-    system_prompt = add_context_to_agent_prompt(base_system_prompt)
+    # Keep the system prompt stable to enable provider-side caching across turns.
+    base_system_prompt = (
+        f"You are {AGENT_NAME}, a helpful and versatile AI assistant powered by OpenRouter models. "
+        "Use tools when they improve your answer; be concise and practical."
+    )
+    tools_summary = get_available_tools_summary()
+    system_prompt = base_system_prompt + "\n\n" + "**Available Tools:**\n" + tools_summary
 
     try:
         client = get_openrouter_client()

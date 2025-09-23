@@ -5,6 +5,50 @@ All notable changes to the JavaScript Code Editor project will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] - Agent System Improvements & Centralization
+
+### Added
+- **Advanced Kimi Agent Robustness**: Comprehensive improvements to Kimi agent reliability
+  - Advanced message handling and normalization for consistent Moonshot API compatibility
+  - Streaming state management with canonical message list to prevent duplicate messages
+  - Tool-call loop protection with configurable cap (default 10, opt-in via TOOL_CALL_LOOP_CAP)
+  - Context-aware prompting using Moonshot API v1 best practices
+  - Enhanced error handling and recovery mechanisms
+
+- **Agent System Code Centralization**: Unified shared helpers architecture
+  - Created `backend/icpy/agent/helpers.py` centralizing BASE_SYSTEM_PROMPT_TEMPLATE
+  - Shared message normalization functions across all agent implementations
+  - Canonical message list management for streaming consistency
+  - Common utility functions for tool handling and response processing
+
+- **Multi-Agent Improvements Rollout**: Ported Kimi advances to all agents
+  - GroqKimiAgent, OpenAIAgent, and CerebrasQwenAgent now use shared prompting and normalization
+  - Consistent behavior and robustness across all agent types
+  - Unified tool-call handling and error recovery patterns
+
+### Fixed
+- **Critical Agent Selector Bug**: Resolved automatic switching to undefined/invalid agents
+  - Implemented proper fallback to 'kimi' agent when invalid selection detected
+  - Added validation to ensure only valid agent types are selected
+  - Prevented user confusion from unexpected agent changes
+
+- **Tool-Call Loop Protection**: Prevented infinite loops in web_search and similar tools
+  - Optional loop detection with configurable maximum iterations
+  - Maintains conversation state integrity during loop prevention
+  - Environment-configurable via TOOL_CALL_LOOP_CAP setting
+
+- **Performance & Streaming Optimizations**: Enhanced response handling efficiency
+  - Eliminated duplicate message issues in streaming responses
+  - Optimized backend response processing reducing latency
+  - Improved frontend rendering for better user experience
+
+### Changed
+- **Code Quality & Architecture**: Comprehensive codebase improvements
+  - Consolidated shared functionality eliminating code duplication
+  - Established consistent patterns for message normalization and tool handling
+  - Improved overall maintainability of the agent system
+  - Centralized prompt template management for easier updates
+
 ## [1.8.0] - Git Panel Robustness and UX
 
 - **Robust Git Detection**: Overhauled repository detection to be more resilient.

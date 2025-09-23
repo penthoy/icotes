@@ -1,17 +1,13 @@
 """
-Kimi Agent - A generic AI agent powered by Moonshot's Kimi models
+CerebrasQwenAgent - AI agent powered by Cerebras Inference (Qwen 3 Coder 480B) with tool support.
 
-This is a general-purpose AI assistant that can:
-1. Answer questions and provide information
-2. Help with coding and development tasks
-3. Use various tools for file operations
-4. Assist with data analysis and research
-5. Provide creative writing and content generation
-
-Uses Moonshot's Kimi models through OpenAI-compatible API.
+This agent:
+1) Streams responses via Cerebras SDK (OpenAI-compatible chat.completions)
+2) Can call tools using the shared OpenAIStreamingHandler
+3) Uses standard metadata and hot-reload helpers
+4) Uses advanced prompting with dynamic tools summary and environment context
+5) Normalizes history and filters empty messages to prevent provider errors
 """
-
-# Base system prompt template is centralized in helpers
 
 import json
 import os
@@ -21,20 +17,17 @@ from typing import Dict, List, Generator, Any
 # Configure logging
 logger = logging.getLogger(__name__)
 
-# Model selection identifier for UI/router consumption
-AGENT_MODEL_ID = "kimi-k2-0711-preview"
+# Model id from Cerebras Supported Models (Preview): qwen-3-coder-480b
+AGENT_MODEL_ID = "qwen-3-coder-480b"
+AGENT_NAME = "CerebrasQwenAgent"
+AGENT_DESCRIPTION = "AI assistant powered by Cerebras Qwen 3 Coder 480B with tool calling"
+MODEL_NAME = AGENT_MODEL_ID
+# Base system prompt template is centralized in helpers
 
-# Agent metadata
-AGENT_NAME = "KimiAgent"
-AGENT_DESCRIPTION = "General-purpose AI assistant powered by Moonshot's Kimi models"
-MODEL_NAME = "kimi-k2-0711-preview"  # Default Kimi model
-
-# Import required modules
 try:
     import sys
     backend_path = os.environ.get("ICOTES_BACKEND_PATH")
     if not backend_path:
-        # Find the icotes root directory (should contain backend/ directory)
         current_dir = os.path.dirname(os.path.abspath(__file__))
         while current_dir and current_dir != '/':
             backend_candidate = os.path.join(current_dir, 'backend')
@@ -42,15 +35,12 @@ try:
                 backend_path = backend_candidate
                 break
             current_dir = os.path.dirname(current_dir)
-        
         if not backend_path:
-            # Fallback to relative path from workspace/.icotes/plugins/
             backend_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "backend"))
-    
     sys.path.append(backend_path)
 
-    # Import Moonshot client and streaming handler + shared helpers
-    from icpy.agent.clients import get_moonshot_client
+    # Client + helpers
+    from icpy.agent.clients import get_cerebras_client
     from icpy.agent.helpers import (
         create_standard_agent_metadata,
         create_environment_reload_function,
@@ -63,121 +53,108 @@ try:
     )
 
     DEPENDENCIES_AVAILABLE = True
-    logger.info("All dependencies available for KimiAgent")
+    logger.info("All dependencies available for CerebrasQwenAgent")
 
-    # Agent metadata using helper (after import)
     AGENT_METADATA = create_standard_agent_metadata(
-        name="KimiAgent", 
-        description="General-purpose AI assistant powered by Moonshot's Kimi models",
+        name=AGENT_NAME,
+        description=AGENT_DESCRIPTION,
         version="1.0.0",
-        author="Hot Reload System",
+        author="ICUI Framework",
         model=AGENT_MODEL_ID,
     )
 
-    # Environment reload function using helper
     reload_env = create_environment_reload_function([
         "icpy.agent.helpers",
         "icpy.agent.clients",
     ])
 
 except ImportError as e:
-    logger.warning(f"Import error in KimiAgent: {e}")
+    logger.warning(f"Import error in CerebrasQwenAgent: {e}")
     DEPENDENCIES_AVAILABLE = False
     AGENT_METADATA = {
         "AGENT_NAME": AGENT_NAME,
         "AGENT_DESCRIPTION": AGENT_DESCRIPTION,
         "AGENT_VERSION": "1.0.0",
-        "AGENT_AUTHOR": "Hot Reload System",
-        "MODEL_NAME": MODEL_NAME if 'MODEL_NAME' in globals() else AGENT_MODEL_ID,
+        "AGENT_AUTHOR": "ICUI Framework",
+        "MODEL_NAME": MODEL_NAME,
         "AGENT_MODEL_ID": AGENT_MODEL_ID,
         "status": "error",
         "error": f"Dependencies not available: {e}",
     }
 
     def reload_env():
-        """Fallback reload function"""
-        logger.info("KimiAgent: Environment reload requested")
+        logger.info("CerebrasQwenAgent: Environment reload requested")
 
 
 def chat(message: str, history: List[Dict[str, str]]) -> Generator[str, None, None]:
     """
-    Main chat function for KimiAgent using Moonshot's Kimi models.
-    
+    Main chat function for CerebrasQwenAgent with tool support.
+
     Args:
         message: User input message
         history: Conversation history as list of message dicts
-        
+
     Yields:
         str: Response chunks as they arrive
     """
     if not DEPENDENCIES_AVAILABLE:
-        yield "🚫 KimiAgent dependencies are not available. Please check your setup and try again."
+        yield "🚫 CerebrasQwenAgent dependencies are not available. Please check your setup and try again."
         return
 
     # Build base system prompt with current tools summary and add dynamic context info
     tools_summary = get_available_tools_summary()
     base_system_prompt = BASE_SYSTEM_PROMPT_TEMPLATE.format(AGENT_NAME=AGENT_NAME, TOOLS_SUMMARY=tools_summary)
     system_prompt = add_context_to_agent_prompt(base_system_prompt)
-    
-    # Use shared helpers for content/history normalization
 
     try:
-        # Get Moonshot client
-        client = get_moonshot_client()
-        
-        # Handle JSON string history (gradio compatibility)
+        client = get_cerebras_client()
+
+        # Normalize history
         normalized_history = normalize_history(history)
 
         # Base conversation messages
         system_message = {"role": "system", "content": system_prompt}
-        messages: List[Dict[str, str]] = [system_message] + normalized_history
+        messages: List[Dict[str, Any]] = [system_message] + normalized_history
 
         # Append current user message only if non-empty
         if isinstance(message, str) and message.strip():
             messages.append({"role": "user", "content": message})
         else:
-            logger.info("KimiAgent: Skipping trailing user message because it's empty (provided by caller as \"\")")
+            logger.info("CerebrasQwenAgent: Skipping trailing user message because it's empty (provided by caller as \"\")")
 
         # Final safety filter before sending
-        safe_messages: List[Dict[str, str]] = []
+        safe_messages: List[Dict[str, Any]] = []
         dropped = 0
         for i, m in enumerate(messages):
             c = m.get("content", "")
             if m.get("role") == "user" and (not isinstance(c, str) or not c.strip()):
                 dropped += 1
-                logger.warning(f"KimiAgent: Removing empty user message at position {i}")
+                logger.warning(f"CerebrasQwenAgent: Removing empty user message at position {i}")
                 continue
-            # Ensure content is string
             if not isinstance(c, str):
                 m = {**m, "content": flatten_message_content(c)}
             safe_messages.append(m)
         if dropped:
-            logger.info(f"KimiAgent: Dropped {dropped} empty user message(s) before request")
+            logger.info(f"CerebrasQwenAgent: Dropped {dropped} empty user message(s) before request")
 
         # Debug preview: roles and content lengths
         try:
             preview = "\n".join([f"{i}: {m['role']} len={len(m.get('content','') or '')}" for i, m in enumerate(safe_messages)])
-            logger.debug("KimiAgent: Outbound messages preview\n" + preview)
+            logger.debug("CerebrasQwenAgent: Outbound messages preview\n" + preview)
         except Exception:
             pass
-        
-        # Create streaming handler and process
+
         handler = OpenAIStreamingHandler(client, MODEL_NAME)
-        
-        logger.info("KimiAgent: Starting chat with tools using Moonshot client")
-        # Enable auto-continue by default with sane limits
+        logger.info("CerebrasQwenAgent: Starting chat with tools using Cerebras client")
         yield from handler.stream_chat_with_tools(safe_messages)
-        logger.info("KimiAgent: Chat completed successfully")
-                
+        logger.info("CerebrasQwenAgent: Chat completed successfully")
+
     except Exception as e:
-        logger.error(f"Error in KimiAgent streaming: {e}")
-        yield f"🚫 Error processing request: {str(e)}\n\nPlease check your Moonshot API key configuration (MOONSHOT_API_KEY)."
+        logger.error(f"Error in CerebrasQwenAgent streaming: {e}")
+        yield f"🚫 Error processing request: {str(e)}\n\nPlease check your CEREBRAS_API_KEY configuration."
 
 
 if __name__ == "__main__":
-    # Test the chat function locally
-    test_message = "Hello, KimiAgent! Can you introduce yourself and tell me what you can help with?"
-    test_history = []
-    
-    print("Testing KimiAgent:")
-    print("\nTest completed!")
+    for chunk in chat("Briefly introduce yourself.", []):
+        print(chunk, end="")
+    print()

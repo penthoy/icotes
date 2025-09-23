@@ -20,7 +20,6 @@
 import React, { useRef, useEffect, useState, useCallback, useImperativeHandle, forwardRef } from 'react';
 import { useMediaUpload } from '../../hooks/useMediaUpload';
 import { Square, Send, Paperclip, Mic, Wand2, RefreshCw, Settings } from 'lucide-react';
-import ChatDropZone from '../media/ChatDropZone';
 import { 
   useChatMessages, 
   useTheme, 
@@ -37,6 +36,7 @@ import { useChatSearch } from '../../hooks/useChatSearch';
 import { useChatSessionSync } from '../../hooks/useChatSessionSync';
 import { chatBackendClient } from '../../services/chat-backend-client-impl';
 import { useChatHistory } from '../../hooks/useChatHistory';
+import type { MediaAttachment as ChatMediaAttachment } from '../../types/chatTypes';
 
 interface ICUIChatProps {
   className?: string;
@@ -71,6 +71,19 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
   onMessageReceived,
   onConnectionStatusChange
 }, ref) => {
+  // Debug logging for component lifecycle
+  const componentId = useRef(`ICUIChat-${Date.now()}-${Math.random().toString(36).substring(2)}`);
+  
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[${componentId.current}] Chat component mounted, autoConnect: ${autoConnect}`);
+    }
+    return () => {
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[${componentId.current}] Chat component unmounted`);
+      }
+    };
+  }, [autoConnect]);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -127,11 +140,13 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
   const { onSessionChange, emitSessionChange } = useChatSessionSync('ICUIChat');
 
   // Chat history management
-  const { createSession, switchSession, sessions, activeSession } = useChatHistory();
+  const { createSession, switchSession, sessions, activeSession, renameSession } = useChatHistory();
 
   // Track the globally-selected session (source: shared chat client + session sync)
   const [currentSessionId, setCurrentSessionId] = useState<string>(chatBackendClient.currentSession || '');
   const [currentSessionName, setCurrentSessionName] = useState<string | undefined>(undefined);
+  const [isRenamingTitle, setIsRenamingTitle] = useState(false);
+  const [tempTitle, setTempTitle] = useState('');
 
   // Compute title by preferring the most-recent event-provided name, then sessions list
   const sessionTitle = (() => {
@@ -140,6 +155,37 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
     const match = sessions.find(s => s.id === currentSessionId);
     return match?.name || 'Untitled Chat';
   })();
+
+  // Start inline rename on header title
+  const beginRenameTitle = useCallback(() => {
+    if (!currentSessionId) return;
+    setIsRenamingTitle(true);
+    setTempTitle(sessionTitle);
+  }, [currentSessionId, sessionTitle]);
+
+  const cancelRenameTitle = useCallback(() => {
+    setIsRenamingTitle(false);
+    setTempTitle('');
+  }, []);
+
+  const saveRenameTitle = useCallback(async () => {
+    const next = tempTitle.trim();
+    setIsRenamingTitle(false);
+    if (!currentSessionId) return;
+    if (!next || next === sessionTitle) {
+      setTempTitle('');
+      return;
+    }
+    try {
+      await renameSession(currentSessionId, next);
+      // Update local title immediately; store event will also propagate
+      setCurrentSessionName(next);
+    } catch (e) {
+      console.error('Failed to rename session from Chat header:', e);
+    } finally {
+      setTempTitle('');
+    }
+  }, [currentSessionId, tempTitle, renameSession, sessionTitle]);
 
   // Get available custom agents
   const { agents: configuredAgents, isLoading: agentsLoading, error: agentsError } = useConfiguredAgents();
@@ -251,6 +297,9 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
 
   // Notify parent of connection status changes
   useEffect(() => {
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[${componentId.current}] Connection status changed:`, connectionStatus);
+    }
     onConnectionStatusChange?.(connectionStatus);
   }, [connectionStatus, onConnectionStatusChange]);
 
@@ -258,14 +307,25 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
   useEffect(() => {
     // Initialize from chat client once on mount
     if (chatBackendClient.currentSession) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[${componentId.current}] Initializing with existing session: ${chatBackendClient.currentSession}`);
+      }
       setCurrentSessionId(chatBackendClient.currentSession);
       // Ensure connection if we suppressed autoConnect earlier
       if (!isConnected) {
-        connect().catch(() => {/* noop */});
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`[${componentId.current}] Attempting to connect for existing session`);
+        }
+        connect().catch((error) => {
+          console.error(`[${componentId.current}] Failed to connect for existing session:`, error);
+        });
       }
     }
 
     const cleanup = onSessionChange((sessionId, action, sessionName) => {
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[${componentId.current}] Session change event:`, { sessionId, action, sessionName });
+      }
       if (action === 'switch' || action === 'create') {
         if (sessionId !== currentSessionId) {
           setCurrentSessionId(sessionId);
@@ -276,7 +336,12 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
           jumpToLatest();
         }
         if (!isConnected) {
-          connect().catch(() => {/* noop */});
+          if (process.env.NODE_ENV === 'development') {
+            console.log(`[${componentId.current}] Attempting to connect for session change`);
+          }
+          connect().catch((error) => {
+            console.error(`[${componentId.current}] Failed to connect for session change:`, error);
+          });
         }
       }
     });
@@ -286,8 +351,50 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
 
   // Handle sending a message
   const handleSendMessage = useCallback(async (content?: string, options?: MessageOptions) => {
-    const messageContent = content || inputValue.trim();
-    if (!messageContent) {
+    const messageContent = (content ?? inputValue).trim();
+    // If there are pending uploads in chat context, start them
+    const hasPending = uploadApi.uploads.some(u => u.context === 'chat' && u.status === 'pending');
+    if (hasPending) {
+      try { await uploadApi.uploadAll(); } catch { /* handled inside hook */ }
+    }
+
+    // Wait until all chat-context uploads are no longer pending/uploading (max ~15s)
+    const waitForUploadsToSettle = async (timeoutMs = 15000) => {
+      const start = Date.now();
+      while (Date.now() - start < timeoutMs) {
+        const busy = uploadApi.uploads.some(u => u.context === 'chat' && (u.status === 'pending' || u.status === 'uploading'));
+        if (!busy) break;
+        await new Promise(res => setTimeout(res, 150));
+      }
+    };
+    await waitForUploadsToSettle();
+
+    // Build attachments list from completed uploads in chat context (after settle)
+    const completed = uploadApi.uploads.filter(u => u.context === 'chat' && u.status === 'completed' && u.result);
+    const attachments: ChatMediaAttachment[] = completed.map(u => {
+      const r: any = u.result!;
+      const resKind = (r.kind || r.type || '').toString();
+      const resMime = (r.mime_type || r.mime || '').toString();
+      const resPath = (r.relative_path || r.rel_path || r.path || '').toString();
+      const resSize = (typeof r.size_bytes === 'number' ? r.size_bytes : r.size) as number | undefined;
+      const baseName = resPath ? resPath.split('/').pop() : (r.filename || undefined);
+      const localKind: ChatMediaAttachment['kind'] = (
+        resKind === 'images' || resKind === 'image' || (resMime && resMime.startsWith('image/'))
+      ) ? 'image' : (
+        resKind === 'audio' || (resMime && resMime.startsWith('audio/')) ? 'audio' : 'file'
+      );
+      return {
+        id: r.id,
+        kind: localKind,
+        path: resPath,
+        mime: resMime || 'application/octet-stream',
+        size: typeof resSize === 'number' ? resSize : 0,
+        meta: { source: 'upload', tempUploadId: u.id, filename: baseName }
+      } as ChatMediaAttachment;
+    });
+    const hasText = messageContent.length > 0;
+    const hasAttachments = attachments.length > 0;
+    if (!hasText && !hasAttachments) {
       return;
     }
 
@@ -308,22 +415,29 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
       
       if (isCustomAgent) {
         // Use custom agent API
-        await sendCustomAgentMessage(messageContent, selectedAgent);
+        await sendCustomAgentMessage(messageContent || '(attachment)', selectedAgent, { attachments });
       } else {
         // Use regular chat API with agent options
         const messageOptions: MessageOptions = {
           agentType: selectedAgent as any, // Cast to AgentType
           streaming: true,
+          attachments,
           ...options // Merge with any provided options
         };
         
-        await sendMessage(messageContent, messageOptions);
+        await sendMessage(messageContent || '(attachment)', messageOptions);
       }
       
       // Clear input only if using the input field
       if (!content) {
         setInputValue('');
       }
+      // Clear staged previews and completed uploads from queue after send
+      setStaged(prev => {
+        prev.forEach(s => s.preview && URL.revokeObjectURL(s.preview));
+        return [];
+      });
+      uploadApi.clearCompleted();
       
       // After sending, re-enable auto-scroll and jump smoothly once
       setIsAutoScrollEnabled(true);
@@ -441,7 +555,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
   target.style.height = `${Math.min(target.scrollHeight, 220)}px`;
   }, []);
 
-  // Drag & Drop handled by ChatDropZone to avoid duplicate enqueues
+  // Drag & Drop: handled globally via GlobalUploadManager and Explorer drop; Chat handles paste only
 
   const removeStaged = (id: string) => 
     setStaged(prev => {
@@ -480,7 +594,8 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
         const tempId = `staged-${Date.now()}-${Math.random().toString(36).slice(2)}`;
         setStaged(prev => [...prev, { id: tempId, file, preview }]);
       });
-      // Do not enqueue here to avoid duplicate; global manager handles upload.
+      // Enqueue uploads for chat context so they will be included on send
+      uploadApi.addFiles(imageFiles, { context: 'chat' });
     };
     window.addEventListener('paste', onPaste);
     return () => window.removeEventListener('paste', onPaste);
@@ -495,18 +610,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
   overflowX: 'hidden'
       }}
     >
-      {/* Drop zone overlay limited to scroll area + composer, not header */}
-      <ChatDropZone
-        selector=".icui-chat-drop-scope"
-        uploadApi={uploadApi}
-        onFilesStaged={(files) => {
-          files.forEach(file => {
-            const preview = file.type.startsWith('image/') ? URL.createObjectURL(file) : '';
-            const tempId = `staged-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-            setStaged(prev => [...prev, { id: tempId, file, preview }]);
-          });
-        }}
-      />
+      {/* No inline drop zone overlay; chat paste still supported */}
       {/* Header */}
       <div 
         className="flex items-center justify-between p-3 border-b" 
@@ -515,18 +619,49 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
           borderBottomColor: 'var(--icui-border-subtle)' 
         }}
       >
-        <div className="flex items-center space-x-3">
+        <div
+          className="flex items-center space-x-3 select-none"
+          onDoubleClick={() => { if (currentSessionId) beginRenameTitle(); }}
+          title={currentSessionId ? 'Double‑click to rename • Enter to save • Esc to cancel' : 'Create or select a chat to rename'}
+        >
           {/* Connection Status Indicator */}
           <div className={`w-2 h-2 rounded-full transition-colors ${
             isConnected ? 'bg-green-500' : 'bg-red-500'
           }`} />
           
-          {/* Current Session Name */}
-          <span className="text-sm" style={{ 
-            color: isConnected ? 'var(--icui-text-primary)' : 'var(--icui-text-error)' 
-          }}>
-            {isConnected ? sessionTitle : 'Disconnected'}
-          </span>
+          {/* Current Session Name / Inline Rename */}
+          {isConnected ? (
+            isRenamingTitle ? (
+              <input
+                value={tempTitle}
+                onChange={(e) => setTempTitle(e.target.value)}
+                onBlur={saveRenameTitle}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') saveRenameTitle();
+                  if (e.key === 'Escape') cancelRenameTitle();
+                }}
+                className="text-sm px-2 py-0.5 rounded border bg-transparent outline-none"
+                style={{ 
+                  color: 'var(--icui-text-primary)',
+                  borderColor: 'var(--icui-border-subtle)'
+                }}
+                autoFocus
+              />
+            ) : (
+              <span
+                className="text-sm cursor-text"
+                style={{ color: 'var(--icui-text-primary)' }}
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'F2') beginRenameTitle();
+                }}
+              >
+                {sessionTitle}
+              </span>
+            )
+          ) : (
+            <span className="text-sm" style={{ color: 'var(--icui-text-error)' }}>Disconnected</span>
+          )}
         </div>
 
         {/* Actions */}
@@ -716,7 +851,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
                     <button
                       className="icui-button"
                       onClick={() => handleSendMessage()}
-                      disabled={!inputValue.trim() || !isConnected || isLoading}
+                      disabled={(!inputValue.trim() && !uploadApi.uploads.some(u => u.context === 'chat')) || !isConnected || isLoading}
                       title="Send message (Enter)"
                     >
                       <Send size={16} />

@@ -70,7 +70,12 @@ export function ExplorerDropProvider({ selector = '[data-explorer-root]', itemAt
       }
       // If targetPath is a directory (ends with /) ensure no duplicate slash after join
       const isDirDrop = targetPath.endsWith('/') || targetPath.split('/').pop() === '';
-  files.forEach(file => {
+      // If the user dropped multiple files, request opening the Upload widget for visibility
+      if (files.length > 1) {
+        window.dispatchEvent(new CustomEvent('icotes:open-upload-widget'));
+      }
+
+      files.forEach(file => {
         const finalDestDir = isDirDrop || targetPath.endsWith('/') ? targetPath.replace(/\/$/, '') : targetPath;
         // If dropping onto a file node, we interpret as its parent directory
         const effectiveDir = finalDestDir && !finalDestDir.endsWith(file.name) && !finalDestDir.includes('.')
@@ -81,7 +86,7 @@ export function ExplorerDropProvider({ selector = '[data-explorer-root]', itemAt
         uploadApi.addFiles([file], { context: 'explorer', destPath: absDestPath });
       });
       clearHover();
-  setTimeout(() => clearHover(), 0); // microtask ensure styles removed
+      setTimeout(() => clearHover(), 0); // microtask ensure styles removed
     };
     const onDragLeave = (e: DragEvent) => {
       if (!(e.relatedTarget instanceof HTMLElement)) {

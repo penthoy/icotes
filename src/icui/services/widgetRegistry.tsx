@@ -4,6 +4,7 @@ import FileEditWidget from '../components/chat/widgets/FileEditWidget';
 import CodeExecutionWidget from '../components/chat/widgets/CodeExecutionWidget';
 import SemanticSearchWidget from '../components/chat/widgets/SemanticSearchWidget';
 import ProgressWidget from '../components/chat/widgets/ProgressWidget';
+import WebSearchWidget from '../components/chat/widgets/WebSearchWidget';
 
 // Minimal widget registry for tool call visualization
 export interface ToolCallWidgetComponentProps {
@@ -83,6 +84,13 @@ const builtInWidgets: WidgetConfig[] = [
 		toolName: 'processing',
 		component: ProgressWidget as any,
 		category: 'custom',
+		priority: 1
+	}
+	,
+	{
+		toolName: 'web_search',
+		component: WebSearchWidget as any,
+		category: 'network',
 		priority: 1
 	}
 ];

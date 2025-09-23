@@ -169,6 +169,9 @@ export class ChatBackendClient {
     // Enhanced service event handlers
     this.enhancedService.on('connection_opened', (data: any) => {
       log.info('ChatBackendClient', 'Enhanced service connected', data);
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[ChatBackendClient] Connection opened:', data);
+      }
       this.reconnectAttempts = 0;
       this.isDisconnecting = false;
       
@@ -198,6 +201,9 @@ export class ChatBackendClient {
 
     this.enhancedService.on('connection_closed', (data: any) => {
       log.info('ChatBackendClient', 'Enhanced service disconnected', data);
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[ChatBackendClient] Connection closed:', data);
+      }
       
       this.notifyStatus({
         connected: false,
@@ -316,6 +322,8 @@ export class ChatBackendClient {
       streaming?: boolean;
       priority?: 'low' | 'normal' | 'high' | 'critical';
       timeout?: number;
+      // Phase 2: media attachments (pass-through, backend normalizes)
+      attachments?: any[];
     }
   ): Promise<void> {
     if (!this.connectionId || !this.enhancedService) {
@@ -334,7 +342,9 @@ export class ChatBackendClient {
         session_id: sessionId,
         agentType: agentType, // Use the explicit agentType or fallback to agentId
         streaming: streaming,
-        timestamp: new Date()
+        timestamp: new Date(),
+        // Include attachments if provided; backend will normalize
+        attachments: options?.attachments && Array.isArray(options.attachments) ? options.attachments : undefined
       }
     };
 
@@ -500,6 +510,15 @@ export class ChatBackendClient {
         content: msg.content,
         timestamp: new Date(msg.timestamp),
         sender: msg.sender,
+        // Map attachments if present (backend stores as list of dicts)
+        attachments: Array.isArray(msg.attachments) ? msg.attachments.map((a: any) => ({
+          id: a.id || a.attachment_id || a.rel_path || a.path || String(Math.random()),
+          kind: a.kind === 'images' ? 'image' : (a.kind === 'audio' ? 'audio' : 'file'),
+          path: a.relative_path || a.rel_path || a.path || a.url || '',
+          mime: a.mime_type || a.mime || 'application/octet-stream',
+          size: a.size_bytes || a.size || 0,
+          meta: a.meta || undefined
+        })) : undefined,
         metadata: {
           agentId: msg.agentId,
           agentName: msg.agentName,
@@ -1025,6 +1044,23 @@ export class ChatBackendClient {
     };
     
     this.statusCallbacks.push(adaptedCallback);
+
+    // Immediately emit current status so late subscribers reflect accurate state
+    try {
+      const current: ChatStatus = {
+        connected: this.isConnected,
+        timestamp: new Date(),
+        chat: {
+          sessionId: this.currentSessionId || this.generateSessionId(),
+          agentId: this.selectedAgent,
+          model: undefined as any,
+        },
+        error: undefined,
+      };
+      adaptedCallback(current);
+    } catch (e) {
+      // best-effort; ignore
+    }
   }
 
   onMessage(callback: (message: ChatMessage) => void): void {

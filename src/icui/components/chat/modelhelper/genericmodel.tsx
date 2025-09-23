@@ -98,6 +98,16 @@ export class GenericModelHelper implements ModelHelper {
       if (startLineMatch) fallback.startLine = parseInt(startLineMatch[1], 10);
       const endLineMatch = text.match(/["']endLine["']\s*:\s*(\d+)/);
       if (endLineMatch) fallback.endLine = parseInt(endLineMatch[1], 10);
+
+      // Also attempt to extract web search style parameters
+      const queryMatch = text.match(/["']query["']\s*:\s*["']([^"']+)["']/);
+      if (queryMatch) fallback.query = queryMatch[1];
+      const maxResultsMatch = text.match(/["']maxResults["']\s*:\s*(\d+)/);
+      if (maxResultsMatch) fallback.maxResults = parseInt(maxResultsMatch[1], 10);
+      const searchDepthMatch = text.match(/["']searchDepth["']\s*:\s*["']([^"']+)["']/);
+      if (searchDepthMatch) fallback.searchDepth = searchDepthMatch[1];
+      const includeAnswerMatch = text.match(/["']includeAnswer["']\s*:\s*(true|false)/i);
+      if (includeAnswerMatch) fallback.includeAnswer = includeAnswerMatch[1].toLowerCase() === 'true';
       return fallback;
     }
   }
@@ -109,6 +119,13 @@ export class GenericModelHelper implements ModelHelper {
     const name = toolName.toLowerCase();
     let category: 'file' | 'code' | 'data' | 'network' | 'custom' = 'custom';
     let mappedName = name.replace(/[^a-z0-9_]/g, '_');
+
+    // Special-case Tavily web search to preserve tool identity for a custom widget
+    if (name.includes('web_search')) {
+      category = 'network';
+      mappedName = 'web_search';
+      return { category, mappedName };
+    }
 
     if (name.includes('read_file') || name.includes('create_file') || name.includes('replace_string')) {
       category = 'file';
@@ -282,6 +299,24 @@ export class GenericModelHelper implements ModelHelper {
               } catch {
                 // Keep as string if parsing fails - let the widget parser handle it
               }
+            } else if (toolName.includes('web_search')) {
+              try {
+                // Extract an object block from the success text and parse it
+                // Look for a JSON-ish object
+                const objMatch = parsedOutput.match(/\{[\s\S]*\}/);
+                if (objMatch && objMatch[0]) {
+                  const objText = objMatch[0]
+                    .replace(/'/g, '"')
+                    .replace(/None/g, 'null')
+                    .replace(/True/g, 'true')
+                    .replace(/False/g, 'false')
+                    .replace(/,(\s*[}\]])/g, '$1');
+                  const parsed = JSON.parse(objText);
+                  parsedOutput = parsed;
+                }
+              } catch {
+                // Fallback: keep as string
+              }
             }
           }
         }
@@ -312,7 +347,8 @@ export class GenericModelHelper implements ModelHelper {
       executionBlock: toolBlock.trim(),
       blockIndex: executionBlockIndex,
       indexInBlock,
-      order: globalOrder++
+      order: globalOrder++,
+      argsText: inputText
           }
         };
 

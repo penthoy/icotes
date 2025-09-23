@@ -11,6 +11,7 @@ from typing import Dict, Any, List, Optional, Union, Callable, AsyncGenerator
 from dataclasses import dataclass, field
 import os
 from pathlib import Path
+import base64
 
 logger = logging.getLogger(__name__)
 
@@ -114,7 +115,12 @@ class OpenAIAgentWrapper(BaseAgentWrapper):
         try:
             import openai
             
-            api_key = self.config.api_key or os.getenv("OPENAI_API_KEY")
+            # Prefer explicit api_key, then additional_config override, then env
+            api_key = (
+                self.config.api_key
+                or (self.config.additional_config.get("api_key") if isinstance(self.config.additional_config, dict) else None)
+                or os.getenv("OPENAI_API_KEY")
+            )
             if not api_key:
                 logger.warning("No OpenAI API key provided, using placeholder")
                 api_key = "placeholder-key"
@@ -141,18 +147,22 @@ class OpenAIAgentWrapper(BaseAgentWrapper):
             
             # Build messages
             messages = []
-            if self.config.system_prompt:
-                messages.append({"role": "system", "content": self.config.system_prompt})
+            # Prefer configured system prompt; fallback to context-provided one
+            sys_prompt = self.config.system_prompt
+            if (not sys_prompt) and context and isinstance(context, dict):
+                sys_prompt = context.get("system_prompt")
+            if sys_prompt:
+                messages.append({"role": "system", "content": sys_prompt})
             
-            # Add context if provided
-            if context:
-                context_str = f"Context: {context}\n\n{prompt}"
-                messages.append({"role": "user", "content": context_str})
-            else:
-                messages.append({"role": "user", "content": prompt})
+            # Add context if provided, with basic multimodal handling for image attachments
+            messages.extend(self._build_user_messages_with_context(prompt, context))
             
             # Check if we have a real API key
-            api_key = self.config.api_key or os.getenv("OPENAI_API_KEY")
+            api_key = (
+                self.config.api_key
+                or (self.config.additional_config.get("api_key") if isinstance(self.config.additional_config, dict) else None)
+                or os.getenv("OPENAI_API_KEY")
+            )
             if api_key and api_key != "placeholder-key" and api_key.startswith("sk-"):
                 # Make real API call
                 api_params = {
@@ -178,8 +188,20 @@ class OpenAIAgentWrapper(BaseAgentWrapper):
                     usage=usage_info
                 )
             else:
-                # Fallback to simulated response for testing
-                response_content = f"[SIMULATED] OpenAI Agent '{self.config.name}' processed: {prompt[:50]}..."
+                # Fallback to simulated response for testing; acknowledge attachments if present
+                att_note = ""
+                try:
+                    atts = context.get("attachments") if isinstance(context, dict) else None
+                    if isinstance(atts, list) and atts:
+                        img_count = sum(1 for a in atts if (a.get("mime_type", "").startswith("image/") or a.get("kind") in ("image", "images")))
+                        file_count = len(atts)
+                        if img_count:
+                            att_note = f" (detected {img_count} image attachment(s))"
+                        else:
+                            att_note = f" (detected {file_count} attachment(s))"
+                except Exception:
+                    pass
+                response_content = f"[SIMULATED] OpenAI Agent '{self.config.name}' processed: {prompt[:50]}...{att_note}"
                 
                 self.status = AgentStatus.COMPLETED
                 return AgentResponse(
@@ -206,18 +228,21 @@ class OpenAIAgentWrapper(BaseAgentWrapper):
         try:
             # Build messages
             messages = []
-            if self.config.system_prompt:
-                messages.append({"role": "system", "content": self.config.system_prompt})
+            sys_prompt = self.config.system_prompt
+            if (not sys_prompt) and context and isinstance(context, dict):
+                sys_prompt = context.get("system_prompt")
+            if sys_prompt:
+                messages.append({"role": "system", "content": sys_prompt})
             
-            # Add context if provided
-            if context:
-                context_str = f"Context: {context}\n\n{prompt}"
-                messages.append({"role": "user", "content": context_str})
-            else:
-                messages.append({"role": "user", "content": prompt})
+            # Add context if provided, with basic multimodal handling for image attachments
+            messages.extend(self._build_user_messages_with_context(prompt, context))
             
             # Check if we have a real API key
-            api_key = self.config.api_key or os.getenv("OPENAI_API_KEY")
+            api_key = (
+                self.config.api_key
+                or (self.config.additional_config.get("api_key") if isinstance(self.config.additional_config, dict) else None)
+                or os.getenv("OPENAI_API_KEY")
+            )
             if api_key and api_key != "placeholder-key" and api_key.startswith("sk-"):
                 # Make real streaming API call
                 api_params = {
@@ -234,7 +259,7 @@ class OpenAIAgentWrapper(BaseAgentWrapper):
                     if chunk.choices[0].delta.content:
                         yield chunk.choices[0].delta.content
             else:
-                # Fallback to simulated streaming
+                # Fallback to simulated streaming; keep same content generation as non-streaming
                 response = await self.execute(prompt, context)
                 content = response.content
                 chunk_size = 10
@@ -245,6 +270,85 @@ class OpenAIAgentWrapper(BaseAgentWrapper):
         except Exception as e:
             logger.error(f"OpenAI streaming failed: {e}")
             yield f"Error: {str(e)}"
+
+    def _build_user_messages_with_context(self, prompt: str, context: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Build user messages array supporting simple multimodal content for images.
+
+        If context contains an 'attachments' list with image items, we produce a content array per
+        OpenAI chat.completions rich content format:
+          {"role":"user", "content":[{"type":"text","text":...},{"type":"image_url","image_url":{"url":"data:..."}}]}
+
+        For non-image or when no attachments, we fall back to a single text content message including a
+        short JSON of context for additional info to preserve behavior.
+        """
+        # Default text-only content
+        if not context:
+            return [{"role": "user", "content": prompt}]
+
+        attachments = context.get('attachments') if isinstance(context, dict) else None
+        # If no attachments or not list, simple text with brief context summary
+        if not attachments or not isinstance(attachments, list):
+            context_str = f"Context: {context}\n\n{prompt}"
+            return [{"role": "user", "content": context_str}]
+
+        # Build content parts
+        content_parts: List[Dict[str, Any]] = [{"type": "text", "text": prompt}]
+        try:
+            for att in attachments:
+                part = self._attachment_to_image_part(att)
+                if part is not None:
+                    content_parts.append(part)
+        except Exception:
+            # Fall back to text-only with context if anything goes wrong
+            context_str = f"Context: {context}\n\n{prompt}"
+            return [{"role": "user", "content": context_str}]
+
+        # If we only have text (no valid image parts), include a tiny context note
+        if len(content_parts) == 1:
+            context_str = f"Context: {context}\n\n{prompt}"
+            return [{"role": "user", "content": context_str}]
+
+        return [{"role": "user", "content": content_parts}]
+
+    def _attachment_to_image_part(self, att: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Convert an attachment dict to an image_url content part when possible.
+
+        Prefers embedding data URLs to avoid public accessibility requirements. Falls back
+        to the API endpoint reference if data cannot be read.
+        """
+        try:
+            if not isinstance(att, dict):
+                return None
+            mime = att.get('mime_type') or att.get('mime') or ''
+            kind = att.get('kind')
+            if not ((isinstance(mime, str) and mime.startswith('image')) or kind == 'images'):
+                return None
+
+            # Try to read file bytes from media service base dir using relative_path
+            rel = att.get('relative_path') or att.get('rel_path') or att.get('path')
+            if isinstance(rel, str) and rel:
+                try:
+                    # Lazy import to avoid hard dependency
+                    from ..services.media_service import get_media_service
+                    service = get_media_service()
+                    abs_path = (service.base_dir / rel).resolve()
+                    # Ensure it's under media root
+                    abs_path.relative_to(service.base_dir)
+                    if abs_path.exists() and abs_path.is_file():
+                        with open(abs_path, 'rb') as f:
+                            b64 = base64.b64encode(f.read()).decode('ascii')
+                        data_url = f"data:{mime};base64,{b64}"
+                        return {"type": "image_url", "image_url": {"url": data_url}}
+                except Exception:
+                    pass
+
+            # Fallback to API URL by id (works only if OpenAI can fetch it)
+            att_id = att.get('id')
+            if att_id and not str(att_id).startswith('explorer-'):
+                return {"type": "image_url", "image_url": {"url": f"/api/media/file/{att_id}"}}
+        except Exception:
+            return None
+        return None
     
     async def stop(self) -> bool:
         """Stop OpenAI agent execution"""

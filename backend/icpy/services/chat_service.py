@@ -16,11 +16,14 @@ import sqlite3
 import aiosqlite
 from pathlib import Path
 import os
+import mimetypes
+from urllib.parse import quote
 
 # Internal imports
 from ..core.message_broker import MessageBroker, get_message_broker, Message, MessageType as BrokerMessageType
 from ..core.connection_manager import ConnectionManager, get_connection_manager
 from ..services.agent_service import AgentService, get_agent_service, AgentSessionStatus
+from ..services.media_service import get_media_service
 
 # Custom agent imports
 try:
@@ -161,6 +164,24 @@ class ChatService:
         self.active_connections: Set[str] = set()
         self.websocket_connections: Dict[str, Any] = {}  # connection_id -> websocket
         self.config = ChatConfig()
+        # Feature flags (env-driven) for performance tuning
+        self.enable_chunk_batching: bool = os.getenv('ENABLE_CHAT_BATCHING', '0') in ('1', 'true', 'True')
+        try:
+            self.batch_interval_ms: int = int(os.getenv('CHAT_BATCH_INTERVAL_MS', '100'))
+        except ValueError:
+            logger.warning("Invalid CHAT_BATCH_INTERVAL_MS value, using default 100")
+            self.batch_interval_ms = 100
+        try:
+            self.min_chunk_size: int = int(os.getenv('CHAT_MIN_CHUNK_SIZE', '64'))
+        except ValueError:
+            logger.warning("Invalid CHAT_MIN_CHUNK_SIZE value, using default 64")
+            self.min_chunk_size = 64
+        # Buffered JSONL persistence (flush timer)
+        self.enable_buffered_store: bool = os.getenv('CHAT_BUFFERED_STORE', '0') in ('1', 'true', 'True')
+        self._persist_buffer: Dict[str, List[ChatMessage]] = {}
+        self._persist_lock = asyncio.Lock()
+        self._persist_task: Optional[asyncio.Task] = None
+        self._persist_interval: float = float(int(os.getenv('CHAT_STORE_FLUSH_MS', '250')))/1000.0
         
         # JSONL history root (workspace/.icotes/chat_history)
         try:
@@ -189,7 +210,82 @@ class ChatService:
             self.message_broker.subscribe(BrokerMessageType.AGENT_MESSAGE, self._handle_agent_message)
         
         logger.info("Chat service initialized (JSONL storage)")
+        # Start persistence flusher if enabled
+        if self.enable_buffered_store:
+            try:
+                self._persist_task = asyncio.create_task(self._flush_loop())
+            except RuntimeError:
+                self._persist_task = None
     
+    def _normalize_attachments(self, raw_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Normalize various frontend attachment shapes into a standard dict.
+
+        Accepted input shapes (best-effort):
+        - From /media/upload: { id, rel_path, mime, size, type? }
+        - From UI model: { id, kind: 'image'|'audio'|'file', path, mime, size }
+        - From legacy: { id, relative_path, mime_type, size_bytes, kind }
+
+        Returns list of dicts with fields:
+        { id, filename, mime_type, size_bytes, relative_path, kind, url? }
+        """
+        normalized: List[Dict[str, Any]] = []
+        try:
+            for item in raw_list:
+                if not isinstance(item, dict):
+                    continue
+                att_id = str(item.get('id') or item.get('attachment_id') or '')
+                # Determine path fields
+                rel_path = item.get('relative_path') or item.get('rel_path') or item.get('path') or ''
+                mime = item.get('mime_type') or item.get('mime') or 'application/octet-stream'
+                size = item.get('size_bytes') or item.get('size') or 0
+                kind = item.get('kind') or item.get('type') or ''
+
+                # Infer kind from mime if not provided
+                if not kind:
+                    if isinstance(mime, str) and mime.startswith('image/'):
+                        kind = 'images'
+                    elif isinstance(mime, str) and mime.startswith('audio/'):
+                        kind = 'audio'
+                    else:
+                        kind = 'files'
+                # Map UI kind names to backend folder names
+                if kind in ('image', 'img'): kind = 'images'
+                if kind in ('file',): kind = 'files'
+
+                # Derive filename from rel_path if present
+                filename = ''
+                if isinstance(rel_path, str) and rel_path:
+                    try:
+                        filename = Path(rel_path).name
+                        # If storage scheme prefixes uuid_, strip it for display filename
+                        if '_' in filename:
+                            filename = filename.split('_', 1)[-1]
+                    except Exception:
+                        filename = rel_path
+
+                # Fallback filename from metadata
+                if not filename:
+                    filename = item.get('filename') or item.get('name') or att_id or 'attachment'
+
+                # Build URL helper (served via /api/media/file/{id} if we have a proper id)
+                url = None
+                if att_id and not str(att_id).startswith('explorer-'):
+                    # Use media file endpoint; UI will call getAttachmentUrl too
+                    url = f"/api/media/file/{quote(att_id)}"
+
+                normalized.append({
+                    'id': att_id or None,
+                    'filename': filename,
+                    'mime_type': mime,
+                    'size_bytes': int(size) if isinstance(size, (int, float, str)) and str(size).isdigit() else size,
+                    'relative_path': rel_path,
+                    'kind': kind,
+                    'url': url
+                })
+        except Exception as e:
+            logger.warning(f"Attachment normalization error: {e}")
+        return normalized
+
     async def _initialize_database(self):
         """Initialize SQLite database for message persistence"""
         try:
@@ -276,14 +372,27 @@ class ChatService:
         if metadata and 'agentType' in metadata:
             agent_type = metadata['agentType']
         
-        # Create user message
+        # Normalize media attachments from metadata (if any)
+        attachments: List[Dict[str, Any]] = []
+        try:
+            raw_attachments = []
+            if metadata and isinstance(metadata, dict):
+                raw_attachments = metadata.get('attachments') or []
+            if isinstance(raw_attachments, list):
+                attachments = self._normalize_attachments(raw_attachments)
+        except Exception as e:
+            logger.warning(f"Failed to normalize attachments: {e}")
+            attachments = []
+
+        # Create user message including normalized attachments
         message = ChatMessage(
             id=str(uuid.uuid4()),
             content=content,
             sender=MessageSender.USER,
             timestamp=datetime.now(timezone.utc).isoformat(),
             metadata=metadata or {},
-            session_id=session_id
+            session_id=session_id,
+            attachments=attachments
         )
         
         # Store message
@@ -369,7 +478,9 @@ class ChatService:
                 'type': 'chat_response',
                 'session_id': user_message.session_id,
                 'system_prompt': self.config.system_prompt,
-                'user_message': user_message.content
+                'user_message': user_message.content,
+                # Include attachments for agent/tooling consumption
+                'attachments': user_message.attachments or []
             }
             logger.info(f"📝 Task description: {task_description}")
             logger.info(f"📝 Task context: {task_context}")
@@ -413,7 +524,9 @@ class ChatService:
             message_id = str(uuid.uuid4())
             is_first_chunk = True
             
-            # Execute task and stream results
+            # Execute task and stream results, with optional batching and cooperative yield
+            buffer: List[str] = []
+            last_emit = time.time()
             async for message in agent.execute(task, context):
                 if message.message_type == "text":
                     # Send stream start for first chunk
@@ -424,15 +537,33 @@ class ChatService:
                             reply_to_id
                         )
                         is_first_chunk = False
-                    
-                    # Send incremental update
-                    await self._send_streaming_chunk(
-                        chat_session_id,
-                        message_id,
-                        message.content,  # Send only the new chunk
-                        reply_to_id
-                    )
-                    full_content += message.content
+                    # Accumulate or emit depending on batching settings
+                    chunk = message.content or ""
+                    if self.enable_chunk_batching:
+                        if chunk:
+                            buffer.append(chunk)
+                        now = time.time()
+                        size = sum(len(c) for c in buffer)
+                        if size >= self.min_chunk_size or (now - last_emit) >= (self.batch_interval_ms/1000.0):
+                            batched = ''.join(buffer)
+                            if batched:
+                                await self._send_streaming_chunk(chat_session_id, message_id, batched, reply_to_id)
+                                full_content += batched
+                                buffer.clear()
+                                last_emit = now
+                        # Cooperative yield to avoid tight loop starvation
+                        await asyncio.sleep(0)
+                    else:
+                        # Immediate emit path
+                        await self._send_streaming_chunk(
+                            chat_session_id,
+                            message_id,
+                            chunk,
+                            reply_to_id
+                        )
+                        full_content += chunk
+                        # Small yield to let event loop flush WS
+                        await asyncio.sleep(0)
                 elif message.message_type == "error":
                     logger.error(f"Agent error during streaming: {message.content}")
                     # Send error as part of streaming instead of separate message
@@ -476,6 +607,13 @@ class ChatService:
                     await self._store_message(final_message)
                     return
             
+            # Flush any remaining buffered chunks before ending
+            if self.enable_chunk_batching and buffer:
+                batched = ''.join(buffer)
+                if batched:
+                    await self._send_streaming_chunk(chat_session_id, message_id, batched, reply_to_id)
+                    full_content += batched
+                buffer.clear()
             # Send stream end
             await self._send_streaming_end(
                 chat_session_id,
@@ -567,6 +705,43 @@ class ChatService:
                     history_list.append({"role": "user", "content": msg.content})
                 elif msg.sender == MessageSender.AI:
                     history_list.append({"role": "assistant", "content": msg.content})
+
+            # Append current user message as multimodal (include image attachments) so custom agents can see them
+            try:
+                content_parts: List[Dict[str, Any]] = [{"type": "text", "text": user_message.content}]
+                if user_message.attachments:
+                    media = get_media_service()
+                    for att in user_message.attachments:
+                        try:
+                            kind = att.get('kind')
+                            mime = att.get('mime_type') or att.get('mime') or ''
+                            if not ((isinstance(mime, str) and mime.startswith('image/')) or kind in ('image', 'images')):
+                                continue
+                            # Prefer embedding as data URL
+                            rel = att.get('relative_path') or att.get('rel_path') or att.get('path')
+                            data_url = None
+                            if isinstance(rel, str) and rel:
+                                try:
+                                    abs_path = (media.base_dir / rel).resolve()
+                                    abs_path.relative_to(media.base_dir)
+                                    if abs_path.exists() and abs_path.is_file():
+                                        import base64
+                                        with open(abs_path, 'rb') as f:
+                                            b64 = base64.b64encode(f.read()).decode('ascii')
+                                        data_url = f"data:{mime};base64,{b64}"
+                                except Exception:
+                                    data_url = None
+                            if not data_url:
+                                att_id = att.get('id')
+                                if att_id and not str(att_id).startswith('explorer-'):
+                                    data_url = f"/api/media/file/{att_id}"
+                            if data_url:
+                                content_parts.append({"type": "image_url", "image_url": {"url": data_url}})
+                        except Exception:
+                            continue
+                history_list.append({"role": "user", "content": content_parts})
+            except Exception as e:
+                logger.warning(f"Failed to attach multimodal content for custom agent: {e}")
             
             # Prepare streaming response
             full_content = ""
@@ -574,7 +749,8 @@ class ChatService:
             is_first_chunk = True
             
             # Get custom agent stream
-            custom_stream = call_custom_agent_stream(agent_type, user_message.content, history_list)
+            # We pass an empty live message because we've already appended the user's content (with attachments) to history
+            custom_stream = call_custom_agent_stream(agent_type, "", history_list)
             
             # Process streaming response
             async for chunk in custom_stream:
@@ -827,14 +1003,48 @@ class ChatService:
     async def _store_message(self, message: ChatMessage):
         """Store a message to JSONL per session (deprecates SQLite)."""
         try:
-            # Ensure session id exists
             session_id = message.session_id or "default"
-            file_path = self.history_root / f"{session_id}.jsonl"
-            # Append as a single JSON line
-            with open(file_path, 'a', encoding='utf-8') as f:
-                f.write(json.dumps(message.to_dict(), ensure_ascii=False) + "\n")
+            if self.enable_buffered_store:
+                async with self._persist_lock:
+                    self._persist_buffer.setdefault(session_id, []).append(message)
+            else:
+                file_path = self.history_root / f"{session_id}.jsonl"
+                with open(file_path, 'a', encoding='utf-8') as f:
+                    f.write(json.dumps(message.to_dict(), ensure_ascii=False) + "\n")
         except Exception as e:
             logger.error(f"Failed to store message (JSONL): {e}")
+
+    async def _flush_loop(self):
+        """Periodic flusher for buffered persistence."""
+        while True:
+            try:
+                await asyncio.sleep(self._persist_interval)
+                await self._flush_now()
+            except asyncio.CancelledError:
+                # Final flush on cancel
+                await self._flush_now()
+                break
+            except Exception as e:
+                logger.warning(f"Buffered store flush error: {e}")
+
+    async def _flush_now(self):
+        tmp: Dict[str, List[ChatMessage]] = {}
+        async with self._persist_lock:
+            if not self._persist_buffer:
+                return
+            tmp = self._persist_buffer
+            self._persist_buffer = {}
+        # Write outside lock
+        for session_id, items in tmp.items():
+            if not items:
+                continue
+            file_path = self.history_root / f"{session_id}.jsonl"
+            try:
+                with open(file_path, 'a', encoding='utf-8') as f:
+                    for msg in items:
+                        f.write(json.dumps(msg.to_dict(), ensure_ascii=False) + "\n")
+            except Exception as e:
+                logger.error(f"Failed writing batch for session {session_id}: {e}")
     
     async def get_message_history(self, session_id: str = None, limit: int = 50, offset: int = 0) -> List[ChatMessage]:
         """Get message history with pagination from JSONL files.

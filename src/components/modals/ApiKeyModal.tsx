@@ -42,6 +42,8 @@ const API_KEY_GROUPS = {
     { key: 'MAILERSEND_API_KEY', label: 'MailerSend API Key', placeholder: 'mlsn...', description: 'For email notifications' },
     { key: 'PUSHOVER_USER', label: 'Pushover User Key', placeholder: 'u...', description: 'Pushover user key for notifications' },
     { key: 'PUSHOVER_TOKEN', label: 'Pushover App Token', placeholder: 'a...', description: 'Pushover application token' },
+    { key: 'TAVILY_API_KEY', label: 'Tavily API Key', placeholder: 'tvly-...', description: 'For Tavily web search' },
+    { key: 'SERPER_API_KEY', label: 'Serper API Key', placeholder: 'serp-...', description: 'For Google Serper search' },
   ]
 };
 

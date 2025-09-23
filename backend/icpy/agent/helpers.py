@@ -37,10 +37,15 @@ def get_openai_token_param(model_name: str, max_tokens: int) -> dict:
     Returns:
         dict: Dictionary containing the appropriate parameter key and value
     """
-    if "gpt-5" in model_name.lower() or model_name.startswith("o1"):
+    name = (model_name or "").lower()
+    # OpenAI GPT-5+ and o1-style models
+    if "gpt-5" in name or name.startswith("o1"):
         return {"max_completion_tokens": max_tokens}
-    else:
-        return {"max_tokens": max_tokens}
+    # Cerebras chat-completions models use max_completion_tokens per docs
+    if name.startswith("qwen-3-") or name.startswith("llama-") or name.startswith("gpt-oss-"):
+        return {"max_completion_tokens": max_tokens}
+    # Default OpenAI-compatible chat.completions
+    return {"max_tokens": max_tokens}
 
 # Public API exports
 __all__ = [
@@ -68,10 +73,179 @@ __all__ = [
     
     # Utility functions
     'get_available_tools_summary',
-    'validate_tool_arguments'
+    'validate_tool_arguments',
+    # Content/history utilities
+    'flatten_message_content',
+    'normalize_history',
+    # Prompt templates
+    'BASE_SYSTEM_PROMPT_TEMPLATE'
 ]
 
 logger = logging.getLogger(__name__)
+# -----------------------------
+# Prompt templates
+# -----------------------------
+# Generic base system prompt template for agents. Inject the agent name and tools summary at runtime.
+BASE_SYSTEM_PROMPT_TEMPLATE = """You are {AGENT_NAME}, a helpful and versatile AI assistant.
+
+**Available Tools:**
+{TOOLS_SUMMARY}
+
+**When asked to create an app:**
+- create it under workspace which is your work root unless specified otherwise.
+- Create it using html/css/js by default unless the user specifies otherwise.
+
+**Core Behavior:**
+- Be helpful, accurate, and informative in your responses
+- Use tools when appropriate to provide better assistance
+- Explain your reasoning and approach clearly
+- Ask for clarification when requests are ambiguous
+- Provide practical, actionable advice
+
+**Tool Usage:**
+- Use file tools (read_file, create_file, replace_string_in_file) for file operations
+- Use run_in_terminal for executing commands and scripts
+- Use semantic_search to find relevant information in the workspace
+- Use web_search to find current information from the web
+- Always explain briefly what you're doing before using a tool
+
+**Response Style:**
+- Be concise but thorough
+- Use clear formatting and structure
+- Provide examples when helpful
+- Acknowledge limitations when relevant
+
+Focus on being genuinely helpful while using the available tools effectively to enhance your capabilities."""
+
+
+# -----------------------------
+# Generic content/history utils
+# -----------------------------
+def flatten_message_content(content: Any) -> str:
+    """Coerce OpenAI-style content (string, list of parts, or dict) into a plain string.
+
+    - Arrays of parts (e.g., [{type:'text'},{type:'image_url', image_url:{url}}]) are flattened
+      into human-readable text with minimal markers for non-text parts.
+    - Dict content falls back to text field if present, otherwise JSON string.
+    - None -> ""; primitives -> str(value).
+    """
+    try:
+        # Handle array of content parts
+        if isinstance(content, list):
+            parts: List[str] = []
+            for part in content:
+                if not isinstance(part, dict):
+                    parts.append(str(part))
+                    continue
+                ptype = part.get("type")
+                if ptype == "text":
+                    parts.append(str(part.get("text", "")))
+                elif ptype == "image_url":
+                    img = part.get("image_url")
+                    url = None
+                    if isinstance(img, dict):
+                        url = img.get("url")
+                    elif isinstance(img, str):
+                        url = img
+                    parts.append(f"[image: {url}]" if url else "[image]")
+                else:
+                    parts.append(f"[{ptype or 'part'}]")
+            return " ".join([p for p in parts if p])
+        # Dict content -> stringify safely
+        if isinstance(content, dict):
+            if "text" in content and isinstance(content["text"], str):
+                return content["text"]
+            return json.dumps(content)
+        # None -> empty string
+        if content is None:
+            return ""
+        # Primitive -> str
+        return str(content)
+    except Exception:
+        return str(content) if content is not None else ""
+
+
+def normalize_history(
+    raw_history: Any,
+    *,
+    drop_empty_user: bool = True,
+    default_role: str = "user",
+) -> List[Dict[str, Any]]:
+    """Normalize conversation history without destroying multimodal content.
+
+    Behavior changes (fix regression):
+    - Preserve OpenAI rich content arrays for user messages (e.g.,
+      [{"type":"text",...},{"type":"image_url",...}]) so image attachments
+      survive through to the model.
+    - Flatten other non-string content to text via flatten_message_content.
+    - Drop empty entries; for rich arrays, consider non-empty if any text has
+      non-whitespace or any image_url part has a URL.
+    """
+    messages: List[Dict[str, Any]] = []
+    if not raw_history:
+        return messages
+    try:
+        raw = json.loads(raw_history) if isinstance(raw_history, str) else raw_history
+    except Exception:
+        logger.warning("normalize_history: history is a non-JSON string; ignoring")
+        return messages
+
+    if not isinstance(raw, list):
+        logger.warning("normalize_history: history not a list; ignoring")
+        return messages
+
+    def _is_rich_parts(val: Any) -> bool:
+        if isinstance(val, list) and val:
+            # Heuristic: list of dicts with 'type' keys like text/image_url
+            return all(isinstance(p, dict) and p.get("type") in ("text", "image_url") for p in val if isinstance(p, dict))
+        return False
+
+    def _rich_non_empty(val: List[Dict[str, Any]]) -> bool:
+        for p in val:
+            if not isinstance(p, dict):
+                # Non-dict part counts as content
+                return True
+            t = p.get("type")
+            if t == "text" and isinstance(p.get("text"), str) and p["text"].strip():
+                return True
+            if t == "image_url":
+                img = p.get("image_url")
+                url = img.get("url") if isinstance(img, dict) else (img if isinstance(img, str) else None)
+                if url:
+                    return True
+        return False
+
+    filtered = 0
+    for idx, m in enumerate(raw):
+        try:
+            role = (m or {}).get("role", default_role)
+            raw_content = (m or {}).get("content")
+
+            # Preserve rich parts for user messages
+            if role == "user" and _is_rich_parts(raw_content):
+                if drop_empty_user and not _rich_non_empty(raw_content):
+                    filtered += 1
+                    logger.info(
+                        f"normalize_history: Dropping empty rich user message at index {idx}"
+                    )
+                    continue
+                content = raw_content
+            else:
+                # Fallback to flattened string content
+                content = flatten_message_content(raw_content)
+                is_empty = not content or not str(content).strip()
+                if is_empty and (role == "user" and drop_empty_user):
+                    filtered += 1
+                    logger.info(
+                        f"normalize_history: Dropping empty user message at index {idx}"
+                    )
+                    continue
+            messages.append({"role": role, "content": content})
+        except Exception as e:
+            logger.warning(f"normalize_history: Failed to normalize history item {idx}: {e}")
+    if filtered:
+        logger.info(f"normalize_history: Filtered {filtered} empty history messages")
+    return messages
 
 
 class ToolExecutor:
@@ -305,16 +479,104 @@ class OpenAIStreamingHandler:
                 except ValueError:
                     max_continue_rounds = 10
 
+            # Preflight: sanitize messages to avoid provider validation errors
+            def _coerce_content_to_text(val: Any) -> str:
+                try:
+                    if val is None:
+                        return ""
+                    if isinstance(val, str):
+                        return val
+                    if isinstance(val, list):
+                        # Keep arrays intact for user messages; this helper is only used
+                        # for non-user messages just before request. For safety, we merge
+                        # text for previewing/logging but should not be called for user arrays.
+                        acc: List[str] = []
+                        for part in val:
+                            if isinstance(part, dict) and part.get("type") == "text":
+                                acc.append(str(part.get("text", "")))
+                        return " ".join([x for x in acc if x])
+                    if isinstance(val, dict):
+                        if "text" in val and isinstance(val["text"], str):
+                            return val["text"]
+                        return json.dumps(val)
+                    return str(val)
+                except Exception:
+                    return str(val) if val is not None else ""
+
+            # Build a canonical conversation list we'll mutate throughout the loop
+            conv: List[Dict[str, Any]] = []
+            dropped_users = 0
+            def _is_rich_parts(val: Any) -> bool:
+                return isinstance(val, list) and any(isinstance(p, dict) and p.get("type") in ("text", "image_url") for p in val)
+
+            def _rich_non_empty(val: List[Dict[str, Any]]) -> bool:
+                for p in val:
+                    if not isinstance(p, dict):
+                        return True
+                    t = p.get("type")
+                    if t == "text" and isinstance(p.get("text"), str) and p["text"].strip():
+                        return True
+                    if t == "image_url":
+                        img = p.get("image_url")
+                        url = img.get("url") if isinstance(img, dict) else (img if isinstance(img, str) else None)
+                        if url:
+                            return True
+                return False
+
+            for idx, m in enumerate(messages or []):
+                if not isinstance(m, dict):
+                    logger.warning(f"OpenAIStreamingHandler: Non-dict message at index {idx} dropped")
+                    continue
+                role = m.get("role") or "user"
+                raw_content = m.get("content")
+                if role == "user" and _is_rich_parts(raw_content):
+                    # Preserve rich content for user. Check non-empty via helper.
+                    if not _rich_non_empty(raw_content):
+                        dropped_users += 1
+                        logger.warning(f"OpenAIStreamingHandler: Dropping empty user rich message at index {idx}")
+                        continue
+                    content = raw_content
+                else:
+                    content = _coerce_content_to_text(raw_content)
+                if role == "user" and (not isinstance(content, str)):
+                    # For OpenAI API, user content can be array; keep as-is
+                    pass
+                elif role == "user" and not (content and str(content).strip()):
+                    dropped_users += 1
+                    logger.warning(f"OpenAIStreamingHandler: Dropping empty user message at index {idx}")
+                    continue
+                conv.append({**m, "role": role, "content": content})
+            if dropped_users:
+                logger.info(f"OpenAIStreamingHandler: Dropped {dropped_users} empty user message(s) before request")
+
+            # Log a brief preview at INFO for easier troubleshooting
+            try:
+                preview = "\n".join([f"{i}: {m.get('role')} len={len(m.get('content','') or '')}" for i, m in enumerate(conv)])
+                logger.info("OpenAIStreamingHandler: Outbound messages preview\n" + preview)
+            except Exception as ex:
+                logger.debug("OpenAIStreamingHandler: preview generation failed: %s", ex)
+
             # Get available tools
             tools = self.tool_loader.get_openai_tools()
             
             # Start the conversation loop for tool calls
             continue_round = 0
+            # Optional safeguard against runaway tool-call loops (only if env is set)
+            max_tool_loops: Optional[int]
+            try:
+                val = os.environ.get("AGENT_MAX_TOOL_LOOPS")
+                max_tool_loops = int(val) if val is not None else None
+                if max_tool_loops is not None and max_tool_loops <= 0:
+                    # Non-positive disables the cap
+                    max_tool_loops = None
+            except Exception:
+                max_tool_loops = None
+            tool_loop_count = 0
             while True:
                 # Determine the correct max tokens parameter based on model
                 api_params = {
                     "model": self.model_name,
-                    "messages": messages,
+                    "messages": conv,
                     "tools": tools if tools else None,
                     "tool_choice": "auto" if tools else None,
                     "stream": True
@@ -333,22 +595,29 @@ class OpenAIStreamingHandler:
                 
                 # If tool calls are present, handle them and then continue loop
                 if finish_reason == "tool_calls" and tool_calls_list:
+                    tool_loop_count += 1
                     # Handle tool calls
-                    yield from self._handle_tool_calls(messages, collected_chunks, tool_calls_list)
+                    yield from self._handle_tool_calls(conv, collected_chunks, tool_calls_list)
                     
                     yield "\n🔧 **Tool execution complete. Continuing...**\n\n"
+                    if max_tool_loops is not None and tool_loop_count >= max_tool_loops:
+                        logger.warning(
+                            f"OpenAIStreamingHandler: Reached max tool-call loops ({max_tool_loops}). Aborting to prevent infinite loop."
+                        )
+                        yield "\n⚠️ Reached maximum tool-call attempts. Stopping to prevent a loop.\n"
+                        break
                     continue
 
                 # For non-tool responses, append assistant content to the conversation
                 if collected_chunks:
-                    messages.append({"role": "assistant", "content": "".join(collected_chunks)})
+                    conv.append({"role": "assistant", "content": "".join(collected_chunks)})
                 
                 # Auto-continue on token limit
                 if finish_reason == "length" and auto_continue and continue_round < max_continue_rounds:
                     continue_round += 1
                     logger.info(f"Hit token limit; auto-continuing round {continue_round}/{max_continue_rounds}")
                     yield "\n⏭️ Output truncated by token limit. Continuing...\n\n"
-                    messages.append({
+                    conv.append({
                         "role": "user",
                         "content": "Continue exactly where you left off. Do not repeat previous text. Resume immediately and finish the response."
                     })
@@ -555,12 +824,12 @@ def get_available_tools_summary() -> str:
     if not tools:
         return "No tools available."
     
-    summary = "Available Tools:\n"
+    summary = ""
     for i, tool in enumerate(tools, 1):
         func = tool['function']
         summary += f"{i}. **{func['name']}** - {func['description']}\n"
     
-    return summary
+    return summary.rstrip()  # Remove trailing newline
 
 
 def validate_tool_arguments(tool_name: str, arguments: Dict[str, Any]) -> Tuple[bool, Optional[str]]:

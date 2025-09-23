@@ -9,6 +9,7 @@ from .create_file_tool import CreateFileTool
 from .replace_string_tool import ReplaceStringTool
 from .run_terminal_tool import RunTerminalTool
 from .semantic_search_tool import SemanticSearchTool
+from .websearch_tools import WebSearchTool
 
 __all__ = [
     "BaseTool",
@@ -19,7 +20,8 @@ __all__ = [
     "CreateFileTool", 
     "ReplaceStringTool",
     "RunTerminalTool",
-    "SemanticSearchTool"
+    "SemanticSearchTool",
+    "WebSearchTool"
 ]
 
 # Auto-register all tools when module is imported
@@ -33,6 +35,7 @@ def _register_default_tools():
     registry.register(ReplaceStringTool())
     registry.register(RunTerminalTool())
     registry.register(SemanticSearchTool())
+    registry.register(WebSearchTool())
 
 # Register tools on import
 _register_default_tools() 
