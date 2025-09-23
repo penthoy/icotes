@@ -574,13 +574,15 @@ function areEqual(prev: ChatMessageProps, next: ChatMessageProps) {
   const a = prev.message; const b = next.message;
   if (a.id !== b.id) return false;
   if (a.content !== b.content) return false;
-  // Streaming completion flips this flag; it should trigger
-  const aDone = Boolean(a.metadata?.streamComplete); const bDone = Boolean(b.metadata?.streamComplete);
-  if (aDone !== bDone) return false;
-  // Attachments shallow length check
-  const al = Array.isArray(a.attachments) ? a.attachments.length : 0;
-  const bl = Array.isArray(b.attachments) ? b.attachments.length : 0;
-  if (al !== bl) return false;
+  // Streaming flags
+  if (Boolean(a.metadata?.streamComplete) !== Boolean(b.metadata?.streamComplete)) return false;
+  if (Boolean(a.metadata?.isStreaming) !== Boolean(b.metadata?.isStreaming)) return false;
+  // Attachments fingerprint (ids/paths/sizes/mimes/kinds)
+  const fp = (m?: ChatMessageType) =>
+    (Array.isArray(m?.attachments) ? m!.attachments.map(att =>
+      `${att.id ?? ''}|${att.path ?? ''}|${att.size ?? ''}|${(att as any).mime ?? ''}|${(att as any).kind ?? ''}`
+    ).join(';') : '');
+  if (fp(a) !== fp(b)) return false;
   // Highlight query affects rendering
   if (prev.highlightQuery !== next.highlightQuery) return false;
   return true;

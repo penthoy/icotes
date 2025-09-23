@@ -73,12 +73,10 @@ __all__ = [
     
     # Utility functions
     'get_available_tools_summary',
-    'validate_tool_arguments'
-    ,
+    'validate_tool_arguments',
     # Content/history utilities
     'flatten_message_content',
-    'normalize_history'
-    ,
+    'normalize_history',
     # Prompt templates
     'BASE_SYSTEM_PROMPT_TEMPLATE'
 ]
@@ -235,10 +233,11 @@ def normalize_history(
             else:
                 # Fallback to flattened string content
                 content = flatten_message_content(raw_content)
-                if not content or not str(content).strip():
+                is_empty = not content or not str(content).strip()
+                if is_empty and (role == "user" and drop_empty_user):
                     filtered += 1
                     logger.info(
-                        f"normalize_history: Dropping empty history message at index {idx} with role {role}"
+                        f"normalize_history: Dropping empty user message at index {idx}"
                     )
                     continue
             messages.append({"role": role, "content": content})
@@ -554,8 +553,8 @@ class OpenAIStreamingHandler:
             try:
                 preview = "\n".join([f"{i}: {m.get('role')} len={len(m.get('content','') or '')}" for i, m in enumerate(conv)])
                 logger.info("OpenAIStreamingHandler: Outbound messages preview\n" + preview)
-            except Exception:
-                pass
+            except Exception as ex:
+                logger.debug("OpenAIStreamingHandler: preview generation failed: %s", ex)
 
             # Get available tools
             tools = self.tool_loader.get_openai_tools()
@@ -825,12 +824,12 @@ def get_available_tools_summary() -> str:
     if not tools:
         return "No tools available."
     
-    summary = "Available Tools:\n"
+    summary = ""
     for i, tool in enumerate(tools, 1):
         func = tool['function']
         summary += f"{i}. **{func['name']}** - {func['description']}\n"
     
-    return summary
+    return summary.rstrip()  # Remove trailing newline
 
 
 def validate_tool_arguments(tool_name: str, arguments: Dict[str, Any]) -> Tuple[bool, Optional[str]]:

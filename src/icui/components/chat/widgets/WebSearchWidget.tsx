@@ -70,13 +70,20 @@ const WebSearchWidget: React.FC<WebSearchWidgetProps> = ({
 
   return (
     <div className={`icui-widget${className ? ` ${className}` : ''}`}>
-      <div className={`icui-widget__header ${expandable ? 'icui--clickable' : ''}`} onClick={handleToggleExpansion}>
+      <button
+        type="button"
+        className={`icui-widget__header ${expandable ? 'icui--clickable' : ''}`}
+        onClick={handleToggleExpansion}
+        aria-expanded={isExpanded}
+        aria-controls={`websearch-${toolCall.id}-panel`}
+        disabled={!expandable}
+      >
         <div className="flex-shrink-0">
-          {isExpanded ? (
+          {expandable && (isExpanded ? (
             <ChevronDown size={14} className="text-gray-500" />
           ) : (
             <ChevronRight size={14} className="text-gray-500" />
-          )}
+          ))}
         </div>
 
         <span className="icui-chip">{toolCall.metadata?.originalToolName || toolCall.toolName}</span>
@@ -88,10 +95,10 @@ const WebSearchWidget: React.FC<WebSearchWidgetProps> = ({
         <span className="icui-widget__meta truncate max-w-[40%]" title={query}>
           Query: <code>{query}</code>
         </span>
-      </div>
+      </button>
 
       {isExpanded && (
-        <div className="icui-widget__section space-y-3">
+        <div id={`websearch-${toolCall.id}-panel`} className="icui-widget__section space-y-3">
           {/* Parameters */}
           <div className="icui-widget__box p-2 text-xs space-y-1">
             <div>

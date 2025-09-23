@@ -118,18 +118,18 @@ def get_cerebras_client():
     if not api_key:
         raise ValueError("CEREBRAS_API_KEY environment variable is not set.")
 
-    try:
-        # Import inside function to avoid import errors if SDK isn't installed yet
-        from cerebras.cloud.sdk import Cerebras  # type: ignore
-    except Exception as e:
-        raise ImportError(
-            "cerebras-cloud-sdk is not installed. Add 'cerebras_cloud_sdk' to backend/pyproject.toml dependencies and install."
-        ) from e
+    # try:
+    #     # Import inside function to avoid import errors if SDK isn't installed yet
+    #     from cerebras.cloud.sdk import Cerebras  # type: ignore
+    # except Exception as e:
+    #     raise ImportError(
+    #         "cerebras-cloud-sdk is not installed. Add 'cerebras_cloud_sdk' to backend/pyproject.toml dependencies and install."
+    #     ) from e
 
     # Use top-level configured base URL if provided for consistency
     return Cerebras(
         api_key=api_key, 
-        # base_url="https://api.cerebras.ai/v1" Only needed for Openai-compatible endpoint
+        base_url="https://api.cerebras.ai/v1"
     )
 
 

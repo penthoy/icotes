@@ -12,6 +12,9 @@ import {
 import { chatBackendClient as singletonClient } from '../services/chat-backend-client-impl';
 import { notificationService } from '../services/notificationService';
 
+// Constants
+const FLUSH_INTERVAL_MS = 50; // Streaming update throttling (50ms batching) to reduce re-renders under high chunk rates
+
 export interface UseChatMessagesOptions {
   autoConnect?: boolean;
   maxMessages?: number;
@@ -74,11 +77,10 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
   const messagesEndRef = useRef<HTMLElement | null>(null);
   const isInitializedRef = useRef(false);
   const isConnectingRef = useRef(false);
-  // Streaming update throttling (50ms batching) to reduce re-renders under high chunk rates
+  // Streaming update throttling to reduce re-renders under high chunk rates
   const streamingQueueRef = useRef<Map<string, ChatMessage>>(new Map());
   const flushScheduledRef = useRef<number | null>(null);
   const lastFlushTsRef = useRef<number>(0);
-  const FLUSH_INTERVAL_MS = 50;
   // Keep a ref of latest state to build committed arrays without stale closures
   const stateRef = useRef<{ messages: ChatMessage[] }>({ messages: [] });
   useEffect(() => { stateRef.current.messages = messages; }, [messages]);

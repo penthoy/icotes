@@ -166,8 +166,16 @@ class ChatService:
         self.config = ChatConfig()
         # Feature flags (env-driven) for performance tuning
         self.enable_chunk_batching: bool = os.getenv('ENABLE_CHAT_BATCHING', '0') in ('1', 'true', 'True')
-        self.batch_interval_ms: int = int(os.getenv('CHAT_BATCH_INTERVAL_MS', '100'))
-        self.min_chunk_size: int = int(os.getenv('CHAT_MIN_CHUNK_SIZE', '64'))
+        try:
+            self.batch_interval_ms: int = int(os.getenv('CHAT_BATCH_INTERVAL_MS', '100'))
+        except ValueError:
+            logger.warning("Invalid CHAT_BATCH_INTERVAL_MS value, using default 100")
+            self.batch_interval_ms = 100
+        try:
+            self.min_chunk_size: int = int(os.getenv('CHAT_MIN_CHUNK_SIZE', '64'))
+        except ValueError:
+            logger.warning("Invalid CHAT_MIN_CHUNK_SIZE value, using default 64")
+            self.min_chunk_size = 64
         # Buffered JSONL persistence (flush timer)
         self.enable_buffered_store: bool = os.getenv('CHAT_BUFFERED_STORE', '0') in ('1', 'true', 'True')
         self._persist_buffer: Dict[str, List[ChatMessage]] = {}
