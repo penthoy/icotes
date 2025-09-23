@@ -172,14 +172,18 @@ def normalize_history(
     *,
     drop_empty_user: bool = True,
     default_role: str = "user",
-) -> List[Dict[str, str]]:
-    """Normalize a variety of history shapes into a list of {role, content} with string content.
+) -> List[Dict[str, Any]]:
+    """Normalize conversation history without destroying multimodal content.
 
-    - Accepts list or JSON string; logs and returns [] for invalid inputs
-    - Flattens non-string content via flatten_message_content
-    - Drops empty content entries (and specifically empty user entries if drop_empty_user is True)
+    Behavior changes (fix regression):
+    - Preserve OpenAI rich content arrays for user messages (e.g.,
+      [{"type":"text",...},{"type":"image_url",...}]) so image attachments
+      survive through to the model.
+    - Flatten other non-string content to text via flatten_message_content.
+    - Drop empty entries; for rich arrays, consider non-empty if any text has
+      non-whitespace or any image_url part has a URL.
     """
-    messages: List[Dict[str, str]] = []
+    messages: List[Dict[str, Any]] = []
     if not raw_history:
         return messages
     try:
@@ -192,17 +196,51 @@ def normalize_history(
         logger.warning("normalize_history: history not a list; ignoring")
         return messages
 
+    def _is_rich_parts(val: Any) -> bool:
+        if isinstance(val, list) and val:
+            # Heuristic: list of dicts with 'type' keys like text/image_url
+            return all(isinstance(p, dict) and p.get("type") in ("text", "image_url") for p in val if isinstance(p, dict))
+        return False
+
+    def _rich_non_empty(val: List[Dict[str, Any]]) -> bool:
+        for p in val:
+            if not isinstance(p, dict):
+                # Non-dict part counts as content
+                return True
+            t = p.get("type")
+            if t == "text" and isinstance(p.get("text"), str) and p["text"].strip():
+                return True
+            if t == "image_url":
+                img = p.get("image_url")
+                url = img.get("url") if isinstance(img, dict) else (img if isinstance(img, str) else None)
+                if url:
+                    return True
+        return False
+
     filtered = 0
     for idx, m in enumerate(raw):
         try:
             role = (m or {}).get("role", default_role)
-            content = flatten_message_content((m or {}).get("content"))
-            if not content or not str(content).strip():
-                filtered += 1
-                logger.info(
-                    f"normalize_history: Dropping empty history message at index {idx} with role {role}"
-                )
-                continue
+            raw_content = (m or {}).get("content")
+
+            # Preserve rich parts for user messages
+            if role == "user" and _is_rich_parts(raw_content):
+                if drop_empty_user and not _rich_non_empty(raw_content):
+                    filtered += 1
+                    logger.info(
+                        f"normalize_history: Dropping empty rich user message at index {idx}"
+                    )
+                    continue
+                content = raw_content
+            else:
+                # Fallback to flattened string content
+                content = flatten_message_content(raw_content)
+                if not content or not str(content).strip():
+                    filtered += 1
+                    logger.info(
+                        f"normalize_history: Dropping empty history message at index {idx} with role {role}"
+                    )
+                    continue
             messages.append({"role": role, "content": content})
         except Exception as e:
             logger.warning(f"normalize_history: Failed to normalize history item {idx}: {e}")
@@ -450,20 +488,13 @@ class OpenAIStreamingHandler:
                     if isinstance(val, str):
                         return val
                     if isinstance(val, list):
+                        # Keep arrays intact for user messages; this helper is only used
+                        # for non-user messages just before request. For safety, we merge
+                        # text for previewing/logging but should not be called for user arrays.
                         acc: List[str] = []
                         for part in val:
-                            if isinstance(part, dict):
-                                t = part.get("type")
-                                if t == "text":
-                                    acc.append(str(part.get("text", "")))
-                                elif t == "image_url":
-                                    img = part.get("image_url")
-                                    url = img.get("url") if isinstance(img, dict) else (img if isinstance(img, str) else None)
-                                    acc.append(f"[image: {url}]" if url else "[image]")
-                                else:
-                                    acc.append(f"[{t or 'part'}]")
-                            else:
-                                acc.append(str(part))
+                            if isinstance(part, dict) and part.get("type") == "text":
+                                acc.append(str(part.get("text", "")))
                         return " ".join([x for x in acc if x])
                     if isinstance(val, dict):
                         if "text" in val and isinstance(val["text"], str):
@@ -476,13 +507,42 @@ class OpenAIStreamingHandler:
             # Build a canonical conversation list we'll mutate throughout the loop
             conv: List[Dict[str, Any]] = []
             dropped_users = 0
+            def _is_rich_parts(val: Any) -> bool:
+                return isinstance(val, list) and any(isinstance(p, dict) and p.get("type") in ("text", "image_url") for p in val)
+
+            def _rich_non_empty(val: List[Dict[str, Any]]) -> bool:
+                for p in val:
+                    if not isinstance(p, dict):
+                        return True
+                    t = p.get("type")
+                    if t == "text" and isinstance(p.get("text"), str) and p["text"].strip():
+                        return True
+                    if t == "image_url":
+                        img = p.get("image_url")
+                        url = img.get("url") if isinstance(img, dict) else (img if isinstance(img, str) else None)
+                        if url:
+                            return True
+                return False
+
             for idx, m in enumerate(messages or []):
                 if not isinstance(m, dict):
                     logger.warning(f"OpenAIStreamingHandler: Non-dict message at index {idx} dropped")
                     continue
                 role = m.get("role") or "user"
-                content = _coerce_content_to_text(m.get("content"))
-                if role == "user" and not (content and content.strip()):
+                raw_content = m.get("content")
+                if role == "user" and _is_rich_parts(raw_content):
+                    # Preserve rich content for user. Check non-empty via helper.
+                    if not _rich_non_empty(raw_content):
+                        dropped_users += 1
+                        logger.warning(f"OpenAIStreamingHandler: Dropping empty user rich message at index {idx}")
+                        continue
+                    content = raw_content
+                else:
+                    content = _coerce_content_to_text(raw_content)
+                if role == "user" and (not isinstance(content, str)):
+                    # For OpenAI API, user content can be array; keep as-is
+                    pass
+                elif role == "user" and not (content and str(content).strip()):
                     dropped_users += 1
                     logger.warning(f"OpenAIStreamingHandler: Dropping empty user message at index {idx}")
                     continue

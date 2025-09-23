@@ -123,12 +123,39 @@ def chat(message: str, history: List[Dict[str, str]]) -> Generator[str, None, No
         else:
             logger.info("OpenAIAgent: Skipping trailing user message because it's empty (provided by caller as \"\")")
 
-        # Final safety filter before sending
+        # Final safety filter before sending (preserve multimodal user content arrays)
         safe_messages: List[Dict[str, Any]] = []
         dropped = 0
         for i, m in enumerate(messages):
             c = m.get("content", "")
-            if m.get("role") == "user" and (not isinstance(c, str) or not c.strip()):
+            role = m.get("role")
+            # If user content is a rich array, keep it; otherwise, ensure non-empty string
+            if role == "user" and isinstance(c, list):
+                # Basic non-empty check: any text with chars or any image_url url
+                has_content = False
+                try:
+                    for p in c:
+                        if isinstance(p, dict):
+                            t = p.get("type")
+                            if t == "text" and isinstance(p.get("text"), str) and p["text"].strip():
+                                has_content = True; break
+                            if t == "image_url":
+                                img = p.get("image_url")
+                                url = img.get("url") if isinstance(img, dict) else (img if isinstance(img, str) else None)
+                                if url:
+                                    has_content = True; break
+                        elif str(p).strip():
+                            has_content = True; break
+                except Exception:
+                    has_content = True  # don't over-filter on error
+                if not has_content:
+                    dropped += 1
+                    logger.warning(f"OpenAIAgent: Removing empty user rich message at position {i}")
+                    continue
+                safe_messages.append(m)
+                continue
+            # For other cases, coerce to string and drop if empty
+            if role == "user" and (not isinstance(c, str) or not c.strip()):
                 dropped += 1
                 logger.warning(f"OpenAIAgent: Removing empty user message at position {i}")
                 continue
