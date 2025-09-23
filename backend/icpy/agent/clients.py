@@ -127,7 +127,7 @@ def get_cerebras_client():
     #     ) from e
 
     # Use top-level configured base URL if provided for consistency
-    return Cerebras(
+    return OpenAI(
         api_key=api_key, 
         base_url="https://api.cerebras.ai/v1"
     )
