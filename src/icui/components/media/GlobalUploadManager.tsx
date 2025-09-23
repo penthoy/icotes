@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import UploadWidget from './upload/UploadWidget';
 import { useMediaUpload } from '../../hooks/useMediaUpload';
-import ChatDropZone from './ChatDropZone';
 import ExplorerDropProvider from '../explorer/ExplorerDropProvider';
 
 /**
@@ -13,37 +12,12 @@ import ExplorerDropProvider from '../explorer/ExplorerDropProvider';
  */
 export default function GlobalUploadManager() {
   const [open, setOpen] = useState(false);
-  const [dragActive, setDragActive] = useState(false);
-  const [dragTimer, setDragTimer] = useState<number | null>(null);
   // Dedicated hidden queue instance (autoStart true)
   const uploadHook = useMediaUpload({ autoStart: true });
 
-  const resetDragState = useCallback(() => {
-    setDragActive(false);
-    if (dragTimer) window.clearTimeout(dragTimer);
-    setDragTimer(null);
-  }, [dragTimer]);
-
   useEffect(() => {
-    const handleDragOver = (e: DragEvent) => {
-      if (!e.dataTransfer) return;
-      if (Array.from(e.dataTransfer.types).includes('Files')) {
-        e.preventDefault();
-        setDragActive(true);
-        if (!open) setOpen(true);
-        if (dragTimer) window.clearTimeout(dragTimer);
-        setDragTimer(window.setTimeout(() => setDragActive(false), 1500));
-      }
-    };
-    const handleDrop = (e: DragEvent) => {
-      if (!e.dataTransfer) return;
-      if (Array.from(e.dataTransfer.types).includes('Files')) {
-        // Let underlying widget zone capture actual drop; just prevent navigation
-        e.preventDefault();
-        e.stopPropagation();
-      }
-      resetDragState();
-    };
+    // Open widget only upon explicit request (multi-file drops from Explorer) or keyboard shortcut
+    const onOpenReq = () => setOpen(true);
     const handleKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'u') {
         e.preventDefault();
@@ -59,40 +33,30 @@ export default function GlobalUploadManager() {
       items.forEach(it => {
         if (it.kind === 'file') {
           const f = it.getAsFile();
-            if (f) files.push(f);
+          if (f) files.push(f);
         }
       });
-      if (files.length) {
+      // Only auto-open for multiple files to match new UX requirement
+      if (files.length > 1) {
         setOpen(true);
         uploadHook.addFiles(files);
+      } else if (files.length === 1) {
+        uploadHook.addFiles(files); // single paste goes silently to queue
       }
     };
-
-    window.addEventListener('dragover', handleDragOver);
-    window.addEventListener('drop', handleDrop);
+    window.addEventListener('icotes:open-upload-widget' as any, onOpenReq);
     window.addEventListener('keydown', handleKey);
     window.addEventListener('paste', handlePaste);
     return () => {
-      window.removeEventListener('dragover', handleDragOver);
-      window.removeEventListener('drop', handleDrop);
+      window.removeEventListener('icotes:open-upload-widget' as any, onOpenReq);
       window.removeEventListener('keydown', handleKey);
       window.removeEventListener('paste', handlePaste);
     };
-  }, [open, dragTimer, resetDragState]);
+  }, [uploadHook]);
 
   return (
     <>
       <ExplorerDropProvider uploadApi={uploadHook} />
-      <div className="relative" data-chat-input>
-        <ChatDropZone uploadApi={uploadHook} />
-      </div>
-      {dragActive && !open && (
-        <div className="fixed inset-0 pointer-events-none flex items-center justify-center z-40">
-          <div className="bg-blue-600/70 text-white px-6 py-3 rounded shadow-lg text-lg font-medium">
-            Drop over Explorer or Chat to upload…
-          </div>
-        </div>
-      )}
       <UploadWidget isOpen={open} onClose={() => setOpen(false)} externalQueue={uploadHook} panelMode initialPosition={{ x: 16, y: (typeof window !== 'undefined' ? window.innerHeight - 360 : 100) }} />
     </>
   );

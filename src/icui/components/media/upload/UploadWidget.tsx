@@ -7,7 +7,7 @@
 import React, { useCallback, useState, useRef } from 'react';
 import { useMediaUpload, UseMediaUploadReturn, UploadItem as UploadItemType } from '../../../hooks/useMediaUpload';
 import UploadItem from './UploadItem';
-import { X, Upload, FileText, Image, Plus } from 'lucide-react';
+import { X, Upload } from 'lucide-react';
 
 // Constants
 const DEFAULT_WIDGET_HEIGHT = 420;
@@ -44,7 +44,6 @@ export default function UploadWidget({
   const offset = useRef({ x: 0, y: 0 });
   
   const [isDragActive, setIsDragActive] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -74,15 +73,6 @@ export default function UploadWidget({
     }
   }, [addFiles]);
 
-  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    if (files.length > 0) {
-      addFiles(files);
-    }
-    // Reset input value to allow selecting the same file again
-    e.target.value = '';
-  }, [addFiles]);
-
   const handleUploadAll = useCallback(async () => {
     try {
       const results = await uploadAll();
@@ -93,10 +83,6 @@ export default function UploadWidget({
       console.error('Upload failed:', error);
     }
   }, [uploadAll, onFilesUploaded]);
-
-  const handleSelectFiles = useCallback(() => {
-    fileInputRef.current?.click();
-  }, []);
 
   const completedUploads = queue.filter(item => item.status === 'completed');
   const hasFiles = queue.length > 0;
@@ -160,17 +146,10 @@ export default function UploadWidget({
           </div>
         </div>
 
-        {/* Removed internal drop zone (now contextual chat/explorer). Provide add button only. */}
-  <div className="px-4 pt-4 text-sm text-gray-500 dark:text-gray-400">
-          <p className="mb-2">Use the contextual drop zones (Explorer folders or Chat prompt) to add files. You can also manually select files.</p>
-          <button
-            onClick={handleSelectFiles}
-            className="inline-flex items-center gap-2 px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-            disabled={isUploading || queue.length >= maxFiles}
-          >
-            <Plus size={14}/> Browse Files
-          </button>
-          <p className="mt-2 text-xs text-gray-400 dark:text-gray-500">Supports: {allowedTypes.join(', ')}</p>
+        {/* Guidance only; files are added via Explorer drop or paste. */}
+        <div className="px-4 pt-4 text-sm text-gray-500 dark:text-gray-400">
+          <p className="mb-2">This panel appears when you add multiple files. Drag-and-drop into the Explorer to stage uploads. Single-file drops upload silently.</p>
+          <p className="mt-2 text-xs text-gray-400 dark:text-gray-500">Allowed: {allowedTypes.join(', ')}</p>
         </div>
 
         {/* File List */}
@@ -192,15 +171,7 @@ export default function UploadWidget({
         {/* Actions */}
   <div className="flex items-center justify-between p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50">
           <div className="flex gap-2">
-            <button
-              onClick={handleSelectFiles}
-              className="flex items-center gap-2 px-3 py-1 text-sm text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-gray-100"
-              disabled={isUploading || queue.length >= maxFiles}
-            >
-              <Plus size={16} />
-              Add More
-            </button>
-            
+            {/* No manual add; files come from context actions */}
             {completedUploads.length > 0 && (
               <button
                 onClick={clearCompleted}
@@ -234,15 +205,7 @@ export default function UploadWidget({
         </div>
       </div>
 
-      {/* Hidden file input */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        multiple
-        accept={allowedTypes.join(',')}
-        onChange={handleFileSelect}
-        className="hidden"
-      />
+      {/* No file input (selection via OS dialog is removed per new spec) */}
     </div>
   );
 }

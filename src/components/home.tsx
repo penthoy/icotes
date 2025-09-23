@@ -54,9 +54,9 @@ const THEME_OPTIONS = [
 const defaultLayout: ICUILayoutConfig = {
   layoutMode: 'h-layout',
   areas: {
-    left: { id: 'left', name: 'Explorer', panelIds: ['explorer', 'git'], activePanelId: 'explorer', size: 25, visible: true },
+    left: { id: 'left', name: 'Explorer', panelIds: ['explorer', 'git'], activePanelId: 'explorer', size: 20, visible: true },
     center: { id: 'center', name: 'Editor', panelIds: ['editor', 'preview'], activePanelId: 'editor', size: 50 },
-    right: { id: 'right', name: 'Assistant', panelIds: ['chat', 'chat-history'], activePanelId: 'chat', size: 25, visible: true },
+    right: { id: 'right', name: 'Assistant', panelIds: ['chat', 'chat-history'], activePanelId: 'chat', size: 30, visible: true },
     bottom: { id: 'bottom', name: 'Terminal', panelIds: ['terminal'], activePanelId: 'terminal', size: 40 },
   },
   splitConfig: { 

@@ -20,7 +20,6 @@
 import React, { useRef, useEffect, useState, useCallback, useImperativeHandle, forwardRef } from 'react';
 import { useMediaUpload } from '../../hooks/useMediaUpload';
 import { Square, Send, Paperclip, Mic, Wand2, RefreshCw, Settings } from 'lucide-react';
-import ChatDropZone from '../media/ChatDropZone';
 import { 
   useChatMessages, 
   useTheme, 
@@ -556,7 +555,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
   target.style.height = `${Math.min(target.scrollHeight, 220)}px`;
   }, []);
 
-  // Drag & Drop handled by ChatDropZone to avoid duplicate enqueues
+  // Drag & Drop: handled globally via GlobalUploadManager and Explorer drop; Chat handles paste only
 
   const removeStaged = (id: string) => 
     setStaged(prev => {
@@ -611,18 +610,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
   overflowX: 'hidden'
       }}
     >
-      {/* Drop zone overlay limited to scroll area + composer, not header */}
-      <ChatDropZone
-        selector=".icui-chat-drop-scope"
-        uploadApi={uploadApi}
-        onFilesStaged={(files) => {
-          files.forEach(file => {
-            const preview = file.type.startsWith('image/') ? URL.createObjectURL(file) : '';
-            const tempId = `staged-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-            setStaged(prev => [...prev, { id: tempId, file, preview }]);
-          });
-        }}
-      />
+      {/* No inline drop zone overlay; chat paste still supported */}
       {/* Header */}
       <div 
         className="flex items-center justify-between p-3 border-b" 
