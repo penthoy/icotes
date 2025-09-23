@@ -72,20 +72,6 @@ For convenience, you can also use:
 ./start_with_uv.sh # minimal uv start
 ```
 
-### Prompt and image safety limits
-
-To avoid context_length_exceeded errors, the backend enforces safe defaults you can tune via environment variables:
-
-- CHAT_MAX_INPUT_TOKENS: Estimated max input tokens for a single request (default 200000). Rough estimate 4 chars ≈ 1 token.
-- CHAT_MAX_INPUT_CHARS: Hard cap on total serialized input characters (default 4 × CHAT_MAX_INPUT_TOKENS).
-- CHAT_EMBED_IMAGE_DATA_URL: When 1/true, inline small images as data: URLs (default 0/disabled). Prefer disabled; images are referenced by URL instead.
-- CHAT_MAX_INLINE_IMAGE_KB: Size cap for inlined images when enabled (default 64 KB).
-
-Notes:
-- Large base64-embedded images can explode token usage. URL-based references are used by default.
-- If your model has a smaller context window, reduce CHAT_MAX_INPUT_TOKENS.
-- Configure via `.env`, Docker `environment`, or deployment settings.
-
 ## API Usage
 
 ### Execute Code (REST)
