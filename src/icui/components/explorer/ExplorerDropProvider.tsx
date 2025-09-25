@@ -26,10 +26,20 @@ export function ExplorerDropProvider({ selector = '[data-explorer-root]', itemAt
       return target.closest(`[${itemAttr}]`) as HTMLElement | null;
     };
 
+    const ensureRootHighlight = () => {
+      if (!root.classList.contains('ring-1')) {
+        root.classList.add('ring-1','ring-blue-300');
+      }
+    };
+    const clearRootHighlight = () => {
+      root.classList.remove('ring-1','ring-blue-300');
+    };
+
     const onDragOver = (e: DragEvent) => {
       if (!e.dataTransfer) return;
       if (!Array.from(e.dataTransfer.types).includes('Files')) return;
       e.preventDefault();
+      ensureRootHighlight();
       const item = findItem(e.target);
       if (item && item !== hoverEl) {
         // Remove highlights from any previously highlighted elements (defensive multi-hover cleanup)
@@ -48,6 +58,12 @@ export function ExplorerDropProvider({ selector = '[data-explorer-root]', itemAt
         hoverEl = null;
       }
     };
+    const onDragEnter = (e: DragEvent) => {
+      if (!e.dataTransfer) return;
+      if (!Array.from(e.dataTransfer.types).includes('Files')) return;
+      ensureRootHighlight();
+    };
+
     const onDrop = (e: DragEvent) => {
       if (!e.dataTransfer) return;
       if (!Array.from(e.dataTransfer.types).includes('Files')) return;
@@ -86,15 +102,21 @@ export function ExplorerDropProvider({ selector = '[data-explorer-root]', itemAt
         uploadApi.addFiles([file], { context: 'explorer', destPath: absDestPath });
       });
       clearHover();
+      clearRootHighlight();
       setTimeout(() => clearHover(), 0); // microtask ensure styles removed
     };
     const onDragLeave = (e: DragEvent) => {
       if (!(e.relatedTarget instanceof HTMLElement)) {
         clearHover();
+        // Use bounding box heuristic for external drags leaving window (relatedTarget null)
+        if (e.target === root) {
+          clearRootHighlight();
+        }
       }
     };
 
     root.addEventListener('dragover', onDragOver);
+    root.addEventListener('dragenter', onDragEnter);
     root.addEventListener('drop', onDrop);
     root.addEventListener('dragleave', onDragLeave);
     const forceClear = () => clearHover();
@@ -103,6 +125,7 @@ export function ExplorerDropProvider({ selector = '[data-explorer-root]', itemAt
     window.addEventListener('drop', forceClear, true);
     return () => {
       root.removeEventListener('dragover', onDragOver);
+      root.removeEventListener('dragenter', onDragEnter);
   root.removeEventListener('drop', onDrop);
       root.removeEventListener('dragleave', onDragLeave);
       window.removeEventListener('dragend', forceClear);

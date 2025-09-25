@@ -37,6 +37,7 @@ import { useChatSessionSync } from '../../hooks/useChatSessionSync';
 import { chatBackendClient } from '../../services/chat-backend-client-impl';
 import { useChatHistory } from '../../hooks/useChatHistory';
 import type { MediaAttachment as ChatMediaAttachment } from '../../types/chatTypes';
+import { ICUI_FILE_LIST_MIME, isExplorerPayload } from '../../lib/dnd';
 
 interface ICUIChatProps {
   className?: string;
@@ -98,6 +99,10 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
   const lastScrollTop = useRef(0);
   // Local staged attachments (minimal Phase 4.1 test implementation)
   const [staged, setStaged] = useState<{ id: string; file: File; preview: string }[]>([]);
+  // Explorer referenced files (no upload – just path references)
+  const [referenced, setReferenced] = useState<{ id: string; path: string; name: string; kind: 'file' }[]>([]);
+  const composerRef = useRef<HTMLDivElement | null>(null);
+  const [isDragActive, setIsDragActive] = useState(false);
   const uploadApi = useMediaUpload({ autoStart: true });
 
   // Watch upload queue for completed chat-context items and stage them (only new additions)
@@ -371,7 +376,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
 
     // Build attachments list from completed uploads in chat context (after settle)
     const completed = uploadApi.uploads.filter(u => u.context === 'chat' && u.status === 'completed' && u.result);
-    const attachments: ChatMediaAttachment[] = completed.map(u => {
+    const uploadAttachments: ChatMediaAttachment[] = completed.map(u => {
       const r: any = u.result!;
       const resKind = (r.kind || r.type || '').toString();
       const resMime = (r.mime_type || r.mime || '').toString();
@@ -392,6 +397,16 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
         meta: { source: 'upload', tempUploadId: u.id, filename: baseName }
       } as ChatMediaAttachment;
     });
+    // Merge in referenced explorer files (kind = file)
+    const referencedAttachments: ChatMediaAttachment[] = referenced.map(ref => ({
+      id: ref.id,
+      kind: 'file',
+      path: ref.path,
+      mime: inferMimeFromName(ref.name),
+      size: 0,
+      meta: { source: 'explorer', filename: ref.name }
+    }));
+    const attachments = [...uploadAttachments, ...referencedAttachments];
     const hasText = messageContent.length > 0;
     const hasAttachments = attachments.length > 0;
     if (!hasText && !hasAttachments) {
@@ -438,6 +453,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
         return [];
       });
       uploadApi.clearCompleted();
+      setReferenced([]);
       
       // After sending, re-enable auto-scroll and jump smoothly once
       setIsAutoScrollEnabled(true);
@@ -600,6 +616,70 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
     window.addEventListener('paste', onPaste);
     return () => window.removeEventListener('paste', onPaste);
   }, [uploadApi]);
+
+  // --- Explorer Drag & Drop (file references) ---
+  // Infer basic mime type from filename (frontend only; backend may re-evaluate)
+  const inferMimeFromName = (filename: string): string => {
+    const ext = filename.split('.').pop()?.toLowerCase();
+    if (!ext) return 'application/octet-stream';
+    if (['png','jpg','jpeg','gif','webp','bmp','svg'].includes(ext)) return `image/${ext === 'jpg' ? 'jpeg' : ext}`;
+    if (['mp3','wav','ogg','m4a','flac'].includes(ext)) return `audio/${ext}`;
+    if (ext === 'json') return 'application/json';
+    if (ext === 'md') return 'text/markdown';
+    if (ext === 'txt' || ext === 'log') return 'text/plain';
+    if (ext === 'html' || ext === 'htm') return 'text/html';
+    if (ext === 'css') return 'text/css';
+    if (ext === 'js' || ext === 'mjs' || ext === 'cjs' || ext === 'ts' || ext === 'tsx') return 'text/plain';
+    if (ext === 'py') return 'text/x-python';
+    return 'application/octet-stream';
+  };
+
+  useEffect(() => {
+    const root = composerRef.current;
+    if (!root) return;
+    const handleDragOver = (e: DragEvent) => {
+      if (!e.dataTransfer) return;
+      const hasExplorerPayload = Array.from(e.dataTransfer.types).includes(ICUI_FILE_LIST_MIME);
+      if (!hasExplorerPayload) return;
+      e.preventDefault();
+      setIsDragActive(true);
+    };
+    const handleDragLeave = (e: DragEvent) => {
+      if (!(e.relatedTarget instanceof HTMLElement) || !root.contains(e.relatedTarget)) {
+        setIsDragActive(false);
+      }
+    };
+    const handleDrop = (e: DragEvent) => {
+      if (!e.dataTransfer) return;
+      const raw = e.dataTransfer.getData(ICUI_FILE_LIST_MIME);
+      if (!raw) return;
+      try {
+        const payload = JSON.parse(raw);
+        if (!isExplorerPayload(payload)) return;
+        e.preventDefault();
+        // Add references (dedupe by path)
+        setReferenced(prev => {
+          const existing = new Set(prev.map(p => p.path));
+          const additions = payload.items
+            .filter((it: any) => !existing.has(it.path))
+            .map((it: any) => ({ id: `ref-${it.path}`, path: it.path, name: it.name, kind: 'file' as const }));
+          if (additions.length === 0) return prev;
+          return [...prev, ...additions];
+        });
+      } catch {/* ignore parse errors */}
+      finally {
+        setIsDragActive(false);
+      }
+    };
+    root.addEventListener('dragover', handleDragOver);
+    root.addEventListener('dragleave', handleDragLeave);
+    root.addEventListener('drop', handleDrop);
+    return () => {
+      root.removeEventListener('dragover', handleDragOver);
+      root.removeEventListener('dragleave', handleDragLeave);
+      root.removeEventListener('drop', handleDrop);
+    };
+  }, []);
 
   return (
     <div 
@@ -790,9 +870,19 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
 
           <div className="space-y-2">
             {/* Modern Composer - preserves previous layout (textarea on top, controls at bottom) */}
-            <div className="icui-composer">
-              {staged.length > 0 && (
-                <div className="flex flex-wrap gap-2 mb-2" data-chat-attachments>
+            <div ref={composerRef} className={`icui-composer ${isDragActive ? 'ring-2 ring-blue-400 rounded-md transition-colors' : ''}`} data-chat-composer>
+              {(staged.length > 0 || referenced.length > 0) && (
+                <div className="flex flex-wrap gap-2 mb-2 items-center" data-chat-attachments>
+                  {referenced.map(ref => (
+                    <div key={ref.id} className="flex items-center gap-1 px-2 py-1 text-xs rounded border bg-opacity-40 group" style={{ borderColor: 'var(--icui-border-subtle)', background: 'var(--icui-bg-secondary)', color: 'var(--icui-text-primary)' }} title={ref.path}>
+                      <span className="truncate max-w-[120px]">{ref.name}</span>
+                      <button
+                        onClick={() => setReferenced(prev => prev.filter(p => p.id !== ref.id))}
+                        className="opacity-60 hover:opacity-100 transition-colors"
+                        title="Remove reference"
+                      >×</button>
+                    </div>
+                  ))}
                   {staged.map(att => (
                     <div key={att.id} className="relative group border rounded p-0.5" style={{ borderColor: 'var(--icui-border-subtle)' }}>
                       {att.preview ? (

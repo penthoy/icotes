@@ -42,7 +42,17 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', high
   
   // Attachment rendering helper
   const renderAttachment = useCallback((attachment: MediaAttachment, index: number) => {
-    const url = mediaService.getAttachmentUrl(attachment);
+    // Determine URL: if source is 'explorer' in meta (path reference) and id looks like ref-<path>, build download/content link
+    let url: string;
+    const source = attachment.meta?.source;
+    if (source === 'explorer' && attachment.path) {
+      // Provide raw file content endpoint; fallback to download endpoint if needed
+      const encoded = encodeURIComponent(attachment.path);
+      const base = (mediaService as any).apiUrl || mediaService.getAttachmentUrl({ ...attachment, id: '' }).replace(/\/media\/file\/.*/, ''); // hacky but keeps consistent origin
+      url = `${base}/files/content?path=${encoded}`;
+    } else {
+      url = mediaService.getAttachmentUrl(attachment);
+    }
     const filename = (() => {
       const raw = (attachment.path ?? '').toString();
       const last = raw.split('/').pop();
@@ -125,14 +135,16 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', high
                 {filename || 'Unknown file'}
               </div>
               <div className="text-xs" style={{ color: 'var(--icui-text-secondary)' }}>
-                {typeof sizeKb === 'number' ? `${sizeKb.toFixed(1)} KB` : ''}
+                {source === 'explorer' ? 'ref • workspace file' : (typeof sizeKb === 'number' ? `${sizeKb.toFixed(1)} KB` : '')}
               </div>
             </div>
             <button
               onClick={() => {
                 const link = document.createElement('a');
                 link.href = url;
-                link.download = filename || 'file';
+                if (source !== 'explorer') {
+                  link.download = filename || 'file';
+                }
                 link.click();
               }}
               className="p-1 rounded hover:bg-opacity-10 hover:bg-current transition-colors"
