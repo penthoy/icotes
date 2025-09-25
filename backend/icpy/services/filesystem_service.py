@@ -846,7 +846,7 @@ class FileSystemService:
             logger.error(f"Error deleting file {file_path}: {e}")
             return False
 
-    async def move_file(self, src_path: str, dest_path: str) -> bool:
+    async def move_file(self, src_path: str, dest_path: str, overwrite: bool = False) -> bool:
         """Move or rename a file.
         
         Args:
@@ -859,6 +859,26 @@ class FileSystemService:
         try:
             if not os.path.exists(src_path):
                 return False
+
+            # Normalize paths to avoid duplicate slashes when comparing
+            src_path = os.path.normpath(src_path)
+            dest_path = os.path.normpath(dest_path)
+
+            if src_path == dest_path:
+                return False
+
+            # Prevent moving a directory into itself or one of its descendants
+            if os.path.isdir(src_path) and dest_path.startswith(f"{src_path}{os.sep}"):
+                return False
+
+            if os.path.exists(dest_path):
+                if not overwrite:
+                    return False
+                # If overwrite is permitted, remove the existing destination first
+                if os.path.isdir(dest_path):
+                    shutil.rmtree(dest_path)
+                else:
+                    os.remove(dest_path)
             
             # Create destination directory if needed
             os.makedirs(os.path.dirname(dest_path), exist_ok=True)

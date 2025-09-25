@@ -366,9 +366,18 @@ export class BackendClient {
    * Move/rename file or directory
    */
   async moveFileSystem(oldPath: string, newPath: string): Promise<void> {
-  // Not exposed in REST API yet; implement via write+delete or add proper endpoint server-side.
-  // For now, throw a clear error to avoid silent failures.
-  throw new Error('Move operation not supported by REST API');
+    const response = await this.makeRequest('/api/files/move', {
+      method: 'POST',
+      body: JSON.stringify({
+        source_path: oldPath,
+        destination_path: newPath,
+        overwrite: false,
+      })
+    });
+
+    if (!response?.success) {
+      throw new Error(response?.message || 'Failed to move file');
+    }
   }
 
   /**

@@ -1,10 +1,3 @@
-/**
- * ICUI Explorer File Operations
- * 
- * Provides file operation commands for the Explorer panel with multi-select support.
- * Integrates with the command registry to enable context menu actions.
- */
-
 import { Command, CommandUtils, globalCommandRegistry } from '../../lib/commandRegistry';
 import { backendService, ICUIFileNode } from '../../services';
 import { log } from '../../../services/frontend-logger';
@@ -217,14 +210,10 @@ export class ExplorerFileOperations {
     if (!fileName || !fileName.trim()) return;
 
     const trimmed = fileName.trim();
-
-    // Determine base directory for creation (context menu right-click aware)
     let baseDir = (context.targetDirectoryPath || context.currentPath || '/').replace(/\/+$/, '');
     if (baseDir === '') baseDir = '/';
 
-    // Guard: prevent path traversal attempts
     if (trimmed.includes('..')) {
-      // Use themed confirm dialog instead of alert
       await confirmService.confirm({
         title: 'Invalid Name',
         message: 'The file name contains an invalid path sequence (..).',
@@ -235,7 +224,6 @@ export class ExplorerFileOperations {
     }
 
     try {
-      // Pre-flight: check for name collision in target directory
       const siblings = await backendService.getDirectoryContents(baseDir, true).catch(() => [] as ICUIFileNode[]);
       const conflict = siblings.find(s => s.name === trimmed);
       if (conflict) {
@@ -248,11 +236,10 @@ export class ExplorerFileOperations {
         return;
       }
     } catch (e) {
-      // Non-fatal; continue (best-effort collision detection)
       log.warn('ExplorerFileOperations', 'Directory listing failed during collision check', { baseDir, error: e });
     }
 
-    const newPath = `${baseDir}/${trimmed}`.replace(/\/+/g, '/');
+    const newPath = `${baseDir}/${trimmed}`.replace(/\/+/, '/');
 
     try {
       await backendService.createFile(newPath);
@@ -265,9 +252,6 @@ export class ExplorerFileOperations {
     }
   }
 
-  /**
-   * Create a new folder in the current directory
-   */
   private async createNewFolder(context?: FileOperationContext): Promise<void> {
     if (!context) {
       log.warn('ExplorerFileOperations', 'createNewFolder called without context');
@@ -276,11 +260,16 @@ export class ExplorerFileOperations {
 
     const folderName = await promptService.prompt({ title: 'New Folder', message: 'Enter folder name:', placeholder: 'my-folder' });
     if (!folderName || !folderName.trim()) return;
-
     const trimmed = folderName.trim();
 
-    let baseDir = (context.targetDirectoryPath || context.currentPath || '/').replace(/\/+$/, '');
-    if (baseDir === '') baseDir = '/';
+    // Defensive resolution of base directory
+    let baseDirRaw = (context.targetDirectoryPath || context.currentPath || '/');
+    baseDirRaw = baseDirRaw.replace(/\\/g, '/').replace(/\/+$/, '');
+    if (baseDirRaw === '') baseDirRaw = '/';
+    if (context.selectedFiles.length === 1 && context.selectedFiles[0].type === 'file' && context.selectedFiles[0].path === baseDirRaw) {
+      baseDirRaw = baseDirRaw.includes('/') ? (baseDirRaw.substring(0, baseDirRaw.lastIndexOf('/')) || '/') : '/';
+    }
+    const baseDir = baseDirRaw;
 
     if (trimmed.includes('..')) {
       await confirmService.confirm({
@@ -308,8 +297,8 @@ export class ExplorerFileOperations {
       log.warn('ExplorerFileOperations', 'Directory listing failed during folder collision check', { baseDir, error: e });
     }
 
-    const newPath = `${baseDir}/${trimmed}`.replace(/\/+/g, '/');
-
+    const newPath = `${baseDir}/${trimmed}`.replace(/\\/g, '/').replace(/\/+/, '/');
+    log.debug('ExplorerFileOperations', 'Creating folder', { baseDir, newPath });
     try {
       await backendService.createDirectory(newPath);
       await context.refreshDirectory();
@@ -321,30 +310,22 @@ export class ExplorerFileOperations {
     }
   }
 
-  /**
-   * Rename a single file or folder
-   */
   private async renameFile(context?: FileOperationContext): Promise<void> {
     if (!context || context.selectedFiles.length !== 1) {
       log.warn('ExplorerFileOperations', 'renameFile requires exactly one selected file');
       return;
     }
-
     const file = context.selectedFiles[0];
-  const newName = await promptService.prompt({ title: 'Rename', message: 'Enter new name:', initialValue: file.name });
-  if (!newName || !newName.trim() || newName.trim() === file.name) return;
-
+    const newName = await promptService.prompt({ title: 'Rename', message: 'Enter new name:', initialValue: file.name });
+    if (!newName || !newName.trim() || newName.trim() === file.name) return;
     const parentPath = file.path.substring(0, file.path.lastIndexOf('/'));
-    const newPath = `${parentPath}/${newName.trim()}`.replace(/\/+/g, '/');
-
+    const newPath = `${parentPath}/${newName.trim()}`.replace(/\/+/, '/');
     try {
-      // For rename, we'll read content, create new file, and delete old one
       if (file.type === 'file') {
         const content = await backendService.readFile(file.path);
         await backendService.createFile(newPath, content);
         await backendService.deleteFile(file.path);
       } else {
-        // For directories, create new directory and delete old one (simplified)
         await backendService.createDirectory(newPath);
         await backendService.deleteFile(file.path);
       }

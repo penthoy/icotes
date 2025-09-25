@@ -32,8 +32,11 @@ import { Button } from '../ui/button';
 import { ContextMenu, useContextMenu } from '../ui/ContextMenu';
 import { globalCommandRegistry } from '../../lib/commandRegistry';
 import { useExplorerMultiSelect } from '../explorer/MultiSelectHandler';
+import { ICUI_FILE_LIST_MIME, isExplorerPayload, useExplorerFileDrag } from '../../lib/dnd';
 import { explorerFileOperations, FileOperationContext } from '../explorer/FileOperations';
 import { createExplorerContextMenu, handleExplorerContextMenuClick, ExplorerMenuContext, ExplorerMenuExtensions } from '../explorer/ExplorerContextMenu';
+import { getParentDirectoryPath, isDescendantPath, joinPathSegments, normalizeDirPath } from '../explorer/pathUtils';
+import { planExplorerMoveOperations } from '../explorer/movePlanner';
 
 interface ICUIEnhancedExplorerProps {
   className?: string;
@@ -45,6 +48,7 @@ interface ICUIEnhancedExplorerProps {
   onFileRename?: (oldPath: string, newPath: string) => void;
   extensions?: ExplorerMenuExtensions;
 }
+
 
 const ICUIEnhancedExplorer: React.FC<ICUIEnhancedExplorerProps> = ({
   className = '',
@@ -81,6 +85,9 @@ const ICUIEnhancedExplorer: React.FC<ICUIEnhancedExplorerProps> = ({
   const [renamingFileId, setRenamingFileId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const renameInputRef = useRef<HTMLInputElement>(null);
+  const [dragHoverId, setDragHoverId] = useState<string | null>(null);
+  const [isRootDragHover, setIsRootDragHover] = useState(false);
+  const dragOperationRef = useRef(false);
 
   const { contextMenu, showContextMenu, hideContextMenu } = useContextMenu();
 
@@ -113,6 +120,24 @@ const ICUIEnhancedExplorer: React.FC<ICUIEnhancedExplorerProps> = ({
     setSelectedIds(selectedIds);
     setSelectedItems(selectedItems);
   });
+
+  // Drag support (foundation – reuses current multi-selection logic)
+  const { getDragProps } = useExplorerFileDrag({
+    getSelection: () => selectedItems.map(f => ({ path: f.path, name: f.name, type: f.type })),
+    isItemSelected: (id: string) => isSelected(id),
+    toDescriptor: (node: ICUIFileNode) => ({ path: node.path, name: node.name, type: node.type })
+  });
+
+  const isInternalExplorerDrag = useCallback((event: React.DragEvent | DragEvent) => {
+    const types = event.dataTransfer?.types;
+    if (!types) return false;
+    return Array.from(types).includes(ICUI_FILE_LIST_MIME);
+  }, []);
+
+  const clearDragHoverState = useCallback(() => {
+    setDragHoverId(null);
+    setIsRootDragHover(false);
+  }, []);
 
   // Register file operations commands
   useEffect(() => {
@@ -548,6 +573,166 @@ const ICUIEnhancedExplorer: React.FC<ICUIEnhancedExplorerProps> = ({
     }
   }, [currentPath, loadDirectory]);
 
+  const handleInternalDrop = useCallback(async (event: React.DragEvent, targetNode?: ICUIFileNode | null) => {
+    if (!isInternalExplorerDrag(event)) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const traceId = (event.dataTransfer as any)._icuiTraceId || `drop-${Date.now().toString(36)}`;
+    try {
+      log.info('ExplorerDnD', '[DND][drop:init]', {
+        traceId,
+        targetNode: targetNode ? { path: targetNode.path, type: targetNode.type } : null,
+        currentPath,
+      });
+    } catch {}
+
+    const transfer = event.dataTransfer;
+    const rawPayload = transfer?.getData(ICUI_FILE_LIST_MIME);
+    if (!rawPayload) {
+      clearDragHoverState();
+      return;
+    }
+
+    let payload: unknown;
+    try {
+      payload = JSON.parse(rawPayload);
+    } catch (parseError) {
+      console.error('ICUIEnhancedExplorer', 'Failed to parse drag payload', parseError);
+      clearDragHoverState();
+      return;
+    }
+
+    if (!isExplorerPayload(payload)) {
+      clearDragHoverState();
+      return;
+    }
+
+    const destinationDirRaw = targetNode
+      ? (targetNode.type === 'folder' ? targetNode.path : getParentDirectoryPath(targetNode.path))
+      : currentPath;
+    const destinationDir = normalizeDirPath(destinationDirRaw);
+
+    const descriptors = payload.items ?? payload.paths.map((path: string, index: number) => ({
+      path,
+      name: path.split('/').pop() || `item-${index}`,
+      type: 'file' as const,
+    }));
+
+    type PlannedDescriptor = {
+      sourcePath: string;
+      name: string;
+      type: 'file' | 'folder';
+      depth: number;
+    };
+
+    let plannedOperations: { source: string; destination: string }[] = [];
+    let skipped: string[] = [];
+    try {
+      const planning = planExplorerMoveOperations({ descriptors, destinationDir });
+      plannedOperations = planning.operations;
+      skipped = planning.skipped;
+      log.info('ExplorerDnD', '[DND][drop:plan]', {
+        traceId,
+        destinationDir,
+        operations: plannedOperations,
+        skipped,
+      });
+    } catch (planError) {
+      log.error('ExplorerDnD', '[DND][drop:plan:error]', { traceId, error: planError });
+      setError(planError instanceof Error ? planError.message : 'Failed to plan move');
+      clearDragHoverState();
+      return;
+    }
+
+    if (plannedOperations.length === 0) {
+      clearDragHoverState();
+      return;
+    }
+
+    dragOperationRef.current = true;
+    try {
+      log.info('ExplorerDnD', '[DND][drop:validate:start]', { traceId, destinationDir });
+      const directorySnapshot = await backendService.getDirectoryContents(destinationDir, true).catch(() => [] as ICUIFileNode[]);
+      const existingNames = new Set(directorySnapshot.map(node => node.name));
+
+      for (const op of plannedOperations) {
+        const basename = op.destination.split('/').pop() || '';
+        if (existingNames.has(basename)) {
+          log.warn('ExplorerDnD', '[DND][drop:validate:conflict]', { traceId, basename });
+          throw new Error(`Cannot move “${basename}”: destination already contains an item with the same name.`);
+        }
+      }
+
+      for (const op of plannedOperations) {
+        log.info('ExplorerDnD', '[DND][drop:execute]', { traceId, op });
+        await backendService.moveFile(op.source, op.destination);
+      }
+
+      await handleRefresh();
+      clearSelection();
+      setError(null);
+      log.info('ExplorerDnD', '[DND][drop:complete]', { traceId, moved: plannedOperations.length, skipped });
+    } catch (error) {
+      console.error('ICUIEnhancedExplorer', 'Failed to move selection', error);
+      log.error('ExplorerDnD', '[DND][drop:failure]', { traceId, error });
+      setError(error instanceof Error ? error.message : 'Failed to move files');
+    } finally {
+      dragOperationRef.current = false;
+      clearDragHoverState();
+    }
+
+    if (skipped.length > 0) {
+      log.warn('ICUIEnhancedExplorer', 'Skipped moving some paths due to invalid targets', { traceId, skipped });
+    }
+  }, [isInternalExplorerDrag, currentPath, clearDragHoverState, backendService, handleRefresh, clearSelection]);
+
+  const handleItemDragOver = useCallback((event: React.DragEvent, node: ICUIFileNode) => {
+    if (!isInternalExplorerDrag(event)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = 'move';
+    setDragHoverId(node.id);
+  }, [isInternalExplorerDrag]);
+
+  const handleItemDragLeave = useCallback((event: React.DragEvent, node: ICUIFileNode) => {
+    if (!isInternalExplorerDrag(event)) return;
+    const related = event.relatedTarget as Node | null;
+    if (related && event.currentTarget.contains(related)) {
+      return;
+    }
+    setDragHoverId(prev => (prev === node.id ? null : prev));
+  }, [isInternalExplorerDrag]);
+
+  const handleItemDrop = useCallback(async (event: React.DragEvent, node: ICUIFileNode) => {
+    if (!isInternalExplorerDrag(event)) return;
+    await handleInternalDrop(event, node);
+  }, [handleInternalDrop, isInternalExplorerDrag]);
+
+  const handleRootDragOver = useCallback((event: React.DragEvent) => {
+    if (!isInternalExplorerDrag(event)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = 'move';
+    setIsRootDragHover(true);
+    setDragHoverId(null);
+  }, [isInternalExplorerDrag]);
+
+  const handleRootDragLeave = useCallback((event: React.DragEvent) => {
+    if (!isInternalExplorerDrag(event)) return;
+    const related = event.relatedTarget as Node | null;
+    if (related && event.currentTarget.contains(related)) {
+      return;
+    }
+    setIsRootDragHover(false);
+  }, [isInternalExplorerDrag]);
+
+  const handleRootDrop = useCallback(async (event: React.DragEvent) => {
+    if (!isInternalExplorerDrag(event)) return;
+    await handleInternalDrop(event, null);
+  }, [handleInternalDrop, isInternalExplorerDrag]);
+
   // Handle toggle hidden files with immediate refresh
   const handleToggleHiddenFiles = useCallback(async () => {
     // Read current state directly from localStorage to avoid stale closure
@@ -813,90 +998,97 @@ const ICUIEnhancedExplorer: React.FC<ICUIEnhancedExplorerProps> = ({
       );
     }
     
-    // Add regular file/folder items with multi-select support
-    items.push(...nodes.map(node => (
-      <div key={node.id} className="select-none" data-path={node.path} data-type={node.type}>
-        <div
-          className={`flex items-center cursor-pointer py-1 px-2 rounded-sm group transition-colors`}
-          style={{ 
-            paddingLeft: `${level * 16 + 8}px`,
-            backgroundColor: isSelected(node.id) ? 'var(--icui-bg-tertiary)' : 'transparent',
-            color: 'var(--icui-text-primary)'
-          }}
-          onClick={(e) => handleItemClick(node, e)}
-          onDoubleClick={(e) => handleItemDoubleClick(node, e)}
-          onContextMenu={(e) => handleContextMenu(e, node)}
-          onMouseEnter={(e) => {
-            if (!isSelected(node.id)) {
-              e.currentTarget.style.backgroundColor = 'var(--icui-bg-secondary)';
-            }
-          }}
-          onMouseLeave={(e) => {
-            if (!isSelected(node.id)) {
-              e.currentTarget.style.backgroundColor = 'transparent';
-            }
-          }}
-        >
-          {node.type === 'folder' ? (
-            <div className="flex items-center flex-1 min-w-0">
-              {isPathLocked && (
-                <>
-                  {node.isExpanded ? (
-                    <ChevronDown className="h-4 w-4 mr-1" style={{ color: 'var(--icui-text-secondary)' }} />
-                  ) : (
-                    <ChevronRight className="h-4 w-4 mr-1" style={{ color: 'var(--icui-text-secondary)' }} />
-                  )}
-                </>
-              )}
-              {isPathLocked && node.isExpanded ? (
-                <FolderOpen className="h-4 w-4 mr-2" style={{ color: 'var(--icui-accent)' }} />
-              ) : (
-                <Folder className="h-4 w-4 mr-2" style={{ color: 'var(--icui-accent)' }} />
-              )}
-              {renamingFileId === node.path ? (
-                <input
-                  ref={renameInputRef}
-                  type="text"
-                  value={renameValue}
-                  onChange={(e) => setRenameValue(e.target.value)}
-                  onKeyDown={handleRenameKeyDown}
-                  onBlur={confirmRename}
-                  className="text-sm bg-transparent border border-blue-500 rounded px-1 py-0 flex-1 min-w-0 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  style={{ color: 'var(--icui-text-primary)' }}
-                />
-              ) : (
-                <span className="text-sm truncate" style={{ color: 'var(--icui-text-primary)' }}>{node.name}</span>
-              )}
-            </div>
-          ) : (
-            <div className="flex items-center flex-1 min-w-0">
-              <span className="mr-3 text-sm">{getFileIcon(node.name)}</span>
-              {renamingFileId === node.path ? (
-                <input
-                  ref={renameInputRef}
-                  type="text"
-                  value={renameValue}
-                  onChange={(e) => setRenameValue(e.target.value)}
-                  onKeyDown={handleRenameKeyDown}
-                  onBlur={confirmRename}
-                  className="text-sm bg-transparent border border-blue-500 rounded px-1 py-0 flex-1 min-w-0 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  style={{ color: 'var(--icui-text-primary)' }}
-                />
-              ) : (
-                <span className="text-sm truncate" style={{ color: 'var(--icui-text-primary)' }}>{node.name}</span>
-              )}
+    // Add regular file/folder items with multi-select support + drag support
+    items.push(...nodes.map(node => {
+      const dragProps = getDragProps(node);
+      const isDragTarget = dragHoverId === node.id;
+      return (
+        <div key={node.id} className="select-none" data-path={node.path} data-type={node.type}>
+          <div
+            className={`flex items-center cursor-pointer py-1 px-2 rounded-sm group transition-colors ${isDragTarget ? 'ring-2 ring-blue-400 ring-offset-1 ring-offset-transparent' : ''}`}
+            style={{
+              paddingLeft: `${level * 16 + 8}px`,
+              backgroundColor: isSelected(node.id) ? 'var(--icui-bg-tertiary)' : 'transparent',
+              color: 'var(--icui-text-primary)'
+            }}
+            {...dragProps}
+            onDragOver={(e) => handleItemDragOver(e, node)}
+            onDragEnter={(e) => handleItemDragOver(e, node)}
+            onDragLeave={(e) => handleItemDragLeave(e, node)}
+            onDrop={(e) => handleItemDrop(e, node)}
+            onClick={(e) => handleItemClick(node, e)}
+            onDoubleClick={(e) => handleItemDoubleClick(node, e)}
+            onContextMenu={(e) => handleContextMenu(e, node)}
+            onMouseEnter={(e) => {
+              if (!isSelected(node.id)) {
+                e.currentTarget.style.backgroundColor = 'var(--icui-bg-secondary)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!isSelected(node.id)) {
+                e.currentTarget.style.backgroundColor = 'transparent';
+              }
+            }}
+          >
+            {node.type === 'folder' ? (
+              <div className="flex items-center flex-1 min-w-0">
+                {isPathLocked && (
+                  <>
+                    {node.isExpanded ? (
+                      <ChevronDown className="h-4 w-4 mr-1" style={{ color: 'var(--icui-text-secondary)' }} />
+                    ) : (
+                      <ChevronRight className="h-4 w-4 mr-1" style={{ color: 'var(--icui-text-secondary)' }} />
+                    )}
+                  </>
+                )}
+                {isPathLocked && node.isExpanded ? (
+                  <FolderOpen className="h-4 w-4 mr-2" style={{ color: 'var(--icui-accent)' }} />
+                ) : (
+                  <Folder className="h-4 w-4 mr-2" style={{ color: 'var(--icui-accent)' }} />
+                )}
+                {renamingFileId === node.path ? (
+                  <input
+                    ref={renameInputRef}
+                    type="text"
+                    value={renameValue}
+                    onChange={(e) => setRenameValue(e.target.value)}
+                    onKeyDown={handleRenameKeyDown}
+                    onBlur={confirmRename}
+                    className="text-sm bg-transparent border border-blue-500 rounded px-1 py-0 flex-1 min-w-0 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    style={{ color: 'var(--icui-text-primary)' }}
+                  />
+                ) : (
+                  <span className="text-sm truncate" style={{ color: 'var(--icui-text-primary)' }}>{node.name}</span>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center flex-1 min-w-0">
+                <span className="mr-3 text-sm">{getFileIcon(node.name)}</span>
+                {renamingFileId === node.path ? (
+                  <input
+                    ref={renameInputRef}
+                    type="text"
+                    value={renameValue}
+                    onChange={(e) => setRenameValue(e.target.value)}
+                    onKeyDown={handleRenameKeyDown}
+                    onBlur={confirmRename}
+                    className="text-sm bg-transparent border border-blue-500 rounded px-1 py-0 flex-1 min-w-0 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    style={{ color: 'var(--icui-text-primary)' }}
+                  />
+                ) : (
+                  <span className="text-sm truncate" style={{ color: 'var(--icui-text-primary)' }}>{node.name}</span>
+                )}
+              </div>
+            )}
+          </div>
+          {isPathLocked && node.type === 'folder' && node.isExpanded && node.children && (
+            <div>
+              {renderFileTree(node.children, level + 1)}
             </div>
           )}
         </div>
-        
-        {/* Render children if folder is expanded (only in locked mode) */}
-        {isPathLocked && node.type === 'folder' && node.isExpanded && node.children && (
-          <div>
-            {renderFileTree(node.children, level + 1)}
-          </div>
-        )}
-      </div>
-    )));
+      );
+    }));
 
     return items;
   };
@@ -1023,7 +1215,16 @@ const ICUIEnhancedExplorer: React.FC<ICUIEnhancedExplorerProps> = ({
       )}
 
       {/* File tree */}
-  <div className="flex-1 overflow-auto p-1" data-explorer-root data-current-path={currentPath} style={{ backgroundColor: 'var(--icui-bg-primary)' }}>
+      <div
+        className={`flex-1 overflow-auto p-1 ${isRootDragHover ? 'ring-2 ring-blue-400 ring-offset-2 ring-offset-transparent' : ''}`}
+        data-explorer-root
+        data-current-path={currentPath}
+        style={{ backgroundColor: 'var(--icui-bg-primary)' }}
+        onDragOver={handleRootDragOver}
+        onDragEnter={handleRootDragOver}
+        onDragLeave={handleRootDragLeave}
+        onDrop={handleRootDrop}
+      >
         {loading ? (
           <div className="p-4 text-center text-sm" style={{ color: 'var(--icui-text-secondary)' }}>
             Loading directory contents...

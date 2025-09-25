@@ -381,7 +381,9 @@ export class ICUIBackendService extends EventEmitter {
     try {
       // Use REST API for directory creation via /api/files with type: 'directory'
       const url = `${this.baseUrl}/api/files`;
-      console.log('[EnhancedICUIBackendService] Creating directory at:', url, 'path:', path);
+      if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
+        console.log('[EnhancedICUIBackendService] Creating directory at:', url, 'path:', path);
+      }
       
       const response = await fetch(url, {
         method: 'POST',
@@ -396,7 +398,9 @@ export class ICUIBackendService extends EventEmitter {
       }
       
       const result = await response.json();
-      console.log('[EnhancedICUIBackendService] Directory create response:', result);
+      if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
+        console.log('[EnhancedICUIBackendService] Directory create response:', result);
+      }
       
       if (!result.success) {
         throw new Error(result.message || 'Failed to create directory');
@@ -473,7 +477,9 @@ export class ICUIBackendService extends EventEmitter {
     try {
       // Use REST API for file listing with include_hidden parameter
       const url = `${this.baseUrl}/api/files?path=${encodeURIComponent(path)}&include_hidden=${includeHidden}`;
-      console.log('[EnhancedICUIBackendService] Fetching directory contents from:', url);
+      if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
+        console.log('[EnhancedICUIBackendService] Fetching directory contents from:', url);
+      }
       
       const response = await fetch(url);
       
@@ -482,7 +488,9 @@ export class ICUIBackendService extends EventEmitter {
       }
       
       const result = await response.json();
-      console.log('[EnhancedICUIBackendService] Directory contents response:', result);
+      if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
+        console.log('[EnhancedICUIBackendService] Directory contents response:', result);
+      }
       
       if (!result.success) {
         throw new Error(result.message || 'Failed to get directory contents');
@@ -507,7 +515,9 @@ export class ICUIBackendService extends EventEmitter {
         return a.name.localeCompare(b.name);
       });
       
-      console.log('[EnhancedICUIBackendService] Returning sorted nodes:', sortedNodes.length);
+      if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
+        console.log('[EnhancedICUIBackendService] Returning sorted nodes:', sortedNodes.length);
+      }
       return sortedNodes;
     } catch (error) {
       console.error('[EnhancedICUIBackendService] Get file tree failed:', error);
@@ -645,6 +655,41 @@ export class ICUIBackendService extends EventEmitter {
       }
     } catch (error) {
       console.error('[EnhancedICUIBackendService] Delete file failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Move or rename files/directories using REST API endpoint.
+   */
+  async moveFile(sourcePath: string, destinationPath: string, overwrite = false): Promise<void> {
+    await this.ensureInitialized();
+
+    try {
+      const url = `${this.baseUrl}/api/files/move`;
+      console.log('[EnhancedICUIBackendService] Moving file:', { sourcePath, destinationPath, overwrite });
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ source_path: sourcePath, destination_path: destinationPath, overwrite }),
+      });
+
+      if (!response.ok) {
+        const detail = await response.json().catch(() => ({}));
+        throw new Error(detail?.detail || `Failed to move file: ${response.status} ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      console.log('[EnhancedICUIBackendService] File move response:', result);
+
+      if (!result.success) {
+        throw new Error(result.message || 'Failed to move file');
+      }
+    } catch (error) {
+      console.error('[EnhancedICUIBackendService] Move file failed:', error);
       throw error;
     }
   }

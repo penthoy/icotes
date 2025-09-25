@@ -1,5 +1,12 @@
 import { useState, useEffect } from 'react';
 
+// In-memory fetch suppression + caching to prevent duplicate log spam when
+// multiple components mount the hook simultaneously (e.g. chat + dropdown).
+let cachedResponse: ConfiguredAgentsResponse | null = null;
+let inFlight: Promise<ConfiguredAgentsResponse> | null = null;
+let lastFetchTs = 0;
+const CACHE_TTL_MS = 5000; // Collapse duplicate fetches in short window
+
 export interface ConfiguredAgent {
   name: string;
   displayName: string;
@@ -39,17 +46,34 @@ export const useConfiguredAgents = () => {
     try {
       setIsLoading(true);
       setError(null);
-      
-      const response = await fetch('/api/custom-agents/configured');
-      const data: ConfiguredAgentsResponse = await response.json();
+      const now = Date.now();
+      if (cachedResponse && (now - lastFetchTs) < CACHE_TTL_MS) {
+        const data = cachedResponse;
+        setAgents(data.agents);
+        setSettings(data.settings || {});
+        setCategories(data.categories || {});
+        return; // Silent reuse – original logs only on fresh network fetch
+      }
+
+      if (!inFlight) {
+        inFlight = (async () => {
+          const response = await fetch('/api/custom-agents/configured');
+          const data: ConfiguredAgentsResponse = await response.json();
+          cachedResponse = data;
+          lastFetchTs = Date.now();
+          return data;
+        })();
+      }
+
+      const data = await inFlight.finally(() => { inFlight = null; });
       
       if (data.success) {
         setAgents(data.agents);
         setSettings(data.settings || {});
         setCategories(data.categories || {});
-        console.log(`✅ Loaded ${data.agents.length} configured agents:`, data.agents);
-        console.log(`✅ Loaded settings:`, data.settings);
-        console.log(`✅ Loaded categories:`, data.categories);
+        if ((import.meta as any).env?.VITE_DEBUG_AGENTS === 'true') {
+          console.log(`✅ Agents loaded (${data.agents.length})`, { agents: data.agents, settings: data.settings, categories: data.categories });
+        }
       } else {
         setError(data.error || 'Failed to fetch configured agents');
         setAgents([]);
@@ -66,7 +90,8 @@ export const useConfiguredAgents = () => {
 
   useEffect(() => {
     fetchConfiguredAgents();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // run once per mounting set; cache prevents duplicate network trips
 
   // Group agents by category
   const getAgentsByCategory = () => {

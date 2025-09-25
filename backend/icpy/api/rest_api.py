@@ -99,6 +99,13 @@ class FileOperationRequest(BaseModel):
     type: Optional[str] = Field("file", description="Type of item to create: 'file' or 'directory'")
 
 
+class FileMoveRequest(BaseModel):
+    """Request model for moving or renaming files and directories."""
+    source_path: str = Field(..., description="Existing file or directory path")
+    destination_path: str = Field(..., description="Destination path including new name")
+    overwrite: Optional[bool] = Field(False, description="Allow overwriting existing destination")
+
+
 class FileSearchRequest(BaseModel):
     """Request model for file search."""
     query: str = Field(..., description="Search query")
@@ -541,6 +548,29 @@ class RestAPI:
                 logger.error(f"Error deleting file: {e}")
                 raise HTTPException(status_code=500, detail=str(e))
         
+        @self.app.post("/api/files/move")
+        async def move_file(request: FileMoveRequest):
+            """Move or rename a file or directory."""
+            try:
+                if not request.overwrite and os.path.exists(request.destination_path):
+                    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Destination already exists")
+
+                success = await self.filesystem_service.move_file(
+                    src_path=request.source_path,
+                    dest_path=request.destination_path,
+                    overwrite=request.overwrite or False
+                )
+
+                if not success:
+                    raise HTTPException(status_code=400, detail="Failed to move file")
+
+                return SuccessResponse(message="File moved successfully")
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error(f"Error moving file: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+
         @self.app.post("/api/files/search")
         async def search_files(request: FileSearchRequest):
             """Search files."""
