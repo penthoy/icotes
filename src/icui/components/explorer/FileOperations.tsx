@@ -26,6 +26,8 @@ export interface FileOperationContext {
 export class ExplorerFileOperations {
   private static instance: ExplorerFileOperations | null = null;
   private clipboard: { operation: 'copy' | 'cut'; files: ICUIFileNode[] } | null = null;
+  // Track whether commands have been registered to avoid duplicate registrations
+  private registered = false;
 
   static getInstance(): ExplorerFileOperations {
     if (!ExplorerFileOperations.instance) {
@@ -38,6 +40,11 @@ export class ExplorerFileOperations {
    * Register all file operation commands
    */
   registerCommands(): void {
+    if (this.registered) {
+      // Avoid noisy duplicate registrations during HMR or remounts
+      log.debug('ExplorerFileOperations', 'registerCommands skipped (already registered)');
+      return;
+    }
     const commands: Command[] = [
       // File/Folder Creation
       CommandUtils.createWithShortcut(
@@ -170,12 +177,16 @@ export class ExplorerFileOperations {
     });
 
     log.info('ExplorerFileOperations', 'Registered file operation commands', { count: commands.length });
+    this.registered = true;
   }
 
   /**
    * Unregister all file operation commands
    */
   unregisterCommands(): void {
+    if (!this.registered) {
+      return; // Nothing to do
+    }
     const commandIds = [
       'explorer.newFile',
       'explorer.newFolder',
@@ -195,6 +206,7 @@ export class ExplorerFileOperations {
     });
 
     log.info('ExplorerFileOperations', 'Unregistered file operation commands');
+    this.registered = false;
   }
 
   /**
@@ -243,7 +255,8 @@ export class ExplorerFileOperations {
 
     try {
       await backendService.createFile(newPath);
-      await context.refreshDirectory();
+      // Skipping manual refresh to rely on filesystem event emission
+      log.debug('ExplorerFileOperations', 'Skipped manual refresh after file create; waiting for filesystem event', { path: newPath });
       context.onFileCreate?.(newPath);
       log.info('ExplorerFileOperations', 'Created new file', { path: newPath });
     } catch (error) {
@@ -301,7 +314,12 @@ export class ExplorerFileOperations {
     log.debug('ExplorerFileOperations', 'Creating folder', { baseDir, newPath });
     try {
       await backendService.createDirectory(newPath);
-      await context.refreshDirectory();
+      // NOTE: Intentionally skipping immediate manual refresh to avoid double refresh.
+      // The backend emits an fs.directory_created event which the Explorer listens for
+      // and triggers a (debounced) refresh. Previously we refreshed here AND from the
+      // event handler, causing two rapid refreshes and visible flicker. If for some
+      // reason the event does not arrive, we can add a fallback timer-based refresh.
+      log.debug('ExplorerFileOperations', 'Skipped manual refresh; waiting for filesystem event', { newPath });
       context.onFolderCreate?.(newPath);
       log.info('ExplorerFileOperations', 'Created new folder', { path: newPath });
     } catch (error) {
@@ -329,7 +347,8 @@ export class ExplorerFileOperations {
         await backendService.createDirectory(newPath);
         await backendService.deleteFile(file.path);
       }
-      await context.refreshDirectory();
+      // Rely on create/delete filesystem events instead of manual refresh
+      log.debug('ExplorerFileOperations', 'Skipped manual refresh after rename; waiting for filesystem events', { oldPath: file.path, newPath });
       context.onFileRename?.(file.path, newPath);
       log.info('ExplorerFileOperations', 'Renamed file', { oldPath: file.path, newPath });
     } catch (error) {
@@ -362,8 +381,8 @@ export class ExplorerFileOperations {
       await Promise.all(
         context.selectedFiles.map(file => backendService.deleteFile(file.path))
       );
-      
-      await context.refreshDirectory();
+      // Deletion events will trigger explorer refresh via watcher
+      log.debug('ExplorerFileOperations', 'Skipped manual refresh after deletions; waiting for filesystem events', { count: context.selectedFiles.length });
       
       // Notify about deletions
       context.selectedFiles.forEach(file => {
@@ -410,7 +429,8 @@ export class ExplorerFileOperations {
         }
       }
 
-      await context.refreshDirectory();
+      // Duplicate operations create new entries; rely on watcher events
+      log.debug('ExplorerFileOperations', 'Skipped manual refresh after duplicate; waiting for filesystem events', { count: context.selectedFiles.length });
       log.info('ExplorerFileOperations', 'Duplicated files', { 
         count: context.selectedFiles.length 
       });
@@ -500,7 +520,8 @@ export class ExplorerFileOperations {
         this.clipboard = null;
       }
 
-      await context.refreshDirectory();
+      // Paste (copy/cut) results in creates (and maybe deletes) -> rely on watcher events
+      log.debug('ExplorerFileOperations', 'Skipped manual refresh after paste; waiting for filesystem events', { operation: this.clipboard?.operation });
       log.info('ExplorerFileOperations', 'Pasted files', { 
         operation: this.clipboard?.operation,
         count: this.clipboard?.files.length

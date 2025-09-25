@@ -1,7 +1,7 @@
 /**
- * ICUI Enhanced Explorer with Multi-Select and Context Menus
- * 
- * Enhanced version of ICUIExplorer with Phase 8 features:
+ * ICUI Explorer with Multi-Select and Context Menus
+ *
+ * Phase 8 features:
  * - Multi-select with Shift/Ctrl support
  * - Right-click context menus
  * - Keyboard navigation
@@ -38,7 +38,7 @@ import { createExplorerContextMenu, handleExplorerContextMenuClick, ExplorerMenu
 import { getParentDirectoryPath, isDescendantPath, joinPathSegments, normalizeDirPath } from '../explorer/pathUtils';
 import { planExplorerMoveOperations } from '../explorer/movePlanner';
 
-interface ICUIEnhancedExplorerProps {
+interface ICUIExplorerProps {
   className?: string;
   onFileSelect?: (file: ICUIFileNode) => void;
   onFileDoubleClick?: (file: ICUIFileNode) => void;
@@ -50,7 +50,7 @@ interface ICUIEnhancedExplorerProps {
 }
 
 
-const ICUIEnhancedExplorer: React.FC<ICUIEnhancedExplorerProps> = ({
+const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
   className = '',
   onFileSelect,
   onFileDoubleClick,
@@ -148,20 +148,7 @@ const ICUIEnhancedExplorer: React.FC<ICUIEnhancedExplorerProps> = ({
     };
   }, []);
 
-  // Update command context when selection or path changes
-  useEffect(() => {
-    const context: FileOperationContext = {
-      selectedFiles: selectedItems,
-      currentPath,
-      refreshDirectory: handleRefresh,
-      onFileCreate,
-      onFolderCreate,
-      onFileDelete,
-      onFileRename,
-    };
-
-    globalCommandRegistry.updateContext(context);
-  }, [selectedItems, currentPath, onFileCreate, onFolderCreate, onFileDelete, onFileRename]);
+  
 
   // Check connection status using centralized service
   const checkConnection = useCallback(async () => {
@@ -169,6 +156,9 @@ const ICUIEnhancedExplorer: React.FC<ICUIEnhancedExplorerProps> = ({
       const status = await backendService.getConnectionStatus();
       const connected = status.connected;
       setIsConnected(connected);
+      if (!connected) {
+        setError(null); // Clear error when just disconnected, show connection status instead
+      }
       return connected;
     } catch (error) {
       console.error('Connection check failed:', error);
@@ -228,17 +218,28 @@ const ICUIEnhancedExplorer: React.FC<ICUIEnhancedExplorerProps> = ({
   const loadDirectory = useCallback(async (path: string = getWorkspaceRoot(), opts?: { force?: boolean }) => {
     const now = Date.now();
     if (!opts?.force && now - lastLoadTimeRef.current < 100) {
+      if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
+        console.debug('[ICUIExplorer][loadDirectory] throttled', { path, last: lastLoadTimeRef.current, now });
+      }
       return;
     }
     
+    if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
+      console.debug('[ICUIExplorer][loadDirectory] start', { path, force: opts?.force });
+    }
     setLoading(true);
-    setError(null);
+    // Don't clear an existing error if we're still disconnected; otherwise clear so UI can update
+    setError(prev => (isConnected ? null : prev));
     lastLoadTimeRef.current = now;
     
     try {
       const connected = await checkConnection();
       if (!connected) {
-        throw new Error('Backend not connected');
+        if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
+          console.debug('[ICUIExplorer][loadDirectory] abort (disconnected)', { path });
+        }
+        // Gracefully exit without flagging an error; connection watcher will retry refresh
+        return;
       }
 
       const directoryContents = await backendService.getDirectoryContents(path, showHiddenFiles);
@@ -296,11 +297,26 @@ const ICUIEnhancedExplorer: React.FC<ICUIEnhancedExplorerProps> = ({
       
       setCurrentPath(path);
       setEditablePath(path);
+      if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
+        console.debug('[ICUIExplorer][loadDirectory] success', { count: directoryContents.length });
+      }
     } catch (err) {
-      log.error('ICUIEnhancedExplorer', 'Failed to load directory', { path, error: err }, err instanceof Error ? err : undefined);
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      // Suppress transient not-connected errors (should be handled above but defensive)
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      if (message.toLowerCase().includes('backend not connected')) {
+        log.debug('ICUIExplorer', 'Skipping directory error due to disconnected backend');
+        return;
+      }
+      log.error('ICUIExplorer', 'Failed to load directory', { path, error: err }, err instanceof Error ? err : undefined);
+      setError(message);
+      if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
+        console.debug('[ICUIExplorer][loadDirectory] error', { message });
+      }
     } finally {
       setLoading(false);
+      if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
+        console.debug('[ICUIExplorer][loadDirectory] end', { path });
+      }
     }
   }, [checkConnection, showHiddenFiles, buildNodeMapByPath, annotateWithExpansion, applyChildrenResults]);
 
@@ -308,10 +324,57 @@ const ICUIEnhancedExplorer: React.FC<ICUIEnhancedExplorerProps> = ({
     loadDirectoryRef.current = loadDirectory;
   }, [loadDirectory]);
 
-  // Initial load
+  // Connection monitoring + initial load (listener first to avoid missing early events)
   useEffect(() => {
-    loadDirectory();
-  }, []);
+    let mounted = true;
+    if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
+      console.debug('[ICUIExplorer][mount] effect start', { currentPath });
+    }
+    const handleConnectionChange = (payload: any) => {
+      if (!mounted) return;
+      const connected = payload.status === 'connected';
+      setIsConnected(connected);
+      if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
+        console.debug('[ICUIExplorer][event] connection_status_changed', { connected });
+      }
+      if (connected) {
+        setError(null);
+        // Perform (or re-perform) directory load now that we're connected
+        loadDirectoryRef.current ? loadDirectoryRef.current(currentPath, { force: true }) : loadDirectory(currentPath, { force: true });
+      }
+    };
+
+    backendService.on('connection_status_changed', handleConnectionChange);
+
+    // Kick off connection check AFTER listener is attached so we don't miss the first event
+    (async () => {
+      const status = await checkConnection();
+      if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
+        console.debug('[ICUIExplorer][mount] initial checkConnection result', { status });
+      }
+      if (status) {
+        // If already connected, load immediately
+        loadDirectory(currentPath, { force: true });
+      } else {
+        // Not yet connected: calling getConnectionStatus() again will trigger ensureInitialized -> connection attempt
+        try {
+          if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
+            console.debug('[ICUIExplorer][mount] triggering second status call to start connection');
+          }
+          await backendService.getConnectionStatus();
+        } catch {/* ignore */}
+      }
+    })();
+
+    return () => {
+      mounted = false;
+      backendService.off('connection_status_changed', handleConnectionChange);
+      if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
+        console.debug('[ICUIExplorer][unmount] cleanup');
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPath]);
 
   // Real-time file system updates via WebSocket (mirror working ICUIExplorer watcher)
   useEffect(() => {
@@ -320,7 +383,7 @@ const ICUIEnhancedExplorer: React.FC<ICUIEnhancedExplorerProps> = ({
     }
 
     const handleFileSystemEvent = (eventData: any) => {
-      log.debug('ICUIEnhancedExplorer', '[EXPL+] filesystem_event received', { event: eventData?.event, data: eventData?.data });
+  log.debug('ICUIExplorer', '[EXPL] filesystem_event received', { event: eventData?.event, data: eventData?.data });
       if (!eventData?.data) {
         return;
       }
@@ -341,7 +404,7 @@ const ICUIEnhancedExplorer: React.FC<ICUIEnhancedExplorerProps> = ({
           }
           // Debounce structural refreshes
           refreshTimeoutRef.current = setTimeout(() => {
-            log.debug('ICUIEnhancedExplorer', '[EXPL+] triggering debounced refresh', { currentPath, paths });
+            log.debug('ICUIExplorer', '[EXPL] triggering debounced refresh', { currentPath, paths });
             if (loadDirectoryRef.current) {
               loadDirectoryRef.current(currentPath);
             }
@@ -351,11 +414,11 @@ const ICUIEnhancedExplorer: React.FC<ICUIEnhancedExplorerProps> = ({
         }
         case 'fs.file_modified': {
           // Non-structural; ignore for tree refresh
-          log.debug('ICUIEnhancedExplorer', '[EXPL+] modification event ignored for tree', { paths });
+          log.debug('ICUIExplorer', '[EXPL] modification event ignored for tree', { paths });
           break;
         }
         default: {
-          log.debug('ICUIEnhancedExplorer', '[EXPL+] unknown filesystem_event', { event });
+          log.debug('ICUIExplorer', '[EXPL] unknown filesystem_event', { event });
         }
       }
     };
@@ -368,10 +431,10 @@ const ICUIEnhancedExplorer: React.FC<ICUIEnhancedExplorerProps> = ({
       try {
         const status = await backendService.getConnectionStatus();
         if (!status.connected) return;
-        log.info('ICUIEnhancedExplorer', '[EXPL+] Subscribing to fs topics');
+  log.info('ICUIExplorer', '[EXPL] Subscribing to fs topics');
         await backendService.notify('subscribe', { topics });
       } catch (error) {
-        log.warn('ICUIEnhancedExplorer', 'Failed to subscribe to filesystem events', { error });
+  log.warn('ICUIExplorer', 'Failed to subscribe to filesystem events', { error });
       }
     };
 
@@ -379,12 +442,12 @@ const ICUIEnhancedExplorer: React.FC<ICUIEnhancedExplorerProps> = ({
       try {
         const status = await backendService.getConnectionStatus();
         if (status.connected) {
-          log.info('ICUIEnhancedExplorer', '[EXPL+] Initializing subscription on connected');
+          log.info('ICUIExplorer', '[EXPL] Initializing subscription on connected');
           await subscribeToEvents();
         } else {
           statusHandlerRef.current = async (payload: any) => {
             if (payload?.status === 'connected') {
-              log.info('ICUIEnhancedExplorer', '[EXPL+] Connected, subscribing + refreshing');
+              log.info('ICUIExplorer', '[EXPL] Connected, subscribing + refreshing');
               await subscribeToEvents();
               if (loadDirectoryRef.current) {
                 loadDirectoryRef.current(currentPath);
@@ -398,7 +461,7 @@ const ICUIEnhancedExplorer: React.FC<ICUIEnhancedExplorerProps> = ({
           backendService.on('connection_status_changed', statusHandlerRef.current);
         }
       } catch (error) {
-        console.error('[ICUIEnhancedExplorer] Error initializing connection:', error);
+  console.error('[ICUIExplorer] Error initializing connection:', error);
       }
     };
 
@@ -418,11 +481,11 @@ const ICUIEnhancedExplorer: React.FC<ICUIEnhancedExplorerProps> = ({
         try {
           const status = await backendService.getConnectionStatus();
           if (status.connected) {
-            log.info('ICUIEnhancedExplorer', '[EXPL+] Unsubscribing from fs topics');
+            log.info('ICUIExplorer', '[EXPL] Unsubscribing from fs topics');
             await backendService.notify('unsubscribe', { topics });
           }
         } catch (error) {
-          log.warn('ICUIEnhancedExplorer', 'Failed to unsubscribe from filesystem events', { error });
+          log.warn('ICUIExplorer', 'Failed to unsubscribe from filesystem events', { error });
         }
       };
       cleanup();
@@ -1193,18 +1256,8 @@ const ICUIEnhancedExplorer: React.FC<ICUIEnhancedExplorerProps> = ({
       </div>
 
       {/* Connection status indicator */}
-      {!isConnected && (
-        <div className="px-3 py-2 text-sm border-b" style={{ 
-          color: 'var(--icui-warning)', 
-          backgroundColor: 'var(--icui-bg-tertiary)',
-          borderBottomColor: 'var(--icui-border-subtle)'
-        }}>
-          Backend not connected
-        </div>
-      )}
-
-      {/* Error display */}
-      {error && (
+            {/* Status display - show connection status OR error, not both */}
+      {error ? (
         <div className="px-3 py-2 text-sm border-b" style={{ 
           color: 'var(--icui-danger)', 
           backgroundColor: 'var(--icui-bg-tertiary)',
@@ -1212,7 +1265,15 @@ const ICUIEnhancedExplorer: React.FC<ICUIEnhancedExplorerProps> = ({
         }}>
           {error}
         </div>
-      )}
+      ) : !isConnected ? (
+        <div className="px-3 py-2 text-sm border-b" style={{ 
+          color: 'var(--icui-warning)', 
+          backgroundColor: 'var(--icui-bg-tertiary)',
+          borderBottomColor: 'var(--icui-border-subtle)'
+        }}>
+          Backend not connected
+        </div>
+      ) : null}
 
       {/* File tree */}
       <div
@@ -1255,4 +1316,4 @@ const ICUIEnhancedExplorer: React.FC<ICUIEnhancedExplorerProps> = ({
   );
 };
 
-export default ICUIEnhancedExplorer;
+export default ICUIExplorer;

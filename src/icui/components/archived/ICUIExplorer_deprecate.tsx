@@ -9,13 +9,15 @@
  */
 
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import { 
-  ChevronDown, 
-  ChevronRight, 
-  FileText, 
-  FolderOpen, 
-  Folder, 
-  Plus, 
+// (Deprecated) Explorer component kept for reference. Original name: ICUIEnhancedExplorer.
+// Use the new ICUIExplorer in panels/ICUIExplorer.tsx instead.
+import {
+  ChevronDown,
+  ChevronRight,
+  FileText,
+  FolderOpen,
+  Folder,
+  Plus,
   MoreVertical,
   RefreshCw,
   Lock,
@@ -23,7 +25,7 @@ import {
   MoreHorizontal,
   Eye,
   EyeOff
-} from "lucide-react";
+} from 'lucide-react';
 import { backendService, ICUIFileNode, useTheme } from '../../services';
 import { getWorkspaceRoot } from '../../lib';
 import { explorerPreferences } from '../../../lib/utils';

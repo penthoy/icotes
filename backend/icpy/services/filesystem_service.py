@@ -227,7 +227,25 @@ class FileSystemEventHandler(FileSystemEventHandler):
             self.logger.info(f"[FS] on_created path={event.src_path} is_dir={event.is_directory}")
         except Exception:
             pass
-        if not event.is_directory:
+        if event.is_directory:
+            # Suppress duplicate event if we just published from create_directory
+            try:
+                full_path = os.path.abspath(event.src_path)
+                now = time.time()
+                # Purge old entries
+                stale_cutoff = now - 5
+                self.filesystem_service._recent_created_dirs = {
+                    k: v for k, v in self.filesystem_service._recent_created_dirs.items() if v >= stale_cutoff
+                }
+                recent_ts = self.filesystem_service._recent_created_dirs.get(full_path)
+                if recent_ts is not None and now - recent_ts < 2:
+                    self.logger.debug(f"[FS] Suppressing duplicate directory_created for {full_path}")
+                    return
+            except Exception as e:
+                self.logger.debug(f"[FS] duplicate suppression error: {e}")
+            # Publish directory created (async wrapper for consistency)
+            self._schedule_async_task(self._handle_directory_created(event.src_path))
+        else:
             self._schedule_async_task(self._handle_file_created(event.src_path))
 
     def on_modified(self, event):
@@ -302,6 +320,18 @@ class FileSystemEventHandler(FileSystemEventHandler):
                 self.logger.debug(f"[FS] published fs.file_created: {file_path}")
         except Exception as e:
             self.logger.error(f"[FS] Error handling file creation {file_path}: {e}")
+
+    async def _handle_directory_created(self, dir_path: str):
+        """Handle directory creation asynchronously (external mkdir, etc.)."""
+        try:
+            await self.filesystem_service.message_broker.publish('fs.directory_created', {
+                'dir_path': os.path.abspath(dir_path),
+                'timestamp': time.time(),
+                'external': True
+            })
+            self.logger.debug(f"[FS] published fs.directory_created (watchdog): {dir_path}")
+        except Exception as e:
+            self.logger.error(f"[FS] Error handling directory creation {dir_path}: {e}")
 
     async def _handle_file_modified(self, file_path: str):
         """Handle file modification asynchronously.
@@ -406,6 +436,10 @@ class FileSystemService:
             'total_bytes_read': 0,
             'total_bytes_written': 0
         }
+
+        # Track directories explicitly created via service to suppress duplicate
+        # watchdog-created events (API create -> publish + watchdog on_created)
+        self._recent_created_dirs: Dict[str, float] = {}
         
         # File type mappings
         self.code_extensions = {
@@ -787,6 +821,9 @@ class FileSystemService:
             
             # Update statistics
             self.stats['files_created'] += 1
+
+            # Note directory so watchdog on_created can suppress duplicate event
+            self._recent_created_dirs[full_path] = time.time()
             
             # Publish event
             await self.message_broker.publish('fs.directory_created', {

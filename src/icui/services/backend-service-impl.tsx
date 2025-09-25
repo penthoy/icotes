@@ -52,6 +52,8 @@ export class ICUIBackendService extends EventEmitter {
   private migrationHelper: WebSocketMigrationHelper | null = null;
   private connectionId: string | null = null;
   private _initialized = false;
+  private _initializing = false;
+  private _initAttempts = 0;
   
   // Backend configuration
   private baseUrl: string = '';
@@ -78,9 +80,13 @@ export class ICUIBackendService extends EventEmitter {
       this.config = { ...this.config, ...config };
     }
     
-    // Initialize URLs dynamically
+    // Initialize URLs dynamically but don't auto-connect
+    // Connection will happen when ensureInitialized() is called
     this.initializeUrls().then(() => {
-      this.initializeEnhancedService();
+      // URLs are ready, but don't auto-initialize service yet
+      // This prevents race conditions with ensureInitialized()
+    }).catch(error => {
+      console.warn('ICUIBackendService: Failed to initialize URLs in constructor:', error);
     });
   }
 
@@ -88,14 +94,21 @@ export class ICUIBackendService extends EventEmitter {
    * Initialize URLs using dynamic configuration
    */
   private async initializeUrls(): Promise<void> {
+    // Guard against multiple simultaneous calls
+    if (this.baseUrl && this.websocketUrl) {
+      return; // Already resolved
+    }
+    
     try {
       const dynamicConfig = await configService.getConfig();
       this.baseUrl = dynamicConfig.base_url;  // Use base_url, not api_url
       this.websocketUrl = dynamicConfig.ws_url;
-      console.log('🔧 ICUIBackendService using dynamic URLs:', {
-        baseUrl: this.baseUrl,
-        websocketUrl: this.websocketUrl
-      });
+      if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
+        console.log('🔧 ICUIBackendService using dynamic URLs:', {
+          baseUrl: this.baseUrl,
+          websocketUrl: this.websocketUrl
+        });
+      }
     } catch (error) {
       console.warn('⚠️  Failed to get dynamic config for ICUIBackendService, using fallbacks:', error);
       
@@ -129,10 +142,12 @@ export class ICUIBackendService extends EventEmitter {
         this.websocketUrl = `${wsProtocol}//${host}/ws`;
       }
       
-      console.log('🔄 ICUIBackendService using fallback URLs:', {
-        baseUrl: this.baseUrl,
-        websocketUrl: this.websocketUrl
-      });
+      if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
+        console.log('🔄 ICUIBackendService using fallback URLs:', {
+          baseUrl: this.baseUrl,
+          websocketUrl: this.websocketUrl
+        });
+      }
     }
   }
 
@@ -140,9 +155,18 @@ export class ICUIBackendService extends EventEmitter {
    * Initialize enhanced WebSocket service
    */
   private initializeEnhancedService(): void {
-    // Only initialize if URLs are available
+    // Only initialize if URLs are available and service not already created
     if (!this.baseUrl || !this.websocketUrl) {
-      console.log('🔄 ICUIBackendService URLs not ready, delaying initialization');
+      if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
+        console.log('🔄 ICUIBackendService URLs not ready, delaying initialization');
+      }
+      return;
+    }
+    
+    if (this.enhancedService) {
+      if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
+        console.log('🔄 ICUIBackendService enhanced service already initialized');
+      }
       return;
     }
 
@@ -162,40 +186,75 @@ export class ICUIBackendService extends EventEmitter {
       }
     });
 
-    console.log('✅ EnhancedWebSocketService initialized with URLs:', {
-      websocket_url: this.websocketUrl,
-      http_base_url: this.baseUrl
-    });
+    // Service initialized - connection will be established when needed
 
-    // Set up migration helper
+    // Set up migration helper (disabled to prevent duplicate service initialization)
     this.migrationHelper = new WebSocketMigrationHelper({
-      migrateMain: true,
+      enableEnhancedService: false, // We already have our instance
+      migrateMain: false,
       fallbackToLegacy: true,
       testMode: false
     });
 
     // Enhanced service event handlers
     this.enhancedService.on('connection_opened', (data: any) => {
-      log.info('ICUIBackendService', 'Enhanced service connected', data);
-      this._initialized = true;
-      this.emit('connection_status_changed', { status: 'connected' });
+      log.info('ICUIBackendService', 'Service connected', data);
+      // Race fix: during first connect this.connectionId may not yet be assigned.
+      if (!this.connectionId) {
+        // Adopt the first opened connection while initializing.
+        this.connectionId = data.connectionId;
+      }
+      if (data.connectionId === this.connectionId) {
+        if (!this._initialized) {
+          this._initialized = true;
+          this.emit('connection_status_changed', { status: 'connected' });
+        }
+      } else {
+        if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
+          console.debug('[ICUIBackendService][event:connection_opened] ignoring foreign connection', {
+            eventId: data.connectionId, current: this.connectionId
+          });
+        }
+      }
     });
 
     this.enhancedService.on('connection_closed', (data: any) => {
-      log.info('ICUIBackendService', 'Enhanced service disconnected', data);
-      this.emit('connection_status_changed', { status: 'disconnected' });
+      log.info('ICUIBackendService', 'Service disconnected', data);
+      // Fix: Only handle disconnect if this is OUR connection
+      if (data.connectionId === this.connectionId) {
+        this._initialized = false;
+        this.connectionId = null;
+        this.emit('connection_status_changed', { status: 'disconnected' });
+      }
     });
 
     // Also listen for the legacy events for compatibility
     this.enhancedService.on('connected', (data: any) => {
       // console.log('[ICUIBackendService] Enhanced service connected (legacy event):', data);
-      this._initialized = true;
-      this.emit('connection_status_changed', { status: 'connected' });
+      // Fix: Only set initialized if this is OUR connection (or no connectionId specified, legacy fallback)
+      if (!this.connectionId && data.connectionId) {
+        this.connectionId = data.connectionId; // adopt if missing (race window)
+      }
+      if (!data.connectionId || data.connectionId === this.connectionId) {
+        if (!this._initialized) {
+          this._initialized = true;
+          this.emit('connection_status_changed', { status: 'connected' });
+        }
+      } else if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
+        console.debug('[ICUIBackendService][event:connected] ignored foreign connection', {
+          eventId: data.connectionId, current: this.connectionId
+        });
+      }
     });
 
     this.enhancedService.on('disconnected', (data: any) => {
       // console.log('[ICUIBackendService] Enhanced service disconnected (legacy event):', data);
-      this.emit('connection_status_changed', { status: 'disconnected' });
+      // Fix: Only handle disconnect if this is OUR connection (or no connectionId specified, legacy fallback)
+      if (!data.connectionId || data.connectionId === this.connectionId) {
+        this._initialized = false;
+        this.connectionId = null;
+        this.emit('connection_status_changed', { status: 'disconnected' });
+      }
     });
 
     this.enhancedService.on('message', (data: any) => {
@@ -218,9 +277,7 @@ export class ICUIBackendService extends EventEmitter {
     this.enhancedService.on('connectionClosed', (data: any) => {
       if (data.connectionId === this.connectionId) {
         // console.log('[ICUIBackendService] Connection closed:', data);
-        this.connectionId = null;
-        this._initialized = false;
-        this.emit('connection_status_changed', { status: 'disconnected' });
+        // Note: connection_closed already handles cleanup, this is just for logging
       }
     });
   }
@@ -229,22 +286,60 @@ export class ICUIBackendService extends EventEmitter {
    * Ensure service is initialized before operations
    */
   private async ensureInitialized(): Promise<void> {
-    if (!this._initialized) {
-      log.info('ICUIBackendService', 'Auto-initializing enhanced service');
-      
-      // First, ensure we have config and URLs
+    if (this._initialized || this._initializing) {
+      if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
+        console.debug('[ICUIBackendService][ensureInitialized] early-exit', {
+          initialized: this._initialized,
+          initializing: this._initializing,
+          connectionId: this.connectionId
+        });
+      }
+      return;
+    }
+    // New guard: if we already have a live connection but _initialized never flipped (race), repair state
+    if (this.connectionId && this.enhancedService) {
+      try {
+        const statusObj: any = (this.enhancedService as any).getConnectionStatus?.(this.connectionId);
+        if (statusObj?.status === 'connected') {
+          this._initialized = true;
+          this.emit('connection_status_changed', { status: 'connected', repaired: true });
+          if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
+            console.debug('[ICUIBackendService][ensureInitialized] repaired-missing-initialized-flag', { connectionId: this.connectionId });
+          }
+          return;
+        }
+      } catch {/* ignore */}
+    }
+    this._initializing = true;
+    const attempt = ++this._initAttempts;
+    log.info('ICUIBackendService', 'Auto-initializing service', { attempt });
+    try {
       if (!this.baseUrl || !this.websocketUrl) {
+        if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
+          console.debug('[ICUIBackendService][ensureInitialized] resolving URLs');
+        }
         await this.initializeUrls();
       }
-      
-      // Then initialize the enhanced service if not already done
       if (!this.enhancedService) {
+        if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
+          console.debug('[ICUIBackendService][ensureInitialized] creating enhanced service');
+        }
         this.initializeEnhancedService();
       }
-      
-      // Finally, initialize the connection
+      if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
+        console.debug('[ICUIBackendService][ensureInitialized] calling initializeConnection');
+      }
       await this.initializeConnection();
-      this._initialized = true;
+      // Note: _initialized is set by connection event handlers, not here
+      // This prevents race condition where we think we're initialized before connection is actually open
+    } finally {
+      this._initializing = false;
+      if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
+        console.debug('[ICUIBackendService][ensureInitialized] complete', {
+          initialized: this._initialized,
+          connectionId: this.connectionId
+        });
+      }
     }
   }
 
@@ -277,6 +372,34 @@ export class ICUIBackendService extends EventEmitter {
       log.info('ICUIBackendService', 'Connecting with options', options);
       this.connectionId = await this.enhancedService.connect(options);
       log.info('ICUIBackendService', 'Connected with ID', { connectionId: this.connectionId });
+      // Post-connect safety: If event handlers missed initial open events (race), mark initialized now.
+      if (!this._initialized) {
+        if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
+          console.debug('[ICUIBackendService][initializeConnection] post-connect initializing fallback');
+        }
+        this._initialized = true;
+        this.emit('connection_status_changed', { status: 'connected' });
+      }
+      
+      // Verify connection is actually established
+      const connStatus = (this.enhancedService as any).getConnectionStatus?.(this.connectionId);
+      if (connStatus?.status !== 'connected') {
+        console.warn('[ICUIBackendService] Connection ID received but status not yet connected, will wait for events');
+      }
+      if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
+        let stats: any = undefined;
+        try {
+          const maybeFn = (this.enhancedService as any)?.getStatistics;
+          if (typeof maybeFn === 'function') {
+            stats = maybeFn.call(this.enhancedService);
+          }
+        } catch { /* ignore */ }
+        console.debug('[ICUIBackendService][initializeConnection] post-connect snapshot', {
+          connectionId: this.connectionId,
+            status: connStatus?.status,
+            hasStats: !!stats
+        });
+      }
       
     } catch (error) {
       console.error('[ICUIBackendService] Enhanced connection failed:', error);
@@ -795,8 +918,10 @@ export class ICUIBackendService extends EventEmitter {
       };
     }
 
-  log.debug('EnhancedICUIBackendService', '[BE] Sending notification', { method, params });
-    console.log('[EnhancedICUIBackendService] Sending notification:', { method, params, message, connectionId: this.connectionId });
+    log.debug('EnhancedICUIBackendService', '[BE] Sending notification', { method, params });
+    if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
+      console.log('[EnhancedICUIBackendService] Sending notification:', { method, params, message, connectionId: this.connectionId });
+    }
 
     try {
       const response = await this.enhancedService.sendMessage(
@@ -808,7 +933,9 @@ export class ICUIBackendService extends EventEmitter {
           expectResponse: false
         }
       );
-      console.log('[EnhancedICUIBackendService] Notification response:', response);
+      if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
+        console.log('[EnhancedICUIBackendService] Notification response:', response);
+      }
       return response;
     } catch (error) {
       console.error('[EnhancedICUIBackendService] Failed to send notification:', { method, params, error });
@@ -822,9 +949,34 @@ export class ICUIBackendService extends EventEmitter {
    */
   async getConnectionStatus(): Promise<{ connected: boolean }> {
     await this.ensureInitialized();
-    return {
-      connected: this.connectionId !== null && this.enhancedService !== null
-    };
+    let connected = false;
+    if (this.connectionId && this.enhancedService) {
+      try {
+        // Prefer precise connection status for our specific connection
+        const statusObj: any = (this.enhancedService as any).getConnectionStatus
+          ? (this.enhancedService as any).getConnectionStatus(this.connectionId)
+          : null;
+        if (statusObj && statusObj.status === 'connected') {
+          connected = true;
+        } else {
+          // Fallback to aggregate service connectivity (may lag briefly)
+          connected = this.enhancedService.isConnected();
+        }
+      } catch (err) {
+        // Non-fatal; leave connected false
+        if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
+          console.warn('[ICUIBackendService] getConnectionStatus detail lookup failed', err);
+        }
+      }
+    }
+    if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
+      console.debug('[ICUIBackendService][getConnectionStatus] returning', {
+        connected,
+        connectionId: this.connectionId,
+        initialized: this._initialized
+      });
+    }
+    return { connected };
   }
 
   /**
@@ -863,9 +1015,21 @@ export class ICUIBackendService extends EventEmitter {
    * Check if the service is connected
    */
   isConnected(): boolean {
-    return this.connectionId !== null && 
-           this.enhancedService !== null && 
-           this.enhancedService.isConnected();
+    if (!this.connectionId || !this.enhancedService) return false;
+    try {
+      const statusObj: any = (this.enhancedService as any).getConnectionStatus
+        ? (this.enhancedService as any).getConnectionStatus(this.connectionId)
+        : null;
+      if (statusObj && statusObj.status === 'connected') return true;
+    } catch {}
+    const fallback = this.enhancedService.isConnected();
+    if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
+      console.debug('[ICUIBackendService][isConnected] fallback result', {
+        fallback,
+        connectionId: this.connectionId
+      });
+    }
+    return fallback;
   }
 
   /**
@@ -1217,8 +1381,13 @@ export class ICUIBackendService extends EventEmitter {
   }
 }
 
-// Create singleton instance
-export const icuiBackendService = new ICUIBackendService();
+// Create singleton instance (guarded for HMR to prevent duplicate connections)
+const __GLOBAL_BACKEND_KEY__ = '__ICUI_BACKEND_SERVICE_SINGLETON__';
+const __g: any = globalThis as any;
+if (!__g[__GLOBAL_BACKEND_KEY__]) {
+  __g[__GLOBAL_BACKEND_KEY__] = new ICUIBackendService();
+}
+export const icuiBackendService = __g[__GLOBAL_BACKEND_KEY__] as ICUIBackendService;
 
-// Legacy compatibility export
+// Legacy compatibility export (alias)
 export const enhancedICUIBackendService = icuiBackendService;
