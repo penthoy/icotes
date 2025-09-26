@@ -639,8 +639,10 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
     if (!root) return;
     const handleDragOver = (e: DragEvent) => {
       if (!e.dataTransfer) return;
-      const hasExplorerPayload = Array.from(e.dataTransfer.types).includes(ICUI_FILE_LIST_MIME);
-      if (!hasExplorerPayload) return;
+      const types = Array.from(e.dataTransfer.types);
+      const hasExplorerPayload = types.includes(ICUI_FILE_LIST_MIME);
+      const hasFiles = types.includes('Files');
+      if (!hasExplorerPayload && !hasFiles) return;
       e.preventDefault();
       setIsDragActive(true);
     };
@@ -651,24 +653,41 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
     };
     const handleDrop = (e: DragEvent) => {
       if (!e.dataTransfer) return;
+      e.preventDefault();
+      setIsDragActive(false);
+      
+      // Handle explorer internal drags (file references)
       const raw = e.dataTransfer.getData(ICUI_FILE_LIST_MIME);
-      if (!raw) return;
-      try {
-        const payload = JSON.parse(raw);
-        if (!isExplorerPayload(payload)) return;
-        e.preventDefault();
-        // Add references (dedupe by path)
-        setReferenced(prev => {
-          const existing = new Set(prev.map(p => p.path));
-          const additions = payload.items
-            .filter((it: any) => !existing.has(it.path))
-            .map((it: any) => ({ id: `ref-${it.path}`, path: it.path, name: it.name, kind: 'file' as const }));
-          if (additions.length === 0) return prev;
-          return [...prev, ...additions];
+      if (raw) {
+        try {
+          const payload = JSON.parse(raw);
+          if (!isExplorerPayload(payload)) return;
+          // Add references (dedupe by path)
+          setReferenced(prev => {
+            const existing = new Set(prev.map(p => p.path));
+            const additions = payload.items
+              .filter((it: any) => !existing.has(it.path))
+              .map((it: any) => ({ id: `ref-${it.path}`, path: it.path, name: it.name, kind: 'file' as const }));
+            if (additions.length === 0) return prev;
+            return [...prev, ...additions];
+          });
+        } catch {/* ignore parse errors */}
+        return;
+      }
+      
+      // Handle external OS file drops (actual uploads)
+      const files = Array.from(e.dataTransfer.files);
+      if (files.length > 0) {
+        // Upload to media and stage for chat
+        uploadApi.addFiles(files, { context: 'chat' });
+        // Stage image previews immediately
+        files.forEach(file => {
+          if (file.type.startsWith('image/')) {
+            const preview = URL.createObjectURL(file);
+            const tempId = `staged-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+            setStaged(prev => [...prev, { id: tempId, file, preview }]);
+          }
         });
-      } catch {/* ignore parse errors */}
-      finally {
-        setIsDragActive(false);
       }
     };
     root.addEventListener('dragover', handleDragOver);

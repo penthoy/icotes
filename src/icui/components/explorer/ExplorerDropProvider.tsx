@@ -16,7 +16,11 @@ interface Props {
 export function ExplorerDropProvider({ selector = '[data-explorer-root]', itemAttr = 'data-path', uploadApi, defaultDir = '.' }: Props) {
   useEffect(() => {
     const root = document.querySelector(selector) as HTMLElement | null;
-    if (!root) return;
+    if (!root) {
+      console.warn('[ExplorerDropProvider] Root element not found:', selector);
+      return;
+    }
+    console.log('[ExplorerDropProvider] Root element found:', root, 'selector:', selector);
     root.dataset.dropScope = 'explorer';
 
     let hoverEl: HTMLElement | null = null;
@@ -37,8 +41,10 @@ export function ExplorerDropProvider({ selector = '[data-explorer-root]', itemAt
 
     const onDragOver = (e: DragEvent) => {
       if (!e.dataTransfer) return;
+      console.log('[ExplorerDropProvider] dragover event:', e.dataTransfer.types);
       if (!Array.from(e.dataTransfer.types).includes('Files')) return;
       e.preventDefault();
+      console.log('[ExplorerDropProvider] dragover Files detected, highlighting root');
       ensureRootHighlight();
       const item = findItem(e.target);
       if (item && item !== hoverEl) {
@@ -60,7 +66,9 @@ export function ExplorerDropProvider({ selector = '[data-explorer-root]', itemAt
     };
     const onDragEnter = (e: DragEvent) => {
       if (!e.dataTransfer) return;
+      console.log('[ExplorerDropProvider] dragenter event:', e.dataTransfer.types);
       if (!Array.from(e.dataTransfer.types).includes('Files')) return;
+      console.log('[ExplorerDropProvider] dragenter Files detected');
       ensureRootHighlight();
     };
 
