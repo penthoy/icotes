@@ -929,7 +929,6 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
                                }).replace(/\/media\/file\/.*/, '') ||
                                `${window.location.protocol}//${window.location.host}`;
                       } catch (error) {
-                        console.warn('[ICUIChat] Failed to get base URL from mediaService, using window location:', error);
                         base = `${window.location.protocol}//${window.location.host}`;
                       }
                       // Normalize: remove trailing slash
@@ -944,13 +943,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
                       // We'll optimistically try directMediaUrl; if it fails we'll fetch JSON and convert
                       const imageUrl = directMediaUrl;
                       
-                      console.log('[ICUIChat] Constructing image URL for Explorer reference:', {
-                        path: ref.path,
-                        encoded,
-                        base: apiBase,
-                        imageUrl,
-                        name: ref.name
-                      });
+                      
                       
                       return (
                         <div key={ref.id} className="relative group border rounded p-0.5" style={{ borderColor: 'var(--icui-border-subtle)' }} title={ref.path}>
@@ -960,7 +953,6 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
                             className="w-8 h-8 object-cover rounded"
                             onError={async (e) => {
                               if (!e.currentTarget) return; // Safety guard for occasional nulls
-                              console.warn('[ICUIChat] Direct raw file URL failed, attempting JSON content fallback', { directMediaUrl, fileContentUrl, path: ref.path });
                               try {
                                 const resp = await fetch(fileContentUrl);
                                 if (resp.ok) {
@@ -977,21 +969,18 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
                                       dataUrl = `data:${mime};charset=utf-8,${encodedTxt}`;
                                     }
                                     e.currentTarget.src = dataUrl;
-                                    console.log('[ICUIChat] Fallback JSON->dataURL image applied');
                                     return;
                                   }
                                 } else {
-                                  console.warn('[ICUIChat] Fallback fetch failed status', resp.status);
+                                  // no-op; leave placeholder
                                 }
                               } catch (err) {
-                                console.error('[ICUIChat] Fallback fetch threw', err);
+                                // no-op; leave placeholder
                               }
                               // Final placeholder if all else fails
                               e.currentTarget.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIGZpbGw9IiMzZjQwNDYiIHJ4PSI0Ii8+PHBhdGggZD0iTTEwIDIwaDEyTTE2IDEyVjI0IiBzdHJva2U9IiNmZmYiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBmaWxsPSJub25lIi8+PC9zdmc+';
                             }}
-                            onLoad={() => {
-                              console.log('[ICUIChat] Image preview loaded (explorer ref)', { url: imageUrl, path: ref.path });
-                            }}
+                            onLoad={() => {/* no-op */}}
                           />
                           <button
                             onClick={() => setReferenced(prev => prev.filter(p => p.id !== ref.id))}

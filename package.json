@@ -1,7 +1,7 @@
 {
   "name": "icotes",
   "private": true,
-  "version": "1.10.1",
+  "version": "1.11.1",
   "type": "module",
   "scripts": {
     "dev": "npm run build && cd backend && uv run python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload --log-config logging.conf",
@@ -101,7 +101,7 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
-    "@playwright/test": "^1.55.0",
+    "@playwright/test": "^1.55.1",
     "@testing-library/jest-dom": "^6.8.0",
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^14.6.1",

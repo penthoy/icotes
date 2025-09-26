@@ -49,6 +49,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Improved overall maintainability of the agent system
   - Centralized prompt template management for easier updates
 
+## [1.9.1] - 2025-09-26
+
+### Changed
+- Upload Files popup now appears only for multi-file actions; single-file drops upload silently with background progress. Removed dedicated chat dropzone overlay and legacy popup controls to streamline UX.
+  - Files: `src/icui/components/explorer/ExplorerDropProvider.tsx`, `src/icui/components/media/GlobalUploadManager.tsx`, `src/icui/components/media/upload/UploadWidget.tsx`, `src/icui/components/panels/ICUIChat.tsx`, tests under `src/tests/media/`.
+
 ## [1.8.0] - Git Panel Robustness and UX
 
 - **Robust Git Detection**: Overhauled repository detection to be more resilient.
