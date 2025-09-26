@@ -38,6 +38,7 @@ import { chatBackendClient } from '../../services/chat-backend-client-impl';
 import { useChatHistory } from '../../hooks/useChatHistory';
 import type { MediaAttachment as ChatMediaAttachment } from '../../types/chatTypes';
 import { ICUI_FILE_LIST_MIME, isExplorerPayload } from '../../lib/dnd';
+import { mediaService } from '../../services/mediaService';
 
 interface ICUIChatProps {
   className?: string;
@@ -398,14 +399,20 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
       } as ChatMediaAttachment;
     });
     // Merge in referenced explorer files (kind = file)
-    const referencedAttachments: ChatMediaAttachment[] = referenced.map(ref => ({
-      id: ref.id,
-      kind: 'file',
-      path: ref.path,
-      mime: inferMimeFromName(ref.name),
-      size: 0,
-      meta: { source: 'explorer', filename: ref.name }
-    }));
+    // Since explorer drops now upload files like OS drops, referenced should be empty
+    // But keep this for any edge cases where references still exist
+    const referencedAttachments: ChatMediaAttachment[] = referenced.map(ref => {
+      const mime = inferMimeFromName(ref.name);
+      const isImage = mime.startsWith('image/');
+      return {
+        id: ref.id,
+        kind: isImage ? 'image' : 'file',
+        path: ref.path,
+        mime,
+        size: 0,
+        meta: { source: 'explorer', filename: ref.name }
+      } as ChatMediaAttachment;
+    });
     const attachments = [...uploadAttachments, ...referencedAttachments];
     const hasText = messageContent.length > 0;
     const hasAttachments = attachments.length > 0;
@@ -651,7 +658,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
         setIsDragActive(false);
       }
     };
-    const handleDrop = (e: DragEvent) => {
+    const handleDrop = async (e: DragEvent) => {
       if (!e.dataTransfer) return;
       e.preventDefault();
       setIsDragActive(false);
@@ -662,16 +669,54 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
         try {
           const payload = JSON.parse(raw);
           if (!isExplorerPayload(payload)) return;
-          // Add references (dedupe by path)
-          setReferenced(prev => {
-            const existing = new Set(prev.map(p => p.path));
-            const additions = payload.items
-              .filter((it: any) => !existing.has(it.path))
-              .map((it: any) => ({ id: `ref-${it.path}`, path: it.path, name: it.name, kind: 'file' as const }));
-            if (additions.length === 0) return prev;
-            return [...prev, ...additions];
-          });
-        } catch {/* ignore parse errors */}
+          console.log('[ICUIChat] Processing explorer drag payload:', payload);
+          
+          // Convert explorer file references to actual File objects and upload them
+          // This makes explorer drops work identically to OS file drops
+          const filePromises = payload.items
+            .filter((item: any) => item.type === 'file')
+            .map(async (item: any) => {
+              try {
+                const origin = window.location.origin.replace(/\/$/, '');
+                const apiBase = origin.endsWith('/api') ? origin : `${origin}/api`;
+                const rawUrl = `${apiBase}/files/raw?path=${encodeURIComponent(item.path)}`;
+                console.log('[ICUIChat] Fetching file for upload:', { path: item.path, rawUrl });
+                
+                const resp = await fetch(rawUrl);
+                if (!resp.ok) {
+                  console.warn('[ICUIChat] Failed to fetch file:', resp.status, resp.statusText);
+                  return null;
+                }
+                
+                const blob = await resp.blob();
+                const file = new File([blob], item.name, { type: blob.type });
+                console.log('[ICUIChat] Created File object:', { name: file.name, type: file.type, size: file.size });
+                return file;
+              } catch (err) {
+                console.warn('[ICUIChat] Failed to convert explorer item to File:', item.path, err);
+                return null;
+              }
+            });
+          
+          // Wait for all file conversions and filter out nulls
+          const files = (await Promise.all(filePromises)).filter(f => f !== null) as File[];
+          console.log('[ICUIChat] Converted explorer items to files:', files.length);
+          
+          if (files.length > 0) {
+            // Upload to media and stage for chat (same as OS file drops)
+            uploadApi.addFiles(files, { context: 'chat' });
+            // Stage image previews immediately
+            files.forEach(file => {
+              if (file.type.startsWith('image/')) {
+                const preview = URL.createObjectURL(file);
+                const tempId = `staged-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+                setStaged(prev => [...prev, { id: tempId, file, preview }]);
+              }
+            });
+          }
+        } catch (err) {
+          console.error('[ICUIChat] Failed to process explorer drag:', err);
+        }
         return;
       }
       
@@ -892,16 +937,114 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
             <div ref={composerRef} className={`icui-composer ${isDragActive ? 'ring-2 ring-blue-400 rounded-md transition-colors' : ''}`} data-chat-composer>
               {(staged.length > 0 || referenced.length > 0) && (
                 <div className="flex flex-wrap gap-2 mb-2 items-center" data-chat-attachments>
-                  {referenced.map(ref => (
-                    <div key={ref.id} className="flex items-center gap-1 px-2 py-1 text-xs rounded border bg-opacity-40 group" style={{ borderColor: 'var(--icui-border-subtle)', background: 'var(--icui-bg-secondary)', color: 'var(--icui-text-primary)' }} title={ref.path}>
-                      <span className="truncate max-w-[120px]">{ref.name}</span>
-                      <button
-                        onClick={() => setReferenced(prev => prev.filter(p => p.id !== ref.id))}
-                        className="opacity-60 hover:opacity-100 transition-colors"
-                        title="Remove reference"
-                      >×</button>
-                    </div>
-                  ))}
+                  {referenced.map(ref => {
+                    const mime = inferMimeFromName(ref.name);
+                    const isImage = mime.startsWith('image/');
+                    
+                    if (isImage) {
+                      // Render image preview for referenced files (Explorer drag)
+                      // Use same URL construction pattern as ChatMessage component
+                      const encoded = encodeURIComponent(ref.path);
+                      
+                      // Get base URL - try multiple methods for robustness
+                      let base = '';
+                      try {
+                        base = (mediaService as any).apiUrl ||
+                               mediaService.getAttachmentUrl({
+                                 id: '',
+                                 kind: 'image' as const,
+                                 path: '',
+                                 mime: 'image/png',
+                                 size: 0,
+                                 meta: {}
+                               }).replace(/\/media\/file\/.*/, '') ||
+                               `${window.location.protocol}//${window.location.host}`;
+                      } catch (error) {
+                        console.warn('[ICUIChat] Failed to get base URL from mediaService, using window location:', error);
+                        base = `${window.location.protocol}//${window.location.host}`;
+                      }
+                      // Normalize: remove trailing slash
+                      base = base.replace(/\/$/, '');
+                      // If base already ends with /api, do not add /api again
+                      const hasApi = /\/api$/.test(base);
+                      const apiBase = hasApi ? base : `${base}/api`;
+                      // Prefer binary/media endpoint if available for direct image serving; fallback stays with JSON content endpoint transformed to data URL
+                      const fileContentUrl = `${apiBase}/files/content?path=${encoded}`;
+                      // Use new backend raw file endpoint for direct binary serving
+                      const directMediaUrl = `${apiBase}/files/raw?path=${encoded}`;
+                      // We'll optimistically try directMediaUrl; if it fails we'll fetch JSON and convert
+                      const imageUrl = directMediaUrl;
+                      
+                      console.log('[ICUIChat] Constructing image URL for Explorer reference:', {
+                        path: ref.path,
+                        encoded,
+                        base: apiBase,
+                        imageUrl,
+                        name: ref.name
+                      });
+                      
+                      return (
+                        <div key={ref.id} className="relative group border rounded p-0.5" style={{ borderColor: 'var(--icui-border-subtle)' }} title={ref.path}>
+                          <img 
+                            src={imageUrl} 
+                            alt={ref.name} 
+                            className="w-8 h-8 object-cover rounded"
+                            onError={async (e) => {
+                              if (!e.currentTarget) return; // Safety guard for occasional nulls
+                              console.warn('[ICUIChat] Direct raw file URL failed, attempting JSON content fallback', { directMediaUrl, fileContentUrl, path: ref.path });
+                              try {
+                                const resp = await fetch(fileContentUrl);
+                                if (resp.ok) {
+                                  const json = await resp.json();
+                                  const content = json?.data?.content;
+                                  if (typeof content === 'string') {
+                                    // Assume backend returned raw text; it might be binary base64 already or plain text.
+                                    const looksBase64 = /^[A-Za-z0-9+/=\n\r]+$/.test(content) && content.length % 4 === 0;
+                                    let dataUrl: string;
+                                    if (looksBase64) {
+                                      dataUrl = `data:${mime};base64,${content.replace(/\s+/g,'')}`;
+                                    } else {
+                                      const encodedTxt = encodeURIComponent(content);
+                                      dataUrl = `data:${mime};charset=utf-8,${encodedTxt}`;
+                                    }
+                                    e.currentTarget.src = dataUrl;
+                                    console.log('[ICUIChat] Fallback JSON->dataURL image applied');
+                                    return;
+                                  }
+                                } else {
+                                  console.warn('[ICUIChat] Fallback fetch failed status', resp.status);
+                                }
+                              } catch (err) {
+                                console.error('[ICUIChat] Fallback fetch threw', err);
+                              }
+                              // Final placeholder if all else fails
+                              e.currentTarget.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIGZpbGw9IiMzZjQwNDYiIHJ4PSI0Ii8+PHBhdGggZD0iTTEwIDIwaDEyTTE2IDEyVjI0IiBzdHJva2U9IiNmZmYiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBmaWxsPSJub25lIi8+PC9zdmc+';
+                            }}
+                            onLoad={() => {
+                              console.log('[ICUIChat] Image preview loaded (explorer ref)', { url: imageUrl, path: ref.path });
+                            }}
+                          />
+                          <button
+                            onClick={() => setReferenced(prev => prev.filter(p => p.id !== ref.id))}
+                            className="absolute -top-2 -right-2 bg-red-600 text-white w-4 h-4 rounded-full text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition"
+                            title="Remove reference"
+                          >×</button>
+                        </div>
+                      );
+                    } else {
+                      // Render non-image files as text labels
+                      return (
+                        <div key={ref.id} className="flex items-center gap-1 px-2 py-1 text-xs rounded border bg-opacity-40 group" style={{ borderColor: 'var(--icui-border-subtle)', background: 'var(--icui-bg-secondary)', color: 'var(--icui-text-primary)' }} title={ref.path}>
+                          <span className="truncate max-w-[120px]">{ref.name}</span>
+                          <button
+                            onClick={() => setReferenced(prev => prev.filter(p => p.id !== ref.id))}
+                            className="opacity-60 hover:opacity-100 transition-colors"
+                            title="Remove reference"
+                          >×</button>
+                        </div>
+                      );
+                    }
+                  })}
                   {staged.map(att => (
                     <div key={att.id} className="relative group border rounded p-0.5" style={{ borderColor: 'var(--icui-border-subtle)' }}>
                       {att.preview ? (

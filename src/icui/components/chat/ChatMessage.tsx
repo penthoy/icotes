@@ -65,7 +65,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', high
         return (
           <div key={attachment.id} className="relative group inline-block mr-1 mb-1">
             <img
-              src={url}
+              src={(attachment.meta?.source === 'explorer' && (attachment as any).dataUrl) ? (attachment as any).dataUrl : url}
               alt={`Attachment ${index + 1}`}
               className="rounded-md border shadow-sm hover:shadow-md transition-shadow cursor-pointer"
               style={{

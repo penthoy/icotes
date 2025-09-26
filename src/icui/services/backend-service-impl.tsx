@@ -314,24 +314,16 @@ export class ICUIBackendService extends EventEmitter {
     const attempt = ++this._initAttempts;
     log.info('ICUIBackendService', 'Auto-initializing service', { attempt });
     try {
-      if (!this.baseUrl || !this.websocketUrl) {
-        if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
-          console.debug('[ICUIBackendService][ensureInitialized] resolving URLs');
-        }
-        await this.initializeUrls();
-      }
-      if (!this.enhancedService) {
-        if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
-          console.debug('[ICUIBackendService][ensureInitialized] creating enhanced service');
-        }
-        this.initializeEnhancedService();
-      }
-      if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
-        console.debug('[ICUIBackendService][ensureInitialized] calling initializeConnection');
-      }
-      await this.initializeConnection();
-      // Note: _initialized is set by connection event handlers, not here
-      // This prevents race condition where we think we're initialized before connection is actually open
+      // Add timeout to prevent blocking indefinitely
+      const initPromise = this.performInitialization();
+      const timeoutPromise = new Promise<void>((_, reject) => {
+        setTimeout(() => reject(new Error('Initialization timeout')), 15000); // 15s timeout
+      });
+      
+      await Promise.race([initPromise, timeoutPromise]);
+    } catch (error) {
+      console.warn('[ICUIBackendService] Initialization failed:', error);
+      // Don't throw - allow the service to continue working with degraded functionality
     } finally {
       this._initializing = false;
       if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
@@ -341,6 +333,27 @@ export class ICUIBackendService extends EventEmitter {
         });
       }
     }
+  }
+
+  private async performInitialization(): Promise<void> {
+    if (!this.baseUrl || !this.websocketUrl) {
+      if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
+        console.debug('[ICUIBackendService][ensureInitialized] resolving URLs');
+      }
+      await this.initializeUrls();
+    }
+    if (!this.enhancedService) {
+      if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
+        console.debug('[ICUIBackendService][ensureInitialized] creating enhanced service');
+      }
+      this.initializeEnhancedService();
+    }
+    if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
+      console.debug('[ICUIBackendService][ensureInitialized] calling initializeConnection');
+    }
+    await this.initializeConnection();
+    // Note: _initialized is set by connection event handlers, not here
+    // This prevents race condition where we think we're initialized before connection is actually open
   }
 
   /**
@@ -948,32 +961,44 @@ export class ICUIBackendService extends EventEmitter {
    * Get connection status
    */
   async getConnectionStatus(): Promise<{ connected: boolean }> {
-    await this.ensureInitialized();
+    // First check if we're already connected without waiting for full initialization
+    // This makes the connection status responsive
     let connected = false;
+    
     if (this.connectionId && this.enhancedService) {
       try {
-        // Prefer precise connection status for our specific connection
+        // Check connection status immediately without waiting for ensureInitialized
         const statusObj: any = (this.enhancedService as any).getConnectionStatus
           ? (this.enhancedService as any).getConnectionStatus(this.connectionId)
           : null;
         if (statusObj && statusObj.status === 'connected') {
           connected = true;
         } else {
-          // Fallback to aggregate service connectivity (may lag briefly)
+          // Fallback to aggregate service connectivity
           connected = this.enhancedService.isConnected();
         }
       } catch (err) {
-        // Non-fatal; leave connected false
+        // Non-fatal; continue with initialization check
         if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
-          console.warn('[ICUIBackendService] getConnectionStatus detail lookup failed', err);
+          console.warn('[ICUIBackendService] getConnectionStatus quick check failed', err);
         }
       }
     }
+    
+    // If not connected yet, try to initialize (but don't block the UI)
+    if (!connected && !this._initializing) {
+      // Start initialization in background but return current status immediately
+      this.ensureInitialized().catch(err => {
+        console.warn('[ICUIBackendService] Background initialization failed:', err);
+      });
+    }
+    
     if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
       console.debug('[ICUIBackendService][getConnectionStatus] returning', {
         connected,
         connectionId: this.connectionId,
-        initialized: this._initialized
+        initialized: this._initialized,
+        initializing: this._initializing
       });
     }
     return { connected };

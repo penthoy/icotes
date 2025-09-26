@@ -183,9 +183,16 @@ const ICUIGit: React.FC<ICUIGitProps> = ({
     }
   }, [loading, loadRepoInfo, loadBranches, loadStatus]);
 
-  // Initial load
+  // Initial load - run in background to not block connection status
   useEffect(() => {
-    loadAll();
+    // Use setTimeout to make this non-blocking
+    const timeoutId = setTimeout(() => {
+      loadAll().catch(error => {
+        console.warn('[ICUIGit] Initial load failed:', error);
+      });
+    }, 0);
+    
+    return () => clearTimeout(timeoutId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

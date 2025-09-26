@@ -491,6 +491,31 @@ class RestAPI:
             except Exception as e:
                 logger.error(f"Error reading file: {e}")
                 raise HTTPException(status_code=500, detail=str(e))
+
+        @self.app.get("/api/files/raw")
+        async def get_file_raw(path: str):
+            """Return raw (binary) file bytes for previews (images, etc.).
+
+            NOTE: This intentionally streams binary data; caller must ensure the path
+            is a legitimate workspace file. We mirror existing filesystem routes' trust
+            model (no extra sandboxing yet)."""
+            try:
+                import os, mimetypes, aiofiles
+                if not os.path.exists(path) or os.path.isdir(path):
+                    raise HTTPException(status_code=404, detail="File not found")
+                # Best-effort mime detection
+                mime, _ = mimetypes.guess_type(path)
+                if mime is None:
+                    mime = "application/octet-stream"
+                async with aiofiles.open(path, 'rb') as f:
+                    data = await f.read()
+                from fastapi import Response
+                return Response(content=data, media_type=mime)
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error(f"Error reading raw file {path}: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
         
         @self.app.post("/api/files")
         async def create_file(request: FileOperationRequest):
