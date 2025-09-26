@@ -496,23 +496,57 @@ class RestAPI:
         async def get_file_raw(path: str):
             """Return raw (binary) file bytes for previews (images, etc.).
 
-            NOTE: This intentionally streams binary data; caller must ensure the path
-            is a legitimate workspace file. We mirror existing filesystem routes' trust
-            model (no extra sandboxing yet)."""
+            Security: Only serves files inside the configured filesystem root or workspace root.
+            """
             try:
                 import os, mimetypes, aiofiles
-                if not os.path.exists(path) or os.path.isdir(path):
-                    raise HTTPException(status_code=404, detail="File not found")
-                # Best-effort mime detection
-                mime, _ = mimetypes.guess_type(path)
-                if mime is None:
-                    mime = "application/octet-stream"
+                from pathlib import Path
                 from fastapi.responses import StreamingResponse
                 from typing import AsyncIterator
 
+                if not path:
+                    raise HTTPException(status_code=400, detail="path query parameter required")
+
+                # Resolve workspace_root and fs_root similar to download endpoint
+                current_dir = os.getcwd()
+                if os.path.basename(current_dir) == "backend":
+                    workspace_root = os.path.abspath(os.path.join(current_dir, os.pardir))
+                else:
+                    workspace_root = os.path.abspath(current_dir)
+                fs_root = self.filesystem_service.root_path if self.filesystem_service else workspace_root
+
+                candidates: list[str] = []
+                if os.path.isabs(path):
+                    candidates.append(os.path.abspath(path))
+                else:
+                    candidates.append(os.path.abspath(os.path.join(fs_root, path.lstrip('/'))))
+                    if fs_root != workspace_root:
+                        candidates.append(os.path.abspath(os.path.join(workspace_root, path.lstrip('/'))))
+
+                abs_path = None
+                for cand in candidates:
+                    if os.path.exists(cand):
+                        abs_path = cand
+                        break
+
+                if abs_path is None or os.path.isdir(abs_path):
+                    raise HTTPException(status_code=404, detail="File not found")
+
+                # Security: ensure selected path is inside either fs_root or workspace_root
+                if not (abs_path.startswith(fs_root) or abs_path.startswith(workspace_root)):
+                    raise HTTPException(status_code=400, detail="Path outside workspace root")
+
+                # Best-effort mime detection
+                mime, _ = mimetypes.guess_type(abs_path)
+                if mime is None:
+                    mime = "application/octet-stream"
+
                 async def iter_file() -> AsyncIterator[bytes]:
-                    async with aiofiles.open(path, 'rb') as f:
-                        while chunk := await f.read(1024 * 1024):  # 1MB chunks
+                    async with aiofiles.open(abs_path, 'rb') as f:
+                        while True:
+                            chunk = await f.read(1024 * 1024)  # 1MB chunks
+                            if not chunk:
+                                break
                             yield chunk
 
                 return StreamingResponse(iter_file(), media_type=mime)

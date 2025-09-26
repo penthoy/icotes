@@ -882,18 +882,18 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
     }
 
     try {
-      const parentPath = file.path.substring(0, file.path.lastIndexOf('/'));
-      const newPath = `${parentPath}/${renameValue.trim()}`.replace(/\/+/g, '/');
+      // Build destination path safely using shared path helpers
+      const parentPath = getParentDirectoryPath(file.path);
+      const newPath = joinPathSegments(parentPath, renameValue.trim());
 
-      // Use the same rename logic as FileOperations
-      if (file.type === 'file') {
-        const content = await backendService.readFile(file.path);
-        await backendService.createFile(newPath, content);
-        await backendService.deleteFile(file.path);
-      } else {
-        await backendService.createDirectory(newPath);
-        await backendService.deleteFile(file.path);
+      // No-op if paths are identical after normalization
+      if (newPath === file.path) {
+        cancelRename();
+        return;
       }
+
+      // Prefer server-side move operation to preserve metadata and handle directories atomically
+      await backendService.moveFile(file.path, newPath);
 
       // Refresh directory and notify parent
       await loadDirectoryRef.current?.(currentPath, { force: true });
