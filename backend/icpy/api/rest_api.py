@@ -507,10 +507,15 @@ class RestAPI:
                 mime, _ = mimetypes.guess_type(path)
                 if mime is None:
                     mime = "application/octet-stream"
-                async with aiofiles.open(path, 'rb') as f:
-                    data = await f.read()
-                from fastapi import Response
-                return Response(content=data, media_type=mime)
+                from fastapi.responses import StreamingResponse
+                from typing import AsyncIterator
+
+                async def iter_file() -> AsyncIterator[bytes]:
+                    async with aiofiles.open(path, 'rb') as f:
+                        while chunk := await f.read(1024 * 1024):  # 1MB chunks
+                            yield chunk
+
+                return StreamingResponse(iter_file(), media_type=mime)
             except HTTPException:
                 raise
             except Exception as e:

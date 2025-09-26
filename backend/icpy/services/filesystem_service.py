@@ -905,7 +905,11 @@ class FileSystemService:
                 return False
 
             # Prevent moving a directory into itself or one of its descendants
-            if os.path.isdir(src_path) and dest_path.startswith(f"{src_path}{os.sep}"):
+            if (
+                os.path.isdir(src_path)
+                and os.path.commonpath([src_path, dest_path]) == src_path
+                and src_path != dest_path
+            ):
                 return False
 
             if os.path.exists(dest_path):

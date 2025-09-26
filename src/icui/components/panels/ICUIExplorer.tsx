@@ -28,6 +28,8 @@ import { backendService, ICUIFileNode, useTheme } from '../../services';
 import { getWorkspaceRoot } from '../../lib';
 import { explorerPreferences } from '../../../lib/utils';
 import { log } from '../../../services/frontend-logger';
+
+const DEBUG_EXPLORER = import.meta.env?.VITE_DEBUG_EXPLORER === 'true';
 import { Button } from '../ui/button';
 import { ContextMenu, useContextMenu } from '../ui/ContextMenu';
 import { globalCommandRegistry } from '../../lib/commandRegistry';
@@ -218,13 +220,13 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
   const loadDirectory = useCallback(async (path: string = getWorkspaceRoot(), opts?: { force?: boolean }) => {
     const now = Date.now();
     if (!opts?.force && now - lastLoadTimeRef.current < 100) {
-      if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
+      if (DEBUG_EXPLORER) {
         console.debug('[ICUIExplorer][loadDirectory] throttled', { path, last: lastLoadTimeRef.current, now });
       }
       return;
     }
     
-    if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
+    if (DEBUG_EXPLORER) {
       console.debug('[ICUIExplorer][loadDirectory] start', { path, force: opts?.force });
     }
     setLoading(true);
@@ -235,7 +237,7 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
     try {
       const connected = await checkConnection();
       if (!connected) {
-        if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
+        if (DEBUG_EXPLORER) {
           console.debug('[ICUIExplorer][loadDirectory] abort (disconnected)', { path });
         }
         // Gracefully exit without flagging an error; connection watcher will retry refresh
@@ -297,7 +299,7 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
       
       setCurrentPath(path);
       setEditablePath(path);
-      if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
+      if (DEBUG_EXPLORER) {
         console.debug('[ICUIExplorer][loadDirectory] success', { count: directoryContents.length });
       }
     } catch (err) {
@@ -309,12 +311,12 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
       }
       log.error('ICUIExplorer', 'Failed to load directory', { path, error: err }, err instanceof Error ? err : undefined);
       setError(message);
-      if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
+      if (DEBUG_EXPLORER) {
         console.debug('[ICUIExplorer][loadDirectory] error', { message });
       }
     } finally {
       setLoading(false);
-      if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
+      if (DEBUG_EXPLORER) {
         console.debug('[ICUIExplorer][loadDirectory] end', { path });
       }
     }
@@ -327,14 +329,14 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
   // Connection monitoring + initial load (listener first to avoid missing early events)
   useEffect(() => {
     let mounted = true;
-    if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
+    if (DEBUG_EXPLORER) {
       console.debug('[ICUIExplorer][mount] effect start', { currentPath });
     }
     const handleConnectionChange = (payload: any) => {
       if (!mounted) return;
       const connected = payload.status === 'connected';
       setIsConnected(connected);
-      if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
+      if (DEBUG_EXPLORER) {
         console.debug('[ICUIExplorer][event] connection_status_changed', { connected });
       }
       if (connected) {
@@ -349,7 +351,7 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
     // Kick off connection check AFTER listener is attached so we don't miss the first event
     (async () => {
       const status = await checkConnection();
-      if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
+      if (DEBUG_EXPLORER) {
         console.debug('[ICUIExplorer][mount] initial checkConnection result', { status });
       }
       if (status) {
@@ -358,7 +360,7 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
       } else {
         // Not yet connected: calling getConnectionStatus() again will trigger ensureInitialized -> connection attempt
         try {
-          if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
+          if (DEBUG_EXPLORER) {
             console.debug('[ICUIExplorer][mount] triggering second status call to start connection');
           }
           await backendService.getConnectionStatus();
@@ -369,7 +371,7 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
     return () => {
       mounted = false;
       backendService.off('connection_status_changed', handleConnectionChange);
-      if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
+      if (DEBUG_EXPLORER) {
         console.debug('[ICUIExplorer][unmount] cleanup');
       }
     };

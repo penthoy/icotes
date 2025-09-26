@@ -55,11 +55,11 @@ export function planExplorerMoveOperations({
   uniqueDescriptors.sort((a, b) => a.depth - b.depth);
 
   const minimalDescriptors = uniqueDescriptors.filter((descriptor, index, array) => {
-    const hasDescendant = array.some((other, otherIndex) => {
+    const hasAncestor = array.some((other, otherIndex) => {
       if (index === otherIndex) return false;
-      return isDescendantPath(descriptor.sourcePath, other.sourcePath);
+      return isDescendantPath(other.sourcePath, descriptor.sourcePath);
     });
-    if (hasDescendant) {
+    if (hasAncestor) {
       skipped.push(descriptor.sourcePath);
       return false;
     }

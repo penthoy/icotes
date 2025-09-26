@@ -737,15 +737,18 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
     
     // Check more frequently initially, then less frequently
     const quickInterval = setInterval(checkBackendConnection, 2000); // Check every 2s initially
+    let slowInterval: ReturnType<typeof setInterval> | null = null;
     const slowTimeout = setTimeout(() => {
       clearInterval(quickInterval);
-      const slowInterval = setInterval(checkBackendConnection, 30000); // Then every 30s
-      return () => clearInterval(slowInterval);
+      slowInterval = setInterval(checkBackendConnection, 30000); // Then every 30s
     }, 10000); // Switch to slow interval after 10s
     
     return () => {
       clearInterval(quickInterval);
       clearTimeout(slowTimeout);
+      if (slowInterval) {
+        clearInterval(slowInterval);
+      }
     };
   }, [checkBackendConnection]);
 

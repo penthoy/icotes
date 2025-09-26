@@ -251,7 +251,7 @@ export class ExplorerFileOperations {
       log.warn('ExplorerFileOperations', 'Directory listing failed during collision check', { baseDir, error: e });
     }
 
-    const newPath = `${baseDir}/${trimmed}`.replace(/\/+/, '/');
+    const newPath = `${baseDir}/${trimmed}`.replace(/\/+/g, '/');
 
     try {
       await backendService.createFile(newPath);

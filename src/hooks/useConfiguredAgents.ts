@@ -47,7 +47,7 @@ export const useConfiguredAgents = () => {
       setIsLoading(true);
       setError(null);
       const now = Date.now();
-      if (cachedResponse && (now - lastFetchTs) < CACHE_TTL_MS) {
+      if (cachedResponse?.success && (now - lastFetchTs) < CACHE_TTL_MS) {
         const data = cachedResponse;
         setAgents(data.agents);
         setSettings(data.settings || {});
@@ -56,16 +56,34 @@ export const useConfiguredAgents = () => {
       }
 
       if (!inFlight) {
-        inFlight = (async () => {
+        const p = (async () => {
           const response = await fetch('/api/custom-agents/configured');
+          if (!response.ok) {
+            let errBody: any = null;
+            try {
+              errBody = await response.json();
+            } catch {
+              // ignore parse error
+            }
+            return {
+              success: false,
+              error: errBody?.error || `Failed to fetch configured agents (HTTP ${response.status})`
+            } as ConfiguredAgentsResponse;
+          }
           const data: ConfiguredAgentsResponse = await response.json();
-          cachedResponse = data;
-          lastFetchTs = Date.now();
+          if (data.success) {
+            cachedResponse = data;
+            lastFetchTs = Date.now();
+          }
           return data;
         })();
+        inFlight = p;
+        p.finally(() => {
+          if (inFlight === p) inFlight = null;
+        });
       }
 
-      const data = await inFlight.finally(() => { inFlight = null; });
+      const data = await inFlight!;
       
       if (data.success) {
         setAgents(data.agents);
