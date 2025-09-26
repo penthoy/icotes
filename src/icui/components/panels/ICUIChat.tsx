@@ -668,41 +668,17 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
         try {
           const payload = JSON.parse(raw);
           if (!isExplorerPayload(payload)) return;
-          // Convert explorer file references to actual File objects and upload them
-          // This makes explorer drops work identically to OS file drops
-          const filePromises = payload.items
+          // Add references to composer so filenames are visible and agent gets absolute paths
+          const refs = payload.items
             .filter((item: any) => item.type === 'file')
-            .map(async (item: any) => {
-              try {
-                const origin = window.location.origin.replace(/\/$/, '');
-                const apiBase = origin.endsWith('/api') ? origin : `${origin}/api`;
-                const rawUrl = `${apiBase}/files/raw?path=${encodeURIComponent(item.path)}`;
-                
-                const resp = await fetch(rawUrl);
-                if (!resp.ok) return null;
-                
-                const blob = await resp.blob();
-                return new File([blob], item.name, { type: blob.type });
-              } catch (err) {
-                console.warn('[ICUIChat] Failed to convert explorer item to File:', item.path, err);
-                return null;
-              }
-            });
-          
-          // Wait for all file conversions and filter out nulls
-          const files = (await Promise.all(filePromises)).filter(f => f !== null) as File[];
-          
-          if (files.length > 0) {
-            // Upload to media and stage for chat (same as OS file drops)
-            uploadApi.addFiles(files, { context: 'chat' });
-            // Stage image previews immediately
-            files.forEach(file => {
-              if (file.type.startsWith('image/')) {
-                const preview = URL.createObjectURL(file);
-                const tempId = `staged-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-                setStaged(prev => [...prev, { id: tempId, file, preview }]);
-              }
-            });
+            .map((item: any) => ({
+              id: `explorer-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+              path: item.path,
+              name: item.name,
+              kind: 'file' as const
+            }));
+          if (refs.length > 0) {
+            setReferenced(prev => [...prev, ...refs]);
           }
         } catch (err) {
           console.error('[ICUIChat] Failed to process explorer drag:', err);
@@ -715,12 +691,15 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
       if (files.length > 0) {
         // Upload to media and stage for chat
         uploadApi.addFiles(files, { context: 'chat' });
-        // Stage image previews immediately
+        // Stage previews for all files (images get thumbnails, others get file icons)
         files.forEach(file => {
+          const tempId = `staged-${Date.now()}-${Math.random().toString(36).slice(2)}`;
           if (file.type.startsWith('image/')) {
             const preview = URL.createObjectURL(file);
-            const tempId = `staged-${Date.now()}-${Math.random().toString(36).slice(2)}`;
             setStaged(prev => [...prev, { id: tempId, file, preview }]);
+          } else {
+            // For non-images, stage without preview (will show file icon)
+            setStaged(prev => [...prev, { id: tempId, file, preview: '' }]);
           }
         });
       }
@@ -925,7 +904,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
           <div className="space-y-2">
             {/* Modern Composer - preserves previous layout (textarea on top, controls at bottom) */}
             <div ref={composerRef} className={`icui-composer ${isDragActive ? 'ring-2 ring-blue-400 rounded-md transition-colors' : ''}`} data-chat-composer>
-              {(staged.length > 0 || referenced.length > 0) && (
+              {(referenced.length > 0 || staged.length > 0) && (
                 <div className="flex flex-wrap gap-2 mb-2 items-center" data-chat-attachments>
                   {referenced.map(ref => {
                     const mime = inferMimeFromName(ref.name);
@@ -1036,12 +1015,15 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
                     }
                   })}
                   {staged.map(att => (
-                    <div key={att.id} className="relative group border rounded p-0.5" style={{ borderColor: 'var(--icui-border-subtle)' }}>
+                    <div key={att.id} className="relative group border rounded p-1 flex items-center gap-2 max-w-[220px]" style={{ borderColor: 'var(--icui-border-subtle)', background: 'var(--icui-bg-secondary)' }} title={att.file.name}>
                       {att.preview ? (
-                        <img src={att.preview} alt={att.file.name} className="w-8 h-8 object-cover rounded" />
+                        <img src={att.preview} alt={att.file.name} className="w-8 h-8 object-cover rounded flex-shrink-0" />
                       ) : (
-                        <div className="w-8 h-8 flex items-center justify-center text-[10px]" style={{ background: 'var(--icui-bg-secondary)', color: 'var(--icui-text-secondary)' }}>{att.file.name.split('.').pop()?.toUpperCase()}</div>
+                        <div className="w-8 h-8 flex items-center justify-center text-[10px] rounded flex-shrink-0" style={{ background: 'var(--icui-bg-tertiary)', color: 'var(--icui-text-secondary)' }}>{att.file.name.split('.').pop()?.toUpperCase()}</div>
                       )}
+                      <div className="min-w-0">
+                        <div className="text-xs truncate" style={{ color: 'var(--icui-text-primary)' }}>{att.file.name}</div>
+                      </div>
                       <button
                         onClick={() => removeStaged(att.id)}
                         className="absolute -top-2 -right-2 bg-red-600 text-white w-4 h-4 rounded-full text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition"
@@ -1093,7 +1075,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
                     <button
                       className="icui-button"
                       onClick={() => handleSendMessage()}
-                      disabled={(!inputValue.trim() && !uploadApi.uploads.some(u => u.context === 'chat')) || !isConnected || isLoading}
+                      disabled={(!inputValue.trim() && !uploadApi.uploads.some(u => u.context === 'chat') && referenced.length === 0) || !isConnected || isLoading}
                       title="Send message (Enter)"
                     >
                       <Send size={16} />

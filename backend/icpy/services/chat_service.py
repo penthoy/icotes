@@ -265,7 +265,15 @@ class ChatService:
 
                 # Fallback filename from metadata
                 if not filename:
-                    filename = item.get('filename') or item.get('name') or att_id or 'attachment'
+                    # Prefer nested meta.filename if present
+                    try:
+                        meta = item.get('meta') or {}
+                        if isinstance(meta, dict) and meta.get('filename'):
+                            filename = str(meta.get('filename'))
+                    except Exception:
+                        pass
+                    if not filename:
+                        filename = item.get('filename') or item.get('name') or att_id or 'attachment'
 
                 # Build URL helper (served via /api/media/file/{id} if we have a proper id)
                 url = None

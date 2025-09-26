@@ -325,7 +325,8 @@ class OpenAIAgentWrapper(BaseAgentWrapper):
                 return None
 
             # Try to read file bytes from media service base dir using relative_path
-            rel = att.get('relative_path') or att.get('rel_path') or att.get('path')
+            rel = att.get('relative_path') or att.get('rel_path')
+            path_field = att.get('path')
             if isinstance(rel, str) and rel:
                 try:
                     # Lazy import to avoid hard dependency
@@ -342,10 +343,26 @@ class OpenAIAgentWrapper(BaseAgentWrapper):
                 except Exception:
                     pass
 
+            # If we have an absolute filesystem path (explorer reference), try to embed directly
+            if isinstance(path_field, str) and path_field and path_field.startswith('/'):
+                try:
+                    import os
+                    if os.path.exists(path_field) and os.path.isfile(path_field):
+                        with open(path_field, 'rb') as f:
+                            b64 = base64.b64encode(f.read()).decode('ascii')
+                        data_url = f"data:{mime};base64,{b64}"
+                        return {"type": "image_url", "image_url": {"url": data_url}}
+                except Exception:
+                    pass
+
             # Fallback to API URL by id (works only if OpenAI can fetch it)
             att_id = att.get('id')
-            if att_id:
+            if att_id and not str(att_id).startswith('explorer-'):
                 return {"type": "image_url", "image_url": {"url": f"/api/media/file/{att_id}"}}
+            # As a final fallback for explorer refs, point to raw file endpoint
+            if isinstance(path_field, str) and path_field:
+                from urllib.parse import quote as _quote
+                return {"type": "image_url", "image_url": {"url": f"/api/files/raw?path={_quote(path_field)}"}}
         except Exception:
             return None
         return None
