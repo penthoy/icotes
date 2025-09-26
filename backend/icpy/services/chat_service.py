@@ -717,27 +717,24 @@ class ChatService:
                             mime = att.get('mime_type') or att.get('mime') or ''
                             if not ((isinstance(mime, str) and mime.startswith('image/')) or kind in ('image', 'images')):
                                 continue
-                            # Prefer dataUrl provided by frontend (e.g., explorer reference converted client-side)
-                            data_url = att.get('dataUrl') or att.get('data_url')
-                            if not data_url or not isinstance(data_url, str) or not data_url.startswith('data:image/'):
-                                # Fallback: try embedding from relative path
-                                rel = att.get('relative_path') or att.get('rel_path') or att.get('path')
-                                if isinstance(rel, str) and rel:
-                                    try:
-                                        abs_path = (media.base_dir / rel).resolve()
-                                        abs_path.relative_to(media.base_dir)
-                                        if abs_path.exists() and abs_path.is_file():
-                                            import base64
-                                            with open(abs_path, 'rb') as f:
-                                                b64 = base64.b64encode(f.read()).decode('ascii')
-                                            data_url = f"data:{mime};base64,{b64}"
-                                    except Exception:
-                                        data_url = None
-                                # Final fallback for uploaded media (not explorer refs)
-                                if not data_url:
-                                    att_id = att.get('id')
-                                    if att_id and not str(att_id).startswith('explorer-'):
-                                        data_url = f"/api/media/file/{att_id}"
+                            # Prefer embedding as data URL from media service
+                            rel = att.get('relative_path') or att.get('rel_path') or att.get('path')
+                            data_url = None
+                            if isinstance(rel, str) and rel:
+                                try:
+                                    abs_path = (media.base_dir / rel).resolve()
+                                    abs_path.relative_to(media.base_dir)
+                                    if abs_path.exists() and abs_path.is_file():
+                                        import base64
+                                        with open(abs_path, 'rb') as f:
+                                            b64 = base64.b64encode(f.read()).decode('ascii')
+                                        data_url = f"data:{mime};base64,{b64}"
+                                except Exception:
+                                    data_url = None
+                            if not data_url:
+                                att_id = att.get('id')
+                                if att_id:
+                                    data_url = f"/api/media/file/{att_id}"
                             if data_url:
                                 content_parts.append({"type": "image_url", "image_url": {"url": data_url}})
                         except Exception:

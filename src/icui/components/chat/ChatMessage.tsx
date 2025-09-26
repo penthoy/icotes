@@ -42,17 +42,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', high
   
   // Attachment rendering helper
   const renderAttachment = useCallback((attachment: MediaAttachment, index: number) => {
-    // Determine URL: if source is 'explorer' in meta (path reference) and id looks like ref-<path>, build download/content link
-    let url: string;
-    const source = attachment.meta?.source;
-    if (source === 'explorer' && attachment.path) {
-      // Provide raw file content endpoint; fallback to download endpoint if needed
-      const encoded = encodeURIComponent(attachment.path);
-      const base = (mediaService as any).apiUrl || mediaService.getAttachmentUrl({ ...attachment, id: '' }).replace(/\/media\/file\/.*/, ''); // hacky but keeps consistent origin
-      url = `${base}/files/content?path=${encoded}`;
-    } else {
-      url = mediaService.getAttachmentUrl(attachment);
-    }
+    const url = mediaService.getAttachmentUrl(attachment);
     const filename = (() => {
       const raw = (attachment.path ?? '').toString();
       const last = raw.split('/').pop();
@@ -65,7 +55,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', high
         return (
           <div key={attachment.id} className="relative group inline-block mr-1 mb-1">
             <img
-              src={(attachment.meta?.source === 'explorer' && (attachment as any).dataUrl) ? (attachment as any).dataUrl : url}
+              src={url}
               alt={`Attachment ${index + 1}`}
               className="rounded-md border shadow-sm hover:shadow-md transition-shadow cursor-pointer"
               style={{
@@ -135,16 +125,14 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', high
                 {filename || 'Unknown file'}
               </div>
               <div className="text-xs" style={{ color: 'var(--icui-text-secondary)' }}>
-                {source === 'explorer' ? 'ref • workspace file' : (typeof sizeKb === 'number' ? `${sizeKb.toFixed(1)} KB` : '')}
+                {typeof sizeKb === 'number' ? `${sizeKb.toFixed(1)} KB` : ''}
               </div>
             </div>
             <button
               onClick={() => {
                 const link = document.createElement('a');
                 link.href = url;
-                if (source !== 'explorer') {
-                  link.download = filename || 'file';
-                }
+                link.download = filename || 'file';
                 link.click();
               }}
               className="p-1 rounded hover:bg-opacity-10 hover:bg-current transition-colors"

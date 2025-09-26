@@ -324,11 +324,6 @@ class OpenAIAgentWrapper(BaseAgentWrapper):
             if not ((isinstance(mime, str) and mime.startswith('image')) or kind == 'images'):
                 return None
 
-            # Direct dataUrl provided by frontend (e.g., explorer reference converted client-side)
-            direct_data = att.get('dataUrl') or att.get('data_url')
-            if isinstance(direct_data, str) and direct_data.startswith('data:image/'):
-                return {"type": "image_url", "image_url": {"url": direct_data}}
-
             # Try to read file bytes from media service base dir using relative_path
             rel = att.get('relative_path') or att.get('rel_path') or att.get('path')
             if isinstance(rel, str) and rel:
@@ -349,7 +344,7 @@ class OpenAIAgentWrapper(BaseAgentWrapper):
 
             # Fallback to API URL by id (works only if OpenAI can fetch it)
             att_id = att.get('id')
-            if att_id and not str(att_id).startswith('explorer-'):
+            if att_id:
                 return {"type": "image_url", "image_url": {"url": f"/api/media/file/{att_id}"}}
         except Exception:
             return None

@@ -399,8 +399,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
       } as ChatMediaAttachment;
     });
     // Merge in referenced explorer files (kind = file)
-    // Since explorer drops now upload files like OS drops, referenced should be empty
-    // But keep this for any edge cases where references still exist
+    // Legacy: handle any remaining file references (should be rare now that explorer drops upload files)
     const referencedAttachments: ChatMediaAttachment[] = referenced.map(ref => {
       const mime = inferMimeFromName(ref.name);
       const isImage = mime.startsWith('image/');
@@ -669,8 +668,6 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
         try {
           const payload = JSON.parse(raw);
           if (!isExplorerPayload(payload)) return;
-          console.log('[ICUIChat] Processing explorer drag payload:', payload);
-          
           // Convert explorer file references to actual File objects and upload them
           // This makes explorer drops work identically to OS file drops
           const filePromises = payload.items
@@ -680,18 +677,12 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
                 const origin = window.location.origin.replace(/\/$/, '');
                 const apiBase = origin.endsWith('/api') ? origin : `${origin}/api`;
                 const rawUrl = `${apiBase}/files/raw?path=${encodeURIComponent(item.path)}`;
-                console.log('[ICUIChat] Fetching file for upload:', { path: item.path, rawUrl });
                 
                 const resp = await fetch(rawUrl);
-                if (!resp.ok) {
-                  console.warn('[ICUIChat] Failed to fetch file:', resp.status, resp.statusText);
-                  return null;
-                }
+                if (!resp.ok) return null;
                 
                 const blob = await resp.blob();
-                const file = new File([blob], item.name, { type: blob.type });
-                console.log('[ICUIChat] Created File object:', { name: file.name, type: file.type, size: file.size });
-                return file;
+                return new File([blob], item.name, { type: blob.type });
               } catch (err) {
                 console.warn('[ICUIChat] Failed to convert explorer item to File:', item.path, err);
                 return null;
@@ -700,7 +691,6 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
           
           // Wait for all file conversions and filter out nulls
           const files = (await Promise.all(filePromises)).filter(f => f !== null) as File[];
-          console.log('[ICUIChat] Converted explorer items to files:', files.length);
           
           if (files.length > 0) {
             // Upload to media and stage for chat (same as OS file drops)
