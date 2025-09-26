@@ -47,15 +47,15 @@ describe('Phase 3 Media Components', () => {
       vi.clearAllMocks();
     });
 
-    it('renders header and helper text when open', () => {
+    it('renders header and basic guidance when open (no manual browse)', () => {
       render(<UploadWidget {...defaultProps} />);
       expect(screen.getByText('Upload Files')).toBeInTheDocument();
-      // New helper guidance paragraph
+      // Updated guidance copy (multi-file panel purpose)
       expect(
-        screen.getByText(/Use the contextual drop zones/)
+        screen.getByText(/This panel appears when you add multiple files/)
       ).toBeInTheDocument();
-      // Primary manual select button
-      expect(screen.getByText('Browse Files')).toBeInTheDocument();
+      // The legacy "Browse Files" button has been intentionally removed.
+      expect(screen.queryByText('Browse Files')).not.toBeInTheDocument();
     });
 
     it('hides when closed', () => {

@@ -202,6 +202,10 @@ export class WebSocketMigrationHelper {
 
   private initializeEnhancedService(): void {
     try {
+      // Prevent double initialization
+      if (this.enhancedService) {
+        return; // Already initialized
+      }
       this.enhancedService = new EnhancedWebSocketService({
         enableMessageQueue: true,
         enableHealthMonitoring: true,
@@ -217,7 +221,7 @@ export class WebSocketMigrationHelper {
         }
       });
 
-      console.log('Enhanced WebSocket service initialized');
+      console.log('WebSocket service initialized');
     } catch (error) {
       console.error('Failed to initialize enhanced WebSocket service:', error);
       this.enhancedService = null;

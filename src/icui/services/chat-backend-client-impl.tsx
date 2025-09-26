@@ -517,7 +517,15 @@ export class ChatBackendClient {
           path: a.relative_path || a.rel_path || a.path || a.url || '',
           mime: a.mime_type || a.mime || 'application/octet-stream',
           size: a.size_bytes || a.size || 0,
-          meta: a.meta || undefined
+          meta: (() => {
+            const m = a.meta && typeof a.meta === 'object' ? { ...a.meta } : {};
+            if (a.filename && !m.filename) m.filename = a.filename;
+            // Mark explorer refs by id/path heuristics
+            if (typeof (a.id || '') === 'string' && String(a.id).startsWith('explorer-')) {
+              (m as any).source = 'explorer';
+            }
+            return Object.keys(m).length ? m : undefined;
+          })()
         })) : undefined,
         metadata: {
           agentId: msg.agentId,

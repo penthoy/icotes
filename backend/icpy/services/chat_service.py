@@ -265,7 +265,12 @@ class ChatService:
 
                 # Fallback filename from metadata
                 if not filename:
-                    filename = item.get('filename') or item.get('name') or att_id or 'attachment'
+                    # Prefer nested meta.filename if present
+                    meta = item.get('meta') or {}
+                    if isinstance(meta, dict) and meta.get('filename'):
+                        filename = str(meta['filename'])
+                    if not filename:
+                        filename = item.get('filename') or item.get('name') or att_id or 'attachment'
 
                 # Build URL helper (served via /api/media/file/{id} if we have a proper id)
                 url = None
@@ -717,7 +722,7 @@ class ChatService:
                             mime = att.get('mime_type') or att.get('mime') or ''
                             if not ((isinstance(mime, str) and mime.startswith('image/')) or kind in ('image', 'images')):
                                 continue
-                            # Prefer embedding as data URL
+                            # Prefer embedding as data URL from media service
                             rel = att.get('relative_path') or att.get('rel_path') or att.get('path')
                             data_url = None
                             if isinstance(rel, str) and rel:
@@ -733,7 +738,7 @@ class ChatService:
                                     data_url = None
                             if not data_url:
                                 att_id = att.get('id')
-                                if att_id and not str(att_id).startswith('explorer-'):
+                                if att_id:
                                     data_url = f"/api/media/file/{att_id}"
                             if data_url:
                                 content_parts.append({"type": "image_url", "image_url": {"url": data_url}})

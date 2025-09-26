@@ -42,12 +42,41 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', high
   
   // Attachment rendering helper
   const renderAttachment = useCallback((attachment: MediaAttachment, index: number) => {
-    const url = mediaService.getAttachmentUrl(attachment);
+    // Determine if this is an explorer reference (not an uploaded media asset)
+    const isExplorerRef = Boolean(attachment.meta?.source === 'explorer' || String(attachment.id || '').startsWith('explorer-'));
+
+    // Compute display filename
     const filename = (() => {
+      // Prefer explicit filename from metadata (set during send)
+      const explicit = attachment.meta?.filename;
+      if (explicit && typeof explicit === 'string' && explicit.trim().length > 0) return explicit;
       const raw = (attachment.path ?? '').toString();
       const last = raw.split('/').pop();
-      return last && last.length > 0 ? last : (attachment.meta?.filename || (attachment.kind === 'image' ? 'image' : attachment.kind === 'audio' ? 'audio' : 'file'));
+      return last && last.length > 0 ? last : (attachment.kind === 'image' ? 'image' : attachment.kind === 'audio' ? 'audio' : 'file');
     })();
+
+    // Build URL based on attachment source
+    let url = '';
+    if (isExplorerRef) {
+      // For explorer references, use filesystem endpoints
+      try {
+        const base = (mediaService as any).apiUrl || mediaService["getFileUrl"]?.call(mediaService, 'files', '')?.replace(/\/media\/.*$/, '') || `${window.location.protocol}//${window.location.host}/api`;
+        const encoded = encodeURIComponent(attachment.path);
+        // For images/audio inline previews, prefer raw bytes; for downloads, use download endpoint
+        if (attachment.kind === 'image' || attachment.kind === 'audio') {
+          url = `${base.replace(/\/$/, '')}/files/raw?path=${encoded}`;
+        } else {
+          url = `${base.replace(/\/$/, '')}/files/download?path=${encoded}`;
+        }
+      } catch {
+        // Fallback to raw endpoint path-only
+        const encoded = encodeURIComponent(attachment.path);
+        url = `/api/files/raw?path=${encoded}`;
+      }
+    } else {
+      // For uploaded media, use media service endpoint
+      url = mediaService.getAttachmentUrl(attachment as any);
+    }
     const sizeKb = typeof attachment.size === 'number' ? (attachment.size / 1024) : undefined;
     
     switch (attachment.kind) {
@@ -72,7 +101,14 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', high
                 onClick={(e) => {
                   e.stopPropagation();
                   const link = document.createElement('a');
-                  link.href = url;
+                  // For explorer refs, prefer download endpoint to force save
+                  if (isExplorerRef) {
+                    const encoded = encodeURIComponent(attachment.path);
+                    const base = url.includes('/files/raw') ? url.replace(/\/files\/raw\?.*$/, '') : url.replace(/\/media\/file\/.*$/, '');
+                    link.href = `${base}/files/download?path=${encoded}`;
+                  } else {
+                    link.href = url;
+                  }
                   link.download = filename;
                   link.click();
                 }}
@@ -99,7 +135,13 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', high
             <button
               onClick={() => {
                 const link = document.createElement('a');
-                link.href = url;
+                if (isExplorerRef) {
+                  const encoded = encodeURIComponent(attachment.path);
+                  const base = url.includes('/files/raw') ? url.replace(/\/files\/raw\?.*$/, '') : url.replace(/\/media\/file\/.*$/, '');
+                  link.href = `${base}/files/download?path=${encoded}`;
+                } else {
+                  link.href = url;
+                }
                 link.download = filename;
                 link.click();
               }}
@@ -131,7 +173,14 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', high
             <button
               onClick={() => {
                 const link = document.createElement('a');
-                link.href = url;
+                if (isExplorerRef) {
+                  const encoded = encodeURIComponent(attachment.path);
+                  // Use download endpoint for non-images
+                  const base = url.includes('/files/') ? url.replace(/\/files\/.+$/, '') : (mediaService as any).apiUrl || '/api';
+                  link.href = `${base.replace(/\/$/, '')}/files/download?path=${encoded}`;
+                } else {
+                  link.href = url;
+                }
                 link.download = filename || 'file';
                 link.click();
               }}

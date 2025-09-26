@@ -728,11 +728,28 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
     }
   }, [connectionStatus.connected, effectiveWorkspaceRoot]); // FIXED: Remove activeFileId dependency to prevent reloading on tab switch
 
-  // Initialize backend connection
+  // Initialize backend connection with faster initial check
   useEffect(() => {
-    checkBackendConnection();
-    const interval = setInterval(checkBackendConnection, 30000); // Check every 30s
-    return () => clearInterval(interval);
+    // Initial connection check
+    checkBackendConnection().catch(error => {
+      console.warn('[ICUIEditor] Initial connection check failed:', error);
+    });
+    
+    // Check more frequently initially, then less frequently
+    const quickInterval = setInterval(checkBackendConnection, 2000); // Check every 2s initially
+    let slowInterval: ReturnType<typeof setInterval> | null = null;
+    const slowTimeout = setTimeout(() => {
+      clearInterval(quickInterval);
+      slowInterval = setInterval(checkBackendConnection, 30000); // Then every 30s
+    }, 10000); // Switch to slow interval after 10s
+    
+    return () => {
+      clearInterval(quickInterval);
+      clearTimeout(slowTimeout);
+      if (slowInterval) {
+        clearInterval(slowInterval);
+      }
+    };
   }, [checkBackendConnection]);
 
   // Auto-load files disabled to start with empty editor

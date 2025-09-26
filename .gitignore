@@ -110,3 +110,6 @@ workspace/.icotes/chat_history/
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+
+# Playwright
+/playwright/.auth/

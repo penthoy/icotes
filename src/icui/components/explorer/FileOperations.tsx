@@ -1,10 +1,3 @@
-/**
- * ICUI Explorer File Operations
- * 
- * Provides file operation commands for the Explorer panel with multi-select support.
- * Integrates with the command registry to enable context menu actions.
- */
-
 import { Command, CommandUtils, globalCommandRegistry } from '../../lib/commandRegistry';
 import { backendService, ICUIFileNode } from '../../services';
 import { log } from '../../../services/frontend-logger';
@@ -33,6 +26,8 @@ export interface FileOperationContext {
 export class ExplorerFileOperations {
   private static instance: ExplorerFileOperations | null = null;
   private clipboard: { operation: 'copy' | 'cut'; files: ICUIFileNode[] } | null = null;
+  // Track whether commands have been registered to avoid duplicate registrations
+  private registered = false;
 
   static getInstance(): ExplorerFileOperations {
     if (!ExplorerFileOperations.instance) {
@@ -45,6 +40,11 @@ export class ExplorerFileOperations {
    * Register all file operation commands
    */
   registerCommands(): void {
+    if (this.registered) {
+      // Avoid noisy duplicate registrations during HMR or remounts
+      log.debug('ExplorerFileOperations', 'registerCommands skipped (already registered)');
+      return;
+    }
     const commands: Command[] = [
       // File/Folder Creation
       CommandUtils.createWithShortcut(
@@ -177,12 +177,16 @@ export class ExplorerFileOperations {
     });
 
     log.info('ExplorerFileOperations', 'Registered file operation commands', { count: commands.length });
+    this.registered = true;
   }
 
   /**
    * Unregister all file operation commands
    */
   unregisterCommands(): void {
+    if (!this.registered) {
+      return; // Nothing to do
+    }
     const commandIds = [
       'explorer.newFile',
       'explorer.newFolder',
@@ -202,6 +206,7 @@ export class ExplorerFileOperations {
     });
 
     log.info('ExplorerFileOperations', 'Unregistered file operation commands');
+    this.registered = false;
   }
 
   /**
@@ -217,14 +222,10 @@ export class ExplorerFileOperations {
     if (!fileName || !fileName.trim()) return;
 
     const trimmed = fileName.trim();
-
-    // Determine base directory for creation (context menu right-click aware)
     let baseDir = (context.targetDirectoryPath || context.currentPath || '/').replace(/\/+$/, '');
     if (baseDir === '') baseDir = '/';
 
-    // Guard: prevent path traversal attempts
     if (trimmed.includes('..')) {
-      // Use themed confirm dialog instead of alert
       await confirmService.confirm({
         title: 'Invalid Name',
         message: 'The file name contains an invalid path sequence (..).',
@@ -235,7 +236,6 @@ export class ExplorerFileOperations {
     }
 
     try {
-      // Pre-flight: check for name collision in target directory
       const siblings = await backendService.getDirectoryContents(baseDir, true).catch(() => [] as ICUIFileNode[]);
       const conflict = siblings.find(s => s.name === trimmed);
       if (conflict) {
@@ -248,7 +248,6 @@ export class ExplorerFileOperations {
         return;
       }
     } catch (e) {
-      // Non-fatal; continue (best-effort collision detection)
       log.warn('ExplorerFileOperations', 'Directory listing failed during collision check', { baseDir, error: e });
     }
 
@@ -256,7 +255,8 @@ export class ExplorerFileOperations {
 
     try {
       await backendService.createFile(newPath);
-      await context.refreshDirectory();
+      // Skipping manual refresh to rely on filesystem event emission
+      log.debug('ExplorerFileOperations', 'Skipped manual refresh after file create; waiting for filesystem event', { path: newPath });
       context.onFileCreate?.(newPath);
       log.info('ExplorerFileOperations', 'Created new file', { path: newPath });
     } catch (error) {
@@ -265,9 +265,6 @@ export class ExplorerFileOperations {
     }
   }
 
-  /**
-   * Create a new folder in the current directory
-   */
   private async createNewFolder(context?: FileOperationContext): Promise<void> {
     if (!context) {
       log.warn('ExplorerFileOperations', 'createNewFolder called without context');
@@ -276,11 +273,16 @@ export class ExplorerFileOperations {
 
     const folderName = await promptService.prompt({ title: 'New Folder', message: 'Enter folder name:', placeholder: 'my-folder' });
     if (!folderName || !folderName.trim()) return;
-
     const trimmed = folderName.trim();
 
-    let baseDir = (context.targetDirectoryPath || context.currentPath || '/').replace(/\/+$/, '');
-    if (baseDir === '') baseDir = '/';
+    // Defensive resolution of base directory
+    let baseDirRaw = (context.targetDirectoryPath || context.currentPath || '/');
+    baseDirRaw = baseDirRaw.replace(/\\/g, '/').replace(/\/+$/, '');
+    if (baseDirRaw === '') baseDirRaw = '/';
+    if (context.selectedFiles.length === 1 && context.selectedFiles[0].type === 'file' && context.selectedFiles[0].path === baseDirRaw) {
+      baseDirRaw = baseDirRaw.includes('/') ? (baseDirRaw.substring(0, baseDirRaw.lastIndexOf('/')) || '/') : '/';
+    }
+    const baseDir = baseDirRaw;
 
     if (trimmed.includes('..')) {
       await confirmService.confirm({
@@ -308,11 +310,16 @@ export class ExplorerFileOperations {
       log.warn('ExplorerFileOperations', 'Directory listing failed during folder collision check', { baseDir, error: e });
     }
 
-    const newPath = `${baseDir}/${trimmed}`.replace(/\/+/g, '/');
-
+    const newPath = `${baseDir}/${trimmed}`.replace(/\\/g, '/').replace(/\/+/, '/');
+    log.debug('ExplorerFileOperations', 'Creating folder', { baseDir, newPath });
     try {
       await backendService.createDirectory(newPath);
-      await context.refreshDirectory();
+      // NOTE: Intentionally skipping immediate manual refresh to avoid double refresh.
+      // The backend emits an fs.directory_created event which the Explorer listens for
+      // and triggers a (debounced) refresh. Previously we refreshed here AND from the
+      // event handler, causing two rapid refreshes and visible flicker. If for some
+      // reason the event does not arrive, we can add a fallback timer-based refresh.
+      log.debug('ExplorerFileOperations', 'Skipped manual refresh; waiting for filesystem event', { newPath });
       context.onFolderCreate?.(newPath);
       log.info('ExplorerFileOperations', 'Created new folder', { path: newPath });
     } catch (error) {
@@ -321,34 +328,27 @@ export class ExplorerFileOperations {
     }
   }
 
-  /**
-   * Rename a single file or folder
-   */
   private async renameFile(context?: FileOperationContext): Promise<void> {
     if (!context || context.selectedFiles.length !== 1) {
       log.warn('ExplorerFileOperations', 'renameFile requires exactly one selected file');
       return;
     }
-
     const file = context.selectedFiles[0];
-  const newName = await promptService.prompt({ title: 'Rename', message: 'Enter new name:', initialValue: file.name });
-  if (!newName || !newName.trim() || newName.trim() === file.name) return;
-
+    const newName = await promptService.prompt({ title: 'Rename', message: 'Enter new name:', initialValue: file.name });
+    if (!newName || !newName.trim() || newName.trim() === file.name) return;
     const parentPath = file.path.substring(0, file.path.lastIndexOf('/'));
-    const newPath = `${parentPath}/${newName.trim()}`.replace(/\/+/g, '/');
-
+    const newPath = `${parentPath}/${newName.trim()}`.replace(/\/+/, '/');
     try {
-      // For rename, we'll read content, create new file, and delete old one
       if (file.type === 'file') {
         const content = await backendService.readFile(file.path);
         await backendService.createFile(newPath, content);
         await backendService.deleteFile(file.path);
       } else {
-        // For directories, create new directory and delete old one (simplified)
         await backendService.createDirectory(newPath);
         await backendService.deleteFile(file.path);
       }
-      await context.refreshDirectory();
+      // Rely on create/delete filesystem events instead of manual refresh
+      log.debug('ExplorerFileOperations', 'Skipped manual refresh after rename; waiting for filesystem events', { oldPath: file.path, newPath });
       context.onFileRename?.(file.path, newPath);
       log.info('ExplorerFileOperations', 'Renamed file', { oldPath: file.path, newPath });
     } catch (error) {
@@ -381,8 +381,8 @@ export class ExplorerFileOperations {
       await Promise.all(
         context.selectedFiles.map(file => backendService.deleteFile(file.path))
       );
-      
-      await context.refreshDirectory();
+      // Deletion events will trigger explorer refresh via watcher
+      log.debug('ExplorerFileOperations', 'Skipped manual refresh after deletions; waiting for filesystem events', { count: context.selectedFiles.length });
       
       // Notify about deletions
       context.selectedFiles.forEach(file => {
@@ -429,7 +429,8 @@ export class ExplorerFileOperations {
         }
       }
 
-      await context.refreshDirectory();
+      // Duplicate operations create new entries; rely on watcher events
+      log.debug('ExplorerFileOperations', 'Skipped manual refresh after duplicate; waiting for filesystem events', { count: context.selectedFiles.length });
       log.info('ExplorerFileOperations', 'Duplicated files', { 
         count: context.selectedFiles.length 
       });
@@ -519,7 +520,8 @@ export class ExplorerFileOperations {
         this.clipboard = null;
       }
 
-      await context.refreshDirectory();
+      // Paste (copy/cut) results in creates (and maybe deletes) -> rely on watcher events
+      log.debug('ExplorerFileOperations', 'Skipped manual refresh after paste; waiting for filesystem events', { operation: this.clipboard?.operation });
       log.info('ExplorerFileOperations', 'Pasted files', { 
         operation: this.clipboard?.operation,
         count: this.clipboard?.files.length

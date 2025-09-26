@@ -133,7 +133,12 @@
 - CLI integration for file operations and AI assistant hooks
 
 ---
-*Last updated: August 23, 2025*
+*Last updated: September 26, 2025*
+
+## September 26, 2025
+
+- Upload Files popup behavior refined for multi-file actions only. Single-file drops/upload run silently with progress; multi-file drops open the popup queue with progress. Removed legacy chat global overlay and unused popup buttons to simplify UX.
+  - Files: `src/icui/components/explorer/ExplorerDropProvider.tsx`, `src/icui/components/media/GlobalUploadManager.tsx`, `src/icui/components/media/upload/UploadWidget.tsx`, `src/icui/components/panels/ICUIChat.tsx`, tests under `src/tests/media/`.
 
 ### Path Refactoring and Rebranding (August 2025)
 - **Task**: Comprehensive refactoring of hardcoded paths and complete rebranding from "ilaborcode" to "icotes"
