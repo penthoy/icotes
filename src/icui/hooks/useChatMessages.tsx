@@ -77,13 +77,22 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
   const messagesEndRef = useRef<HTMLElement | null>(null);
   const isInitializedRef = useRef(false);
   const isConnectingRef = useRef(false);
-  // Streaming update throttling to reduce re-renders under high chunk rates
   const streamingQueueRef = useRef<Map<string, ChatMessage>>(new Map());
   const flushScheduledRef = useRef<number | null>(null);
   const lastFlushTsRef = useRef<number>(0);
-  // Keep a ref of latest state to build committed arrays without stale closures
-  const stateRef = useRef<{ messages: ChatMessage[] }>({ messages: [] });
-  useEffect(() => { stateRef.current.messages = messages; }, [messages]);
+  // Keep a ref of latest state and message lookup map for efficient updates
+  const stateRef = useRef<{ messages: ChatMessage[]; messageMap: Map<string, number> }>({ 
+    messages: [], 
+    messageMap: new Map() 
+  });
+  
+  // Update refs when messages change, maintaining efficient lookup map
+  useEffect(() => { 
+    stateRef.current.messages = messages;
+    const messageMap = new Map<string, number>();
+    messages.forEach((msg, index) => messageMap.set(msg.id, index));
+    stateRef.current.messageMap = messageMap;
+  }, [messages]);
 
   const scheduleFlush = useCallback(() => {
     if (flushScheduledRef.current !== null) return;
@@ -91,31 +100,40 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
       flushScheduledRef.current = null;
       const queued = streamingQueueRef.current;
       if (queued.size === 0) return;
-      // Build a new messages array applying latest streaming updates
-      const byId: Record<string, ChatMessage> = Object.create(null);
+      
       const current = stateRef.current.messages;
-      const next = current.map(m => {
-        byId[m.id] = m;
-        return m;
-      });
-      let changed = false;
-      queued.forEach((val, key) => {
-        if (byId[key]) {
-          const idx = next.findIndex(x => x.id === key);
-          if (idx !== -1) {
-            // Replace with latest content reference to trigger minimal diff
-            next[idx] = val;
-            changed = true;
-          }
+      const messageMap = stateRef.current.messageMap;
+      const updates: { index: number; message: ChatMessage }[] = [];
+      const newMessages: ChatMessage[] = [];
+      
+      queued.forEach((message, messageId) => {
+        const existingIndex = messageMap.get(messageId);
+        if (existingIndex !== undefined) {
+          // Update existing message
+          updates.push({ index: existingIndex, message });
         } else {
-          next.push(val);
-          changed = true;
+          newMessages.push(message);
         }
       });
-      queued.clear();
-      if (changed) {
-        setMessages(next.length > maxMessages ? next.slice(-maxMessages) : next);
+      
+      if (updates.length > 0 || newMessages.length > 0) {
+        // Create new array with minimal copying
+        const next = [...current];
+        
+        updates.forEach(({ index, message }) => {
+          next[index] = message;
+        });
+        
+        next.push(...newMessages);
+        
+        const finalMessages = next.length > maxMessages ? next.slice(-maxMessages) : next;
+        
+        queued.clear();
+        setMessages(finalMessages);
+      } else {
+        queued.clear();
       }
+      
       lastFlushTsRef.current = performance.now();
     };
     // Align with animation frame for smoother UI; fallback timer if RAF not available
@@ -158,14 +176,19 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
             scheduleFlush();
           }
         } else {
-          // Non-streaming (or final) messages: commit immediately
+          // Non-streaming (or final) messages: commit immediately with optimized updates
           setMessages(prevMessages => {
-            const existingIndex = prevMessages.findIndex(m => m.id === message.id);
-            if (existingIndex >= 0) {
+            const messageMap = new Map<string, number>();
+            prevMessages.forEach((msg, index) => messageMap.set(msg.id, index));
+            
+            const existingIndex = messageMap.get(message.id);
+            if (existingIndex !== undefined) {
+              // Update existing message efficiently
               const updatedMessages = [...prevMessages];
-              updatedMessages[existingIndex] = { ...message };
+              updatedMessages[existingIndex] = message;
               return updatedMessages.length > maxMessages ? updatedMessages.slice(-maxMessages) : updatedMessages;
             }
+            
             const newMessages = [...prevMessages, message];
             return newMessages.length > maxMessages ? newMessages.slice(-maxMessages) : newMessages;
           });
@@ -293,9 +316,12 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
         }
       };
       
+      // Optimized user message addition to reduce array operations
       setMessages(prev => {
-        const newMessages = [...prev, userMessage];
-        return newMessages.length > maxMessages ? newMessages.slice(-maxMessages) : newMessages;
+        if (prev.length >= maxMessages) {
+          return [...prev.slice(1), userMessage];
+        }
+        return [...prev, userMessage];
       });
       
       // Send via backend
@@ -335,9 +361,12 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
         }
       };
       
+      // Optimized custom agent message addition to reduce array operations
       setMessages(prev => {
-        const newMessages = [...prev, userMessage];
-        return newMessages.length > maxMessages ? newMessages.slice(-maxMessages) : newMessages;
+        if (prev.length >= maxMessages) {
+          return [...prev.slice(1), userMessage];
+        }
+        return [...prev, userMessage];
       });
       
       // Send via existing chat client with custom agent type
