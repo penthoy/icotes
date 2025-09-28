@@ -716,12 +716,28 @@ class ChatService:
                 content_parts: List[Dict[str, Any]] = [{"type": "text", "text": user_message.content}]
                 if user_message.attachments:
                     media = get_media_service()
+                    # Configurable caps to avoid heavy processing and nested-loop overhead
+                    import os as _os
+                    try:
+                        max_imgs = int(_os.getenv('CHAT_MAX_IMAGE_ATTACHMENTS', '4'))
+                    except Exception:
+                        max_imgs = 4
+                    try:
+                        max_img_mb = float(_os.getenv('CHAT_MAX_IMAGE_SIZE_MB', '3'))
+                    except Exception:
+                        max_img_mb = 3.0
+
+                    added_images = 0
                     for att in user_message.attachments:
                         try:
                             kind = att.get('kind')
                             mime = att.get('mime_type') or att.get('mime') or ''
+                            # Fast reject for non-image
                             if not ((isinstance(mime, str) and mime.startswith('image/')) or kind in ('image', 'images')):
                                 continue
+                            # Early termination if we've added enough images
+                            if added_images >= max_imgs:
+                                break
                             # Prefer embedding as data URL from media service
                             rel = att.get('relative_path') or att.get('rel_path') or att.get('path')
                             data_url = None
@@ -730,6 +746,15 @@ class ChatService:
                                     abs_path = (media.base_dir / rel).resolve()
                                     abs_path.relative_to(media.base_dir)
                                     if abs_path.exists() and abs_path.is_file():
+                                        # Skip overly large images to reduce memory pressure
+                                        try:
+                                            size_bytes = abs_path.stat().st_size
+                                            if size_bytes > int(max_img_mb * 1024 * 1024):
+                                                # Link via URL instead of embedding
+                                                raise ValueError('image_too_large')
+                                        except Exception:
+                                            # If stat fails fall back to attempt embed
+                                            pass
                                         import base64
                                         with open(abs_path, 'rb') as f:
                                             b64 = base64.b64encode(f.read()).decode('ascii')
@@ -742,6 +767,7 @@ class ChatService:
                                     data_url = f"/api/media/file/{att_id}"
                             if data_url:
                                 content_parts.append({"type": "image_url", "image_url": {"url": data_url}})
+                                added_images += 1
                         except Exception:
                             continue
                 history_list.append({"role": "user", "content": content_parts})

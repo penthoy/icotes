@@ -24,7 +24,7 @@ import shutil
 import stat
 import time
 import uuid
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional, Set, Tuple, Union, Callable
@@ -311,25 +311,25 @@ class FileSystemEventHandler(FileSystemEventHandler):
         try:
             file_info = await self.filesystem_service.get_file_info(file_path)
             if file_info:
-                # Publish created event (no pre-publish info to reduce duplication)
-                await self.filesystem_service.message_broker.publish('fs.file_created', {
+                # Publish created event (buffered)
+                await self.filesystem_service._publish_or_buffer('fs.file_created', {
                     'file_path': file_path,
                     'file_info': file_info.to_dict(),
                     'timestamp': time.time()
                 })
-                self.logger.debug(f"[FS] published fs.file_created: {file_path}")
+                self.logger.debug(f"[FS] queued fs.file_created: {file_path}")
         except Exception as e:
             self.logger.error(f"[FS] Error handling file creation {file_path}: {e}")
 
     async def _handle_directory_created(self, dir_path: str):
         """Handle directory creation asynchronously (external mkdir, etc.)."""
         try:
-            await self.filesystem_service.message_broker.publish('fs.directory_created', {
+            await self.filesystem_service._publish_or_buffer('fs.directory_created', {
                 'dir_path': os.path.abspath(dir_path),
                 'timestamp': time.time(),
                 'external': True
             })
-            self.logger.debug(f"[FS] published fs.directory_created (watchdog): {dir_path}")
+            self.logger.debug(f"[FS] queued fs.directory_created (watchdog): {dir_path}")
         except Exception as e:
             self.logger.error(f"[FS] Error handling directory creation {dir_path}: {e}")
 
@@ -342,12 +342,12 @@ class FileSystemEventHandler(FileSystemEventHandler):
         try:
             file_info = await self.filesystem_service.get_file_info(file_path)
             if file_info:
-                await self.filesystem_service.message_broker.publish('fs.file_modified', {
+                await self.filesystem_service._publish_or_buffer('fs.file_modified', {
                     'file_path': file_path,
                     'file_info': file_info.to_dict(),
                     'timestamp': time.time()
                 })
-                self.logger.debug(f"[FS] published fs.file_modified: {file_path}")
+                self.logger.debug(f"[FS] queued fs.file_modified: {file_path}")
         except Exception as e:
             self.logger.error(f"[FS] Error handling file modification {file_path}: {e}")
 
@@ -359,12 +359,12 @@ class FileSystemEventHandler(FileSystemEventHandler):
             is_directory: Whether the deleted item was a directory
         """
         try:
-            await self.filesystem_service.message_broker.publish('fs.file_deleted', {
+            await self.filesystem_service._publish_or_buffer('fs.file_deleted', {
                 'file_path': file_path,
                 'is_directory': is_directory,
                 'timestamp': time.time()
             })
-            self.logger.debug(f"[FS] published fs.file_deleted: {file_path}")
+            self.logger.debug(f"[FS] queued fs.file_deleted: {file_path}")
         except Exception as e:
             self.logger.error(f"[FS] Error handling file deletion {file_path}: {e}")
 
@@ -378,14 +378,14 @@ class FileSystemEventHandler(FileSystemEventHandler):
         """
         try:
             file_info = await self.filesystem_service.get_file_info(dest_path)
-            await self.filesystem_service.message_broker.publish('fs.file_moved', {
+            await self.filesystem_service._publish_or_buffer('fs.file_moved', {
                 'src_path': src_path,
                 'dest_path': dest_path,
                 'file_info': file_info.to_dict() if file_info else None,
                 'is_directory': is_directory,
                 'timestamp': time.time()
             })
-            self.logger.debug(f"[FS] published fs.file_moved: {src_path} -> {dest_path}")
+            self.logger.debug(f"[FS] queued fs.file_moved: {src_path} -> {dest_path}")
         except Exception as e:
             self.logger.error(f"[FS] Error handling file move {src_path} -> {dest_path}: {e}")
 
@@ -440,6 +440,33 @@ class FileSystemService:
         # Track directories explicitly created via service to suppress duplicate
         # watchdog-created events (API create -> publish + watchdog on_created)
         self._recent_created_dirs: Dict[str, float] = {}
+
+        # In-memory caches (hot paths)
+        # Configurable via env: FS_INFO_CACHE_SIZE, FS_READ_CACHE_SIZE
+        try:
+            self._info_cache_max = int(os.getenv('FS_INFO_CACHE_SIZE', '1024'))
+        except Exception:
+            self._info_cache_max = 1024
+        try:
+            self._read_cache_max = int(os.getenv('FS_READ_CACHE_SIZE', '64'))
+        except Exception:
+            self._read_cache_max = 64
+        self._info_cache: "OrderedDict[str, Tuple[Tuple[float,int], FileInfo]]" = OrderedDict()
+        self._read_cache: "OrderedDict[str, Tuple[Tuple[float,int], str]]" = OrderedDict()
+
+        # Event batching for high-frequency FS change events
+        self._event_batching_enabled: bool = os.getenv('FS_ENABLE_EVENT_BATCHING', '1') in ('1', 'true', 'True')
+        try:
+            self._event_batch_interval: float = float(int(os.getenv('FS_EVENT_BATCH_INTERVAL_MS', '120'))) / 1000.0
+        except Exception:
+            self._event_batch_interval = 0.12
+        try:
+            self._event_batch_max_size: int = int(os.getenv('FS_EVENT_BATCH_MAX_SIZE', '2000'))
+        except Exception:
+            self._event_batch_max_size = 2000
+        self._event_buffer: Dict[Tuple[str, str], Dict[str, Any]] = {}
+        self._event_lock = asyncio.Lock()
+        self._event_flush_task: Optional[asyncio.Task] = None
         
         # File type mappings
         self.code_extensions = {
@@ -483,6 +510,14 @@ class FileSystemService:
         # Build initial file index
         await self._build_file_index()
         
+        # Start batching loop if enabled
+        if self._event_batching_enabled and self._event_flush_task is None:
+            try:
+                self._event_flush_task = asyncio.create_task(self._event_flush_loop())
+                logger.info(f"[FS] Event batching enabled (interval={self._event_batch_interval}s)")
+            except RuntimeError:
+                self._event_flush_task = None
+
         logger.info("[FS] FileSystemService initialized successfully")
 
     async def shutdown(self):
@@ -496,6 +531,19 @@ class FileSystemService:
         # Clear indices
         self.file_index.clear()
         self.search_index.clear()
+
+        # Stop batching task
+        try:
+            if self._event_flush_task:
+                self._event_flush_task.cancel()
+                try:
+                    await self._event_flush_task
+                except asyncio.CancelledError:
+                    pass
+                # Final flush
+                await self._flush_events_now()
+        except Exception as e:
+            logger.warning(f"[FS] Error stopping event batching: {e}")
         
         logger.info("[FS] FileSystemService shutdown complete")
 
@@ -659,18 +707,25 @@ class FileSystemService:
             if stat_info.st_mode & stat.S_IXUSR:
                 permissions.append(FilePermission.EXECUTE)
             
-            # Get content hash for change detection
+            # LRU cache check (by mtime + size signature)
+            sig = (stat_info.st_mtime, stat_info.st_size)
+            cached = self._info_cache.get(file_path)
+            if cached and cached[0] == sig:
+                # refresh LRU order
+                self._info_cache.move_to_end(file_path)
+                return cached[1]
+
+            # Get content hash for change detection only when small text/code file
             content_hash = ""
             if file_type in [FileType.TEXT, FileType.CODE] and stat_info.st_size < self.max_file_size:
                 try:
                     async with aiofiles.open(file_path, 'rb') as f:
                         content = await f.read()
-                        # Use SHA-256 for integrity/change detection (non-crypto auth)
                         content_hash = hashlib.sha256(content).hexdigest()
                 except Exception:
-                    pass  # Ignore hash calculation errors
-            
-            return FileInfo(
+                    pass
+
+            info = FileInfo(
                 path=file_path,
                 name=file_name,
                 size=stat_info.st_size,
@@ -688,7 +743,12 @@ class FileSystemService:
                 extension=os.path.splitext(file_name)[1].lower(),
                 content_hash=content_hash
             )
-            
+            # Update cache
+            self._info_cache[file_path] = (sig, info)
+            if len(self._info_cache) > self._info_cache_max:
+                self._info_cache.popitem(last=False)
+            return info
+
         except Exception as e:
             logger.error(f"Error getting file info for {file_path}: {e}")
             return None
@@ -708,25 +768,37 @@ class FileSystemService:
                 return None
             
             # Check file size
-            if os.path.getsize(file_path) > self.max_file_size:
+            file_size = os.path.getsize(file_path)
+            if file_size > self.max_file_size:
                 logger.warning(f"File too large to read: {file_path}")
                 return None
+
+            # Cache check based on mtime + size
+            stat_info = os.stat(file_path)
+            sig = (stat_info.st_mtime, stat_info.st_size)
+            cached = self._read_cache.get(file_path)
+            if cached and cached[0] == sig:
+                self._read_cache.move_to_end(file_path)
+                content = cached[1]
+            else:
+                async with aiofiles.open(file_path, 'r', encoding=encoding) as f:
+                    content = await f.read()
+                self._read_cache[file_path] = (sig, content)
+                if len(self._read_cache) > self._read_cache_max:
+                    self._read_cache.popitem(last=False)
+
+            self.stats['files_read'] += 1
+            self.stats['total_bytes_read'] += len(content.encode(encoding))
             
-            async with aiofiles.open(file_path, 'r', encoding=encoding) as f:
-                content = await f.read()
-                
-                self.stats['files_read'] += 1
-                self.stats['total_bytes_read'] += len(content.encode(encoding))
-                
-                # Publish event
-                await self.message_broker.publish('fs.file_read', {
-                    'file_path': file_path,
-                    'size': len(content),
-                    'encoding': encoding,
-                    'timestamp': time.time()
-                })
-                
-                return content
+            # Publish event (no batching; low frequency compared to change events)
+            await self.message_broker.publish('fs.file_read', {
+                'file_path': file_path,
+                'size': len(content),
+                'encoding': encoding,
+                'timestamp': time.time()
+            })
+            
+            return content
                 
         except UnicodeDecodeError:
             logger.error(f"Encoding error reading file: {file_path}")
@@ -777,8 +849,12 @@ class FileSystemService:
             
             self.stats['total_bytes_written'] += len(content.encode(encoding))
             
-            # Publish event
-            await self.message_broker.publish('fs.file_written', {
+            # Invalidate caches
+            self._info_cache.pop(file_path, None)
+            self._read_cache.pop(file_path, None)
+
+            # Publish event (buffered)
+            await self._publish_or_buffer('fs.file_written', {
                 'file_path': file_path,
                 'size': len(content),
                 'encoding': encoding,
@@ -825,8 +901,8 @@ class FileSystemService:
             # Note directory so watchdog on_created can suppress duplicate event
             self._recent_created_dirs[full_path] = time.time()
             
-            # Publish event
-            await self.message_broker.publish('fs.directory_created', {
+            # Publish event (buffered)
+            await self._publish_or_buffer('fs.directory_created', {
                 'dir_path': full_path,
                 'parents': parents,
                 'timestamp': time.time()
@@ -866,11 +942,15 @@ class FileSystemService:
             # Remove from search index
             for word_set in self.search_index.values():
                 word_set.discard(file_path)
+
+            # Invalidate caches
+            self._info_cache.pop(file_path, None)
+            self._read_cache.pop(file_path, None)
             
             self.stats['files_deleted'] += 1
             
-            # Publish event
-            await self.message_broker.publish('fs.file_deleted', {
+            # Publish event (buffered)
+            await self._publish_or_buffer('fs.file_deleted', {
                 'file_path': file_path,
                 'is_directory': is_directory,
                 'timestamp': time.time()
@@ -941,8 +1021,14 @@ class FileSystemService:
             
             self.stats['files_moved'] += 1
             
-            # Publish event
-            await self.message_broker.publish('fs.file_moved', {
+            # Invalidate caches
+            self._info_cache.pop(src_path, None)
+            self._read_cache.pop(src_path, None)
+            self._info_cache.pop(dest_path, None)
+            self._read_cache.pop(dest_path, None)
+
+            # Publish event (buffered)
+            await self._publish_or_buffer('fs.file_moved', {
                 'src_path': src_path,
                 'dest_path': dest_path,
                 'timestamp': time.time()
@@ -988,8 +1074,12 @@ class FileSystemService:
             
             self.stats['files_copied'] += 1
             
-            # Publish event
-            await self.message_broker.publish('fs.file_copied', {
+            # Invalidate caches for dest only
+            self._info_cache.pop(dest_path, None)
+            self._read_cache.pop(dest_path, None)
+
+            # Publish event (buffered)
+            await self._publish_or_buffer('fs.file_copied', {
                 'src_path': src_path,
                 'dest_path': dest_path,
                 'timestamp': time.time()
@@ -1240,6 +1330,102 @@ class FileSystemService:
             return resolved_path.startswith(self.root_path)
         except Exception:
             return False
+
+    # ---------------
+    # Event batching
+    # ---------------
+    async def _publish_or_buffer(self, topic: str, payload: Dict[str, Any]):
+        """Either publish immediately or buffer the event for batch publishing.
+        Coalesce duplicate high-churn events by (topic, key), where key is
+        file_path or dest_path as appropriate.
+        """
+        if not self._event_batching_enabled:
+            await self.message_broker.publish(topic, payload)
+            return
+        try:
+            key = None
+            if 'file_path' in payload:
+                key = payload['file_path']
+            elif 'dest_path' in payload:
+                key = payload['dest_path']
+            elif 'dir_path' in payload:
+                key = payload['dir_path']
+            else:
+                key = uuid.uuid4().hex  # fallback unique key
+
+            composite = (topic, str(key))
+            async with self._event_lock:
+                # Keep the latest payload and timestamp for this composite key
+                # Merge a few common fields to avoid losing info
+                prev = self._event_buffer.get(composite)
+                if prev:
+                    merged = {**prev, **payload}
+                else:
+                    merged = payload
+                merged['timestamp'] = time.time()
+                self._event_buffer[composite] = merged
+                # Trim buffer if oversized
+                if len(self._event_buffer) > self._event_batch_max_size:
+                    # Drop oldest arbitrary items
+                    for _ in range(len(self._event_buffer) - self._event_batch_max_size):
+                        try:
+                            self._event_buffer.pop(next(iter(self._event_buffer)))
+                        except Exception:
+                            break
+        except Exception as e:
+            logger.debug(f"[FS] Buffer event error ({topic}): {e}")
+            # Fallback to immediate publish on error
+            try:
+                await self.message_broker.publish(topic, payload)
+            except Exception:
+                pass
+
+    async def _event_flush_loop(self):
+        """Periodic loop to flush buffered events in batches."""
+        while True:
+            try:
+                await asyncio.sleep(self._event_batch_interval)
+                await self._flush_events_now()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.debug(f"[FS] Event flush loop error: {e}")
+
+    async def _flush_events_now(self):
+        """Flush buffered events to the message broker."""
+        buf: Dict[Tuple[str, str], Dict[str, Any]] = {}
+        async with self._event_lock:
+            if not self._event_buffer:
+                return
+            buf = self._event_buffer
+            self._event_buffer = {}
+
+        # Group by topic and publish as batch
+        grouped: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+        for (topic, _key), payload in buf.items():
+            grouped[topic].append(payload)
+
+        emit_individual = os.getenv('FS_EVENT_BATCH_EMIT_INDIVIDUAL', '1') in ('1', 'true', 'True')
+        for topic, items in grouped.items():
+            try:
+                # Publish batch summary event
+                await self.message_broker.publish(topic + '.batch', {
+                    'count': len(items),
+                    'items': items,
+                    'timestamp': time.time()
+                })
+                # Optionally, also emit coalesced individual events on original topic
+                if emit_individual:
+                    for payload in items:
+                        await self.message_broker.publish(topic, payload)
+            except Exception as e:
+                # If batch fails, try to publish individually to avoid data loss
+                logger.debug(f"[FS] Batch publish failed for {topic}: {e}")
+                for payload in items:
+                    try:
+                        await self.message_broker.publish(topic, payload)
+                    except Exception:
+                        pass
 
 
 # Global filesystem service instance
