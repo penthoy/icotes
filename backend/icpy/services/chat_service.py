@@ -735,7 +735,42 @@ class ChatService:
 
             # Append current user message as multimodal (include image attachments) so custom agents can see them
             try:
-                content_parts: List[Dict[str, Any]] = [{"type": "text", "text": user_message.content}]
+                # Build message content with attachment information
+                message_text = user_message.content
+                
+                # Add file attachment information to the message text for non-image files
+                if user_message.attachments:
+                    non_image_attachments = []
+                    for att in user_message.attachments:
+                        kind = att.get('kind')
+                        mime = att.get('mime_type') or att.get('mime') or ''
+                        filename = att.get('filename') or 'unknown file'
+                        
+                        # Skip images as they'll be processed as multimodal content
+                        if not ((isinstance(mime, str) and mime.startswith('image/')) or kind in ('image', 'images')):
+                            rel_path = att.get('relative_path') or att.get('rel_path') or att.get('path') or ''
+                            abs_path = att.get('absolute_path') or ''
+                            
+                            # Determine the path to show to the agent
+                            display_path = abs_path if abs_path else (rel_path if rel_path else filename)
+                            
+                            non_image_attachments.append({
+                                'filename': filename,
+                                'path': display_path,
+                                'mime_type': mime,
+                                'size': att.get('size_bytes') or att.get('size') or 0
+                            })
+                    
+                    # Append attachment information to message text if there are non-image files
+                    if non_image_attachments:
+                        attachment_info = "\n\n[Attached files:"
+                        for att_info in non_image_attachments:
+                            size_str = f" ({att_info['size']} bytes)" if att_info['size'] else ""
+                            attachment_info += f"\n- {att_info['filename']} (path: {att_info['path']}){size_str}"
+                        attachment_info += "]"
+                        message_text += attachment_info
+                
+                content_parts: List[Dict[str, Any]] = [{"type": "text", "text": message_text}]
                 if user_message.attachments:
                     media = get_media_service()
                     # Configurable caps to avoid heavy processing and nested-loop overhead

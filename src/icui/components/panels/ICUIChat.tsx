@@ -383,7 +383,9 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
       const resMime = (r.mime_type || r.mime || '').toString();
       const resPath = (r.relative_path || r.rel_path || r.path || '').toString();
       const resSize = (typeof r.size_bytes === 'number' ? r.size_bytes : r.size) as number | undefined;
-      const baseName = resPath ? resPath.split('/').pop() : (r.filename || undefined);
+      // Use original filename from File object instead of server-generated path
+      const originalFileName = u.file.name;
+      const baseName = originalFileName || (resPath ? resPath.split('/').pop() : (r.filename || undefined));
       const localKind: ChatMediaAttachment['kind'] = (
         resKind === 'images' || resKind === 'image' || (resMime && resMime.startsWith('image/'))
       ) ? 'image' : (
@@ -395,7 +397,12 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
         path: resPath,
         mime: resMime || 'application/octet-stream',
         size: typeof resSize === 'number' ? resSize : 0,
-        meta: { source: 'upload', tempUploadId: u.id, filename: baseName }
+        meta: { 
+          source: 'upload', 
+          tempUploadId: u.id, 
+          filename: baseName,
+          originalPath: originalFileName // Include original filename for agent context
+        }
       } as ChatMediaAttachment;
     });
     // Merge in referenced explorer files (kind = file)
