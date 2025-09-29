@@ -134,7 +134,7 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
         queued.clear();
       }
       
-      lastFlushTsRef.current = performance.now();
+      lastFlushTsRef.current = typeof performance !== 'undefined' ? performance.now() : Date.now();
     };
     // Align with animation frame for smoother UI; fallback timer if RAF not available
     if (typeof window !== 'undefined' && 'requestAnimationFrame' in window) {
@@ -178,9 +178,7 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
         } else {
           // Non-streaming (or final) messages: commit immediately with optimized updates
           setMessages(prevMessages => {
-            const messageMap = new Map<string, number>();
-            prevMessages.forEach((msg, index) => messageMap.set(msg.id, index));
-            
+            const messageMap = stateRef.current.messageMap;
             const existingIndex = messageMap.get(message.id);
             if (existingIndex !== undefined) {
               // Update existing message efficiently

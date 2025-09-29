@@ -445,11 +445,11 @@ class FileSystemService:
         # Configurable via env: FS_INFO_CACHE_SIZE, FS_READ_CACHE_SIZE
         try:
             self._info_cache_max = int(os.getenv('FS_INFO_CACHE_SIZE', '1024'))
-        except Exception:
+        except (ValueError, TypeError):
             self._info_cache_max = 1024
         try:
             self._read_cache_max = int(os.getenv('FS_READ_CACHE_SIZE', '64'))
-        except Exception:
+        except (ValueError, TypeError):
             self._read_cache_max = 64
         self._info_cache: "OrderedDict[str, Tuple[Tuple[float,int], FileInfo]]" = OrderedDict()
         self._read_cache: "OrderedDict[str, Tuple[Tuple[float,int], str]]" = OrderedDict()
@@ -457,12 +457,12 @@ class FileSystemService:
         # Event batching for high-frequency FS change events
         self._event_batching_enabled: bool = os.getenv('FS_ENABLE_EVENT_BATCHING', '1') in ('1', 'true', 'True')
         try:
-            self._event_batch_interval: float = float(int(os.getenv('FS_EVENT_BATCH_INTERVAL_MS', '120'))) / 1000.0
-        except Exception:
+            self._event_batch_interval: float = float(os.getenv('FS_EVENT_BATCH_INTERVAL_MS', '120')) / 1000.0
+        except (ValueError, TypeError):
             self._event_batch_interval = 0.12
         try:
             self._event_batch_max_size: int = int(os.getenv('FS_EVENT_BATCH_MAX_SIZE', '2000'))
-        except Exception:
+        except (ValueError, TypeError):
             self._event_batch_max_size = 2000
         self._event_buffer: Dict[Tuple[str, str], Dict[str, Any]] = {}
         self._event_lock = asyncio.Lock()
@@ -722,8 +722,8 @@ class FileSystemService:
                     async with aiofiles.open(file_path, 'rb') as f:
                         content = await f.read()
                         content_hash = hashlib.sha256(content).hexdigest()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Failed to compute content hash for {file_path}: {e}")
 
             info = FileInfo(
                 path=file_path,
@@ -1367,6 +1367,10 @@ class FileSystemService:
                 # Trim buffer if oversized
                 if len(self._event_buffer) > self._event_batch_max_size:
                     # Drop oldest arbitrary items
+                    logger.debug(
+                        f"[FS] Event buffer overflow, dropping "
+                        f"{len(self._event_buffer) - self._event_batch_max_size} events"
+                    )
                     for _ in range(len(self._event_buffer) - self._event_batch_max_size):
                         try:
                             self._event_buffer.pop(next(iter(self._event_buffer)))
@@ -1424,8 +1428,8 @@ class FileSystemService:
                 for payload in items:
                     try:
                         await self.message_broker.publish(topic, payload)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.error(f"[FS] Failed to publish event for {topic}: {e}")
 
 
 # Global filesystem service instance

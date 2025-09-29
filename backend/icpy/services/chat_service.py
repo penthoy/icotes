@@ -240,15 +240,16 @@ class ChatService:
                 abs_path: str = ''
                 try:
                     if isinstance(orig_path, str) and orig_path:
-                        # Treat absolute OS path separately; do not stuff into relative_path
-                        if orig_path.startswith('/') or (len(orig_path) > 1 and orig_path[1] == ':' and orig_path[0].isalpha()):
+                        # Absolute OS path? keep separate; else treat as storage-relative
+                        from pathlib import Path as _P
+                        if _P(orig_path).is_absolute():
                             abs_path = orig_path
                         else:
                             # If caller only provided a relative path, consider it as storage-relative
                             if not rel_path:
                                 rel_path = orig_path
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("Attachment path normalization issue: %s", e)
                 mime = item.get('mime_type') or item.get('mime') or 'application/octet-stream'
                 size = item.get('size_bytes') or item.get('size') or 0
                 kind = item.get('kind') or item.get('type') or ''
@@ -751,7 +752,15 @@ class ChatService:
                     added_images = 0
                     for att in user_message.attachments:
                         try:
-                            logger.info(f"Custom agent: Processing attachment: {att}")
+                            logger.debug(
+                                "Custom agent: Processing attachment id=%s kind=%s mime=%s rel=%s has_abs=%s size=%s",
+                                att.get('id'),
+                                att.get('kind'),
+                                att.get('mime_type') or att.get('mime'),
+                                att.get('relative_path') or att.get('rel_path'),
+                                bool(att.get('absolute_path')),
+                                att.get('size_bytes') or att.get('size'),
+                            )
                             kind = att.get('kind')
                             mime = att.get('mime_type') or att.get('mime') or ''
                             # Fast reject for non-image
@@ -790,18 +799,18 @@ class ChatService:
                             # Try workspace absolute path (for explorer-dropped files)
                             if not data_url and isinstance(absolute_field, str) and absolute_field:
                                 try:
-                                    logger.info(f"Custom agent: Attempting to embed explorer image from absolute path: {absolute_field}")
+                                    logger.info(f"Custom agent: Attempting to embed explorer image from absolute path")
                                     import os
                                     from pathlib import Path
                                     ws_root = os.environ.get('WORKSPACE_ROOT')
                                     abs_path = Path(absolute_field).resolve()
-                                    # Only allow reading from within WORKSPACE_ROOT when set
-                                    if ws_root:
-                                        ws_root_p = Path(ws_root).resolve()
-                                        abs_path.relative_to(ws_root_p)
-                                    # If WORKSPACE_ROOT is not set, as a safety fallback disallow absolute paths outside cwd/workspace
-                                    elif not abs_path.is_file():
-                                        raise ValueError('Invalid path')
+                                    # Require WORKSPACE_ROOT and enforce sandbox
+                                    if not ws_root:
+                                        raise PermissionError('WORKSPACE_ROOT not set; absolute paths are not allowed')
+                                    ws_root_p = Path(ws_root).resolve()
+                                    abs_path.relative_to(ws_root_p)  # raises if outside
+                                    if not abs_path.is_file():
+                                        raise FileNotFoundError('Invalid path')
                                     if abs_path.exists() and abs_path.is_file():
                                         # Skip overly large images to reduce memory pressure
                                         try:
@@ -818,7 +827,7 @@ class ChatService:
                                         data_url = f"data:{mime};base64,{b64}"
                                         logger.info(f"Custom agent: Successfully embedded explorer image as data URL (length: {len(data_url)})")
                                 except Exception as e:
-                                    logger.warning(f"Custom agent: Failed to embed explorer image from {absolute_field}: {e}")
+                                    logger.warning(f"Custom agent: Failed to embed explorer image: {e}")
                                     data_url = None
                             if not data_url:
                                 att_id = att.get('id')

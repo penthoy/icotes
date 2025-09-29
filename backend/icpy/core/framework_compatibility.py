@@ -251,7 +251,8 @@ class OpenAIAgentWrapper(BaseAgentWrapper):
                     "temperature": self.config.temperature,
                     "stream": True
                 }
-                api_params.update(get_openai_token_param(self.config.model, self.config.max_tokens))
+                if self.config.max_tokens is not None:
+                    api_params.update(get_openai_token_param(self.config.model, self.config.max_tokens))
                 
                 stream = await self._agent.chat.completions.create(**api_params)
                 
@@ -353,13 +354,13 @@ class OpenAIAgentWrapper(BaseAgentWrapper):
                     from pathlib import Path
                     ws_root = os.environ.get('WORKSPACE_ROOT')
                     abs_path = Path(preferred_fs_path).resolve()
-                    # Only allow reading from within WORKSPACE_ROOT when set
-                    if ws_root:
-                        ws_root_p = Path(ws_root).resolve()
-                        abs_path.relative_to(ws_root_p)
-                    # If WORKSPACE_ROOT is not set, as a safety fallback disallow absolute paths outside cwd/workspace
-                    elif not abs_path.is_file():
-                        raise ValueError('Invalid path')
+                    # Require WORKSPACE_ROOT and enforce sandbox
+                    if not ws_root:
+                        raise PermissionError('WORKSPACE_ROOT not set; absolute paths are not allowed')
+                    ws_root_p = Path(ws_root).resolve()
+                    abs_path.relative_to(ws_root_p)  # raises if outside
+                    if not abs_path.is_file():
+                        raise FileNotFoundError('Invalid path')
                     if abs_path.exists() and abs_path.is_file():
                         with open(abs_path, 'rb') as f:
                             b64 = base64.b64encode(f.read()).decode('ascii')
@@ -370,9 +371,9 @@ class OpenAIAgentWrapper(BaseAgentWrapper):
                             mime = guess or 'image/png'
                         data_url = f"data:{mime};base64,{b64}"
                         return {"type": "image_url", "image_url": {"url": data_url}}
-                except Exception:
+                except Exception as e:
+                    logger.debug("Absolute-path embedding failed; falling back to URL: %s", e)
                     # Fall through to URL fallback below
-                    pass
 
         # REMOVED: Direct filesystem access for security - use /api/files/raw endpoint instead            # Fallback to API URL by id (works only if OpenAI can fetch it)
             att_id = att.get('id')
