@@ -22,7 +22,6 @@ import { useMediaUpload } from '../../hooks/useMediaUpload';
 import { Square, Send, Paperclip, Mic, Wand2, RefreshCw, Settings } from 'lucide-react';
 import { 
   useChatMessages, 
-  useTheme, 
   ChatMessage as ChatMessageType, 
   ConnectionStatus,
   MessageOptions,
@@ -37,8 +36,13 @@ import { useChatSessionSync } from '../../hooks/useChatSessionSync';
 import { chatBackendClient } from '../../services/chat-backend-client-impl';
 import { useChatHistory } from '../../hooks/useChatHistory';
 import type { MediaAttachment as ChatMediaAttachment } from '../../types/chatTypes';
-import { ICUI_FILE_LIST_MIME, isExplorerPayload } from '../../lib/dnd';
 import { mediaService } from '../../services/mediaService';
+// Consolidated helpers to reduce file size and prevent regressions
+import { inferMimeFromName } from '../chat/utils/mime';
+import { waitForUploadsToSettle, buildAttachmentsFromUploads, buildReferencedAttachments } from '../chat/utils/sendPipeline';
+import { useChatPaste } from '../chat/hooks/useChatPaste';
+import { useComposerDnd } from '../chat/hooks/useComposerDnd';
+import JumpToLatestButton from '../chat/widgets/JumpToLatestButton';
 
 interface ICUIChatProps {
   className?: string;
@@ -91,7 +95,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [inputValue, setInputValue] = useState('');
   const [selectedAgent, setSelectedAgent] = useState(''); // Default agent will be set by CustomAgentDropdown
-  const [isDarkTheme, setIsDarkTheme] = useState(false);
+  // Theme-dependent colors are provided via CSS variables; explicit theme state not required here
   const [isComposing, setIsComposing] = useState(false);
   // NEW: smart auto-scroll state with user intent tracking
   const [isAutoScrollEnabled, setIsAutoScrollEnabled] = useState(true);
@@ -102,7 +106,8 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
   const [staged, setStaged] = useState<{ id: string; file: File; preview: string }[]>([]);
   // Explorer referenced files (no upload – just path references)
   const [referenced, setReferenced] = useState<{ id: string; path: string; name: string; kind: 'file' }[]>([]);
-  const composerRef = useRef<HTMLDivElement | null>(null);
+  // Composer element (callback ref) used for drag/drop binding
+  const [composerEl, setComposerEl] = useState<HTMLDivElement | null>(null);
   const [isDragActive, setIsDragActive] = useState(false);
   const uploadApi = useMediaUpload({ autoStart: true });
 
@@ -198,40 +203,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
   const customAgents = configuredAgents.map(agent => agent.name);
 
   // Use theme detection (following ICUITerminal pattern)
-  const { isDark } = useTheme();
-
-  // Theme detection effect (following ICUITerminal pattern with debouncing)
-  useEffect(() => {
-    let timeoutId: NodeJS.Timeout;
-    
-    const detectTheme = () => {
-      clearTimeout(timeoutId);
-      timeoutId = setTimeout(() => {
-        const isDarkMode = document.documentElement.classList.contains('dark') ||
-                          document.body.classList.contains('dark') ||
-                          document.documentElement.classList.contains('icui-theme-github-dark') ||
-                          document.documentElement.classList.contains('icui-theme-monokai') ||
-                          document.documentElement.classList.contains('icui-theme-one-dark') ||
-                          window.matchMedia('(prefers-color-scheme: dark)').matches;
-        
-        setIsDarkTheme(isDarkMode);
-      }, 100);
-    };
-
-    detectTheme();
-    
-    // Create observer to watch for theme changes
-    const observer = new MutationObserver(detectTheme);
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['class']
-    });
-
-    return () => {
-      clearTimeout(timeoutId);
-      observer.disconnect();
-    };
-  }, []);
+  // Note: We rely on CSS variables for theme; dynamic theme detection logic was removed as unused.
 
   // Auto-scroll when new messages arrive, but only if user hasn't intentionally scrolled up
   useEffect(() => {
@@ -364,61 +336,14 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
       try { await uploadApi.uploadAll(); } catch { /* handled inside hook */ }
     }
 
-    // Wait until all chat-context uploads are no longer pending/uploading (max ~15s)
-    const waitForUploadsToSettle = async (timeoutMs = 15000) => {
-      const start = Date.now();
-      while (Date.now() - start < timeoutMs) {
-        const busy = uploadApi.uploads.some(u => u.context === 'chat' && (u.status === 'pending' || u.status === 'uploading'));
-        if (!busy) break;
-        await new Promise(res => setTimeout(res, 150));
-      }
-    };
-    await waitForUploadsToSettle();
+    // Wait for uploads to settle using shared helper
+    await waitForUploadsToSettle(() => uploadApi.uploads as any, 'chat', 15000, 150);
 
     // Build attachments list from completed uploads in chat context (after settle)
-    const completed = uploadApi.uploads.filter(u => u.context === 'chat' && u.status === 'completed' && u.result);
-    const uploadAttachments: ChatMediaAttachment[] = completed.map(u => {
-      const r: any = u.result!;
-      const resKind = (r.kind || r.type || '').toString();
-      const resMime = (r.mime_type || r.mime || '').toString();
-      const resPath = (r.relative_path || r.rel_path || r.path || '').toString();
-      const resSize = (typeof r.size_bytes === 'number' ? r.size_bytes : r.size) as number | undefined;
-      // Use original filename from File object instead of server-generated path
-      const originalFileName = u.file.name;
-      const baseName = originalFileName || (resPath ? resPath.split('/').pop() : (r.filename || undefined));
-      const localKind: ChatMediaAttachment['kind'] = (
-        resKind === 'images' || resKind === 'image' || (resMime && resMime.startsWith('image/'))
-      ) ? 'image' : (
-        resKind === 'audio' || (resMime && resMime.startsWith('audio/')) ? 'audio' : 'file'
-      );
-      return {
-        id: r.id,
-        kind: localKind,
-        path: resPath,
-        mime: resMime || 'application/octet-stream',
-        size: typeof resSize === 'number' ? resSize : 0,
-        meta: { 
-          source: 'upload', 
-          tempUploadId: u.id, 
-          filename: baseName,
-          originalPath: originalFileName // Include original filename for agent context
-        }
-      } as ChatMediaAttachment;
-    });
+    const uploadAttachments: ChatMediaAttachment[] = buildAttachmentsFromUploads(uploadApi.uploads as any, 'chat');
     // Merge in referenced explorer files (kind = file)
     // Legacy: handle any remaining file references (should be rare now that explorer drops upload files)
-    const referencedAttachments: ChatMediaAttachment[] = referenced.map(ref => {
-      const mime = inferMimeFromName(ref.name);
-      const isImage = mime.startsWith('image/');
-      return {
-        id: ref.id,
-        kind: isImage ? 'image' : 'file',
-        path: ref.path,
-        mime,
-        size: 0,
-        meta: { source: 'explorer', filename: ref.name }
-      } as ChatMediaAttachment;
-    });
+    const referencedAttachments: ChatMediaAttachment[] = buildReferencedAttachments(referenced);
     const attachments = [...uploadAttachments, ...referencedAttachments];
     const hasText = messageContent.length > 0;
     const hasAttachments = attachments.length > 0;
@@ -631,95 +556,35 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
   }, [uploadApi]);
 
   // --- Explorer Drag & Drop (file references) ---
-  // Infer basic mime type from filename (frontend only; backend may re-evaluate)
-  const inferMimeFromName = (filename: string): string => {
-    const ext = filename.split('.').pop()?.toLowerCase();
-    if (!ext) return 'application/octet-stream';
-    if (['png','jpg','jpeg','gif','webp','bmp','svg'].includes(ext)) return `image/${ext === 'jpg' ? 'jpeg' : ext}`;
-    if (['mp3','wav','ogg','m4a','flac'].includes(ext)) return `audio/${ext}`;
-    if (ext === 'json') return 'application/json';
-    if (ext === 'md') return 'text/markdown';
-    if (ext === 'txt' || ext === 'log') return 'text/plain';
-    if (ext === 'html' || ext === 'htm') return 'text/html';
-    if (ext === 'css') return 'text/css';
-    if (ext === 'js' || ext === 'mjs' || ext === 'cjs' || ext === 'ts' || ext === 'tsx') return 'text/plain';
-    if (ext === 'py') return 'text/x-python';
-    return 'application/octet-stream';
-  };
+  // Moved mime inference to shared util to keep this file leaner
 
-  useEffect(() => {
-    const root = composerRef.current;
-    if (!root) return;
-    const handleDragOver = (e: DragEvent) => {
-      if (!e.dataTransfer) return;
-      const types = Array.from(e.dataTransfer.types);
-      const hasExplorerPayload = types.includes(ICUI_FILE_LIST_MIME);
-      const hasFiles = types.includes('Files');
-      if (!hasExplorerPayload && !hasFiles) return;
-      e.preventDefault();
-      setIsDragActive(true);
-    };
-    const handleDragLeave = (e: DragEvent) => {
-      if (!(e.relatedTarget instanceof HTMLElement) || !root.contains(e.relatedTarget)) {
-        setIsDragActive(false);
-      }
-    };
-    const handleDrop = async (e: DragEvent) => {
-      if (!e.dataTransfer) return;
-      e.preventDefault();
-      setIsDragActive(false);
-      
-      // Handle explorer internal drags (file references)
-      const raw = e.dataTransfer.getData(ICUI_FILE_LIST_MIME);
-      if (raw) {
-        try {
-          const payload = JSON.parse(raw);
-          if (!isExplorerPayload(payload)) return;
-          // Add references to composer so filenames are visible and agent gets absolute paths
-          const refs = payload.items
-            .filter((item: any) => item.type === 'file')
-            .map((item: any) => ({
-              id: `explorer-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-              path: item.path,
-              name: item.name,
-              kind: 'file' as const
-            }));
-          if (refs.length > 0) {
-            setReferenced(prev => [...prev, ...refs]);
-          }
-        } catch (err) {
-          console.error('[ICUIChat] Failed to process explorer drag:', err);
+  // Replace inline DnD with hook to simplify component
+  useComposerDnd(composerEl, {
+    setActive: setIsDragActive,
+    onRefs: (refs) => setReferenced(prev => [...prev, ...refs]),
+    onFiles: (files) => {
+      uploadApi.addFiles(files, { context: 'chat' });
+      files.forEach(file => {
+        const tempId = `staged-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        if (file.type.startsWith('image/')) {
+          const preview = URL.createObjectURL(file);
+          setStaged(prev => [...prev, { id: tempId, file, preview }]);
+        } else {
+          setStaged(prev => [...prev, { id: tempId, file, preview: '' }]);
         }
-        return;
-      }
-      
-      // Handle external OS file drops (actual uploads)
-      const files = Array.from(e.dataTransfer.files);
-      if (files.length > 0) {
-        // Upload to media and stage for chat
-        uploadApi.addFiles(files, { context: 'chat' });
-        // Stage previews for all files (images get thumbnails, others get file icons)
-        files.forEach(file => {
-          const tempId = `staged-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-          if (file.type.startsWith('image/')) {
-            const preview = URL.createObjectURL(file);
-            setStaged(prev => [...prev, { id: tempId, file, preview }]);
-          } else {
-            // For non-images, stage without preview (will show file icon)
-            setStaged(prev => [...prev, { id: tempId, file, preview: '' }]);
-          }
-        });
-      }
-    };
-    root.addEventListener('dragover', handleDragOver);
-    root.addEventListener('dragleave', handleDragLeave);
-    root.addEventListener('drop', handleDrop);
-    return () => {
-      root.removeEventListener('dragover', handleDragOver);
-      root.removeEventListener('dragleave', handleDragLeave);
-      root.removeEventListener('drop', handleDrop);
-    };
-  }, []);
+      });
+    }
+  });
+
+  // Replace inline paste handler with hook
+  useChatPaste(
+    (file) => {
+      const preview = URL.createObjectURL(file);
+      const tempId = `staged-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      setStaged(prev => [...prev, { id: tempId, file, preview }]);
+    },
+    (files) => uploadApi.addFiles(files, { context: 'chat' })
+  );
 
   return (
     <div 
@@ -873,19 +738,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
             )}
             {/* Sticky jump-to-latest when user scrolls up */}
             {!isAutoScrollEnabled && hasNewMessages && (
-              <div className="sticky bottom-2 flex justify-center z-10">
-                <button
-                  onClick={jumpToLatest}
-                  className="px-3 py-1.5 text-xs rounded-full shadow border"
-                  style={{
-                    backgroundColor: 'var(--icui-bg-secondary)',
-                    color: 'var(--icui-text-primary)',
-                    borderColor: 'var(--icui-border-subtle)'
-                  }}
-                >
-                  Jump to latest
-                </button>
-              </div>
+              <JumpToLatestButton onClick={jumpToLatest} />
             )}
           </div>
         )}
@@ -910,7 +763,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
 
           <div className="space-y-2">
             {/* Modern Composer - preserves previous layout (textarea on top, controls at bottom) */}
-            <div ref={composerRef} className={`icui-composer ${isDragActive ? 'ring-2 ring-blue-400 rounded-md transition-colors' : ''}`} data-chat-composer>
+            <div ref={setComposerEl} className={`icui-composer ${isDragActive ? 'ring-2 ring-blue-400 rounded-md transition-colors' : ''}`} data-chat-composer>
               {(referenced.length > 0 || staged.length > 0) && (
                 <div className="flex flex-wrap gap-2 mb-2 items-center" data-chat-attachments>
                   {referenced.map(ref => {

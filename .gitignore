@@ -73,6 +73,9 @@ coverage.xml
 .dmypy.json
 dmypy.json
 
+# Frontend test coverage
+coverage/
+
 # Jupyter Notebook
 .ipynb_checkpoints
 
