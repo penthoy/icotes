@@ -408,7 +408,7 @@ class AIAgentService:
         if self._filesystem_service is None:
             try:
                 from .filesystem_service import FileSystemService
-                self._filesystem_service = FileSystemService(self.message_broker)
+                self._filesystem_service = FileSystemService()  # Uses default root_path
             except Exception as e:
                 logger.error(f"Could not initialize filesystem service: {e}")
         return self._filesystem_service
@@ -418,7 +418,7 @@ class AIAgentService:
         if self._code_execution_service is None:
             try:
                 from .code_execution_service import CodeExecutionService
-                self._code_execution_service = CodeExecutionService(self.message_broker)
+                self._code_execution_service = CodeExecutionService()  # No parameters
             except Exception as e:
                 logger.error(f"Could not initialize code execution service: {e}")
         return self._code_execution_service
@@ -428,7 +428,7 @@ class AIAgentService:
         if self._lsp_service is None:
             try:
                 from .lsp_service import LSPService
-                self._lsp_service = LSPService(self.message_broker)
+                self._lsp_service = LSPService()  # No parameters
             except Exception as e:
                 logger.error(f"Could not initialize LSP service: {e}")
         return self._lsp_service
@@ -438,7 +438,7 @@ class AIAgentService:
         if self._terminal_service is None:
             try:
                 from .terminal_service import TerminalService
-                self._terminal_service = TerminalService(self.message_broker)
+                self._terminal_service = TerminalService()  # No parameters
             except Exception as e:
                 logger.error(f"Could not initialize terminal service: {e}")
         return self._terminal_service
@@ -448,7 +448,7 @@ class AIAgentService:
         if self._workspace_service is None:
             try:
                 from .workspace_service import WorkspaceService
-                self._workspace_service = WorkspaceService(self.message_broker)
+                self._workspace_service = WorkspaceService(self.message_broker)  # Takes message_broker
             except Exception as e:
                 logger.error(f"Could not initialize workspace service: {e}")
         return self._workspace_service
@@ -458,7 +458,7 @@ class AIAgentService:
         if self._clipboard_service is None:
             try:
                 from .clipboard_service import ClipboardService
-                self._clipboard_service = ClipboardService(self.message_broker)
+                self._clipboard_service = ClipboardService()  # No parameters
             except Exception as e:
                 logger.error(f"Could not initialize clipboard service: {e}")
         return self._clipboard_service
@@ -647,27 +647,75 @@ class AIAgentService:
             )
 
 
+class AIAgentServiceProxy:
+    """Proxy that supports both sync and async usage of get_ai_agent_service"""
+    
+    def __init__(self, service: AIAgentService):
+        self._service = service
+        # Make isinstance work by setting the class
+        self.__class__ = service.__class__
+    
+    def __getattr__(self, name):
+        """Delegate attribute access to the underlying service"""
+        return getattr(self._service, name)
+    
+    def __await__(self):
+        """Allow awaiting the proxy to return the underlying service"""
+        async def _return_service():
+            return self._service
+        return _return_service().__await__()
+
+
 # Global service instance
 _ai_agent_service: Optional[AIAgentService] = None
+_ai_agent_service_proxy: Optional[AIAgentServiceProxy] = None
 
 
-async def get_ai_agent_service(message_broker: Optional[MessageBroker] = None) -> AIAgentService:
-    """Get the global AI Agent service instance"""
+def get_ai_agent_service() -> AIAgentServiceProxy:
+    """Get the global AI Agent service instance (supports both sync and async usage)"""
+    global _ai_agent_service, _ai_agent_service_proxy
+    if _ai_agent_service is None:
+        # Create a basic instance without async dependencies for immediate use
+        # The proxy will handle async initialization when needed
+        _ai_agent_service = AIAgentService(None)  # Will initialize message_broker lazily
+        _ai_agent_service_proxy = AIAgentServiceProxy(_ai_agent_service)
+    return _ai_agent_service_proxy
+
+
+async def get_ai_agent_service_async(message_broker: Optional[MessageBroker] = None) -> AIAgentService:
+    """Get the global AI Agent service instance (async version for full initialization)"""
     global _ai_agent_service
     if _ai_agent_service is None:
         if message_broker is None:
             message_broker = await get_message_broker()
         _ai_agent_service = AIAgentService(message_broker)
+    elif _ai_agent_service.message_broker is None:
+        # Initialize message broker if not already done
+        if message_broker is None:
+            message_broker = await get_message_broker()
+        _ai_agent_service.message_broker = message_broker
     return _ai_agent_service
+
+
+async def shutdown_ai_agent_service() -> None:
+    """Shutdown the global AI Agent service"""
+    global _ai_agent_service, _ai_agent_service_proxy
+    if _ai_agent_service is not None:
+        # Add any cleanup logic here if needed
+        _ai_agent_service = None
+        _ai_agent_service_proxy = None
 
 
 # Export main classes and functions
 __all__ = [
     "AIAgentService",
+    "AIAgentServiceProxy",
     "AgentCapability",
     "AgentActionType",
     "AgentContext",
     "AgentAction",
     "AgentEvent",
-    "get_ai_agent_service"
+    "get_ai_agent_service",
+    "get_ai_agent_service_async",
+    "shutdown_ai_agent_service"
 ]
