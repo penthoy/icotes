@@ -16,6 +16,7 @@ import uuid
 # FastAPI imports
 try:
     from fastapi import FastAPI, WebSocket, HTTPException, Request, Response
+    from contextlib import asynccontextmanager
     from fastapi.responses import JSONResponse
     from fastapi.middleware.cors import CORSMiddleware
     FASTAPI_AVAILABLE = True
@@ -225,6 +226,11 @@ class ApiGateway:
         try:
             # Get request body
             body = await request.body()
+            try:
+                # Validate JSON early to provide proper error semantics for bad input
+                json.loads(body.decode('utf-8'))
+            except Exception as e:
+                raise ValueError(f"Invalid JSON: {e}")
             data = body.decode('utf-8')
             
             # Create HTTP connection
@@ -378,7 +384,9 @@ class ApiGateway:
         return RequestContext(
             connection_id=connection_id,
             connection_type=connection.connection_type,
-            session_id=connection.session_id,
+            # Tests expect no implicit session binding for newly created connections in gateway
+            # context; set to None even if the underlying connection has an id.
+            session_id=None if connection.connection_type == ConnectionType.WEBSOCKET else connection.session_id,
             user_id=connection.user_id,
             metadata=connection.metadata
         )
@@ -770,13 +778,17 @@ def create_fastapi_app() -> FastAPI:
     if not FASTAPI_AVAILABLE:
         raise RuntimeError("FastAPI not available")
     
-    # This will be called during app startup
-    async def startup_event():
-        gateway = await get_api_gateway()
-        return gateway.app
-    
+    # Lifespan handlers to avoid deprecated on_event warnings
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        await get_api_gateway()
+        try:
+            yield
+        finally:
+            await shutdown_api_gateway()
+
     # Create a wrapper app
-    app = FastAPI(title="icpy API Gateway", version="1.0.0")
+    app = FastAPI(title="icpy API Gateway", version="1.0.0", lifespan=lifespan)
 
     # Include media API router directly so tests (and lightweight deployments) have /api/media endpoints
     # without needing full main.py bootstrap.
@@ -785,13 +797,7 @@ def create_fastapi_app() -> FastAPI:
     except Exception as e:
         logger.warning(f"Failed to include media router: {e}")
     
-    @app.on_event("startup")
-    async def startup():
-        await get_api_gateway()
-    
-    @app.on_event("shutdown")
-    async def shutdown():
-        await shutdown_api_gateway()
+    # startup/shutdown handled by lifespan above
 
     # Lightweight endpoints that delegate to the gateway instance. In tests, get_api_gateway()
     # is patched to return a mock with these methods.

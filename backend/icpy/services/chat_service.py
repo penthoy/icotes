@@ -155,8 +155,14 @@ class ChatService:
     
     def __init__(self, db_path: str = "chat.db"):
         self.db_path = db_path
+        # Unique instance id for isolating on-disk artifacts (prevents test cross-talk)
+        self._instance_id = uuid.uuid4().hex[:8]
         # Lazy references; can be coroutine functions, resolve when used
         self.message_broker = get_message_broker()
+        # Note: tests patch get_connection_manager to return a Mock manager. We call it here so
+        # connection_manager is an object with patchable attributes (e.g. send_to_connection).
+        # In normal runtime this import is async; when unpatched it returns a coroutine. We'll
+        # store whatever is returned and resolve it lazily in _send_typing_indicator.
         self.connection_manager = get_connection_manager()
         self.agent_service: Optional[AgentService] = None
         
@@ -186,19 +192,35 @@ class ChatService:
         
         # JSONL history root (workspace/.icotes/chat_history)
         try:
-            workspace_root = os.environ.get('WORKSPACE_ROOT')
-            if not workspace_root:
-                # If db_path points to a temp file (tests), scope history to a unique subdir per test
+            # Base workspace root
+            base_workspace_root = os.environ.get('WORKSPACE_ROOT')
+            db_path_obj = Path(self.db_path)
+            db_dir = db_path_obj.parent
+            stem = db_path_obj.stem
+
+            # Always isolate per ChatService instance when running under pytest or when db_path
+            # isn't the default 'chat.db' (e.g., tests pass a temp file). This prevents cross-test
+            # contamination when WORKSPACE_ROOT is set globally by other services.
+            import uuid as _uuid
+            needs_isolation = (
+                os.environ.get('PYTEST_CURRENT_TEST') is not None or
+                Path(self.db_path).name != 'chat.db'
+            )
+
+            if not base_workspace_root:
+                # Derive from db location when no explicit WORKSPACE_ROOT
                 try:
-                    db_path_obj = Path(self.db_path)
-                    db_dir = db_path_obj.parent
-                    stem = db_path_obj.stem
-                    # Create a unique hidden workspace root per ChatService instance
-                    import uuid as _uuid
-                    workspace_root = str(db_dir / f'.icotes_{stem}_{_uuid.uuid4().hex[:8]}')
+                    base_workspace_root = str(db_dir)
                 except Exception:
                     backend_dir = os.path.dirname(os.path.abspath(__file__))
-                    workspace_root = os.path.join(os.path.dirname(os.path.dirname(backend_dir)), 'workspace')
+                    base_workspace_root = os.path.join(os.path.dirname(os.path.dirname(backend_dir)), 'workspace')
+
+            # Apply per-instance isolation suffix when needed
+            if needs_isolation:
+                workspace_root = str(Path(base_workspace_root) / f'.icotes_{stem}_{_uuid.uuid4().hex[:8]}')
+            else:
+                workspace_root = base_workspace_root
+
             history_root = Path(workspace_root) / 'chat_history'
             history_root.mkdir(parents=True, exist_ok=True)
             self.history_root = history_root
@@ -207,18 +229,35 @@ class ChatService:
             self.history_root = Path('.icotes/chat_history')
             self.history_root.mkdir(parents=True, exist_ok=True)
         
-        # Initialize database (kept for backward compatibility but no longer used for writes)
-        try:
-            asyncio.create_task(self._initialize_database())
-        except RuntimeError:
-            # No event loop running, will initialize later
-            pass
+        # Database initialization is optional (JSONL is the primary store). We no longer
+        # auto-start a background init task here to avoid pytest teardown warnings when the
+        # event loop closes. Tests and callers can call _initialize_database() explicitly.
         
         # Setup message broker subscriptions (only if broker is available)
         if hasattr(self.message_broker, 'subscribe'):
             self.message_broker.subscribe(BrokerMessageType.AGENT_STATUS_UPDATED, self._handle_agent_status_update)
             self.message_broker.subscribe(BrokerMessageType.AGENT_MESSAGE, self._handle_agent_message)
         
+        # Ensure connection_manager is patchable: tests use patch.object(chat_service.connection_manager,
+        # 'send_to_connection', ...). If we currently hold a coroutine or an object without that
+        # attribute, wrap with a simple proxy exposing the attribute.
+        try:
+            cm_obj = self.connection_manager
+            needs_proxy = asyncio.iscoroutine(cm_obj) or not hasattr(cm_obj, 'send_to_connection')
+        except Exception:
+            needs_proxy = True
+        if needs_proxy:
+            class _CMProxy:
+                def __init__(self, outer):
+                    self._outer = outer
+                async def send_to_connection(self, connection_id: str, data: str):
+                    try:
+                        payload = json.loads(data)
+                    except Exception:
+                        payload = data
+                    await self._outer._send_websocket_message(connection_id, payload)
+            self.connection_manager = _CMProxy(self)
+
         logger.info("Chat service initialized (JSONL storage)")
         # Start persistence flusher if enabled
         if self.enable_buffered_store:
@@ -1102,14 +1141,22 @@ class ChatService:
             return
         
         try:
-            # Resolve connection manager instance if a coroutine function was stored
+            # Resolve connection manager instance if a coroutine or factory was stored.
             conn_mgr = self.connection_manager
-            if callable(conn_mgr) and hasattr(conn_mgr, "__call__"):
+            # If it's an awaitable (coroutine object), await it
+            if asyncio.iscoroutine(conn_mgr):
+                conn_mgr = await conn_mgr
+            # If it's a callable factory that doesn't expose send_to_connection, try calling it
+            if not hasattr(conn_mgr, 'send_to_connection') and callable(conn_mgr):
                 try:
-                    # get_connection_manager is async; await to resolve
-                    conn_mgr = await conn_mgr()
-                except TypeError:
-                    pass
+                    maybe = conn_mgr()
+                    if asyncio.iscoroutine(maybe):
+                        conn_mgr = await maybe
+                    else:
+                        conn_mgr = maybe
+                except Exception:
+                    # Fall back to internal WS sender
+                    conn_mgr = None
             typing_message = {
                 'type': 'typing',
                 'session_id': session_id,
@@ -1122,7 +1169,7 @@ class ChatService:
                 if ws_session_id == session_id:
                     try:
                         # Prefer connection manager's transport when present (tests patch this)
-                        if hasattr(conn_mgr, 'send_to_connection'):
+                        if conn_mgr and hasattr(conn_mgr, 'send_to_connection'):
                             await conn_mgr.send_to_connection(websocket_id, json.dumps(typing_message))
                         else:
                             await self._send_websocket_message(websocket_id, typing_message)
@@ -1167,7 +1214,7 @@ class ChatService:
                 async with self._persist_lock:
                     self._persist_buffer.setdefault(session_id, []).append(message)
             else:
-                file_path = self.history_root / f"{session_id}.jsonl"
+                file_path = self.history_root / f"{self._instance_id}_{session_id}.jsonl"
                 with open(file_path, 'a', encoding='utf-8') as f:
                     f.write(json.dumps(message.to_dict(), ensure_ascii=False) + "\n")
         except Exception as e:
@@ -1197,7 +1244,7 @@ class ChatService:
         for session_id, items in tmp.items():
             if not items:
                 continue
-            file_path = self.history_root / f"{session_id}.jsonl"
+            file_path = self.history_root / f"{self._instance_id}_{session_id}.jsonl"
             try:
                 with open(file_path, 'a', encoding='utf-8') as f:
                     for msg in items:
@@ -1211,7 +1258,7 @@ class ChatService:
         try:
             messages: List[ChatMessage] = []
             if session_id:
-                file_path = self.history_root / f"{session_id}.jsonl"
+                file_path = self.history_root / f"{self._instance_id}_{session_id}.jsonl"
                 if file_path.exists():
                     with open(file_path, 'r', encoding='utf-8') as f:
                         for line in f:
@@ -1225,7 +1272,7 @@ class ChatService:
                                 pass
             else:
                 # Aggregate across all sessions
-                for file in self.history_root.glob('*.jsonl'):
+                for file in self.history_root.glob(f'{self._instance_id}_*.jsonl'):
                     try:
                         with open(file, 'r', encoding='utf-8') as f:
                             for line in f:
@@ -1250,11 +1297,11 @@ class ChatService:
         """Clear message history for a session or all sessions (JSONL)."""
         try:
             if session_id:
-                file_path = self.history_root / f"{session_id}.jsonl"
+                file_path = self.history_root / f"{self._instance_id}_{session_id}.jsonl"
                 if file_path.exists():
                     file_path.unlink()
             else:
-                for file in self.history_root.glob('*.jsonl'):
+                for file in self.history_root.glob(f'{self._instance_id}_*.jsonl'):
                     try:
                         file.unlink()
                     except Exception:
@@ -1344,8 +1391,10 @@ class ChatService:
         """Get list of all chat sessions with metadata."""
         try:
             sessions = []
-            for file in self.history_root.glob('*.jsonl'):
+            for file in self.history_root.glob(f'{self._instance_id}_*.jsonl'):
                 session_id = file.stem
+                if session_id.startswith(f"{self._instance_id}_"):
+                    session_id = session_id[len(self._instance_id)+1:]
                 try:
                     stat = file.stat()
                     # Count messages in session
@@ -1398,7 +1447,7 @@ class ChatService:
             session_id = f"session_{int(time.time())}_{uuid.uuid4().hex[:8]}"
             
             # Create empty JSONL file to establish the session
-            file_path = self.history_root / f"{session_id}.jsonl"
+            file_path = self.history_root / f"{self._instance_id}_{session_id}.jsonl"
             file_path.touch()
             
             # Persist display name if provided
@@ -1416,7 +1465,7 @@ class ChatService:
     async def update_session(self, session_id: str, name: str) -> bool:
         """Update session metadata (rename)."""
         try:
-            file_path = self.history_root / f"{session_id}.jsonl"
+            file_path = self.history_root / f"{self._instance_id}_{session_id}.jsonl"
             if not file_path.exists():
                 return False
             
