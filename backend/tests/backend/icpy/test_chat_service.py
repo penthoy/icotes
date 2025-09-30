@@ -22,6 +22,27 @@ from icpy.services.chat_service import (
 )
 
 
+@pytest.fixture(scope="session", autouse=True)
+def cleanup_temp_workspaces():
+    """Clean up any remaining temporary workspace directories after all tests"""
+    yield
+    # Cleanup after all tests in this module
+    try:
+        workspace_root = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), '..', '..', 'workspace')
+        if os.path.exists(workspace_root):
+            import glob
+            import shutil
+            temp_dirs = glob.glob(os.path.join(workspace_root, '.icotes_tmp*'))
+            for temp_dir in temp_dirs:
+                try:
+                    shutil.rmtree(temp_dir)
+                    print(f"Cleaned up temporary workspace: {temp_dir}")
+                except Exception as e:
+                    print(f"Warning: Failed to clean up {temp_dir}: {e}")
+    except Exception as e:
+        print(f"Warning: Error during workspace cleanup: {e}")
+
+
 @pytest.fixture
 async def temp_db():
     """Create a temporary database for testing"""
@@ -70,6 +91,8 @@ async def chat_service(temp_db, mock_message_broker, mock_connection_manager):
         service = ChatService(db_path=temp_db)
         await service._initialize_database()
         yield service
+        # Cleanup after test
+        await service.cleanup()
 
 
 class TestChatMessage:

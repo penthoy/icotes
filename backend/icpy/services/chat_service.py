@@ -16,6 +16,7 @@ import sqlite3
 import aiosqlite
 from pathlib import Path
 import os
+import shutil
 import mimetypes
 from urllib.parse import quote
 
@@ -218,12 +219,15 @@ class ChatService:
             # Apply per-instance isolation suffix when needed
             if needs_isolation:
                 workspace_root = str(Path(base_workspace_root) / f'.icotes_{stem}_{_uuid.uuid4().hex[:8]}')
+                self._temp_workspace = workspace_root  # Track for cleanup
             else:
                 workspace_root = base_workspace_root
+                self._temp_workspace = None  # Not a temp workspace
 
             history_root = Path(workspace_root) / 'chat_history'
             history_root.mkdir(parents=True, exist_ok=True)
             self.history_root = history_root
+            self._temp_workspace = None  # Track for cleanup
         except Exception:
             # Fallback to local directory if workspace resolution fails
             self.history_root = Path('.icotes/chat_history')
@@ -1561,6 +1565,32 @@ class ChatService:
             logger.error(f"Failed to stop streaming for session {session_id}: {e}")
             return False
     
+    async def cleanup(self):
+        """Clean up temporary workspace directories and files created by this instance"""
+        try:
+            # Stop any pending persist tasks
+            if self._persist_task and not self._persist_task.done():
+                self._persist_task.cancel()
+                try:
+                    await self._persist_task
+                except asyncio.CancelledError:
+                    pass
+            
+            # Flush any remaining buffered messages
+            if self._persist_buffer:
+                await self._flush_persist_buffer()
+            
+            # Clean up temporary workspace if we created one
+            if hasattr(self, '_temp_workspace') and self._temp_workspace and Path(self._temp_workspace).exists():
+                try:
+                    shutil.rmtree(self._temp_workspace)
+                    logger.info(f"Cleaned up temporary workspace: {self._temp_workspace}")
+                except Exception as e:
+                    logger.warning(f"Failed to clean up temporary workspace {self._temp_workspace}: {e}")
+            
+        except Exception as e:
+            logger.error(f"Error during chat service cleanup: {e}")
+    
     def get_stats(self) -> Dict[str, Any]:
         """Get chat service statistics"""
         return {
@@ -1588,6 +1618,8 @@ async def shutdown_chat_service():
     """Shutdown the chat service"""
     global _chat_service
     if _chat_service:
+        # Clean up temporary files and directories
+        await _chat_service.cleanup()
         # Close any pending operations
         logger.info("Chat service shutdown")
         _chat_service = None
