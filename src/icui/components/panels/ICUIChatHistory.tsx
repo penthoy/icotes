@@ -42,11 +42,17 @@ const ICUIChatHistory: React.FC<ICUIChatHistoryProps> = ({
   // Session synchronization
   const { emitSessionChange, onSessionChange } = useChatSessionSync('ICUIChatHistory');
 
-  // Register commands on mount
+  // Register commands on mount (only once)
   useEffect(() => {
     registerChatHistoryCommands();
     
-    // Setup global callbacks for command operations
+    return () => {
+      delete (window as any).chatHistoryCallback;
+    };
+  }, []); // Empty dependency array - register commands only once on mount
+
+  // Setup global callbacks for command operations (updates when dependencies change)
+  useEffect(() => {
     (window as any).chatHistoryCallback = {
       onSessionSelect: (sessionId: string) => {
         handleSelect(sessionId);
@@ -85,10 +91,6 @@ const ICUIChatHistory: React.FC<ICUIChatHistoryProps> = ({
         }
         setSelectedSessions(new Set());
       }
-    };
-    
-    return () => {
-      delete (window as any).chatHistoryCallback;
     };
   }, [sessions, createSession, renameSession, deleteSession, refreshSessions, emitSessionChange, onSessionSelect]);
 

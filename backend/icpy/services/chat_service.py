@@ -234,8 +234,22 @@ class ChatService:
                 if not isinstance(item, dict):
                     continue
                 att_id = str(item.get('id') or item.get('attachment_id') or '')
-                # Determine path fields
-                rel_path = item.get('relative_path') or item.get('rel_path') or item.get('path') or ''
+                # Determine path fields (preserve absolute path separately to allow secure local embedding)
+                orig_path = item.get('path') or ''
+                rel_path = item.get('relative_path') or item.get('rel_path') or ''
+                abs_path: str = ''
+                try:
+                    if isinstance(orig_path, str) and orig_path:
+                        # Absolute OS path? keep separate; else treat as storage-relative
+                        from pathlib import Path as _P
+                        if _P(orig_path).is_absolute():
+                            abs_path = orig_path
+                        else:
+                            # If caller only provided a relative path, consider it as storage-relative
+                            if not rel_path:
+                                rel_path = orig_path
+                except Exception as e:
+                    logger.debug("Attachment path normalization issue: %s", e)
                 mime = item.get('mime_type') or item.get('mime') or 'application/octet-stream'
                 size = item.get('size_bytes') or item.get('size') or 0
                 kind = item.get('kind') or item.get('type') or ''
@@ -262,6 +276,12 @@ class ChatService:
                             filename = filename.split('_', 1)[-1]
                     except Exception:
                         filename = rel_path
+                # Fallback to absolute path filename if no rel-based name available
+                if not filename and isinstance(abs_path, str) and abs_path:
+                    try:
+                        filename = Path(abs_path).name
+                    except Exception:
+                        filename = abs_path
 
                 # Fallback filename from metadata
                 if not filename:
@@ -284,6 +304,8 @@ class ChatService:
                     'mime_type': mime,
                     'size_bytes': int(size) if isinstance(size, (int, float, str)) and str(size).isdigit() else size,
                     'relative_path': rel_path,
+                    # Preserve absolute path for explorer references so downstream can embed as data URL
+                    'absolute_path': abs_path or None,
                     'kind': kind,
                     'url': url
                 })
@@ -713,28 +735,134 @@ class ChatService:
 
             # Append current user message as multimodal (include image attachments) so custom agents can see them
             try:
-                content_parts: List[Dict[str, Any]] = [{"type": "text", "text": user_message.content}]
+                # Build message content with attachment information
+                message_text = user_message.content
+                
+                # Add file attachment information to the message text for non-image files
+                if user_message.attachments:
+                    non_image_attachments = []
+                    for att in user_message.attachments:
+                        kind = att.get('kind')
+                        mime = att.get('mime_type') or att.get('mime') or ''
+                        filename = att.get('filename') or 'unknown file'
+                        
+                        # Skip images as they'll be processed as multimodal content
+                        if not ((isinstance(mime, str) and mime.startswith('image/')) or kind in ('image', 'images')):
+                            rel_path = att.get('relative_path') or att.get('rel_path') or att.get('path') or ''
+                            abs_path = att.get('absolute_path') or ''
+                            
+                            # Determine the path to show to the agent
+                            display_path = abs_path if abs_path else (rel_path if rel_path else filename)
+                            
+                            non_image_attachments.append({
+                                'filename': filename,
+                                'path': display_path,
+                                'mime_type': mime,
+                                'size': att.get('size_bytes') or att.get('size') or 0
+                            })
+                    
+                    # Append attachment information to message text if there are non-image files
+                    if non_image_attachments:
+                        attachment_info = "\n\n[Attached files:"
+                        for att_info in non_image_attachments:
+                            size_str = f" ({att_info['size']} bytes)" if att_info['size'] else ""
+                            attachment_info += f"\n- {att_info['filename']} (path: {att_info['path']}){size_str}"
+                        attachment_info += "]"
+                        message_text += attachment_info
+                
+                content_parts: List[Dict[str, Any]] = [{"type": "text", "text": message_text}]
                 if user_message.attachments:
                     media = get_media_service()
+                    # Configurable caps to avoid heavy processing and nested-loop overhead
+                    import os as _os
+                    try:
+                        max_imgs = int(_os.getenv('CHAT_MAX_IMAGE_ATTACHMENTS', '4'))
+                    except Exception:
+                        max_imgs = 4
+                    try:
+                        max_img_mb = float(_os.getenv('CHAT_MAX_IMAGE_SIZE_MB', '3'))
+                    except Exception:
+                        max_img_mb = 3.0
+
+                    added_images = 0
                     for att in user_message.attachments:
                         try:
+                            logger.debug(
+                                "Custom agent: Processing attachment id=%s kind=%s mime=%s rel=%s has_abs=%s size=%s",
+                                att.get('id'),
+                                att.get('kind'),
+                                att.get('mime_type') or att.get('mime'),
+                                att.get('relative_path') or att.get('rel_path'),
+                                bool(att.get('absolute_path')),
+                                att.get('size_bytes') or att.get('size'),
+                            )
                             kind = att.get('kind')
                             mime = att.get('mime_type') or att.get('mime') or ''
+                            # Fast reject for non-image
                             if not ((isinstance(mime, str) and mime.startswith('image/')) or kind in ('image', 'images')):
                                 continue
-                            # Prefer embedding as data URL from media service
+                            # Early termination if we've added enough images
+                            if added_images >= max_imgs:
+                                break
+                            # Prefer embedding as data URL from media service or workspace path
                             rel = att.get('relative_path') or att.get('rel_path') or att.get('path')
+                            absolute_field = att.get('absolute_path')
                             data_url = None
+                            
+                            # Try media service first (for uploaded files)
                             if isinstance(rel, str) and rel:
                                 try:
                                     abs_path = (media.base_dir / rel).resolve()
                                     abs_path.relative_to(media.base_dir)
                                     if abs_path.exists() and abs_path.is_file():
+                                        # Skip overly large images to reduce memory pressure
+                                        try:
+                                            size_bytes = abs_path.stat().st_size
+                                            if size_bytes > int(max_img_mb * 1024 * 1024):
+                                                # Link via URL instead of embedding
+                                                raise ValueError('image_too_large')
+                                        except Exception:
+                                            # If stat fails fall back to attempt embed
+                                            pass
                                         import base64
                                         with open(abs_path, 'rb') as f:
                                             b64 = base64.b64encode(f.read()).decode('ascii')
                                         data_url = f"data:{mime};base64,{b64}"
                                 except Exception:
+                                    data_url = None
+                            
+                            # Try workspace absolute path (for explorer-dropped files)
+                            if not data_url and isinstance(absolute_field, str) and absolute_field:
+                                try:
+                                    logger.info(f"Custom agent: Attempting to embed explorer image from absolute path")
+                                    import os
+                                    from pathlib import Path
+                                    ws_root = os.environ.get('WORKSPACE_ROOT')
+                                    abs_path = Path(absolute_field).resolve()
+                                    # Require WORKSPACE_ROOT and enforce sandbox
+                                    if not ws_root:
+                                        raise PermissionError('WORKSPACE_ROOT not set; absolute paths are not allowed')
+                                    ws_root_p = Path(ws_root).resolve()
+                                    abs_path.relative_to(ws_root_p)  # raises if outside
+                                    if not abs_path.is_file():
+                                        raise FileNotFoundError('Invalid path')
+                                    if abs_path.exists() and abs_path.is_file():
+                                        # Skip overly large images to reduce memory pressure
+                                        try:
+                                            size_bytes = abs_path.stat().st_size
+                                            if size_bytes > int(max_img_mb * 1024 * 1024):
+                                                # Link via URL instead of embedding
+                                                raise ValueError('image_too_large')
+                                        except Exception:
+                                            # If stat fails fall back to attempt embed
+                                            pass
+                                        import base64
+                                        with open(abs_path, 'rb') as f:
+                                            b64 = base64.b64encode(f.read()).decode('ascii')
+                                        data_url = f"data:{mime};base64,{b64}"
+                                        logger.info(f"Custom agent: Successfully embedded explorer image as data URL (length: {len(data_url)})")
+                                except Exception as e:
+                                    logger.warning(f"Custom agent: Failed to embed explorer image: {e}")
                                     data_url = None
                             if not data_url:
                                 att_id = att.get('id')
@@ -742,6 +870,7 @@ class ChatService:
                                     data_url = f"/api/media/file/{att_id}"
                             if data_url:
                                 content_parts.append({"type": "image_url", "image_url": {"url": data_url}})
+                                added_images += 1
                         except Exception:
                             continue
                 history_list.append({"role": "user", "content": content_parts})

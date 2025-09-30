@@ -251,7 +251,8 @@ class OpenAIAgentWrapper(BaseAgentWrapper):
                     "temperature": self.config.temperature,
                     "stream": True
                 }
-                api_params.update(get_openai_token_param(self.config.model, self.config.max_tokens))
+                if self.config.max_tokens is not None:
+                    api_params.update(get_openai_token_param(self.config.model, self.config.max_tokens))
                 
                 stream = await self._agent.chat.completions.create(**api_params)
                 
@@ -326,6 +327,8 @@ class OpenAIAgentWrapper(BaseAgentWrapper):
 
             # Try to read file bytes from media service base dir using relative_path
             rel = att.get('relative_path') or att.get('rel_path')
+            # Prefer an explicitly preserved absolute path if provided by normalization
+            absolute_field = att.get('absolute_path')
             path_field = att.get('path')
             if isinstance(rel, str) and rel:
                 try:
@@ -342,6 +345,35 @@ class OpenAIAgentWrapper(BaseAgentWrapper):
                         return {"type": "image_url", "image_url": {"url": data_url}}
                 except Exception:
                     pass
+
+            # New: If we have an absolute workspace path from Explorer refs, embed as data URL
+            preferred_fs_path = absolute_field if isinstance(absolute_field, str) and absolute_field else path_field
+            if isinstance(preferred_fs_path, str) and preferred_fs_path:
+                try:
+                    import os
+                    from pathlib import Path
+                    ws_root = os.environ.get('WORKSPACE_ROOT')
+                    abs_path = Path(preferred_fs_path).resolve()
+                    # Require WORKSPACE_ROOT and enforce sandbox
+                    if not ws_root:
+                        raise PermissionError('WORKSPACE_ROOT not set; absolute paths are not allowed')
+                    ws_root_p = Path(ws_root).resolve()
+                    abs_path.relative_to(ws_root_p)  # raises if outside
+                    if not abs_path.is_file():
+                        raise FileNotFoundError('Invalid path')
+                    if abs_path.exists() and abs_path.is_file():
+                        with open(abs_path, 'rb') as f:
+                            b64 = base64.b64encode(f.read()).decode('ascii')
+                        # If mime is missing, try best-effort detection
+                        if not mime:
+                            import mimetypes as _m
+                            guess, _ = _m.guess_type(str(abs_path))
+                            mime = guess or 'image/png'
+                        data_url = f"data:{mime};base64,{b64}"
+                        return {"type": "image_url", "image_url": {"url": data_url}}
+                except Exception as e:
+                    logger.debug("Absolute-path embedding failed; falling back to URL: %s", e)
+                    # Fall through to URL fallback below
 
         # REMOVED: Direct filesystem access for security - use /api/files/raw endpoint instead            # Fallback to API URL by id (works only if OpenAI can fetch it)
             att_id = att.get('id')

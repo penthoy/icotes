@@ -197,9 +197,23 @@ export const chatHistoryOperations = {
 };
 
 /**
+ * Global flag to track if commands have been registered
+ * Prevents duplicate registrations across component instances
+ */
+let commandsRegistered = false;
+
+/**
  * Register all default Chat History commands
  */
 export function registerChatHistoryCommands(): void {
+  // Prevent duplicate registrations - commands are global and only need to be registered once
+  if (commandsRegistered) {
+    if (process.env.NODE_ENV === 'development') {
+      console.debug('ChatHistoryOperations: Commands already registered, skipping duplicate registration');
+    }
+    return;
+  }
+
   const commands = [
     {
       id: 'chatHistory.open',
@@ -266,6 +280,7 @@ export function registerChatHistoryCommands(): void {
     });
   });
 
+  commandsRegistered = true;
   log.info('ChatHistoryOperations', 'Registered chat history commands', { 
     count: commands.length,
     commands: commands.map(c => c.id)
@@ -292,6 +307,7 @@ export function unregisterChatHistoryCommands(): void {
     globalCommandRegistry.unregister(id);
   });
 
+  commandsRegistered = false; // Reset flag so commands can be re-registered if needed
   log.info('ChatHistoryOperations', 'Unregistered chat history commands', { 
     count: commandIds.length 
   });

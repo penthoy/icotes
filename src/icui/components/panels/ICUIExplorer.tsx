@@ -95,17 +95,23 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
 
   // Flatten the file tree to include all visible files (including those in expanded folders)
   const flattenedFiles = useMemo(() => {
-    const flatten = (nodes: ICUIFileNode[]): ICUIFileNode[] => {
-      let result: ICUIFileNode[] = [];
-      for (const node of nodes) {
-        result.push(node);
-        if (node.type === 'folder' && node.isExpanded && node.children) {
-          result = result.concat(flatten(node.children as ICUIFileNode[]));
+    const result: ICUIFileNode[] = [];
+    // Seed stack in reverse to preserve original top-level order when popping.
+    const stack: ICUIFileNode[] = files.slice().reverse();
+    
+    while (stack.length > 0) {
+      const node = stack.pop()!;
+      result.push(node);
+      
+      if (node.type === 'folder' && node.isExpanded && node.children) {
+        // Push children in reverse so that the leftmost child is processed first when popping.
+        for (let i = node.children.length - 1; i >= 0; i--) {
+          stack.push(node.children[i] as ICUIFileNode);
         }
       }
-      return result;
-    };
-    return flatten(files);
+    }
+    
+    return result;
   }, [files]);
 
   // Multi-select functionality

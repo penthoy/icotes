@@ -43,6 +43,18 @@ export class CommandRegistry {
    * Register a command
    */
   register(command: Command): void {
+    const existing = this.commands.get(command.id);
+    
+    // Skip duplicate registration to prevent excessive re-registrations
+    // This commonly happens during component re-mounts or drag operations
+    if (existing) {
+      // Only log in development mode to avoid console spam
+      if (process.env.NODE_ENV === 'development') {
+        console.debug(`CommandRegistry: Skipping duplicate registration of command '${command.id}'`);
+      }
+      return;
+    }
+
     this.commands.set(command.id, { ...command });
     
     // Register keyboard shortcut if provided
