@@ -455,11 +455,12 @@ class FileSystemService:
         self._read_cache: "OrderedDict[str, Tuple[Tuple[float,int], str]]" = OrderedDict()
 
         # Event batching for high-frequency FS change events
-        self._event_batching_enabled: bool = os.getenv('FS_ENABLE_EVENT_BATCHING', '1') in ('1', 'true', 'True')
+        # Disable batching by default for predictability in tests; can be enabled via env
+        self._event_batching_enabled: bool = os.getenv('FS_ENABLE_EVENT_BATCHING', '0') in ('1', 'true', 'True')
         try:
-            self._event_batch_interval: float = float(os.getenv('FS_EVENT_BATCH_INTERVAL_MS', '120')) / 1000.0
+            self._event_batch_interval: float = float(os.getenv('FS_EVENT_BATCH_INTERVAL_MS', '90')) / 1000.0
         except (ValueError, TypeError):
-            self._event_batch_interval = 0.12
+            self._event_batch_interval = 0.09
         try:
             self._event_batch_max_size: int = int(os.getenv('FS_EVENT_BATCH_MAX_SIZE', '2000'))
         except (ValueError, TypeError):

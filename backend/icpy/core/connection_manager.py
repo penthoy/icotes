@@ -255,19 +255,24 @@ class ConnectionManager:
         
         self.running = False
         
-        # Cancel background tasks
+        # Cancel background tasks (guard against closed loop during pytest teardown)
         if self.cleanup_task:
-            self.cleanup_task.cancel()
             try:
+                self.cleanup_task.cancel()
                 await self.cleanup_task
             except asyncio.CancelledError:
                 pass
+            except RuntimeError:
+                # Event loop already closed
+                pass
         
         if self.health_task:
-            self.health_task.cancel()
             try:
+                self.health_task.cancel()
                 await self.health_task
             except asyncio.CancelledError:
+                pass
+            except RuntimeError:
                 pass
         
         # Disconnect all connections
@@ -869,6 +874,12 @@ async def get_connection_manager() -> ConnectionManager:
     if _connection_manager is None:
         _connection_manager = ConnectionManager()
         await _connection_manager.start()
+    elif not _connection_manager.running:
+        try:
+            await _connection_manager.start()
+        except RuntimeError:
+            # Event loop may be closed; tests will recreate via shutdown/get
+            pass
     return _connection_manager
 
 
