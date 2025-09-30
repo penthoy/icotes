@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { render, waitFor } from '@testing-library/react';
+import { render, waitFor, act } from '@testing-library/react';
 import React from 'react';
 import { useMediaUpload } from '../../../../../src/icui/hooks/useMediaUpload';
 import ChatDropZone from '../../../../../src/icui/components/media/ChatDropZone';
@@ -32,14 +32,20 @@ describe('ChatDropZone highlight', () => {
 
     const dt: any = { types: ['Files'], files: [] };
   const dragEnterEvent = new (global as any).DragEvent('dragenter', { bubbles: true, dataTransfer: dt });
-  target.dispatchEvent(dragEnterEvent);
+  
+  await act(async () => {
+    target.dispatchEvent(dragEnterEvent);
+  });
 
     await waitFor(() => {
       expect(document.body.textContent).toContain('Drop files to attach');
     });
 
     const dropEvent = new (global as any).DragEvent('drop', { bubbles: true, dataTransfer: dt });
-    target.dispatchEvent(dropEvent);
+    
+    await act(async () => {
+      target.dispatchEvent(dropEvent);
+    });
 
     await waitFor(() => {
       // overlay should be removed

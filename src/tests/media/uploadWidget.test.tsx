@@ -15,7 +15,7 @@ if (typeof (global as any).DragEvent === 'undefined') {
   }
   ;(global as any).DragEvent = DragEventPolyfill as any;
 }
-import { render } from '@testing-library/react';
+import { render, act } from '@testing-library/react';
 import React from 'react';
 import GlobalUploadManager from '../../icui/components/media/GlobalUploadManager';
 
@@ -46,15 +46,22 @@ describe('GlobalUploadManager', () => {
   beforeEach(() => { vi.useFakeTimers(); });
   it('opens on custom event and multi-file paste', async () => {
     render(<GlobalUploadManager />);
+    
     // Trigger explicit open request (from Explorer multi-file drop)
-    window.dispatchEvent(new CustomEvent('icotes:open-upload-widget'));
-    await vi.runAllTimersAsync();
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent('icotes:open-upload-widget'));
+      await vi.runAllTimersAsync();
+    });
+    
     // Simulate multi-file paste -> should also auto-open and enqueue
     const f1 = new File(['a'], 'a.txt', { type: 'text/plain' });
     const f2 = new File(['b'], 'b.txt', { type: 'text/plain' });
     const pasteEvent: any = new Event('paste');
     Object.defineProperty(pasteEvent, 'clipboardData', { value: { items: [{ kind: 'file', getAsFile: () => f1 }, { kind: 'file', getAsFile: () => f2 }] } });
-    window.dispatchEvent(pasteEvent);
-    await vi.runAllTimersAsync();
+    
+    await act(async () => {
+      window.dispatchEvent(pasteEvent);
+      await vi.runAllTimersAsync();
+    });
   });
 });
