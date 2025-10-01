@@ -504,12 +504,7 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
       setLoading(false);
     }
   }, [currentPath, checkConnection, buildMap, annotateWithExpansion, applyChildrenResults]);
-
-  // Inline rename handled via useExplorerRename
-
-  // Handle context menu item clicks
-  // Context menu click handling moved into useExplorerContextMenu
-
+  // Sync editable path when currentPath changes externally
   // Handle keyboard navigation
   const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
     switch (event.key) {
