@@ -863,19 +863,18 @@ class LSPService:
                 cwd=server.config.cwd or workspace_path
             )
             server.process = process
-
-            # Mark running immediately to avoid blocking in tests; initialize in background
-            server.state = LSPServerState.RUNNING
             server.workspace_folders = [workspace_path]
             server.capabilities = server.capabilities or {}
 
-            async def _bg_init():
-                try:
-                    await self._initialize_server(server, workspace_path)
-                except Exception as e:
-                    # Keep RUNNING state for tests even if init fails
-                    logger.debug(f"Background LSP initialize failed/ignored: {e}")
-            asyncio.create_task(_bg_init())
+            # Initialize server properly before marking as RUNNING to avoid race conditions
+            try:
+                await self._initialize_server(server, workspace_path)
+                server.state = LSPServerState.RUNNING
+            except Exception as e:
+                logger.error(f"LSP server initialization failed: {e}")
+                server.state = LSPServerState.ERROR
+                server.last_error = str(e)
+                return False
 
             return True
         except Exception as e:

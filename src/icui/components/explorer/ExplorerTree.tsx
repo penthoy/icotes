@@ -150,10 +150,10 @@ export const ExplorerTree: React.FC<ExplorerTreeProps> = ({
             </div>
           )}
         </div>
-        {isPathLocked && node.type === 'folder' && node.isExpanded && node.children && (
+        {isPathLocked && node.type === 'folder' && node.isExpanded && Array.isArray(node.children) && (
           <div>
             <ExplorerTree
-              nodes={node.children as ICUIFileNode[]}
+              nodes={node.children}
               level={level + 1}
               isPathLocked={isPathLocked}
               currentPath={currentPath}
