@@ -14,7 +14,15 @@ import type {
   WorkspaceFile, 
   TerminalSession 
 } from '../types/backend-types';
-import type { ICUIEditorFile } from '../icui/components/archived/ICUIEditorPanel_deprecate';
+// Simple file interface for editor
+interface ICUIEditorFile {
+  id: string;
+  name: string;
+  content: string;
+  language: string;
+  path?: string;
+  modified?: boolean;
+}
 
 export interface BackendStateHook {
   // Connection state

@@ -19,7 +19,7 @@ langchain-community>=0.0.10
 langchain-openai>=0.0.5
 langgraph>=0.0.20
 langsmith>=0.0.80
-aiosqlite==0.19.0
+
 
 # Cerebras Cloud SDK for Cerebras models support
 cerebras_cloud_sdk>=1.30.0

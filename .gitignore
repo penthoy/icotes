@@ -97,7 +97,7 @@ celerybeat.pid
 backend/test_env/
 
 # Database files
-backend/chat.db
+
 
 # Internal documentation
 docs/plans/

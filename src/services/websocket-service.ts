@@ -3,7 +3,6 @@
  * 
  * This is the new implementation that uses the enhanced WebSocket service
  * with connection management, error handling, message queuing, and health monitoring.
- * The deprecated version is available in src/components/archived/services/websocket-service_deprecated.ts
  */
 
 import { EnhancedWebSocketService } from './websocket-service-impl';

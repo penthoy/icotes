@@ -83,13 +83,12 @@ def mock_agent_service():
 
 
 @pytest.fixture
-async def chat_service(temp_db, mock_message_broker, mock_connection_manager):
+async def chat_service(mock_message_broker, mock_connection_manager):
     """Create a chat service for testing"""
     with patch('icpy.services.chat_service.get_message_broker', return_value=mock_message_broker), \
          patch('icpy.services.chat_service.get_connection_manager', return_value=mock_connection_manager):
         
-        service = ChatService(db_path=temp_db)
-        await service._initialize_database()
+        service = ChatService()
         yield service
         # Cleanup after test
         await service.cleanup()
@@ -231,7 +230,6 @@ class TestChatService:
     @pytest.mark.asyncio
     async def test_chat_service_initialization(self, chat_service):
         """Test chat service initialization"""
-        assert chat_service.db_path.endswith('.db')
         assert chat_service.chat_sessions == {}
         assert chat_service.active_connections == set()
         assert isinstance(chat_service.config, ChatConfig)
@@ -406,7 +404,6 @@ class TestChatService:
         assert stats['active_connections'] == 2
         assert stats['chat_sessions'] == 2
         assert stats['agent_configured'] is False  # No agent configured in test
-        assert 'database_path' in stats
         assert 'config' in stats
     
     @pytest.mark.asyncio

@@ -12,8 +12,6 @@ from typing import Dict, List, Optional, Any, Set
 from dataclasses import dataclass, field
 from enum import Enum
 from datetime import datetime, timezone
-import sqlite3
-import aiosqlite
 from pathlib import Path
 import os
 import shutil
@@ -147,15 +145,14 @@ class ChatService:
     
     Features:
     - Real-time WebSocket communication
-    - Message persistence with JSONL per-session (deprecates SQLite chat.db)
+    - Message persistence with JSONL per-session
     - Agent integration and status management
     - Typing indicators and status updates
     - Message history and pagination
     - Error handling and reconnection support
     """
     
-    def __init__(self, db_path: str = "chat.db"):
-        self.db_path = db_path
+    def __init__(self):
         # Unique instance id for isolating on-disk artifacts (prevents test cross-talk)
         self._instance_id = uuid.uuid4().hex[:8]
         # Lazy references; can be coroutine functions, resolve when used
@@ -195,30 +192,20 @@ class ChatService:
         try:
             # Base workspace root
             base_workspace_root = os.environ.get('WORKSPACE_ROOT')
-            db_path_obj = Path(self.db_path)
-            db_dir = db_path_obj.parent
-            stem = db_path_obj.stem
-
-            # Always isolate per ChatService instance when running under pytest or when db_path
-            # isn't the default 'chat.db' (e.g., tests pass a temp file). This prevents cross-test
-            # contamination when WORKSPACE_ROOT is set globally by other services.
+            
+            # Always isolate per ChatService instance when running under pytest
+            # This prevents cross-test contamination when WORKSPACE_ROOT is set globally.
             import uuid as _uuid
-            needs_isolation = (
-                os.environ.get('PYTEST_CURRENT_TEST') is not None or
-                Path(self.db_path).name != 'chat.db'
-            )
+            needs_isolation = os.environ.get('PYTEST_CURRENT_TEST') is not None
 
             if not base_workspace_root:
-                # Derive from db location when no explicit WORKSPACE_ROOT
-                try:
-                    base_workspace_root = str(db_dir)
-                except Exception:
-                    backend_dir = os.path.dirname(os.path.abspath(__file__))
-                    base_workspace_root = os.path.join(os.path.dirname(os.path.dirname(backend_dir)), 'workspace')
+                # Default to workspace directory relative to backend
+                backend_dir = os.path.dirname(os.path.abspath(__file__))
+                base_workspace_root = os.path.join(os.path.dirname(os.path.dirname(backend_dir)), 'workspace')
 
             # Apply per-instance isolation suffix when needed
             if needs_isolation:
-                workspace_root = str(Path(base_workspace_root) / f'.icotes_{stem}_{_uuid.uuid4().hex[:8]}')
+                workspace_root = str(Path(base_workspace_root) / f'.icotes_test_{_uuid.uuid4().hex[:8]}')
                 self._temp_workspace = workspace_root  # Track for cleanup
             else:
                 workspace_root = base_workspace_root
@@ -233,9 +220,7 @@ class ChatService:
             self.history_root = Path('.icotes/chat_history')
             self.history_root.mkdir(parents=True, exist_ok=True)
         
-        # Database initialization is optional (JSONL is the primary store). We no longer
-        # auto-start a background init task here to avoid pytest teardown warnings when the
-        # event loop closes. Tests and callers can call _initialize_database() explicitly.
+        # JSONL is the primary store for message persistence
         
         # Setup message broker subscriptions (only if broker is available)
         if hasattr(self.message_broker, 'subscribe'):
@@ -366,37 +351,7 @@ class ChatService:
             logger.warning(f"Attachment normalization error: {e}")
         return normalized
 
-    async def _initialize_database(self):
-        """Initialize SQLite database for message persistence"""
-        try:
-            async with aiosqlite.connect(self.db_path) as db:
-                await db.execute("""
-                    CREATE TABLE IF NOT EXISTS chat_messages (
-                        id TEXT PRIMARY KEY,
-                        content TEXT NOT NULL,
-                        sender TEXT NOT NULL,
-                        timestamp TEXT NOT NULL,
-                        type TEXT DEFAULT 'message',
-                        metadata TEXT DEFAULT '{}',
-                        agent_id TEXT,
-                        session_id TEXT,
-                        created_at REAL DEFAULT (julianday('now'))
-                    )
-                """)
-                
-                await db.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_timestamp ON chat_messages(timestamp DESC)
-                """)
-                
-                await db.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_session ON chat_messages(session_id)
-                """)
-                
-                await db.commit()
-                logger.info("Chat database initialized")
-        except Exception as e:
-            logger.error(f"Failed to initialize chat database: {e}")
-    
+
     async def connect_websocket(self, websocket_id: str) -> str:
         """Connect a WebSocket client to chat service"""
         session_id = str(uuid.uuid4())
@@ -1211,7 +1166,7 @@ class ChatService:
             logger.warning(f"Could not broadcast message: {e}")
     
     async def _store_message(self, message: ChatMessage):
-        """Store a message to JSONL per session (deprecates SQLite)."""
+        """Store a message to JSONL per session."""
         try:
             session_id = message.session_id or "default"
             if self.enable_buffered_store:
@@ -1597,7 +1552,6 @@ class ChatService:
             'active_connections': len(self.active_connections),
             'chat_sessions': len(self.chat_sessions),
             'agent_configured': self.config.agent_id is not None,
-            'database_path': self.db_path,
             'config': self.config.to_dict()
         }
 
