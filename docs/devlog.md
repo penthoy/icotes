@@ -1,3 +1,10 @@
+### 2025-10-01
+- Consolidated ICUI Explorer helpers:
+  - Added `src/icui/components/explorer/utils.ts` and `icons.ts`
+  - Refactored `src/icui/components/panels/ICUIExplorer.tsx` to consume the new helpers (no behavior changes)
+  - Tests: `tests/frontend/unit/explorer.utils.test.ts`
+  - Verified with `npm test -- --run --coverage` and production build
+
 # Working Features
 
 ### December 2025 - Agent System Improvements & Centralization

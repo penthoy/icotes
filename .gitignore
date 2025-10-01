@@ -73,6 +73,13 @@ coverage.xml
 .dmypy.json
 dmypy.json
 
+# Frontend test coverage
+coverage/
+
+# Backend test coverage
+backend/coverage_html/
+backend/.coverage
+
 # Jupyter Notebook
 .ipynb_checkpoints
 
@@ -90,7 +97,7 @@ celerybeat.pid
 backend/test_env/
 
 # Database files
-backend/chat.db
+
 
 # Internal documentation
 docs/plans/
@@ -104,6 +111,7 @@ docs/saasplan/
 
 # workspace
 workspace/.icotes/chat_history/
+workspace/.icotes_tmp*/
 
 # Playwright
 /test-results/

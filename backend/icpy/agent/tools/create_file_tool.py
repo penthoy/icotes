@@ -16,6 +16,15 @@ async def get_filesystem_service():
     return await _get_filesystem_service()
 
 
+async def get_workspace_service():
+    """Import and return workspace service (shim for test patching)"""
+    try:
+        from icpy.services import get_workspace_service as _get_workspace_service
+        return await _get_workspace_service()
+    except ImportError:
+        return None
+
+
 class CreateFileTool(BaseTool):
     """Tool for creating new files"""
     
@@ -90,8 +99,41 @@ class CreateFileTool(BaseTool):
             if content is None:
                 return ToolResult(success=False, error="content is required")
             
-            # Get workspace root from environment or default
-            workspace_root = os.environ.get('WORKSPACE_ROOT')
+            # Determine workspace root using WorkspaceService when available
+            workspace_root = None
+            try:
+                ws = await get_workspace_service()
+                if ws:
+                    # Prefer active workspace root from service
+                    root = None
+                    # Some implementations may expose a coroutine get_workspace_root()
+                    if hasattr(ws, 'get_workspace_root'):
+                        try:
+                            root = await ws.get_workspace_root()  # type: ignore[attr-defined]
+                        except Exception:
+                            root = None
+                    # Fall back to current_workspace.root_path if available
+                    if not root and getattr(ws, 'current_workspace', None) is not None:
+                        try:
+                            root = ws.current_workspace.root_path  # type: ignore[attr-defined]
+                        except Exception:
+                            root = None
+                    # Fall back to get_workspace_state()['root_path']
+                    if not root and hasattr(ws, 'get_workspace_state'):
+                        try:
+                            state = await ws.get_workspace_state()  # type: ignore[attr-defined]
+                            if isinstance(state, dict):
+                                root = state.get('root_path')
+                        except Exception:
+                            root = None
+                    workspace_root = root
+            except Exception:
+                # Fallback to env or static detection
+                workspace_root = None
+
+            if not workspace_root:
+                workspace_root = os.environ.get('WORKSPACE_ROOT')
+            
             if not workspace_root:
                 # Default to workspace directory relative to backend
                 # From: /path/to/icotes/backend/icpy/agent/tools -> /path/to/icotes/workspace

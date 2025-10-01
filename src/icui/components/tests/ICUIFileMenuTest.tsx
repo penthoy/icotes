@@ -7,7 +7,6 @@
  */
 
 import React, { useState, useCallback } from 'react';
-import { FileMenu } from '../archived/FileMenu_deprecate';
 import { FileInfo } from '../../services/fileService';
 import { notificationService } from '../../services/notificationService';
 import '../../styles/FileMenu.css';
@@ -183,18 +182,8 @@ export const ICUIFileMenuTest: React.FC = () => {
         <div className="test-section">
           <h2>File Menu</h2>
           <div className="file-menu-container">
-            <FileMenu
-              currentFile={currentFile}
-              onNewFile={handleNewFile}
-              onOpenFile={handleOpenFile}
-              onSaveFile={handleSaveFile}
-              onSaveAsFile={handleSaveAsFile}
-              onCloseFile={handleCloseFile}
-              onOpenProject={handleOpenProject}
-              onCloseProject={handleCloseProject}
-              onOpenSettings={handleOpenSettings}
-              maxRecentFiles={5}
-            />
+            <p>FileMenu component has been deprecated and removed.</p>
+            <p>Use the new ICUIFileMenu component from the menus package instead.</p>
           </div>
         </div>
 

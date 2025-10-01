@@ -10,14 +10,12 @@ Run with: uv run python main.py
 """
 
 # Standard library imports
-import argparse
 import asyncio
 import contextlib
 import io
 import json
 import logging
 import os
-import subprocess
 import sys
 import tempfile
 import time
@@ -33,9 +31,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends, Request, Body
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode
 
 # Load environment variables
 load_dotenv(dotenv_path="../.env")  # Load from parent directory
@@ -84,7 +80,20 @@ except ImportError as e:
     TERMINAL_AVAILABLE = False
     terminal_manager = None
 
-# Code execution functionality
+# Import utilities and endpoints
+from icpy.core.cors import configure_cors_origins
+from icpy.core.static_files import mount_static_files
+from icpy.core.auth_helpers import (
+    issue_auth_cookie, serve_index_fallback, is_html_route, 
+    is_browser_navigation, build_unauth_redirect
+)
+from icpy.cli.main_cli import parse_arguments, handle_clipboard_commands
+
+# Import endpoint modules
+from icpy.api.endpoints import health, auth, clipboard, preview, agents, websockets
+
+
+# Basic code execution functionality (legacy fallback)
 def execute_python_code(code: str) -> tuple:
     """Execute Python code and return output, errors, and execution time"""
     
@@ -121,11 +130,13 @@ def execute_python_code(code: str) -> tuple:
             execution_time
         )
 
+
 # Data models
 class CodeExecutionRequest(BaseModel):
     """Request model for code execution."""
     code: str
     language: str = "python"
+
 
 class CodeExecutionResponse(BaseModel):
     """Response model for code execution."""
@@ -133,16 +144,6 @@ class CodeExecutionResponse(BaseModel):
     errors: List[str]
     execution_time: float
 
-class ClipboardRequest(BaseModel):
-    """Request model for clipboard operations."""
-    text: str
-
-class ClipboardResponse(BaseModel):
-    """Response model for clipboard operations."""
-    success: bool
-    message: str
-    text: Optional[str] = None
-    metadata: Optional[Dict[str, Any]] = None
 
 class FrontendLogEntry(BaseModel):
     """Frontend log entry model."""
@@ -155,132 +156,12 @@ class FrontendLogEntry(BaseModel):
     sessionId: Optional[str] = None
     connectionId: Optional[str] = None
 
+
 class FrontendLogsRequest(BaseModel):
     """Request model for frontend logs."""
     sessionId: str
     logs: List[FrontendLogEntry]
 
-# Preview API models
-class PreviewCreateRequest(BaseModel):
-    """Request model for creating a preview."""
-    files: Dict[str, str]
-    projectType: Optional[str] = None
-
-class PreviewCreateResponse(BaseModel):
-    """Response model for preview creation."""
-    preview_id: str
-    preview_url: str
-    project_type: str
-
-class PreviewUpdateRequest(BaseModel):
-    """Request model for updating a preview."""
-    files: Dict[str, str]
-
-class PreviewStatusResponse(BaseModel):
-    """Response model for preview status."""
-    id: str
-    project_type: str
-    status: str
-    url: Optional[str] = None
-    ready: bool
-    error: Optional[str] = None
-    created_at: float
-    updated_at: float
-
-# Data models
-
-# Helper: set host-only auth cookie
-def _issue_auth_cookie(response: JSONResponse | RedirectResponse, token: str) -> None:
-    cookie_name = os.getenv('COOKIE_NAME', 'auth_token')
-    # Host-only cookie: do NOT set Domain attribute
-    response.set_cookie(
-        key=cookie_name,
-        value=token,
-        httponly=True,
-        secure=True,
-        samesite="lax",
-        path="/",
-        max_age=60 * 60 * 8  # 8 hours default validity; actual token exp governs access
-    )
-
-# New helpers for unauthenticated browser redirect behavior
-EXCLUDED_PATHS = {"healthz", "readiness", "metrics", "favicon.ico"}
-
-# Serve index.html or a simple fallback without assuming authentication
-# (kept for non-redirect cases)
-def _serve_index_fallback():
-    dist_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "dist")
-    index_path = os.path.join(dist_path, "index.html")
-    if os.path.exists(index_path):
-        return FileResponse(index_path)
-    else:
-        return JSONResponse(content={"message": "icotes backend", "status": "unauthenticated"}, status_code=200)
-
-# Compute the home/base URL to send unauthenticated users to (e.g., icotes.com)
-def _get_home_redirect_base() -> str:
-    # Prefer explicit absolute URL envs
-    for key in ["MAIN_SITE_URL", "PUBLIC_HOME_URL", "SITE_HOME_URL", "LOGIN_BASE_URL", "UNAUTH_REDIRECT_URL"]:
-        val = os.getenv(key)
-        if val and val.startswith("http"):
-            return val.rstrip('/')
-    # If only a root path was provided, ignore it and build from APP_DOMAIN
-    app_domain = os.getenv('APP_DOMAIN', 'icotes.com')
-    # Default to https main site
-    return f"https://{app_domain}".rstrip('/')
-
-def _is_html_route(path: str) -> bool:
-    # Exclude api/ws and common static paths
-    if path.startswith("api/") or path.startswith("ws/"):
-        return False
-    if path.startswith("assets/") or path.startswith("static/"):
-        return False
-    if path in EXCLUDED_PATHS:
-        return False
-    return True
-
-def _is_browser_navigation(request: Request) -> bool:
-    if request.method.upper() != "GET":
-        return False
-    accept = (request.headers.get("accept") or "").lower()
-    sec_mode = (request.headers.get("sec-fetch-mode") or "").lower()
-    # Treat as browser navigation if HTML is acceptable and mode is navigate (or header missing)
-    is_html = "text/html" in accept or "*/*" in accept
-    is_nav = (sec_mode == "navigate") or (sec_mode == "")
-    return is_html and is_nav
-
-def _sanitize_return_to(url_str: str) -> Optional[str]:
-    try:
-        # Updated to support new landing/orchestrator authentication flow
-        token_param = os.getenv('TOKEN_QUERY_PARAM', 'token')  # Changed default from 't' to 'token'
-        app_domain = os.getenv('APP_DOMAIN', 'icotes.com')
-        u = urlparse(url_str)
-        # Allow only http/https and enforce host allowlist (app_domain or its subdomains)
-        if u.scheme not in ("https", "http"):
-            return None
-        if app_domain:
-            host = (u.hostname or "").lower()
-            if not (host == app_domain.lower() or host.endswith("." + app_domain.lower())):
-                return None
-        # Force https scheme to avoid http→https extra hops
-        scheme = "https"
-        # Strip sensitive or looping params
-        strip_keys = {token_param.lower(), "return_to", "token", "state", "code"}
-        q = [(k, v) for (k, v) in parse_qsl(u.query, keep_blank_values=True) if k.lower() not in strip_keys]
-        clean = u._replace(scheme=scheme, query=urlencode(q, doseq=True))
-        sanitized = urlunparse(clean)
-        if len(sanitized) > 2048:
-            return None
-        return sanitized
-    except Exception:
-        return None
-
-def _build_unauth_redirect(request: Request) -> RedirectResponse:
-    # Always send unauthenticated users straight to the main site, not this session subdomain
-    base = _get_home_redirect_base()
-    redirect = RedirectResponse(url=base, status_code=303)
-    redirect.headers['Cache-Control'] = 'no-store'
-    redirect.headers['X-Robots-Tag'] = 'noindex'
-    return redirect
 
 # App lifecycle management
 @asynccontextmanager
@@ -303,9 +184,6 @@ async def lifespan(app: FastAPI):
             await initialize_preview_service()
             
             logger.info("icpy services initialized successfully")
-            
-            # Auto-initialize chat agent after services are ready
-            # await auto_initialize_chat_agent()  # Function not yet implemented
             
         except Exception as e:
             logger.error(f"Failed to initialize icpy services: {e}")
@@ -330,6 +208,7 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.error(f"Error during icpy shutdown: {e}")
 
+
 def initialize_rest_api(app: FastAPI) -> None:
     """Initialize icpy REST API before app starts to avoid middleware issues."""
     global rest_api_instance
@@ -342,68 +221,6 @@ def initialize_rest_api(app: FastAPI) -> None:
         except Exception as e:
             logger.error(f"Failed to initialize icpy REST API: {e}")
 
-def configure_cors_origins() -> List[str]:
-    """Configure and return CORS allowed origins based on environment variables."""
-    allowed_origins = []
-    
-    # Add production domains if available
-    frontend_url = os.environ.get("FRONTEND_URL")
-    if frontend_url:
-        allowed_origins.append(frontend_url)
-    
-    # Add SITE_URL-based origins for both single-port and dual-port setups
-    site_url = os.environ.get("SITE_URL")
-    if site_url:
-        # Single-port setup (backend serves frontend)
-        backend_port = os.environ.get("BACKEND_PORT") or os.environ.get("PORT") or "8000"
-        allowed_origins.append(f"http://{site_url}:{backend_port}")
-        allowed_origins.append(f"https://{site_url}:{backend_port}")
-        
-        # Dual-port setup (separate frontend)
-        frontend_port = os.environ.get("FRONTEND_PORT") or "5173"
-        allowed_origins.append(f"http://{site_url}:{frontend_port}")
-        allowed_origins.append(f"https://{site_url}:{frontend_port}")
-    
-    # For development, allow localhost and common development ports
-    if os.environ.get("NODE_ENV") == "development":
-        allowed_origins.extend([
-            "http://localhost:8000",
-            "http://127.0.0.1:8000",
-            "http://localhost:3000",
-            "http://127.0.0.1:3000",
-            "http://localhost:5173",
-            "http://127.0.0.1:5173",
-        ])
-        
-        # Add SITE_URL with common development ports
-        if site_url:
-            for port in ["8000", "3000", "5173"]:
-                allowed_origins.append(f"http://{site_url}:{port}")
-                allowed_origins.append(f"https://{site_url}:{port}")
-    
-    # For production, allow all origins if not specified (Coolify handles this)
-    if os.environ.get("NODE_ENV") == "production" and not allowed_origins:
-        allowed_origins = ["*"]
-    
-    # Remove duplicates and log
-    allowed_origins = list(set(allowed_origins))
-    logger.info(f"CORS allowed origins: {allowed_origins}")
-    
-    return allowed_origins
-
-def mount_static_files(app: FastAPI) -> None:
-    """Mount static files for production React app build."""
-    # Check if dist directory exists (production)
-    dist_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "dist")
-    if os.path.exists(dist_path):
-        # Mount static files for production
-        app.mount("/assets", StaticFiles(directory=os.path.join(dist_path, "assets")), name="assets")
-        # Mount additional static files that might be needed
-        if os.path.exists(os.path.join(dist_path, "static")):
-            app.mount("/static", StaticFiles(directory=os.path.join(dist_path, "static")), name="static")
-        logger.info(f"Serving static files from {dist_path}")
-    else:
-        logger.info("No dist directory found - running in development mode")
 
 # Create FastAPI app with lifecycle management
 app = FastAPI(
@@ -437,41 +254,43 @@ try:
 except Exception as e:
     logger.error(f"Failed to register media router: {e}")
 
-# Health check endpoint
-@app.get("/health")
-async def health_check(request: Request):
-    """Health check endpoint."""
-    clipboard_status = await clipboard_service.get_status() if ICPY_AVAILABLE else {"capabilities": {"read": False, "write": False}}
-    
-    # Get user info without failing if not authenticated
-    user = None
-    try:
-        user = get_optional_user(request) if ICPY_AVAILABLE else None
-    except Exception:
-        user = None
-    
-    health_data = {
-        "status": "healthy",
-        "services": {
-            "icpy": ICPY_AVAILABLE,
-            "terminal": TERMINAL_AVAILABLE,
-            "clipboard": clipboard_status["capabilities"]
-        },
-        "timestamp": asyncio.get_event_loop().time(),
-        "auth": {
-            "mode": "saas" if (ICPY_AVAILABLE and auth_manager.is_saas_mode()) else "standalone",
-            "authenticated": user is not None if (ICPY_AVAILABLE and auth_manager.is_saas_mode()) else None,
-            "user_id": user.get("user_id") if user else None
-        }
-    }
-    
-    return health_data
 
-# SaaS-compatible health check endpoint (orchestrator requirement)
-@app.get("/healthz")
-async def healthz():
-    """Simple health check endpoint for orchestrator probes."""
-    return {"status": "ok"}
+# Register endpoint routes
+app.get("/health")(health.health_check)
+app.get("/healthz")(health.healthz)
+app.get("/api/config")(health.get_frontend_config)
+
+app.get("/auth/info")(auth.auth_info)
+app.get("/auth/profile", dependencies=[Depends(get_current_user)])(auth.user_profile)
+app.get("/auth/debug/test-token")(auth.debug_test_token)
+
+app.post("/clipboard", response_model=clipboard.ClipboardResponse)(clipboard.set_clipboard)
+app.get("/clipboard", response_model=clipboard.ClipboardResponse)(clipboard.get_clipboard)
+app.get("/clipboard/history")(clipboard.get_clipboard_history)
+app.get("/clipboard/status")(clipboard.get_clipboard_status)
+app.post("/clipboard/clear")(clipboard.clear_clipboard)
+
+app.post("/api/preview/create", response_model=preview.PreviewCreateResponse)(preview.create_preview)
+app.post("/api/preview/{preview_id}/update")(preview.update_preview)
+app.get("/api/preview/{preview_id}/status", response_model=preview.PreviewStatusResponse)(preview.get_preview_status)
+app.delete("/api/preview/{preview_id}")(preview.delete_preview)
+app.get("/preview/{preview_id}/{file_path:path}")(preview.serve_preview_file)
+
+# Agent endpoints
+app.get("/api/custom-agents")(agents.get_custom_agents)
+app.get("/api/custom-agents/configured")(agents.get_configured_custom_agents)
+app.post("/api/custom-agents/reload")(agents.reload_custom_agents_endpoint)
+app.post("/api/environment/reload")(agents.reload_environment_endpoint)
+app.post("/api/environment/update-keys")(agents.update_api_keys_endpoint)
+app.get("/api/environment/keys")(agents.get_api_keys_status_endpoint)
+app.get("/api/environment/key")(agents.get_api_key_value_endpoint)
+app.get("/api/custom-agents/{agent_name}/info")(agents.get_custom_agent_info)
+
+# WebSocket endpoints (additional)
+app.websocket("/ws/agents/{session_id}/stream")(websockets.agent_stream_websocket)
+app.websocket("/ws/workflows/{session_id}/monitor")(websockets.workflow_monitor_websocket)
+app.websocket("/ws/chat")(websockets.chat_websocket)
+
 
 # Fallback single file download endpoint (mirrors rest_api implementation)
 @app.get("/api/files/download")
@@ -522,288 +341,6 @@ async def fallback_download_file(path: str):  # type: ignore
         logger.error(f"[fallback_download] error for path={path}: {e}")
         raise HTTPException(status_code=500, detail="Download failed")
 
-# Dynamic configuration endpoint for frontend
-@app.get("/api/config")
-async def get_frontend_config(request: Request):
-    """
-    Provide dynamic configuration for the frontend based on the request host.
-    Prioritizes dynamic host detection for Cloudflare tunnel compatibility.
-    Falls back to environment variables only when hosts match.
-    """
-    import os
-    
-    # Get the host from the request
-    host = request.headers.get("host", "localhost:8000")
-    
-    # Check for development environment variables
-    env_backend_url = os.getenv('VITE_BACKEND_URL')
-    env_api_url = os.getenv('VITE_API_URL') 
-    env_ws_url = os.getenv('VITE_WS_URL')
-    
-    # Check if the request host matches the environment configuration
-    use_env_config = False
-    if env_backend_url and env_api_url and env_ws_url:
-        try:
-            env_host = env_backend_url.replace('http://', '').replace('https://', '').split('/')[0]
-            if host == env_host:
-                use_env_config = True
-                logger.info(f"Request host {host} matches environment host {env_host}, using environment config")
-            else:
-                logger.info(f"Request host {host} differs from environment host {env_host}, using dynamic detection for Cloudflare tunnel compatibility")
-        except Exception as e:
-            logger.warning(f"Error parsing environment URL {env_backend_url}: {e}")
-    
-    if use_env_config:
-        # Development mode with matching host: use environment variables
-        config = {
-            "base_url": env_backend_url,
-            "api_url": env_api_url,
-            "ws_url": env_ws_url,
-            "version": "1.0.0",
-            "auth_mode": auth_manager.auth_mode if ICPY_AVAILABLE else "standalone",
-            "features": {
-                "terminal": TERMINAL_AVAILABLE,
-                "icpy": ICPY_AVAILABLE,
-                "clipboard": True
-            }
-        }
-        logger.info(f"Using environment-based config: {config}")
-        return config
-    
-    # Dynamic host detection mode (used for Cloudflare tunnels, Docker, and mismatched hosts)
-    
-    # Determine protocol (HTTP vs HTTPS)
-    # Check for forwarded proto first (reverse proxy), then connection
-    protocol = "http"
-    if (request.headers.get("x-forwarded-proto") == "https" or 
-        request.headers.get("x-forwarded-ssl") == "on" or
-        str(request.url.scheme) == "https"):
-        protocol = "https"
-    
-    # Build URLs
-    base_url = f"{protocol}://{host}"
-    ws_protocol = "wss" if protocol == "https" else "ws"
-    ws_url = f"{ws_protocol}://{host}/ws"
-    
-    config = {
-        "base_url": base_url,
-        "api_url": f"{base_url}/api",
-        "ws_url": ws_url,
-        "version": "1.0.0",
-        "auth_mode": auth_manager.auth_mode if ICPY_AVAILABLE else "standalone",
-        "features": {
-            "terminal": TERMINAL_AVAILABLE,
-            "icpy": ICPY_AVAILABLE,
-            "clipboard": True
-        }
-    }
-    
-    logger.info(f"Using dynamic host-based config: {config}")
-    return config
-
-# Authentication info endpoint
-@app.get("/auth/info")
-async def auth_info(request: Request):
-    """Get authentication information."""
-    user = None
-    try:
-        user = get_optional_user(request) if ICPY_AVAILABLE else None
-    except Exception:
-        user = None
-        
-    return {
-        "auth_mode": "saas" if (ICPY_AVAILABLE and auth_manager.is_saas_mode()) else "standalone",
-        "authenticated": user is not None if (ICPY_AVAILABLE and auth_manager.is_saas_mode()) else None,
-        "user": {
-            "id": user.get("user_id") if user else None,
-            "email": user.get("email") if user else None,
-            "role": user.get("role") if user else None
-        } if user else None,
-        "requires_auth": ICPY_AVAILABLE and auth_manager.is_saas_mode()
-    }
-
-# SaaS mode user profile endpoint (protected)
-@app.get("/auth/profile")
-async def user_profile(request: Request, user: Dict[str, Any] = Depends(get_current_user)):
-    """Get current user profile. Only available in SaaS mode."""
-    if auth_manager.is_standalone_mode():
-        raise HTTPException(status_code=404, detail="User profiles not available in standalone mode")
-    
-    return {
-        "user": {
-            "id": user.get("user_id"),
-            "email": user.get("email"),
-            "role": user.get("role"),
-            "token_issued_at": user.get("iat"),
-            "token_expires_at": user.get("exp")
-        }
-    }
-
-# Debug endpoint for testing authentication tokens (SaaS mode only)
-@app.get("/auth/debug/test-token")
-async def debug_test_token(request: Request):
-    """Debug endpoint to test authentication token validation. For development/testing only."""
-    if not ICPY_AVAILABLE or auth_manager.is_standalone_mode():
-        raise HTTPException(status_code=404, detail="Debug endpoints not available in standalone mode")
-    
-    token = request.query_params.get('token')
-    source = request.query_params.get('src', 'test')
-    
-    if not token:
-        return {
-            "error": "missing_token", 
-            "message": "Please provide token as query parameter",
-            "example": "/auth/debug/test-token?token=your_jwt_here&src=test"
-        }
-    
-    try:
-        # Test token validation
-        payload = auth_manager.validate_jwt_token(token)
-        return {
-            "success": True,
-            "source": source,
-            "token_valid": True,
-            "user": {
-                "id": payload.get('sub'),
-                "email": payload.get('email'),
-                "role": payload.get('role', 'user'),
-                "issued_at": payload.get('iat'),
-                "expires_at": payload.get('exp')
-            },
-            "payload": payload if os.getenv('CONTAINER_DEBUG_AUTH') else None
-        }
-    except HTTPException as e:
-        return {
-            "success": False,
-            "source": source,
-            "token_valid": False,
-            "error": e.detail,
-            "status_code": e.status_code
-        }
-
-# ========================================
-# ICPY API Integration Complete
-# ========================================
-# The ICPY REST API provides all file operations through:
-# - backend/icpy/api/rest_api.py - REST API implementation  
-# - backend/icpy/services/filesystem_service.py - File operations
-# - Integration with message broker for real-time events
-# - Proper error handling and security
-
-# Enhanced Clipboard endpoints with multi-layer support
-@app.post("/clipboard", response_model=ClipboardResponse)
-async def set_clipboard(request: ClipboardRequest):
-    """Set clipboard content using enhanced multi-layer strategy."""
-    try:
-        if ICPY_AVAILABLE and clipboard_service:
-            result = await clipboard_service.write_clipboard(request.text)
-            return ClipboardResponse(
-                success=result["success"],
-                message=f"Clipboard updated via {result['method']}" if result["success"] else result.get("error", "Failed to update clipboard"),
-                metadata=result
-            )
-        else:
-            return ClipboardResponse(
-                success=False,
-                message="Clipboard service not available"
-            )
-    except Exception as e:
-        logger.error(f"Error setting clipboard: {e}")
-        return ClipboardResponse(
-            success=False,
-            message=f"Error: {str(e)}"
-        )
-
-@app.get("/clipboard", response_model=ClipboardResponse)
-async def get_clipboard():
-    """Get clipboard content using enhanced multi-layer strategy."""
-    try:
-        if ICPY_AVAILABLE and clipboard_service:
-            result = await clipboard_service.read_clipboard()
-            return ClipboardResponse(
-                success=result["success"],
-                message=f"Clipboard retrieved via {result['method']}" if result["success"] else result.get("error", "Failed to retrieve clipboard"),
-                text=result.get("content", ""),
-                metadata=result
-            )
-        else:
-            return ClipboardResponse(
-                success=False,
-                message="Clipboard service not available"
-            )
-    except Exception as e:
-        logger.error(f"Error getting clipboard: {e}")
-        return ClipboardResponse(
-            success=False,
-            message=f"Error: {str(e)}"
-        )
-
-@app.get("/clipboard/history")
-async def get_clipboard_history():
-    """Get clipboard history."""
-    try:
-        if ICPY_AVAILABLE and clipboard_service:
-            history = await clipboard_service.get_history()
-            return {
-                "success": True,
-                "history": history,
-                "count": len(history)
-            }
-        else:
-            return {
-                "success": False,
-                "message": "Clipboard service not available"
-            }
-    except Exception as e:
-        logger.error(f"Error getting clipboard history: {e}")
-        return {
-            "success": False,
-            "message": f"Error: {str(e)}"
-        }
-
-@app.get("/clipboard/status")
-async def get_clipboard_status():
-    """Get clipboard service status and capabilities."""
-    try:
-        if ICPY_AVAILABLE and clipboard_service:
-            status = await clipboard_service.get_status()
-            return {
-                "success": True,
-                "status": status
-            }
-        else:
-            return {
-                "success": False,
-                "message": "Clipboard service not available"
-            }
-    except Exception as e:
-        logger.error(f"Error getting clipboard status: {e}")
-        return {
-            "success": False,
-            "message": f"Error: {str(e)}"
-        }
-
-@app.post("/clipboard/clear")
-async def clear_clipboard():
-    """Clear clipboard content."""
-    try:
-        if ICPY_AVAILABLE and clipboard_service:
-            result = await clipboard_service.clear_clipboard()
-            return {
-                "success": result["success"],
-                "message": f"Clipboard cleared via {result['method']}" if result["success"] else result.get("error", "Failed to clear clipboard")
-            }
-        else:
-            return {
-                "success": False,
-                "message": "Clipboard service not available"
-            }
-    except Exception as e:
-        logger.error(f"Error clearing clipboard: {e}")
-        return {
-            "success": False,
-            "message": f"Error: {str(e)}"
-        }
 
 # Code execution endpoints
 @app.post("/execute", response_model=CodeExecutionResponse)
@@ -831,173 +368,6 @@ async def execute_code(request: CodeExecutionRequest):
             execution_time=0.0
         )
 
-# Preview endpoints
-@app.post("/api/preview/create", response_model=PreviewCreateResponse)
-async def create_preview(request: PreviewCreateRequest):
-    """Create a new preview project."""
-    preview_id = None
-    try:
-        if not ICPY_AVAILABLE:
-            raise HTTPException(status_code=500, detail="Preview service not available")
-        
-        preview_service = get_preview_service()
-        preview_id = await preview_service.create_preview(
-            files=request.files,
-            project_type=request.projectType
-        )
-        
-        # Get preview details
-        preview_status = await preview_service.get_preview_status(preview_id)
-        if not preview_status:
-            raise HTTPException(status_code=500, detail="Failed to get preview status")
-        
-        # Use the URL from the preview status if available, otherwise construct it
-        preview_url = preview_status.get("url") or f"/preview/{preview_id}/"
-        
-        logger.info(f"Preview API returning: ID={preview_id}, URL={preview_url}")
-        
-        return PreviewCreateResponse(
-            preview_id=preview_id,
-            preview_url=preview_url,
-            project_type=preview_status["project_type"]
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception(f"Error creating preview with id={preview_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to create preview: {str(e)}") from e
-
-@app.post("/api/preview/{preview_id}/update")
-async def update_preview(preview_id: str, request: PreviewUpdateRequest):
-    """Update an existing preview."""
-    try:
-        if not ICPY_AVAILABLE:
-            raise HTTPException(status_code=500, detail="Preview service not available")
-        
-        preview_service = get_preview_service()
-        success = await preview_service.update_preview(preview_id, request.files)
-        
-        if not success:
-            raise HTTPException(status_code=404, detail="Preview not found")
-        
-        return {"success": True, "message": "Preview updated successfully"}
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error updating preview {preview_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to update preview: {str(e)}")
-
-@app.get("/api/preview/{preview_id}/status", response_model=PreviewStatusResponse)
-async def get_preview_status(preview_id: str):
-    """Get preview status and information."""
-    try:
-        if not ICPY_AVAILABLE:
-            raise HTTPException(status_code=500, detail="Preview service not available")
-        
-        preview_service = get_preview_service()
-        status = await preview_service.get_preview_status(preview_id)
-        
-        if not status:
-            raise HTTPException(status_code=404, detail="Preview not found")
-        
-        return PreviewStatusResponse(**status)
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting preview status {preview_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get preview status: {str(e)}")
-
-@app.delete("/api/preview/{preview_id}")
-async def delete_preview(preview_id: str):
-    """Delete a preview and cleanup resources."""
-    try:
-        if not ICPY_AVAILABLE:
-            raise HTTPException(status_code=500, detail="Preview service not available")
-        
-        preview_service = get_preview_service()
-        success = await preview_service.delete_preview(preview_id)
-        
-        if not success:
-            raise HTTPException(status_code=404, detail="Preview not found")
-        
-        return {"success": True, "message": "Preview deleted successfully"}
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error deleting preview {preview_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to delete preview: {str(e)}")
-
-# Static file serving for previews
-@app.get("/preview/{preview_id}/{file_path:path}")
-async def serve_preview_file(preview_id: str, file_path: str, request: Request):
-    """Serve static files for previews."""
-    try:
-        if not ICPY_AVAILABLE:
-            raise HTTPException(status_code=500, detail="Preview service not available")
-        
-        # Note: Authentication could be added here for SaaS mode if needed
-        # if ICPY_AVAILABLE and auth_manager.is_saas_mode():
-        #     user = get_optional_user(request)
-        #     if not user:
-        #         raise HTTPException(status_code=401, detail="Authentication required")
-        
-        preview_service = get_preview_service()
-        preview_status = await preview_service.get_preview_status(preview_id)
-        
-        if not preview_status:
-            raise HTTPException(status_code=404, detail="Preview not found")
-        
-        # For now, proxy to the local dev server
-        # In Phase 1, we'll use a simple HTTP proxy to the preview port
-        import aiohttp
-        
-        preview = preview_service.active_previews.get(preview_id)
-        if not preview or not preview.port:
-            raise HTTPException(status_code=503, detail="Preview not ready")
-        
-        # Proxy request to the preview server
-        target_url = f"http://localhost:{preview.port}/{file_path}"
-        
-        timeout = aiohttp.ClientTimeout(total=30)  # 30 second timeout
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.get(target_url) as response:
-                content = await response.read()
-                headers = dict(response.headers)
-
-                # Remove hop-by-hop and sensitive headers
-                headers.pop('connection', None)
-                headers.pop('transfer-encoding', None)
-                headers.pop('content-encoding', None)  # Remove encoding since we're returning raw content
-                headers.pop('content-length', None)  # Will be recalculated
-
-                # Normalize some common content types so the browser renders correctly in iframe
-                # Some simple servers may return text/plain for .js/.css; correct them here
-                import mimetypes
-                guessed, _ = mimetypes.guess_type(file_path)
-                if guessed:
-                    headers['content-type'] = guessed
-                else:
-                    # Ensure at least a generic text/html for root path
-                    headers.setdefault('content-type', 'text/html; charset=utf-8')
-
-                return Response(
-                    content=content,
-                    status_code=response.status,
-                    headers=headers
-                )
-        
-    except HTTPException:
-        raise
-    except aiohttp.ClientError as e:
-        logger.error(f"Preview proxy error for {preview_id}/{file_path}: {e}")
-        raise HTTPException(status_code=502, detail="Preview server connection failed") from e
-    except Exception as e:
-        logger.exception("Error serving preview file %s/%s", preview_id, file_path)
-        raise HTTPException(status_code=500, detail="Failed to serve preview file") from e
 
 # Frontend logging endpoint
 @app.post("/api/logs/frontend")
@@ -1043,6 +413,7 @@ async def receive_frontend_logs(request: FrontendLogsRequest):
             content={"success": False, "message": f"Failed to store logs: {str(e)}"}
         )
 
+
 # Terminal WebSocket endpoint (moved before generic /ws to fix routing)
 @app.websocket("/ws/terminal/{terminal_id}")
 async def terminal_websocket_endpoint(websocket: WebSocket, terminal_id: str):
@@ -1083,6 +454,7 @@ async def terminal_websocket_endpoint(websocket: WebSocket, terminal_id: str):
             logger.info(f"[DEBUG] Disconnecting terminal {terminal_id}")
             terminal_manager.disconnect_terminal(terminal_id)
 
+
 # Enhanced WebSocket endpoint (now the primary /ws endpoint)
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -1111,6 +483,7 @@ async def websocket_endpoint(websocket: WebSocket):
         
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
+
 
 # Legacy WebSocket endpoint (deprecated)
 @app.websocket("/ws/legacy")
@@ -1214,657 +587,9 @@ async def legacy_websocket_endpoint(websocket: WebSocket):
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
 
-# Custom Agents API endpoints
-@app.get("/api/custom-agents")
-async def get_custom_agents():
-    """Get list of available custom agents for frontend dropdown menu."""
-    try:
-        logger.info("Custom agents endpoint called")
-        agents = get_available_custom_agents()
-        logger.info(f"Retrieved custom agents: {agents}")
-        return {"success": True, "agents": agents}
-    except ImportError as e:
-        logger.warning(f"icpy custom agent module not available: {e}")
-        # Fallback: return some default agents for testing
-        fallback_agents = ["AgentCreator", "OpenAIDemoAgent", "TestAgent", "DefaultAgent"]
-        return {"success": True, "agents": fallback_agents}
-    except Exception as e:
-        logger.error(f"Error getting custom agents: {e}")
-        return {"success": False, "error": str(e), "agents": []}
 
-@app.get("/api/custom-agents/configured")
-async def get_configured_custom_agents():
-    """Get list of custom agents with their display configuration from workspace."""
-    try:
-        logger.info("Configured custom agents endpoint called")
-        from icpy.agent.custom_agent import get_configured_custom_agents
-        from icpy.services.agent_config_service import get_agent_config_service
-        
-        configured_agents = get_configured_custom_agents()
-        logger.info(f"Retrieved {len(configured_agents)} configured agents")
-        
-        # Also get settings and categories including default agent
-        config_service = get_agent_config_service()
-        config = config_service.load_config()
-        settings = config.get("settings", {})
-        categories = config.get("categories", {})
-        
-        return {
-            "success": True, 
-            "agents": configured_agents,
-            "settings": settings,
-            "categories": categories,
-            "message": f"Retrieved {len(configured_agents)} configured agents"
-        }
-    except ImportError as e:
-        logger.warning(f"Agent config service not available: {e}")
-        # Fallback to basic agent list
-        agents = get_available_custom_agents()
-        fallback_agents = [{"name": agent, "displayName": agent, "description": "", "category": "General", "order": 999, "icon": "🤖"} for agent in agents]
-        return {"success": True, "agents": fallback_agents}
-    except Exception as e:
-        logger.error(f"Error getting configured custom agents: {e}")
-        return {"success": False, "error": str(e), "agents": []}
-
-@app.post("/api/custom-agents/reload")
-async def reload_custom_agents_endpoint(request: Request):
-    """Reload all custom agents and return updated list."""
-    try:
-        # Check authentication in SaaS mode
-        if auth_manager.is_saas_mode():
-            user = get_optional_user(request)
-            if not user:
-                raise HTTPException(status_code=401, detail="Authentication required")
-            # TODO: Add admin role check if needed
-            logger.info(f"Agent reload requested by user: {user.get('sub', 'unknown')}")
-        else:
-            logger.info("Agent reload requested in standalone mode")
-        
-        # Import reload function
-        from icpy.agent.custom_agent import reload_custom_agents
-        
-        # Perform reload
-        reloaded_agents = await reload_custom_agents()
-        
-        logger.info(f"Agent reload complete. Available agents: {reloaded_agents}")
-        
-        # Send WebSocket notification to connected clients
-        try:
-            if ICPY_AVAILABLE:
-                # Lazy import to avoid startup errors when messaging is unavailable
-                from icpy.core.message_broker import get_message_broker
-                message_broker = await get_message_broker()
-                await message_broker.publish(
-                    topic="agents.reloaded",
-                    payload={
-                        "type": "agents_reloaded",
-                        "agents": reloaded_agents,
-                        "timestamp": time.time(),
-                        "message": f"Reloaded {len(reloaded_agents)} agents"
-                    }
-                )
-                logger.info("WebSocket notification sent for agent reload")
-        except Exception as e:
-            logger.warning(f"Failed to send WebSocket notification: {e}")
-        
-        return {"success": True, "agents": reloaded_agents, "message": f"Reloaded {len(reloaded_agents)} agents"}
-        
-    except ImportError as e:
-        logger.error(f"Hot reload system not available: {e}")
-        return {"success": False, "error": "Hot reload system not available", "agents": []}
-    except HTTPException:
-        raise  # Re-raise HTTP exceptions (like 401)
-    except Exception as e:
-        logger.error(f"Error reloading custom agents: {e}")
-        return {"success": False, "error": str(e), "agents": []}
-
-@app.post("/api/environment/reload")
-async def reload_environment_endpoint(request: Request):
-    """Reload environment variables for all agents."""
-    try:
-        # Check authentication in SaaS mode
-        if auth_manager.is_saas_mode():
-            user = get_optional_user(request)
-            if not user:
-                raise HTTPException(status_code=401, detail="Authentication required")
-            logger.info(f"Environment reload requested by user: {user.get('sub', 'unknown')}")
-        else:
-            logger.info("Environment reload requested in standalone mode")
-        
-        # Import reload function
-        from icpy.agent.custom_agent import reload_agent_environment
-        
-        # Perform environment reload
-        success = await reload_agent_environment()
-        
-        if success:
-            logger.info("Environment reload successful")
-            return {"success": True, "message": "Environment variables reloaded successfully"}
-        else:
-            logger.warning("Environment reload failed")
-            return {"success": False, "error": "Environment reload failed"}
-            
-    except ImportError as e:
-        logger.error(f"Hot reload system not available: {e}")
-        return {"success": False, "error": "Hot reload system not available"}
-    except HTTPException:
-        raise  # Re-raise HTTP exceptions (like 401)
-    except Exception as e:
-        logger.error(f"Error reloading environment: {e}")
-        return {"success": False, "error": str(e)}
-
-@app.post("/api/environment/update-keys")
-async def update_api_keys_endpoint(request: Request):
-    """Update API keys in environment variables with hot reload."""
-    try:
-        # Check authentication in SaaS mode
-        if auth_manager.is_saas_mode():
-            user = get_optional_user(request)
-            if not user:
-                raise HTTPException(status_code=401, detail="Authentication required")
-            logger.info(f"API key update requested by user: {user.get('sub', 'unknown')}")
-        else:
-            logger.info("API key update requested in standalone mode")
-        
-        # Get request body
-        body = await request.json()
-        api_keys = body.get('api_keys', {})
-        
-        if not api_keys:
-            return {"success": False, "error": "No API keys provided"}
-        
-        # Update environment variables directly
-        updated_keys = {}
-        for key, value in api_keys.items():
-            if value and value.strip():  # Only update non-empty values
-                os.environ[key] = value.strip()
-                updated_keys[key] = True
-                logger.info(f"Updated environment variable: {key}")
-        
-        # Reload environment for agents
-        try:
-            from icpy.agent.custom_agent import reload_agent_environment
-            await reload_agent_environment()
-        except Exception as reload_error:
-            logger.warning(f"Failed to reload agent environment: {reload_error}")
-        
-        logger.info(f"API keys updated: {list(updated_keys.keys())}")
-        
-        return {
-            "success": True, 
-            "updated_keys": list(updated_keys.keys()), 
-            "message": f"Updated {len(updated_keys)} API keys and reloaded environment"
-        }
-        
-    except HTTPException:
-        raise  # Re-raise HTTP exceptions (like 401)
-    except Exception as e:
-        logger.error(f"Error updating API keys: {e}")
-        return {"success": False, "error": str(e)}
-
-@app.get("/api/environment/keys")
-async def get_api_keys_status_endpoint(request: Request):
-    """Get the status of API keys (whether they are set or not, without revealing values).
-
-    Supports two modes:
-    - Explicit mode: pass `?keys=KEY1,KEY2,...` to check exactly these keys (preferred).
-    - Auto mode: if no keys param, detect likely API-related env vars via simple heuristics.
-    """
-    try:
-        # Check authentication in SaaS mode
-        if auth_manager.is_saas_mode():
-            user = get_optional_user(request)
-            if not user:
-                raise HTTPException(status_code=401, detail="Authentication required")
-
-        # Parse explicit keys from query, if provided
-        q = request.query_params.get("keys")
-        explicit_keys: Optional[List[str]] = None
-        if q:
-            explicit_keys = [k.strip() for k in q.split(',') if k.strip()]
-
-        # Helper to build status map for given keys
-        def build_status(keys: List[str]) -> Dict[str, Dict[str, Any]]:
-            status: Dict[str, Dict[str, Any]] = {}
-            for key in keys:
-                value = os.getenv(key)
-                if value:
-                    masked = value[:4] + '*' * (len(value) - 4) if len(value) > 4 else '*' * len(value)
-                    status[key] = {"is_set": True, "masked_value": masked, "length": len(value)}
-                else:
-                    status[key] = {"is_set": False, "masked_value": "", "length": 0}
-            return status
-
-        if explicit_keys:
-            # Explicit mode: only return requested keys
-            return {"success": True, "keys": build_status(explicit_keys)}
-
-        # Auto mode: detect likely API-related keys from environment
-        env_keys = list(os.environ.keys())
-        candidates: List[str] = []
-        for k in env_keys:
-            upper_k = k.upper()
-            if (
-                upper_k.endswith("API_KEY") or
-                upper_k.endswith("_TOKEN") or
-                upper_k.endswith("ACCESS_TOKEN") or
-                upper_k.endswith("_SECRET") or
-                ("API" in upper_k and "KEY" in upper_k)
-            ):
-                candidates.append(k)
-                continue
-            # Include common API base URLs like OLLAMA or OPENAI
-            if (
-                ("OLLAMA" in upper_k or "OPENAI" in upper_k or "ANTHROPIC" in upper_k or "GROQ" in upper_k or "GOOGLE" in upper_k or "MOONSHOT" in upper_k or "DEEPSEEK" in upper_k or "CEREBRAS" in upper_k or "DASHSCOPE" in upper_k)
-                and (upper_k.endswith("_URL") or upper_k.endswith("URL") or upper_k.endswith("API_BASE") or upper_k.endswith("_API_BASE") or upper_k.endswith("BASE_URL"))
-            ):
-                candidates.append(k)
-
-        # De-duplicate while preserving order (case-insensitive for Windows envs)
-        seen_ci: set[str] = set()
-        filtered: List[str] = []
-        for k in candidates:
-            kk = k.upper()
-            if kk in seen_ci:
-                continue
-            seen_ci.add(kk)
-            filtered.append(k)
-
-        return {"success": True, "keys": build_status(filtered)}
-        
-    except HTTPException:
-        raise  # Re-raise HTTP exceptions (like 401)
-    except Exception as e:
-        logger.error(f"Error getting API key status: {e}")
-        return {"success": False, "error": str(e)}
-
-@app.get("/api/environment/key")
-async def get_api_key_value_endpoint(request: Request):
-    """Reveal a full environment value for a given key.
-
-    Security: Allowed in standalone mode by default, and in SaaS/deployment when
-    NODE_ENV=development or ALLOW_KEY_REVEAL=true. This endpoint intentionally avoids
-    logging sensitive values.
-    """
-    try:
-        # SaaS mode auth check
-        if auth_manager.is_saas_mode():
-            user = get_optional_user(request)
-            if not user:
-                raise HTTPException(status_code=401, detail="Authentication required")
-
-        key = request.query_params.get("key")
-        if not key:
-            raise HTTPException(status_code=400, detail="Missing 'key' query parameter")
-
-        # Basic key format validation to avoid abusive input
-        if not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_\.\-:]{0,127}", key):
-            raise HTTPException(status_code=400, detail="Invalid key format")
-
-        # Gate revealing behind:
-        #  - Standalone mode (default allow), OR
-        #  - Explicit env flag, OR
-        #  - Development mode
-        standalone_mode = not (ICPY_AVAILABLE and auth_manager.is_saas_mode())
-        allow_reveal = (
-            standalone_mode
-            or os.getenv("NODE_ENV") == "development"
-            or os.getenv("ALLOW_KEY_REVEAL", "").lower() in ("1", "true", "yes")
-        )
-        if not allow_reveal:
-            raise HTTPException(status_code=403, detail="Key reveal disabled. Set ALLOW_KEY_REVEAL=true or run in development.")
-
-        # In SaaS mode, optionally require specific roles to reveal keys
-        if ICPY_AVAILABLE and auth_manager.is_saas_mode():
-            allowed_roles = [r.strip().lower() for r in (os.getenv("KEY_REVEAL_ROLES", "admin,owner")).split(",") if r.strip()]
-            role = (user or {}).get("role", "").lower() if user else ""
-            if allowed_roles and role not in allowed_roles:
-                raise HTTPException(status_code=403, detail="Insufficient role to reveal keys")
-
-        # Enforce allowlist (exact keys) and/or allowed prefixes if provided
-        allowlist = [k.strip() for k in os.getenv("KEY_REVEAL_ALLOWLIST", "").split(",") if k.strip()]
-        prefixes = [p.strip() for p in os.getenv("KEY_REVEAL_PREFIXES", "").split(",") if p.strip()]
-        if allowlist or prefixes:
-            if key not in allowlist and not any(key.startswith(p) for p in prefixes):
-                raise HTTPException(status_code=403, detail="Key not permitted to reveal")
-
-        value = os.getenv(key)
-        if value is None:
-            return {"success": False, "error": f"Key '{key}' not found or not set"}
-
-        # Do not log the value; only return it to the caller
-        return {"success": True, "key": key, "value": value, "length": len(value)}
-
-    except HTTPException:
-        raise
-    except Exception:
-        logger.exception(
-            "Error revealing API key value for %s",
-            request.query_params.get('key','?')
-        )
-        return {"success": False, "error": "internal_error"}
-
-@app.get("/api/custom-agents/{agent_name}/info")
-async def get_custom_agent_info(agent_name: str):
-    """Get information about a specific custom agent."""
-    try:
-        logger.info(f"Agent info requested for: {agent_name}")
-        
-        # Import info function
-        from icpy.agent.custom_agent import get_agent_info
-        
-        info = get_agent_info(agent_name)
-        
-        return {"success": True, "agent_info": info}
-        
-    except ImportError as e:
-        logger.warning(f"Agent info system not available: {e}")
-        return {"success": False, "error": "Agent info system not available"}
-    except Exception as e:
-        logger.error(f"Error getting agent info for {agent_name}: {e}")
-        return {"success": False, "error": str(e)}
-
-# Agent WebSocket endpoints
-@app.websocket("/ws/agents/{session_id}/stream")
-async def agent_stream_websocket(websocket: WebSocket, session_id: str):
-    """WebSocket endpoint for real-time agent output streaming."""
-    if not ICPY_AVAILABLE:
-        await websocket.close(code=1011, reason="icpy services not available")
-        return
-    
-    try:
-        await websocket.accept()
-        
-        # Get agent service
-        agent_service = await get_agent_service()
-        
-        # Verify agent session exists
-        session = agent_service.get_agent_session(session_id)
-        if not session:
-            await websocket.close(code=1008, reason="Agent session not found")
-            return
-        
-        # Connect to message broker for agent stream events
-        websocket_api = await get_websocket_api()
-        connection_id = await websocket_api.connect_websocket(websocket)
-        
-        # Subscribe to agent stream topic
-        # Lazy import to avoid startup errors when messaging is unavailable
-        from icpy.core.message_broker import get_message_broker
-        message_broker = await get_message_broker()
-        await message_broker.subscribe(f"agent.{session_id}.stream", 
-                                     lambda msg: websocket_api.send_to_connection(connection_id, msg.payload))
-        
-        # Send initial session info
-        await websocket.send_json({
-            "type": "agent_session_info",
-            "session": session.to_dict()
-        })
-        
-        # Keep connection alive
-        while True:
-            try:
-                # Wait for ping/pong or other control messages
-                message = await websocket.receive_text()
-                data = json.loads(message)
-                
-                if data.get("type") == "ping":
-                    await websocket.send_json({"type": "pong"})
-                elif data.get("type") == "get_status":
-                    # Send current session status
-                    updated_session = agent_service.get_agent_session(session_id)
-                    if updated_session:
-                        await websocket.send_json({
-                            "type": "agent_status",
-                            "session": updated_session.to_dict()
-                        })
-                    
-            except WebSocketDisconnect:
-                break
-            except Exception as e:
-                logger.error(f"Agent stream WebSocket error: {e}")
-                break
-        
-        # Cleanup
-        await websocket_api.disconnect_websocket(connection_id)
-        
-    except Exception as e:
-        logger.error(f"Agent stream WebSocket initialization error: {e}")
-        await websocket.close(code=1011, reason="Internal server error")
-
-
-@app.websocket("/ws/workflows/{session_id}/monitor")
-async def workflow_monitor_websocket(websocket: WebSocket, session_id: str):
-    """WebSocket endpoint for real-time workflow monitoring."""
-    if not ICPY_AVAILABLE:
-        await websocket.close(code=1011, reason="icpy services not available")
-        return
-    
-    try:
-        await websocket.accept()
-        
-        # Get agent service
-        agent_service = await get_agent_service()
-        
-        # Verify workflow session exists
-        session = agent_service.get_workflow_session(session_id)
-        if not session:
-            await websocket.close(code=1008, reason="Workflow session not found")
-            return
-        
-        # Connect to message broker for workflow events
-        websocket_api = await get_websocket_api()
-        connection_id = await websocket_api.connect_websocket(websocket)
-        
-        # Subscribe to workflow events
-        # Lazy import to avoid startup errors when messaging is unavailable
-        from icpy.core.message_broker import get_message_broker
-        message_broker = await get_message_broker()
-        await message_broker.subscribe(f"workflow.{session_id}.*", 
-                                     lambda msg: websocket_api.send_to_connection(connection_id, msg.payload))
-        
-        # Send initial session info
-        await websocket.send_json({
-            "type": "workflow_session_info",
-            "session": session.to_dict()
-        })
-        
-        # Keep connection alive and handle control messages
-        while True:
-            try:
-                message = await websocket.receive_text()
-                data = json.loads(message)
-                
-                if data.get("type") == "ping":
-                    await websocket.send_json({"type": "pong"})
-                elif data.get("type") == "get_status":
-                    # Send current workflow status
-                    updated_session = agent_service.get_workflow_session(session_id)
-                    if updated_session:
-                        await websocket.send_json({
-                            "type": "workflow_status",
-                            "session": updated_session.to_dict()
-                        })
-                elif data.get("type") == "control":
-                    # Handle workflow control commands
-                    action = data.get("action")
-                    if action == "pause":
-                        await agent_service.pause_workflow(session_id)
-                    elif action == "resume":
-                        await agent_service.resume_workflow(session_id)
-                    elif action == "cancel":
-                        await agent_service.cancel_workflow(session_id)
-                    
-                    # Send updated status
-                    updated_session = agent_service.get_workflow_session(session_id)
-                    if updated_session:
-                        await websocket.send_json({
-                            "type": "workflow_status",
-                            "session": updated_session.to_dict()
-                        })
-                    
-            except WebSocketDisconnect:
-                break
-            except Exception as e:
-                logger.error(f"Workflow monitor WebSocket error: {e}")
-                break
-        
-        # Cleanup
-        await websocket_api.disconnect_websocket(connection_id)
-        
-    except Exception as e:
-        logger.error(f"Workflow monitor WebSocket initialization error: {e}")
-        await websocket.close(code=1011, reason="Internal server error")
-
-
-# Chat WebSocket endpoint
-@app.websocket("/ws/chat")
-async def chat_websocket(websocket: WebSocket):
-    """WebSocket endpoint for real-time chat with AI agents."""
-    if not ICPY_AVAILABLE:
-        await websocket.close(code=1011, reason="icpy services not available")
-        return
-    
-    connection_id = None
-    
-    try:
-        await websocket.accept()
-        
-        # Get chat service
-        chat_service = get_chat_service()
-        
-        # Generate connection ID for this chat session
-        connection_id = str(uuid.uuid4())
-        
-        # Store the WebSocket in chat service for this connection
-        chat_service.websocket_connections[connection_id] = websocket
-        
-        # Connect to chat service
-        session_id = await chat_service.connect_websocket(connection_id)
-        
-        # Send initial connection confirmation
-        await websocket.send_json({
-            "type": "connected",
-            "session_id": session_id,
-            "timestamp": time.time()
-        })
-        
-        # Handle incoming messages
-        while True:
-            try:
-                message = await websocket.receive_text()
-                data = json.loads(message)
-                
-                message_type = data.get("type")
-                
-                if message_type == "message":
-                    # Handle user message
-                    content = data.get("content", "")
-                    metadata = data.get("metadata", {})
-                    
-                    if content.strip():
-                        await chat_service.handle_user_message(
-                            connection_id, 
-                            content, 
-                            metadata
-                        )
-                
-                elif message_type == "ping":
-                    # Respond to ping
-                    await websocket.send_json({
-                        "type": "pong",
-                        "timestamp": time.time()
-                    })
-                
-                elif message_type == "get_status":
-                    # Send current agent status
-                    status = await chat_service.get_agent_status()
-                    await websocket.send_json({
-                        "type": "status",
-                        "agent": status.to_dict(),
-                        "timestamp": time.time()
-                    })
-                
-                elif message_type == "get_config":
-                    # Send current chat configuration
-                    await websocket.send_json({
-                        "type": "config",
-                        "config": chat_service.config.to_dict(),
-                        "timestamp": time.time()
-                    })
-                
-                elif message_type == "update_config":
-                    # Update chat configuration
-                    config_updates = data.get("config", {})
-                    await chat_service.update_config(config_updates)
-                    
-                    await websocket.send_json({
-                        "type": "config_updated",
-                        "config": chat_service.config.to_dict(),
-                        "timestamp": time.time()
-                    })
-                
-                elif message_type == "stop":
-                    # Stop/interrupt current streaming response
-                    # Derive session_id from the connection mapping; don't trust client override
-                    mapped_session_id = chat_service.chat_sessions.get(connection_id)
-                    requested_session_id = data.get("session_id")
-                    if mapped_session_id and requested_session_id and requested_session_id != mapped_session_id:
-                        logger.warning(
-                            f"Stop requested with mismatched session_id "
-                            f"(requested={requested_session_id}, mapped={mapped_session_id}); ignoring client override."
-                        )
-                    session_id_to_stop = mapped_session_id or requested_session_id
-                    if not session_id_to_stop:
-                        await websocket.send_json({
-                            "type": "stop_response",
-                            "success": False,
-                            "error": "no_session_for_connection",
-                            "timestamp": time.time()
-                        })
-                        continue
-
-                    success = await chat_service.stop_streaming(session_id_to_stop)
-                    
-                    await websocket.send_json({
-                        "type": "stop_response",
-                        "success": success,
-                        "session_id": session_id_to_stop,
-                        "timestamp": time.time()
-                    })
-                
-                else:
-                    logger.warning(f"Unknown chat message type: {message_type}")
-                    
-            except WebSocketDisconnect:
-                break
-            except json.JSONDecodeError:
-                logger.error("Invalid JSON received in chat WebSocket")
-                await websocket.send_json({
-                    "type": "error",
-                    "message": "Invalid JSON format",
-                    "timestamp": time.time()
-                })
-            except Exception as e:
-                logger.error(f"Chat WebSocket message error: {e}")
-                await websocket.send_json({
-                    "type": "error",
-                    "message": "Internal server error",
-                    "timestamp": time.time()
-                })
-        
-        # Cleanup
-        if connection_id:
-            # Remove WebSocket from chat service
-            chat_service.websocket_connections.pop(connection_id, None)
-            await chat_service.disconnect_websocket(connection_id)
-        
-    except Exception as e:
-        logger.error(f"Chat WebSocket initialization error: {e}")
-        if connection_id:
-            chat_service.websocket_connections.pop(connection_id, None)
-        await websocket.close(code=1011, reason="Internal server error")
-
+# Include remaining important endpoints from the icpy modules
+# These will be added in a separate module in the next iteration
 
 
 # Serve React app for production
@@ -1903,7 +628,7 @@ async def serve_react_app(request: Request):
                     # Mint session cookie using the same token
                     # Clean URL: redirect to root path to remove token from URL
                     redirect = RedirectResponse(url="/", status_code=303)
-                    _issue_auth_cookie(redirect, token_from_query)
+                    issue_auth_cookie(redirect, token_from_query)
                     
                     user_id = payload.get('sub', 'unknown')
                     logger.info(f"[container] Auto-authenticated user {user_id} from {source} -> issuing host-only cookie and redirecting to clean root")
@@ -1914,9 +639,9 @@ async def serve_react_app(request: Request):
                     return JSONResponse(status_code=401, content={"error": "invalid_token", "detail": e.detail})
             else:
                 # 3) No cookie and no authentication token
-                if _is_browser_navigation(request) and _is_html_route(""):
+                if is_browser_navigation(request) and is_html_route(""):
                     logger.info("[container] Unauthenticated browser navigation to root - redirecting to home page")
-                    return _build_unauth_redirect(request)
+                    return build_unauth_redirect(request)
                 return JSONResponse(status_code=401, content={"error": "unauthenticated", "detail": "Missing auth cookie and authentication token"})
     
     # Serve the React app (authenticated user or standalone mode, or unauth fallback)
@@ -1931,6 +656,7 @@ async def serve_react_app(request: Request):
             status_code=200
         )
 
+
 # Catch-all route for React app (excluding API routes)
 @app.get("/{path:path}")
 async def serve_react_app_catchall(path: str, request: Request):
@@ -1940,6 +666,7 @@ async def serve_react_app_catchall(path: str, request: Request):
         raise HTTPException(status_code=404, detail="API endpoint not found")
     
     # Additional exclusions for static/metrics
+    from icpy.core.auth_helpers import EXCLUDED_PATHS
     if path in EXCLUDED_PATHS or path.startswith("assets/") or path.startswith("static/"):
         raise HTTPException(status_code=404, detail="Not found")
     
@@ -1972,7 +699,7 @@ async def serve_react_app_catchall(path: str, request: Request):
                     payload = auth_manager.validate_jwt_token(token_from_query)
                     # For catch-all routes, redirect to root to ensure clean URL
                     redirect = RedirectResponse(url="/", status_code=303)
-                    _issue_auth_cookie(redirect, token_from_query)
+                    issue_auth_cookie(redirect, token_from_query)
                     
                     user_id = payload.get('sub', 'unknown')
                     logger.info(f"[container] Auto-authenticated user {user_id} from {source} on path {path} - redirecting to clean root")
@@ -1981,9 +708,9 @@ async def serve_react_app_catchall(path: str, request: Request):
                     logger.warning(f"[container] Invalid authentication token from {source} on path {path}: {e.detail}")
                     return JSONResponse(status_code=401, content={"error": "invalid_token", "detail": e.detail})
             else:
-                if _is_browser_navigation(request) and _is_html_route(path):
+                if is_browser_navigation(request) and is_html_route(path):
                     logger.info(f"[container] Unauthenticated browser navigation to '{path}' - redirecting to home page")
-                    return _build_unauth_redirect(request)
+                    return build_unauth_redirect(request)
                 return JSONResponse(status_code=401, content={"error": "unauthenticated", "detail": "Missing auth cookie and authentication token"})
     
     dist_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "dist")
@@ -2001,89 +728,6 @@ async def serve_react_app_catchall(path: str, request: Request):
                 status_code=404
             )
 
-# CLI argument parsing
-def parse_arguments():
-    """Parse command line arguments."""
-    parser = argparse.ArgumentParser(description="icotes Backend Server")
-    
-    # Host configuration priority: BACKEND_HOST -> SITE_URL -> HOST -> default
-    default_host = os.getenv('BACKEND_HOST') or os.getenv('SITE_URL') or os.getenv('HOST') or '0.0.0.0'
-    parser.add_argument("--host", default=default_host, help="Host to bind to")
-    
-    # Port configuration priority: BACKEND_PORT -> PORT -> default
-    default_port = int(os.getenv('BACKEND_PORT') or os.getenv('PORT') or '8000')
-    parser.add_argument("--port", type=int, default=default_port, help="Port to bind to")
-    
-    parser.add_argument("--stdin-to-clipboard", action="store_true", 
-                       help="Read stdin and copy to clipboard")
-    parser.add_argument("--clipboard-to-stdout", action="store_true",
-                       help="Read clipboard and output to stdout")
-    parser.add_argument("--reload", action="store_true", help="Enable auto-reload")
-    parser.add_argument("--debug", action="store_true", help="Enable debug logging")
-    
-    return parser.parse_args()
-
-# CLI clipboard handlers
-async def handle_stdin_to_clipboard():
-    """Handle --stdin-to-clipboard command."""
-    try:
-        # Read from stdin
-        stdin_data = sys.stdin.read()
-        
-        if stdin_data:
-            # Write to clipboard using icpy clipboard service
-            if ICPY_AVAILABLE and clipboard_service:
-                result = await clipboard_service.write_clipboard(stdin_data)
-                success = result["success"]
-            else:
-                logger.error("Clipboard service not available")
-                print("✗ Clipboard service not available", file=sys.stderr)
-                sys.exit(1)
-            
-            if success:
-                logger.info(f"✓ Copied {len(stdin_data)} characters to clipboard")
-                print(f"✓ Copied {len(stdin_data)} characters to clipboard", file=sys.stderr)
-                sys.exit(0)
-            else:
-                logger.error("✗ Failed to copy to clipboard")
-                print("✗ Failed to copy to clipboard", file=sys.stderr)
-                sys.exit(1)
-        else:
-            logger.info("No input data received")
-            print("No input data received", file=sys.stderr)
-            sys.exit(1)
-            
-    except Exception as e:
-        logger.error(f"Error in stdin-to-clipboard: {e}")
-        print(f"✗ Error: {e}", file=sys.stderr)
-        sys.exit(1)
-
-async def handle_clipboard_to_stdout():
-    """Handle --clipboard-to-stdout command."""
-    try:
-        # Read from clipboard using icpy clipboard service
-        if ICPY_AVAILABLE and clipboard_service:
-            result = await clipboard_service.read_clipboard()
-            clipboard_data = result.get("content", "") if result["success"] else ""
-        else:
-            logger.error("Clipboard service not available")
-            print("✗ Clipboard service not available", file=sys.stderr)
-            sys.exit(1)
-        
-        if clipboard_data:
-            # Write to stdout
-            sys.stdout.write(clipboard_data)
-            sys.stdout.flush()
-            logger.info(f"✓ Successfully read {len(clipboard_data)} characters from clipboard")
-            sys.exit(0)
-        else:
-            logger.info("Clipboard is empty")
-            sys.exit(0)
-            
-    except Exception as e:
-        logger.error(f"Error in clipboard-to-stdout: {e}")
-        print(f"✗ Error: {e}", file=sys.stderr)
-        sys.exit(1)
 
 def main():
     """Main entry point with CLI argument handling."""
@@ -2094,11 +738,7 @@ def main():
         logging.getLogger().setLevel(logging.DEBUG)
     
     # Handle clipboard commands (these need async)
-    if args.stdin_to_clipboard:
-        asyncio.run(handle_stdin_to_clipboard())
-        return
-    elif args.clipboard_to_stdout:
-        asyncio.run(handle_clipboard_to_stdout())
+    if handle_clipboard_commands(args):
         return
     
     # Normal server mode
@@ -2128,6 +768,7 @@ def main():
     
     # Run server
     uvicorn.run(**uvicorn_config)
+
 
 if __name__ == "__main__":
     main()

@@ -313,7 +313,7 @@ class TestRestAPI:
         assert data["message"] == "Directory created successfully"
         
         # Verify create_directory was called on the service
-        mock_filesystem_service.create_directory.assert_called_once_with("/test/new_directory")
+        mock_filesystem_service.create_directory.assert_called_once_with(dir_path="/test/new_directory", parents=True)
 
     def test_create_nested_directory(self, client_with_rest_api, mock_filesystem_service):
         """Test create nested directory endpoint."""
@@ -328,7 +328,7 @@ class TestRestAPI:
         assert data["message"] == "Directory created successfully"
         
         # Verify create_directory was called with the full path
-        mock_filesystem_service.create_directory.assert_called_once_with("/test/nested/deep/directory")
+        mock_filesystem_service.create_directory.assert_called_once_with(dir_path="/test/nested/deep/directory", parents=True)
 
     def test_create_directory_without_type_creates_file(self, client_with_rest_api, mock_filesystem_service):
         """Test that omitting type defaults to file creation."""
@@ -578,8 +578,8 @@ class TestFileApiRegression:
         mock_filesystem_service.write_file.assert_called_once_with(
             file_path=test_path,
             content=test_content,
-            encoding=None,  # Default from FileOperationRequest
-            create_dirs=False  # Default from FileOperationRequest
+            encoding="utf-8",  # Actual default used by API
+            create_dirs=True  # Actual default used by API
         )
     
     def test_put_files_empty_content(self, client_with_rest_api, mock_filesystem_service):

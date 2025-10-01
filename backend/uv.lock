@@ -85,15 +85,6 @@ wheels = [
 ]
 
 [[package]]
-name = "aiosqlite"
-version = "0.19.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/ea/51/060efa10a814145acd4e42c6e5ed540b8714cad52ca026c5930e7c473049/aiosqlite-0.19.0.tar.gz", hash = "sha256:95ee77b91c8d2808bd08a59fbebf66270e9090c3d92ffbf260dc0db0b979577d", size = 21832, upload-time = "2023-04-17T06:28:50.694Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/ef/4f/22d2edd4cd2a84e179f8c43806cb29cf03a344d2f27a7c6d5afef43bbe7e/aiosqlite-0.19.0-py3-none-any.whl", hash = "sha256:edba222e03453e094a3ce605db1b970c4b3376264e56f32e2a4959f948d66a96", size = 15942, upload-time = "2023-04-17T06:28:47.856Z" },
-]
-
-[[package]]
 name = "alembic"
 version = "1.16.4"
 source = { registry = "https://pypi.org/simple" }
@@ -163,7 +154,6 @@ source = { virtual = "." }
 dependencies = [
     { name = "aiofiles" },
     { name = "aiohttp" },
-    { name = "aiosqlite" },
     { name = "cerebras-cloud-sdk" },
     { name = "crewai" },
     { name = "fastapi" },
@@ -192,7 +182,6 @@ dependencies = [
 requires-dist = [
     { name = "aiofiles", specifier = "==24.1.0" },
     { name = "aiohttp", specifier = "==3.10.11" },
-    { name = "aiosqlite", specifier = "==0.19.0" },
     { name = "cerebras-cloud-sdk", specifier = ">=1.30.0" },
     { name = "crewai", specifier = "==0.30.11" },
     { name = "fastapi", specifier = "==0.104.1" },

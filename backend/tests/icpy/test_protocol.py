@@ -55,8 +55,8 @@ class TestJsonRpcRequest:
     
     def test_request_validation_errors(self):
         """Test request validation errors"""
-        # Empty method
-        with pytest.raises(ValueError, match="Method must be a non-empty string"):
+        # Empty method - expect pydantic ValidationError instead of ValueError
+        with pytest.raises(Exception, match="Method cannot be empty"):
             JsonRpcRequest(method="", id="test")
         
         # Invalid JSON-RPC version

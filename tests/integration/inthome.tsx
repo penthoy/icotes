@@ -17,9 +17,15 @@
  */
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { 
+import {
   ICUILayout,
-  ICUIChatPanel
+  ICUIChat,
+  ICUITerminal,
+  ICUIEditor,
+  ICUIExplorer,
+  ICUIChatHistory,
+  ICUIGit,
+  ICUIPreview
 } from '../../src/icui';
 import Layout from '../../src/components/Layout';
 import BackendConnectedExplorer from './components/BackendConnectedExplorer';
@@ -141,7 +147,7 @@ const IntegratedHome: React.FC<IntegratedHomeProps> = ({ className = '' }) => {
   ), []);
 
   const chatInstance = useMemo(() => (
-    <ICUIChatPanel className="h-full" />
+    <ICUIChat className="h-full" />
   ), []);
 
   // Available panel types for the selector

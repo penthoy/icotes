@@ -41,6 +41,11 @@ class Message:
     reply_to: Optional[str] = None
     ttl: Optional[float] = None  # Time to live in seconds
     
+    # Backwards-compat alias used in some tests (message.data -> payload)
+    @property
+    def data(self) -> Any:  # pragma: no cover - trivial alias
+        return self.payload
+    
     def to_dict(self) -> Dict[str, Any]:
         """Convert message to dictionary for serialization"""
         return {
@@ -133,10 +138,13 @@ class MessageBroker:
         
         # Cancel cleanup task
         if self.cleanup_task:
-            self.cleanup_task.cancel()
             try:
+                self.cleanup_task.cancel()
                 await self.cleanup_task
             except asyncio.CancelledError:
+                pass
+            except RuntimeError:
+                # Event loop may already be closed during teardown
                 pass
         
         # Cancel all pending requests
@@ -417,7 +425,12 @@ async def get_message_broker() -> MessageBroker:
             await _message_broker.start()
             logger.info("[MB] Created new in-memory MessageBroker instance")
         else:
-            logger.debug("[MB] Reusing existing MessageBroker instance")
+            # If broker exists but was stopped by a previous test, restart it
+            if not _message_broker.running:
+                await _message_broker.start()
+                logger.info("[MB] Restarted MessageBroker instance")
+            else:
+                logger.debug("[MB] Reusing existing MessageBroker instance")
     return _message_broker
 
 

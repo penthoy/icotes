@@ -496,7 +496,7 @@ class TestWebSocketAPI:
         assert isinstance(info['created_at'], float)
         assert isinstance(info['last_activity'], float)
         assert info['message_queue_size'] == 2  # Welcome + message replay
-        assert info['subscriptions'] == []
+        assert info['subscriptions'] == ['fs.*']  # Auto-subscribed to filesystem events
     
     @pytest.mark.asyncio
     async def test_get_connection_info_unknown(self, websocket_api):

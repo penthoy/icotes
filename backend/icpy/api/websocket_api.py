@@ -1,5 +1,5 @@
 """
-Enhanced WebSocket API for icpy Backend
+WebSocket API for icpy Backend
 
 This module provides enhanced WebSocket functionality that integrates with the
 message broker for real-time communication, supports multiple concurrent connections
@@ -14,8 +14,6 @@ Key Features:
 - Real-time event broadcasting
 - Connection health monitoring
 
-Author: GitHub Copilot
-Date: July 16, 2025
 """
 
 import asyncio

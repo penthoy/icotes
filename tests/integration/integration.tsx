@@ -7,7 +7,7 @@
 
 import React from 'react';
 import { BackendContextProvider } from '../../src/contexts/BackendContext';
-import { IntegratedHome } from './components/IntegratedHome';
+import IntegratedHome from './inthome';
 
 const Integration: React.FC = () => {
   return (

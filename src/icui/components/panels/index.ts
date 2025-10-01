@@ -11,10 +11,4 @@ export { default as ICUIPreview } from './ICUIPreview';
 export type { ICUIEditorRef } from './ICUIEditor';
 export type { ICUITerminalRef } from './ICUITerminal';
 export type { ICUIChatRef } from './ICUIChat';
-export type { ICUIPreviewRef } from './ICUIPreview';
-
-// DEPRECATED: Legacy panel wrappers - kept for backward compatibility
-export { default as ICUITerminalPanel } from '../archived/ICUITerminalPanel_deprecate';
-export { default as ICUIEditorPanel } from '../archived/ICUIEditorPanel_deprecate';
-export { default as ICUIChatPanel } from '../archived/ICUIChatPanel_deprecate';
-export { default as ICUIExplorerPanel } from '../archived/ICUIExplorerPanel_deprecate'; 
+export type { ICUIPreviewRef } from './ICUIPreview'; 

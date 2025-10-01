@@ -14,8 +14,6 @@ export { ICUIPanelContent } from './components/ICUIPanelContent';
 export { ICUIPanelArea } from './components/ICUIPanelArea';
 export { default as ICUITabContainer } from './components/ICUITabContainer';
 export { ICUILayout } from './components/ICUILayout';
-export { ICUIEnhancedLayout } from './components/archived/ICUIEnhancedLayout_deprecated'; // @deprecated - use ICUILayout
-
 // Core Components (Main ICUI interface components) - moved to panels
 export { default as ICUIChat } from './components/panels/ICUIChat';
 export { default as ICUITerminal } from './components/panels/ICUITerminal';
@@ -34,15 +32,6 @@ export type { ICUIPreviewRef } from './components/panels/ICUIPreview';
 // Base Layout Components
 export { ICUIBaseHeader } from './components/ICUIBaseHeader';
 export { ICUIBaseFooter } from './components/ICUIBaseFooter';
-
-// Enhanced Components (New)
-// export { ICUITest1, ICUITest2, ICUITest3, ICUITest4, ICUITest5, ICUITest6, ICUITest7, ICUITest8, ICUITest9, ICUITest10 } from './tests';
-
-// Primary Panels (formerly Enhanced) - DEPRECATED: Moved to archived
-export { default as ICUITerminalPanel } from './components/archived/ICUITerminalPanel_deprecate';
-export { default as ICUIEditorPanel } from './components/archived/ICUIEditorPanel_deprecate';
-export { default as ICUIExplorerPanel } from './components/archived/ICUIExplorerPanel_deprecate';
-export { default as ICUIChatPanel } from './components/archived/ICUIChatPanel_deprecate';
 
 // Hooks
 export { useICUIResponsive } from './hooks/icui-use-responsive';
@@ -127,13 +116,6 @@ export type {
   ICUILayoutProps,
 } from './components/ICUILayout';
 
-// @deprecated - use types from ICUILayout instead
-export type {
-  ICUILayoutArea as ICUILayoutAreaDeprecated,
-  ICUILayoutConfig as ICUILayoutConfigDeprecated,
-  ICUIEnhancedLayoutProps,
-} from './components/archived/ICUIEnhancedLayout_deprecated';
-
 export type {
   ICUIPanel,
   ICUIPanelAreaProps,
@@ -143,11 +125,6 @@ export type {
   ICUITab,
   ICUITabContainerProps,
 } from './components/ICUITabContainer';
-
-export type {
-  ICUIEditorFile,
-  ICUIEditorPanelProps,
-} from './components/archived/ICUIEditorPanel_deprecate';
 
 // Base Layout Component Types
 export type {
