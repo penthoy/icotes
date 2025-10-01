@@ -36,6 +36,14 @@ import { globalCommandRegistry } from '../../lib/commandRegistry';
 import { useExplorerMultiSelect } from '../explorer/MultiSelectHandler';
 import { ICUI_FILE_LIST_MIME, isExplorerPayload, useExplorerFileDrag } from '../../lib/dnd';
 import { explorerFileOperations, FileOperationContext } from '../explorer/FileOperations';
+import { 
+  flattenVisibleTree,
+  buildNodeMapByPath as buildMapUtil,
+  createAnnotateWithExpansion,
+  applyChildrenResults as applyChildrenResultsUtil,
+  findNodeInTree as findNodeInTreeUtil,
+} from '../explorer/utils';
+import { getFileIcon as getFileIconUtil } from '../explorer/icons';
 import { createExplorerContextMenu, handleExplorerContextMenuClick, ExplorerMenuContext, ExplorerMenuExtensions } from '../explorer/ExplorerContextMenu';
 import { getParentDirectoryPath, isDescendantPath, joinPathSegments, normalizeDirPath } from '../explorer/pathUtils';
 import { planExplorerMoveOperations } from '../explorer/movePlanner';
@@ -94,25 +102,7 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
   const { contextMenu, showContextMenu, hideContextMenu } = useContextMenu();
 
   // Flatten the file tree to include all visible files (including those in expanded folders)
-  const flattenedFiles = useMemo(() => {
-    const result: ICUIFileNode[] = [];
-    // Seed stack in reverse to preserve original top-level order when popping.
-    const stack: ICUIFileNode[] = files.slice().reverse();
-    
-    while (stack.length > 0) {
-      const node = stack.pop()!;
-      result.push(node);
-      
-      if (node.type === 'folder' && node.isExpanded && node.children) {
-        // Push children in reverse so that the leftmost child is processed first when popping.
-        for (let i = node.children.length - 1; i >= 0; i--) {
-          stack.push(node.children[i] as ICUIFileNode);
-        }
-      }
-    }
-    
-    return result;
-  }, [files]);
+  const flattenedFiles = useMemo(() => flattenVisibleTree(files), [files]);
 
   // Multi-select functionality
   const {
@@ -156,7 +146,6 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
     };
   }, []);
 
-  
 
   // Check connection status using centralized service
   const checkConnection = useCallback(async () => {
@@ -176,51 +165,17 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
   }, []);
 
   // Build a map of previous nodes by path for quick lookup
-  const buildNodeMapByPath = useCallback((nodes: ICUIFileNode[], map: Map<string, ICUIFileNode> = new Map()): Map<string, ICUIFileNode> => {
-    for (const n of nodes) {
-      map.set(n.path, n);
-      if (n.children && n.children.length > 0) buildNodeMapByPath(n.children as ICUIFileNode[], map);
-    }
-    return map;
-  }, []);
+  const buildMap = useCallback((nodes: ICUIFileNode[]) => buildMapUtil(nodes), []);
 
   // Annotate a tree with expansion flags from expandedPathsRef and optionally reuse previous children
-  const annotateWithExpansion = useCallback((nodes: ICUIFileNode[], prevMap?: Map<string, ICUIFileNode>, preferNewChildren: boolean = false): ICUIFileNode[] => {
-    const prev = prevMap || new Map<string, ICUIFileNode>();
-    const annotate = (list: ICUIFileNode[]): ICUIFileNode[] =>
-      list.map(node => {
-        if (node.type === 'folder') {
-          const shouldExpand = expandedPathsRef.current.has(node.path);
-          const prevNode = prev.get(node.path);
-          const rawChildren = preferNewChildren
-            ? (node.children as ICUIFileNode[] | undefined)
-            : ((node.children as ICUIFileNode[] | undefined) ?? (shouldExpand ? (prevNode?.children as ICUIFileNode[] | undefined) : undefined));
-          const children = rawChildren ? annotate(rawChildren as ICUIFileNode[]) : rawChildren;
-          return { ...node, isExpanded: shouldExpand, children } as ICUIFileNode;
-        }
-        return node;
-      });
-    return annotate(nodes);
-  }, []);
+  const annotateWithExpansion = useCallback(createAnnotateWithExpansion(expandedPathsRef.current), []);
 
   // Apply children fetch results, keeping expansion flags for nested folders
-  const applyChildrenResults = useCallback((current: ICUIFileNode[], results: { path: string; children: ICUIFileNode[] }[], prevMap: Map<string, ICUIFileNode>): ICUIFileNode[] => {
-    const byPath = new Map(results.map(r => [r.path, r.children] as const));
-    const apply = (nodes: ICUIFileNode[]): ICUIFileNode[] =>
-      nodes.map(node => {
-        if (node.type === 'folder') {
-          const replacedChildren = byPath.has(node.path) ? (byPath.get(node.path) as ICUIFileNode[]) : (node.children as ICUIFileNode[] | undefined);
-          const annotated = replacedChildren ? annotateWithExpansion(replacedChildren, prevMap, true) : replacedChildren;
-          const deepApplied = annotated ? apply(annotated) : annotated;
-          return {
-            ...node,
-            children: deepApplied,
-          } as ICUIFileNode;
-        }
-        return node;
-      });
-    return apply(current);
-  }, [annotateWithExpansion]);
+  const applyChildrenResults = useCallback(
+    (current: ICUIFileNode[], results: { path: string; children: ICUIFileNode[] }[], prevMap: Map<string, ICUIFileNode>) =>
+      applyChildrenResultsUtil(current, results, prevMap, annotateWithExpansion),
+    [annotateWithExpansion]
+  );
 
   // Load directory contents using centralized service
   const loadDirectory = useCallback(async (path: string = getWorkspaceRoot(), opts?: { force?: boolean }) => {
@@ -253,7 +208,7 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
       const directoryContents = await backendService.getDirectoryContents(path, showHiddenFiles);
       
       setFiles(prevFiles => {
-        const prevMap = buildNodeMapByPath(prevFiles);
+  const prevMap = buildMap(prevFiles);
         if (expandedPathsRef.current.size === 0) {
           const seed = (nodes: ICUIFileNode[]) => {
             for (const n of nodes) {
@@ -294,7 +249,7 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
                 children: await backendService.getDirectoryContents(p, showHiddenFiles),
               }))
             );
-            setFiles(currentFiles => applyChildrenResults(currentFiles, results, buildNodeMapByPath(currentFiles)));
+            setFiles(currentFiles => applyChildrenResults(currentFiles, results, buildMap(currentFiles)));
           } catch (err) {
             console.warn('Failed to refresh expanded folders:', err);
           }
@@ -326,7 +281,7 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
         console.debug('[ICUIExplorer][loadDirectory] end', { path });
       }
     }
-  }, [checkConnection, showHiddenFiles, buildNodeMapByPath, annotateWithExpansion, applyChildrenResults]);
+  }, [checkConnection, showHiddenFiles, buildMap, annotateWithExpansion, applyChildrenResults]);
 
   useEffect(() => {
     loadDirectoryRef.current = loadDirectory;
@@ -542,7 +497,7 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
 
       const updatedFiles = updateFileTree(currentFiles);
       
-      const targetFolder = findNodeInTree(updatedFiles, folder.id);
+  const targetFolder = findNodeInTreeUtil(updatedFiles, folder.id);
       if (targetFolder && targetFolder.isExpanded && (!targetFolder.children || targetFolder.children.length === 0)) {
         (async () => {
           try {
@@ -552,7 +507,7 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
               const updateWithChildren = (nodes: ICUIFileNode[]): ICUIFileNode[] => {
                 return nodes.map(node => {
                   if (node.id === folder.id) {
-                    const prevMap = buildNodeMapByPath(prevFiles);
+                    const prevMap = buildMap(prevFiles);
                     return { ...node, children: annotateWithExpansion(children as ICUIFileNode[], prevMap, true) };
                   }
                   if (node.children && node.children.length > 0) {
@@ -572,7 +527,7 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
       
       return updatedFiles;
     });
-  }, [isConnected, findNodeInTree, annotateWithExpansion, buildNodeMapByPath]);
+  }, [isConnected, findNodeInTree, annotateWithExpansion, buildMap]);
 
   // Handle file/folder selection with multi-select support
   const handleItemClick = useCallback(async (item: ICUIFileNode, event: React.MouseEvent) => {
@@ -827,7 +782,7 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
       const directoryContents = await backendService.getDirectoryContents(currentPath, newState);
       
       setFiles(prevFiles => {
-        const prevMap = buildNodeMapByPath(prevFiles);
+  const prevMap = buildMap(prevFiles);
         const mergedFiles = annotateWithExpansion(directoryContents as ICUIFileNode[], prevMap);
         
         // Refresh expanded folders with new hidden file setting
@@ -841,7 +796,7 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
                 children: await backendService.getDirectoryContents(p, newState),
               }))
             );
-            setFiles(currentFiles => applyChildrenResults(currentFiles, results, buildNodeMapByPath(currentFiles)));
+            setFiles(currentFiles => applyChildrenResults(currentFiles, results, buildMap(currentFiles)));
           } catch (err) {
             console.warn('Failed to refresh expanded folders:', err);
           }
@@ -855,7 +810,7 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [currentPath, checkConnection, buildNodeMapByPath, annotateWithExpansion, applyChildrenResults]);
+  }, [currentPath, checkConnection, buildMap, annotateWithExpansion, applyChildrenResults]);
 
   // Inline rename functions
   const startRename = useCallback((file: ICUIFileNode) => {
@@ -1134,7 +1089,7 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
               </div>
             ) : (
               <div className="flex items-center flex-1 min-w-0">
-                <span className="mr-3 text-sm">{getFileIcon(node.name)}</span>
+                <span className="mr-3 text-sm">{getFileIconUtil(node.name)}</span>
                 {renamingFileId === node.path ? (
                   <input
                     ref={renameInputRef}
