@@ -29,6 +29,7 @@ dependencies = [
     "python-dotenv>=0.21.0",
     "python-jose[cryptography]>=3.3.0",
     "cerebras_cloud_sdk>=1.30.0",
+    "asyncssh>=2.14.2",
 ]
 
 [tool.pytest.ini_options]

@@ -40,7 +40,16 @@ import uvicorn
 from ..core.message_broker import get_message_broker
 from ..core.connection_manager import get_connection_manager
 from ..core.protocol import JsonRpcRequest, JsonRpcResponse, ProtocolError, ErrorCode
-from ..services import get_workspace_service, get_filesystem_service, get_terminal_service, get_agent_service, get_chat_service, get_chat_service, get_source_control_service
+from ..services import (
+    get_workspace_service,
+    get_filesystem_service,
+    get_terminal_service,
+    get_agent_service,
+    get_chat_service,
+    get_chat_service,
+    get_source_control_service,
+    get_context_router,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -218,6 +227,7 @@ class RestAPI:
         self.agent_service = None
         self.chat_service = None
         self.source_control_service = None
+        self.context_router = None
         
         # Statistics
         self.stats = {
@@ -249,8 +259,15 @@ class RestAPI:
         
         # Get services
         self.workspace_service = await get_workspace_service()
-        self.filesystem_service = await get_filesystem_service()
-        self.terminal_service = await get_terminal_service()
+        # Phase 3: resolve FS/Terminal through ContextRouter (still local for now)
+        try:
+            self.context_router = await get_context_router()
+            self.filesystem_service = await self.context_router.get_filesystem()
+            self.terminal_service = await self.context_router.get_terminal_service()
+        except Exception as e:
+            logger.warning(f"[REST] ContextRouter unavailable, falling back to direct services: {e}")
+            self.filesystem_service = await get_filesystem_service()
+            self.terminal_service = await get_terminal_service()
         self.agent_service = await get_agent_service()
         self.chat_service = get_chat_service()
         try:
@@ -478,7 +495,13 @@ class RestAPI:
         async def list_files(path: str = "/", include_hidden: bool = False):
             """List files in directory."""
             try:
-                files = await self.filesystem_service.list_directory(path, include_hidden=include_hidden)
+                fs = self.filesystem_service
+                if self.context_router is not None:
+                    try:
+                        fs = await self.context_router.get_filesystem()
+                    except Exception:
+                        fs = self.filesystem_service
+                files = await fs.list_directory(path, include_hidden=include_hidden)
                 return SuccessResponse(data=files)
             except Exception as e:
                 logger.error(f"Error listing files: {e}")
@@ -488,7 +511,13 @@ class RestAPI:
         async def get_file_content(path: str):
             """Get file content."""
             try:
-                content = await self.filesystem_service.read_file(path)
+                fs = self.filesystem_service
+                if self.context_router is not None:
+                    try:
+                        fs = await self.context_router.get_filesystem()
+                    except Exception:
+                        fs = self.filesystem_service
+                content = await fs.read_file(path)
                 return SuccessResponse(data={"path": path, "content": content})
             except FileNotFoundError:
                 raise HTTPException(status_code=404, detail="File not found")
@@ -517,7 +546,13 @@ class RestAPI:
                     workspace_root = os.path.abspath(os.path.join(current_dir, os.pardir))
                 else:
                     workspace_root = os.path.abspath(current_dir)
-                fs_root = self.filesystem_service.root_path if self.filesystem_service else workspace_root
+                fs_service = self.filesystem_service
+                if self.context_router is not None:
+                    try:
+                        fs_service = await self.context_router.get_filesystem()
+                    except Exception:
+                        fs_service = self.filesystem_service
+                fs_root = getattr(fs_service, 'root_path', workspace_root) if fs_service else workspace_root
 
                 candidates: list[str] = []
                 if os.path.isabs(path):
@@ -567,9 +602,16 @@ class RestAPI:
             try:
                 logger.info(f"[DEBUG] Incoming create request: path={request.path}, type={request.type}, content_len={len(request.content or '')}")
                 
+                fs = self.filesystem_service
+                if self.context_router is not None:
+                    try:
+                        fs = await self.context_router.get_filesystem()
+                    except Exception:
+                        fs = self.filesystem_service
+
                 if request.type == "directory":
                     # Create directory
-                    success = await self.filesystem_service.create_directory(
+                    success = await fs.create_directory(
                         dir_path=request.path,
                         parents=request.create_dirs
                     )
@@ -579,7 +621,7 @@ class RestAPI:
                         raise Exception("Failed to create directory")
                 else:
                     # Create file (existing logic)
-                    await self.filesystem_service.write_file(
+                    await fs.write_file(
                         file_path=request.path,
                         content=request.content or "",
                         encoding=request.encoding,
@@ -595,7 +637,13 @@ class RestAPI:
         async def update_file(request: FileOperationRequest):
             """Update file content."""
             try:
-                await self.filesystem_service.write_file(
+                fs = self.filesystem_service
+                if self.context_router is not None:
+                    try:
+                        fs = await self.context_router.get_filesystem()
+                    except Exception:
+                        fs = self.filesystem_service
+                await fs.write_file(
                     file_path=request.path,
                     content=request.content or "",
                     encoding=request.encoding,
@@ -610,7 +658,13 @@ class RestAPI:
         async def delete_file(path: str):
             """Delete file."""
             try:
-                await self.filesystem_service.delete_file(path)
+                fs = self.filesystem_service
+                if self.context_router is not None:
+                    try:
+                        fs = await self.context_router.get_filesystem()
+                    except Exception:
+                        fs = self.filesystem_service
+                await fs.delete_file(path)
                 return SuccessResponse(message="File deleted successfully")
             except Exception as e:
                 logger.error(f"Error deleting file: {e}")
@@ -623,7 +677,14 @@ class RestAPI:
                 if not request.overwrite and os.path.exists(request.destination_path):
                     raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Destination already exists")
 
-                success = await self.filesystem_service.move_file(
+                fs = self.filesystem_service
+                if self.context_router is not None:
+                    try:
+                        fs = await self.context_router.get_filesystem()
+                    except Exception:
+                        fs = self.filesystem_service
+
+                success = await fs.move_file(
                     src_path=request.source_path,
                     dest_path=request.destination_path,
                     overwrite=request.overwrite or False
@@ -643,7 +704,13 @@ class RestAPI:
         async def search_files(request: FileSearchRequest):
             """Search files."""
             try:
-                results = await self.filesystem_service.search_files(
+                fs = self.filesystem_service
+                if self.context_router is not None:
+                    try:
+                        fs = await self.context_router.get_filesystem()
+                    except Exception:
+                        fs = self.filesystem_service
+                results = await fs.search_files(
                     query=request.query,
                     path=request.path,
                     file_types=request.file_types,
@@ -659,7 +726,13 @@ class RestAPI:
         async def get_file_info(path: str):
             """Get file information."""
             try:
-                info = await self.filesystem_service.get_file_info(path)
+                fs = self.filesystem_service
+                if self.context_router is not None:
+                    try:
+                        fs = await self.context_router.get_filesystem()
+                    except Exception:
+                        fs = self.filesystem_service
+                info = await fs.get_file_info(path)
                 return SuccessResponse(data=info)
             except FileNotFoundError:
                 raise HTTPException(status_code=404, detail="File not found")
@@ -686,7 +759,13 @@ class RestAPI:
                 else:
                     workspace_root = os.path.abspath(current_dir)
 
-                fs_root = self.filesystem_service.root_path
+                fs_service = self.filesystem_service
+                if self.context_router is not None:
+                    try:
+                        fs_service = await self.context_router.get_filesystem()
+                    except Exception:
+                        fs_service = self.filesystem_service
+                fs_root = getattr(fs_service, 'root_path', workspace_root)
 
                 candidates = []  # possible absolute paths to try
 

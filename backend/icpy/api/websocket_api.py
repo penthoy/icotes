@@ -160,6 +160,8 @@ class WebSocketAPI:
         await self.message_broker.subscribe('fs.*', self._handle_filesystem_event)
         await self.message_broker.subscribe('terminal.*', self._handle_terminal_event)
         await self.message_broker.subscribe('agents.*', self._handle_agent_event)
+        # Subscribe to hop events for SSH context switching notifications
+        await self.message_broker.subscribe('hop.*', self._handle_hop_event)
         await self.message_broker.subscribe('scm.*', self._handle_scm_event)
         
         # Start background tasks
@@ -1006,6 +1008,20 @@ class WebSocketAPI:
             
         except Exception as e:
             logger.error(f"Error handling agent event {message.topic}: {e}")
+
+    async def _handle_hop_event(self, message):
+        """Handle hop (SSH) events by broadcasting to interested clients.
+        Allows frontend to subscribe to hop.* and receive status/credential changes.
+        """
+        try:
+            await self._broadcast_to_subscribers('hop.*', {
+                'type': 'hop_event',
+                'event': message.topic,
+                'data': message.payload,
+                'timestamp': time.time()
+            })
+        except Exception as e:
+            logger.error(f"Error handling hop event {message.topic}: {e}")
 
     async def _handle_scm_event(self, message):
         """Handle source control (SCM) events by broadcasting to interested clients."""

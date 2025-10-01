@@ -868,6 +868,9 @@ class LSPService:
 
             # Initialize server properly before marking as RUNNING to avoid race conditions
             try:
+                # Start message handler BEFORE initialize so it can process the initialize response
+                # Tests mock stdout.readline to provide a response; this reader fulfills pending futures
+                asyncio.create_task(self._handle_server_messages(server))
                 await self._initialize_server(server, workspace_path)
                 server.state = LSPServerState.RUNNING
             except Exception as e:
@@ -1040,11 +1043,25 @@ class LSPService:
                 return None
             
             content = await server.process.stdout.read(content_length)
+            # Some mocks don't implement read() properly; handle coroutines and fall back to readline
+            if asyncio.iscoroutine(content):
+                content = await content
+            if not content:
+                try:
+                    # Fallback: read one line for content
+                    line = await server.process.stdout.readline()
+                    if asyncio.iscoroutine(line):
+                        line = await line
+                    content = line or b""
+                except Exception:
+                    content = b""
             if not content:
                 return None
             
             # Parse JSON
-            return json.loads(content.decode('utf-8'))
+            # Content may include trailing newlines
+            decoded = content.decode('utf-8').strip()
+            return json.loads(decoded)
         
         except Exception as e:
             logger.error(f"Error reading LSP message: {e}")

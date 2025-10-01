@@ -16,6 +16,7 @@ import {
   ICUIGit,
   ICUIPreview
 } from '../icui';
+import { ICUIHop } from '../icui/components/panels';
 import type { ICUIEditorRef, ICUIPreviewRef } from '../icui';
 import { globalCommandRegistry } from '../icui/lib/commandRegistry';
 import ICUIBaseHeader from '../icui/components/ICUIBaseHeader';
@@ -379,6 +380,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
     { id: 'chat-history', name: 'Chat History', icon: '💬', description: 'Manage chat sessions and history' },
     { id: 'git', name: 'Source Control', icon: '🌿', description: 'Git source control management' },
     { id: 'preview', name: 'Live Preview', icon: '🖥️', description: 'Live preview for web applications' },
+    { id: 'hop', name: 'Hop', icon: '📡', description: 'SSH Hop controller' },
   ];
 
   // Stable panel instances to prevent recreation on layout changes
@@ -454,6 +456,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
     // Always show main Git panel (connect disabled)
     return gitInstance;
   }, [gitInstance]);
+  const hopInstance = useMemo(() => (<ICUIHop />), []);
   const createPreviewContent = useCallback(() => previewInstance, [previewInstance]);
 
   // Handle panel addition
@@ -484,6 +487,9 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
         break;
       case 'preview':
         content = createPreviewContent();
+        break;
+      case 'hop':
+        content = hopInstance;
         break;
       default:
         content = <div className="h-full p-4" style={{ backgroundColor: 'var(--icui-bg-primary)', color: 'var(--icui-text-primary)' }}>Custom Panel: {panelType.name}</div>;

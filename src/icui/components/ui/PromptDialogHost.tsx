@@ -18,7 +18,7 @@ const PromptDialogHost: React.FC = () => {
 
   if (!req) return null;
 
-  const { title, message, placeholder, multiline, confirmText = 'OK', cancelText = 'Cancel', validate } = req.options;
+  const { title, message, placeholder, multiline, password, confirmText = 'OK', cancelText = 'Cancel', validate } = req.options;
 
   const onConfirm = () => {
     const maybeErr = validate ? validate(value) : null;
@@ -54,6 +54,7 @@ const PromptDialogHost: React.FC = () => {
               className="w-full rounded px-3 py-2 text-sm"
               style={{ backgroundColor: 'var(--icui-bg-primary)', color: 'var(--icui-text-primary)', border: '1px solid var(--icui-border)' }}
               placeholder={placeholder}
+              type={password ? 'password' : 'text'}
               value={value}
               onChange={(e) => setValue(e.target.value)}
               autoFocus

@@ -90,7 +90,7 @@ from icpy.core.auth_helpers import (
 from icpy.cli.main_cli import parse_arguments, handle_clipboard_commands
 
 # Import endpoint modules
-from icpy.api.endpoints import health, auth, clipboard, preview, agents, websockets
+from icpy.api.endpoints import health, auth, clipboard, preview, agents, websockets, hop
 
 
 # Basic code execution functionality (legacy fallback)
@@ -285,6 +285,13 @@ app.post("/api/environment/update-keys")(agents.update_api_keys_endpoint)
 app.get("/api/environment/keys")(agents.get_api_keys_status_endpoint)
 app.get("/api/environment/key")(agents.get_api_key_value_endpoint)
 app.get("/api/custom-agents/{agent_name}/info")(agents.get_custom_agent_info)
+
+# Hop endpoints
+try:
+    app.include_router(hop.router)
+    logger.info("Hop router registered at /api/hop")
+except Exception as e:
+    logger.error(f"Failed to register hop router: {e}")
 
 # WebSocket endpoints (additional)
 app.websocket("/ws/agents/{session_id}/stream")(websockets.agent_stream_websocket)

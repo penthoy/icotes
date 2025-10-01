@@ -139,6 +139,19 @@ wheels = [
 ]
 
 [[package]]
+name = "asyncssh"
+version = "2.21.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cryptography" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/6b/b8/065c20bb5c9b8991648c0f25b13e445b4f51556cc3fdd0ad13ce4787c156/asyncssh-2.21.1.tar.gz", hash = "sha256:9943802955e2131536c2b1e71aacc68f56973a399937ed0b725086d7461c990c", size = 540515, upload-time = "2025-09-28T16:36:19.468Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/0e/89/4a9a61bc120ca68bce92b0ea176ddc0e550e58c60ab820603bd5246e7261/asyncssh-2.21.1-py3-none-any.whl", hash = "sha256:f218f9f303c78df6627d0646835e04039a156d15e174ad63c058d62de61e1968", size = 375529, upload-time = "2025-09-28T16:36:17.68Z" },
+]
+
+[[package]]
 name = "attrs"
 version = "25.3.0"
 source = { registry = "https://pypi.org/simple" }
@@ -154,6 +167,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "aiofiles" },
     { name = "aiohttp" },
+    { name = "asyncssh" },
     { name = "cerebras-cloud-sdk" },
     { name = "crewai" },
     { name = "fastapi" },
@@ -182,6 +196,7 @@ dependencies = [
 requires-dist = [
     { name = "aiofiles", specifier = "==24.1.0" },
     { name = "aiohttp", specifier = "==3.10.11" },
+    { name = "asyncssh", specifier = ">=2.14.2" },
     { name = "cerebras-cloud-sdk", specifier = ">=1.30.0" },
     { name = "crewai", specifier = "==0.30.11" },
     { name = "fastapi", specifier = "==0.104.1" },
