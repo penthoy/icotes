@@ -10,31 +10,23 @@
 
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { 
-  ChevronDown, 
-  ChevronRight, 
-  FileText, 
-  FolderOpen, 
-  Folder, 
-  Plus, 
-  MoreVertical,
   RefreshCw,
   Lock,
   Unlock,
-  MoreHorizontal,
   Eye,
   EyeOff
 } from "lucide-react";
-import { backendService, ICUIFileNode, useTheme } from '../../services';
+import { backendService, ICUIFileNode } from '../../services';
 import { getWorkspaceRoot } from '../../lib';
 import { explorerPreferences } from '../../../lib/utils';
 import { log } from '../../../services/frontend-logger';
 
 const DEBUG_EXPLORER = import.meta.env?.VITE_DEBUG_EXPLORER === 'true';
 import { Button } from '../ui/button';
-import { ContextMenu, useContextMenu } from '../ui/ContextMenu';
+import { ContextMenu } from '../ui/ContextMenu';
 import { globalCommandRegistry } from '../../lib/commandRegistry';
 import { useExplorerMultiSelect } from '../explorer/MultiSelectHandler';
-import { ICUI_FILE_LIST_MIME, isExplorerPayload, useExplorerFileDrag } from '../../lib/dnd';
+// DnD MIME helpers now handled inside hooks
 import { explorerFileOperations, FileOperationContext } from '../explorer/FileOperations';
 import { 
   flattenVisibleTree,
@@ -43,11 +35,14 @@ import {
   applyChildrenResults as applyChildrenResultsUtil,
   findNodeInTree as findNodeInTreeUtil,
 } from '../explorer/utils';
-import { getFileIcon as getFileIconUtil } from '../explorer/icons';
-import { createExplorerContextMenu, handleExplorerContextMenuClick, ExplorerMenuContext, ExplorerMenuExtensions } from '../explorer/ExplorerContextMenu';
-import { getParentDirectoryPath, isDescendantPath, joinPathSegments, normalizeDirPath } from '../explorer/pathUtils';
-import { planExplorerMoveOperations } from '../explorer/movePlanner';
+import { ExplorerMenuExtensions } from '../explorer/ExplorerContextMenu';
 import ExplorerTree from '../explorer/ExplorerTree';
+import { useExplorerConnection } from '../explorer/useExplorerConnection';
+import { useExplorerFsWatcher } from '../explorer/useExplorerFsWatcher';
+import { useExplorerDnD } from '../explorer/useExplorerDnD';
+import { useExplorerRename } from '../explorer/useExplorerRename';
+import { useExplorerContextMenu } from '../explorer/useExplorerContextMenu';
+import { useExplorerDropMove } from '../explorer/useExplorerDropMove';
 
 interface ICUIExplorerProps {
   className?: string;
@@ -73,7 +68,6 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
 }) => {
   // ---------- state ----------
   const [files, setFiles] = useState<ICUIFileNode[]>([]);
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [selectedItems, setSelectedItems] = useState<ICUIFileNode[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -87,19 +81,14 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
 
   const [dragHoverId, setDragHoverId] = useState<string | null>(null);
   const [isRootDragHover, setIsRootDragHover] = useState(false);
-  const [renamingFileId, setRenamingFileId] = useState<string | null>(null);
-  const [renameValue, setRenameValue] = useState('');
-  const renameInputRef = useRef<HTMLInputElement>(null);
+  // Inline rename handled via hook
+  // values wired from useExplorerRename below
 
   // ---------- refs ----------
   const lastLoadTimeRef = useRef(0);
-  const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadDirectoryRef = useRef<(path: string, opts?: { force?: boolean }) => Promise<void>>();
-  const statusHandlerRef = useRef<((payload: any) => Promise<void>) | null>(null);
   const expandedPathsRef = useRef<Set<string>>(new Set());
-  const dragOperationRef = useRef(false);
-
-  const { contextMenu, showContextMenu, hideContextMenu } = useContextMenu();
+  // local drag ref no longer used; managed inside useExplorerDropMove
 
   // ---------- derived ----------
   const flattenedFiles = useMemo(() => flattenVisibleTree(files), [files]);
@@ -109,13 +98,10 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
     handleItemClick: handleMultiSelectClick,
     handleKeyboardNavigation,
     isSelected,
-    getSelectionCount,
     getSelectedItems,
-    getSelectedIds,
     clearSelection,
     selectAll,
-  } = useExplorerMultiSelect(flattenedFiles, (ids, items) => {
-    setSelectedIds(ids);
+  } = useExplorerMultiSelect(flattenedFiles, (_ids, items) => {
     setSelectedItems(items);
   });
 
@@ -165,27 +151,46 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
   );
 
   // DnD helpers
-  const { getDragProps } = useExplorerFileDrag({
-    getSelection: () => selectedItems.map(f => ({ path: f.path, name: f.name, type: f.type })),
-    isItemSelected: (id: string) => isSelected(id),
-    toDescriptor: (node: ICUIFileNode) => ({ path: node.path, name: node.name, type: node.type }),
-  });
-  const isInternalExplorerDrag = useCallback((event: React.DragEvent) => {
-    try {
-      const types = event.dataTransfer?.types as any;
-      if (!types) return false;
-      for (let i = 0; i < types.length; i++) {
-        if (types[i] === ICUI_FILE_LIST_MIME) return true;
-      }
-      return false;
-    } catch {
-      return false;
-    }
-  }, []);
+  const { getDragProps, isInternalExplorerDrag } = useExplorerDnD({ selectedItems, isSelected });
   const clearDragHoverState = useCallback(() => {
     setDragHoverId(null);
     setIsRootDragHover(false);
   }, []);
+
+  const {
+    renamingFileId,
+    renameValue,
+    renameInputRef,
+    startRename,
+    cancelRename,
+    confirmRename,
+    handleRenameKeyDown,
+    setRenameValue,
+  } = useExplorerRename({
+    flattenedFiles,
+    loadDirectoryRef,
+    currentPath,
+    onFileRename,
+    setError,
+  });
+
+  const {
+    contextMenu,
+    showContextMenu,
+    hideContextMenu,
+    handleContextMenu,
+    handleMenuItemClick,
+  } = useExplorerContextMenu({
+    currentPath,
+    getSelectedItems,
+    isSelected,
+    handleMultiSelectClick,
+    extensions,
+    selectAll,
+    clearSelection,
+    setError: (msg) => setError(msg),
+    startRename,
+  });
 
   // Load directory
   const loadDirectory = useCallback(async (path: string = getWorkspaceRoot(), opts?: { force?: boolean }) => {
@@ -284,195 +289,11 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
     }
   }, [checkConnection, showHiddenFiles, buildMap, annotateWithExpansion, applyChildrenResults]);
 
-  useEffect(() => {
-    loadDirectoryRef.current = loadDirectory;
-  }, [loadDirectory]);
+  useEffect(() => { loadDirectoryRef.current = loadDirectory; }, [loadDirectory]);
 
-  useEffect(() => {
-    loadDirectoryRef.current = loadDirectory;
-  }, [loadDirectory]);
+  useExplorerConnection({ currentPath, loadDirectory, loadDirectoryRef, checkConnection, setIsConnected });
 
-  // Connection monitoring + initial load (listener first to avoid missing early events)
-  useEffect(() => {
-    let mounted = true;
-    if (DEBUG_EXPLORER) {
-      console.debug('[ICUIExplorer][mount] effect start', { currentPath });
-    }
-    const handleConnectionChange = (payload: any) => {
-      if (!mounted) return;
-      const connected = payload.status === 'connected';
-      setIsConnected(connected);
-      if (DEBUG_EXPLORER) {
-        console.debug('[ICUIExplorer][event] connection_status_changed', { connected });
-      }
-      if (connected) {
-        setError(null);
-        // Perform (or re-perform) directory load now that we're connected
-        loadDirectoryRef.current ? loadDirectoryRef.current(currentPath, { force: true }) : loadDirectory(currentPath, { force: true });
-      }
-    };
-
-    backendService.on('connection_status_changed', handleConnectionChange);
-
-    // Kick off connection check AFTER listener is attached so we don't miss the first event
-    (async () => {
-      const status = await checkConnection();
-      if (DEBUG_EXPLORER) {
-        console.debug('[ICUIExplorer][mount] initial checkConnection result', { status });
-      }
-      if (status) {
-        // If already connected, load immediately
-        loadDirectory(currentPath, { force: true });
-      } else {
-        // Not yet connected: calling getConnectionStatus() again will trigger ensureInitialized -> connection attempt
-        try {
-          if (DEBUG_EXPLORER) {
-            console.debug('[ICUIExplorer][mount] triggering second status call to start connection');
-          }
-          await backendService.getConnectionStatus();
-        } catch {/* ignore */}
-      }
-    })();
-
-    return () => {
-      mounted = false;
-      backendService.off('connection_status_changed', handleConnectionChange);
-      if (DEBUG_EXPLORER) {
-        console.debug('[ICUIExplorer][unmount] cleanup');
-      }
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPath]);
-
-  // Real-time file system updates via WebSocket (mirror working ICUIExplorer watcher)
-  useEffect(() => {
-    if (!backendService) {
-      return;
-    }
-
-    const handleFileSystemEvent = (eventData: any) => {
-  log.debug('ICUIExplorer', '[EXPL] filesystem_event received', { event: eventData?.event, data: eventData?.data });
-      if (!eventData?.data) {
-        return;
-      }
-
-      const { event, data } = eventData;
-      const paths = [eventData.path, data.file_path, data.path, data.dir_path, data.src_path, data.dest_path].filter(
-        (p): p is string => typeof p === 'string' && p.length > 0
-      );
-
-      switch (event) {
-        case 'fs.file_created':
-        case 'fs.directory_created':
-        case 'fs.file_deleted':
-        case 'fs.file_moved':
-        case 'fs.file_copied': {
-          if (refreshTimeoutRef.current) {
-            clearTimeout(refreshTimeoutRef.current);
-          }
-          // Debounce structural refreshes
-          refreshTimeoutRef.current = setTimeout(() => {
-            log.debug('ICUIExplorer', '[EXPL] triggering debounced refresh', { currentPath, paths });
-            if (loadDirectoryRef.current) {
-              loadDirectoryRef.current(currentPath);
-            }
-            refreshTimeoutRef.current = null;
-          }, 300);
-          break;
-        }
-        case 'fs.file_modified': {
-          // Non-structural; ignore for tree refresh
-          log.debug('ICUIExplorer', '[EXPL] modification event ignored for tree', { paths });
-          break;
-        }
-        default: {
-          log.debug('ICUIExplorer', '[EXPL] unknown filesystem_event', { event });
-        }
-      }
-    };
-
-    backendService.on('filesystem_event', handleFileSystemEvent);
-
-    const topics = ['fs.file_created', 'fs.directory_created', 'fs.file_deleted', 'fs.file_moved', 'fs.file_copied', 'fs.file_modified'];
-
-    const subscribeToEvents = async () => {
-      try {
-        const status = await backendService.getConnectionStatus();
-        if (!status.connected) return;
-  log.info('ICUIExplorer', '[EXPL] Subscribing to fs topics');
-        await backendService.notify('subscribe', { topics });
-      } catch (error) {
-  log.warn('ICUIExplorer', 'Failed to subscribe to filesystem events', { error });
-      }
-    };
-
-    const initConnection = async () => {
-      try {
-        const status = await backendService.getConnectionStatus();
-        if (status.connected) {
-          log.info('ICUIExplorer', '[EXPL] Initializing subscription on connected');
-          await subscribeToEvents();
-        } else {
-          statusHandlerRef.current = async (payload: any) => {
-            if (payload?.status === 'connected') {
-              log.info('ICUIExplorer', '[EXPL] Connected, subscribing + refreshing');
-              await subscribeToEvents();
-              if (loadDirectoryRef.current) {
-                loadDirectoryRef.current(currentPath);
-              }
-              if (statusHandlerRef.current) {
-                backendService.off('connection_status_changed', statusHandlerRef.current);
-                statusHandlerRef.current = null;
-              }
-            }
-          };
-          backendService.on('connection_status_changed', statusHandlerRef.current);
-        }
-      } catch (error) {
-  console.error('[ICUIExplorer] Error initializing connection:', error);
-      }
-    };
-
-    initConnection();
-
-    return () => {
-      if (refreshTimeoutRef.current) {
-        clearTimeout(refreshTimeoutRef.current);
-        refreshTimeoutRef.current = null;
-      }
-      backendService.off('filesystem_event', handleFileSystemEvent);
-      if (statusHandlerRef.current) {
-        backendService.off('connection_status_changed', statusHandlerRef.current);
-        statusHandlerRef.current = null;
-      }
-      const cleanup = async () => {
-        try {
-          const status = await backendService.getConnectionStatus();
-          if (status.connected) {
-            log.info('ICUIExplorer', '[EXPL] Unsubscribing from fs topics');
-            await backendService.notify('unsubscribe', { topics });
-          }
-        } catch (error) {
-          log.warn('ICUIExplorer', 'Failed to unsubscribe from filesystem events', { error });
-        }
-      };
-      cleanup();
-    };
-  }, [currentPath]);
-
-  // Helper function to find a node in the tree
-  const findNodeInTree = useCallback((nodes: ICUIFileNode[], nodeId: string): ICUIFileNode | null => {
-    for (const node of nodes) {
-      if (node.id === nodeId) {
-        return node;
-      }
-      if (node.children) {
-        const found = findNodeInTree(node.children, nodeId);
-        if (found) return found;
-      }
-    }
-    return null;
-  }, []);
+  useExplorerFsWatcher({ currentPath, onRefresh: () => {}, loadDirectoryRef });
 
   // Toggle folder expansion (VS Code-like behavior)
   const toggleFolderExpansion = useCallback(async (folder: ICUIFileNode) => {
@@ -532,7 +353,7 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
       
       return updatedFiles;
     });
-  }, [isConnected, findNodeInTree, annotateWithExpansion, buildMap]);
+  }, [isConnected, annotateWithExpansion, buildMap]);
 
   // Handle file/folder selection with multi-select support
   const handleItemClick = useCallback(async (item: ICUIFileNode, event: React.MouseEvent) => {
@@ -566,34 +387,7 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
   }, [onFileDoubleClick]);
 
   // Handle right-click context menu
-  const handleContextMenu = useCallback((event: React.MouseEvent, clickedFile?: ICUIFileNode) => {
-    event.preventDefault();
-    event.stopPropagation();
-
-    // If right-clicked on an unselected item, select it first
-    if (clickedFile && !isSelected(clickedFile.id)) {
-      handleMultiSelectClick(clickedFile, { ctrlKey: false, shiftKey: false, metaKey: false });
-    }
-
-    const currentSelection = clickedFile && !isSelected(clickedFile.id) 
-      ? [clickedFile] 
-      : getSelectedItems();
-
-    const menuContext: ExplorerMenuContext = {
-      panelType: 'explorer',
-      selectedFiles: currentSelection,
-      currentPath,
-      clickedFile,
-      canPaste: explorerFileOperations.canPaste(),
-      isMultiSelect: true,
-      selectedItems: currentSelection,
-      // Provide folder path for creation commands: if right-click on folder, create inside it
-      targetDirectoryPath: clickedFile && clickedFile.type === 'folder' ? clickedFile.path : currentPath,
-    } as any;
-
-    const schema = createExplorerContextMenu(menuContext, extensions);
-    showContextMenu(event, schema, menuContext);
-  }, [isSelected, handleMultiSelectClick, getSelectedItems, currentPath, showContextMenu]);
+  // replaced by useExplorerContextMenu
 
   // Handle refresh
   const handleRefresh = useCallback(async () => {
@@ -604,120 +398,14 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
     }
   }, [currentPath, loadDirectory]);
 
-  const handleInternalDrop = useCallback(async (event: React.DragEvent, targetNode?: ICUIFileNode | null) => {
-    if (!isInternalExplorerDrag(event)) return;
-
-    event.preventDefault();
-    event.stopPropagation();
-
-    const traceId = (event.dataTransfer as any)._icuiTraceId || `drop-${Date.now().toString(36)}`;
-    try {
-      log.info('ExplorerDnD', '[DND][drop:init]', {
-        traceId,
-        targetNode: targetNode ? { path: targetNode.path, type: targetNode.type } : null,
-        currentPath,
-      });
-    } catch {}
-
-    const transfer = event.dataTransfer;
-    const rawPayload = transfer?.getData(ICUI_FILE_LIST_MIME);
-    if (!rawPayload) {
-      clearDragHoverState();
-      return;
-    }
-
-    let payload: unknown;
-    try {
-      payload = JSON.parse(rawPayload);
-    } catch (parseError) {
-      console.error('ICUIEnhancedExplorer', 'Failed to parse drag payload', parseError);
-      clearDragHoverState();
-      return;
-    }
-
-    if (!isExplorerPayload(payload)) {
-      clearDragHoverState();
-      return;
-    }
-
-    const destinationDirRaw = targetNode
-      ? (targetNode.type === 'folder' ? targetNode.path : getParentDirectoryPath(targetNode.path))
-      : currentPath;
-    const destinationDir = normalizeDirPath(destinationDirRaw);
-
-    const descriptors = payload.items ?? payload.paths.map((path: string, index: number) => ({
-      path,
-      name: path.split('/').pop() || `item-${index}`,
-      type: 'file' as const,
-    }));
-
-    type PlannedDescriptor = {
-      sourcePath: string;
-      name: string;
-      type: 'file' | 'folder';
-      depth: number;
-    };
-
-    let plannedOperations: { source: string; destination: string }[] = [];
-    let skipped: string[] = [];
-    try {
-      const planning = planExplorerMoveOperations({ descriptors, destinationDir });
-      plannedOperations = planning.operations;
-      skipped = planning.skipped;
-      log.info('ExplorerDnD', '[DND][drop:plan]', {
-        traceId,
-        destinationDir,
-        operations: plannedOperations,
-        skipped,
-      });
-    } catch (planError) {
-      log.error('ExplorerDnD', '[DND][drop:plan:error]', { traceId, error: planError });
-      setError(planError instanceof Error ? planError.message : 'Failed to plan move');
-      clearDragHoverState();
-      return;
-    }
-
-    if (plannedOperations.length === 0) {
-      clearDragHoverState();
-      return;
-    }
-
-    dragOperationRef.current = true;
-    try {
-      log.info('ExplorerDnD', '[DND][drop:validate:start]', { traceId, destinationDir });
-      const directorySnapshot = await backendService.getDirectoryContents(destinationDir, true).catch(() => [] as ICUIFileNode[]);
-      const existingNames = new Set(directorySnapshot.map(node => node.name));
-
-      for (const op of plannedOperations) {
-        const basename = op.destination.split('/').pop() || '';
-        if (existingNames.has(basename)) {
-          log.warn('ExplorerDnD', '[DND][drop:validate:conflict]', { traceId, basename });
-          throw new Error(`Cannot move “${basename}”: destination already contains an item with the same name.`);
-        }
-      }
-
-      for (const op of plannedOperations) {
-        log.info('ExplorerDnD', '[DND][drop:execute]', { traceId, op });
-        await backendService.moveFile(op.source, op.destination);
-      }
-
-      await handleRefresh();
-      clearSelection();
-      setError(null);
-      log.info('ExplorerDnD', '[DND][drop:complete]', { traceId, moved: plannedOperations.length, skipped });
-    } catch (error) {
-      console.error('ICUIEnhancedExplorer', 'Failed to move selection', error);
-      log.error('ExplorerDnD', '[DND][drop:failure]', { traceId, error });
-      setError(error instanceof Error ? error.message : 'Failed to move files');
-    } finally {
-      dragOperationRef.current = false;
-      clearDragHoverState();
-    }
-
-    if (skipped.length > 0) {
-      log.warn('ICUIEnhancedExplorer', 'Skipped moving some paths due to invalid targets', { traceId, skipped });
-    }
-  }, [isInternalExplorerDrag, currentPath, clearDragHoverState, backendService, handleRefresh, clearSelection]);
+  const { handleInternalDrop } = useExplorerDropMove({
+    currentPath,
+    isInternalExplorerDrag,
+    handleRefresh,
+    clearSelection,
+    setError,
+    clearDragHoverState,
+  });
 
   const handleItemDragOver = useCallback((event: React.DragEvent, node: ICUIFileNode) => {
     if (!isInternalExplorerDrag(event)) return;
@@ -787,7 +475,7 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
       const directoryContents = await backendService.getDirectoryContents(currentPath, newState);
       
       setFiles(prevFiles => {
-  const prevMap = buildMap(prevFiles);
+        const prevMap = buildMap(prevFiles);
         const mergedFiles = annotateWithExpansion(directoryContents as ICUIFileNode[], prevMap);
         
         // Refresh expanded folders with new hidden file setting
@@ -817,105 +505,10 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
     }
   }, [currentPath, checkConnection, buildMap, annotateWithExpansion, applyChildrenResults]);
 
-  // Inline rename functions
-  const startRename = useCallback((file: ICUIFileNode) => {
-    setRenamingFileId(file.path);
-    setRenameValue(file.name);
-    // Focus the input after state update
-    setTimeout(() => {
-      if (renameInputRef.current) {
-        renameInputRef.current.focus();
-        renameInputRef.current.select();
-      }
-    }, 0);
-  }, []);
-
-  const cancelRename = useCallback(() => {
-    setRenamingFileId(null);
-    setRenameValue('');
-  }, []);
-
-  const confirmRename = useCallback(async () => {
-    if (!renamingFileId || !renameValue.trim()) {
-      cancelRename();
-      return;
-    }
-
-    const file = flattenedFiles.find(f => f.path === renamingFileId);
-    if (!file || renameValue.trim() === file.name) {
-      cancelRename();
-      return;
-    }
-
-    try {
-      // Build destination path safely using shared path helpers
-      const parentPath = getParentDirectoryPath(file.path);
-      const newPath = joinPathSegments(parentPath, renameValue.trim());
-
-      // No-op if paths are identical after normalization
-      if (newPath === file.path) {
-        cancelRename();
-        return;
-      }
-
-      // Prefer server-side move operation to preserve metadata and handle directories atomically
-      await backendService.moveFile(file.path, newPath);
-
-      // Refresh directory and notify parent
-      await loadDirectoryRef.current?.(currentPath, { force: true });
-      onFileRename?.(file.path, newPath);
-      
-      log.info('ICUIEnhancedExplorer', 'Renamed file inline', { oldPath: file.path, newPath });
-    } catch (error) {
-      log.error('ICUIEnhancedExplorer', 'Failed to rename file inline', { oldPath: renamingFileId, newName: renameValue, error });
-      setError(error instanceof Error ? error.message : 'Failed to rename file');
-    } finally {
-      cancelRename();
-    }
-  }, [renamingFileId, renameValue, flattenedFiles, cancelRename, currentPath, onFileRename]);
-
-  const handleRenameKeyDown = useCallback((event: React.KeyboardEvent) => {
-    if (event.key === 'Enter') {
-      event.preventDefault();
-      confirmRename();
-    } else if (event.key === 'Escape') {
-      event.preventDefault();
-      cancelRename();
-    }
-  }, [confirmRename, cancelRename]);
+  // Inline rename handled via useExplorerRename
 
   // Handle context menu item clicks
-  const handleMenuItemClick = useCallback((item: any) => {
-    const clickedFolder = selectedItems.length === 1 && selectedItems[0].type === 'folder' ? selectedItems[0] : undefined;
-    const menuContext: ExplorerMenuContext = {
-      panelType: 'explorer',
-      selectedFiles: selectedItems,
-      currentPath,
-      canPaste: explorerFileOperations.canPaste(),
-      isMultiSelect: true,
-      selectedItems,
-      targetDirectoryPath: clickedFolder ? clickedFolder.path : currentPath,
-    } as any;
-
-    handleExplorerContextMenuClick(item, menuContext, {
-      selectAll,
-      clearSelection,
-    });
-
-    // Handle rename command with inline editing
-    if (item.commandId === 'explorer.rename' && selectedItems.length === 1) {
-      startRename(selectedItems[0]);
-      return;
-    }
-
-    // If it has a commandId, execute it through the command registry
-    if (item.commandId) {
-      globalCommandRegistry.execute(item.commandId, menuContext).catch(error => {
-        console.error('Failed to execute command:', error);
-        setError(error.message);
-      });
-    }
-  }, [selectedItems, currentPath, selectAll, clearSelection, startRename]);
+  // Context menu click handling moved into useExplorerContextMenu
 
   // Handle keyboard navigation
   const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
