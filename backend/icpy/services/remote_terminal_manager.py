@@ -80,7 +80,7 @@ class RemoteTerminalManager:
         except Exception:
             pass
 
-        # Change directory after spawn to ensure correct working dir and kick shell prompt
+        # Change directory after spawn to ensure correct working dir
         try:
             if cwd and cwd != "/":
                 logger.debug(f"[RemoteTerm] cd to cwd: {cwd}")
@@ -91,9 +91,7 @@ class RemoteTerminalManager:
                 proc.change_terminal_size(120, 30)
             except Exception:
                 pass
-            # Send a newline to trigger prompt rendering, then drain
-            logger.debug("[RemoteTerm] sending initial newline to trigger prompt")
-            proc.stdin.write("\r\n")
+            # Drain stdin to ensure cd command is sent
             try:
                 await proc.stdin.drain()
             except Exception:
