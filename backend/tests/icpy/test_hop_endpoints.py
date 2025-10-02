@@ -15,7 +15,10 @@ def create_test_app():
 
 
 def test_hop_credentials_api(tmp_path, monkeypatch):
+    workspace_dir = tmp_path / "workspace"
+    workspace_dir.mkdir()
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("WORKSPACE_ROOT", str(workspace_dir))
     app = create_test_app()
     client = TestClient(app)
 
@@ -52,7 +55,10 @@ def test_hop_credentials_api(tmp_path, monkeypatch):
 
 
 def test_hop_key_upload(tmp_path, monkeypatch):
+    workspace_dir = tmp_path / "workspace"
+    workspace_dir.mkdir()
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("WORKSPACE_ROOT", str(workspace_dir))
     app = create_test_app()
     client = TestClient(app)
 
@@ -63,7 +69,10 @@ def test_hop_key_upload(tmp_path, monkeypatch):
 
 
 def test_hop_status_connect_disconnect(tmp_path, monkeypatch):
+    workspace_dir = tmp_path / "workspace"
+    workspace_dir.mkdir()
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("WORKSPACE_ROOT", str(workspace_dir))
     app = create_test_app()
     client = TestClient(app)
 

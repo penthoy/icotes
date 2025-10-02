@@ -653,12 +653,14 @@ class RestAPI:
                         raise Exception("Failed to create directory")
                 else:
                     # Create file (existing logic)
-                    await fs.write_file(
+                    ok = await fs.write_file(
                         file_path=request.path,
                         content=request.content or "",
                         encoding=request.encoding,
                         create_dirs=request.create_dirs
                     )
+                    if ok is False:
+                        raise HTTPException(status_code=500, detail="Failed to create file")
                     return SuccessResponse(message="File created successfully")
             except Exception as e:
                 error_type = "directory" if is_dir else "file"
@@ -704,7 +706,9 @@ class RestAPI:
                     except Exception:
                         pass
                 logger.info("[REST] delete_file path=%s use_remote=%s", path, getattr(fs, 'is_remote', False))
-                await fs.delete_file(path)
+                ok = await fs.delete_file(path)
+                if ok is False:
+                    raise HTTPException(status_code=500, detail="Failed to delete file")
                 return SuccessResponse(message="File deleted successfully")
             except Exception as e:
                 logger.error(f"Error deleting file: {e}")
@@ -862,7 +866,7 @@ class RestAPI:
                     raise HTTPException(status_code=400, detail="Cannot download a directory (use zip endpoint)")
 
                 filename = os.path.basename(abs_path)
-                import mimetypes
+                # mimetypes already imported at module level
                 mime, _ = mimetypes.guess_type(filename)
                 if not mime:
                     mime = 'application/octet-stream'

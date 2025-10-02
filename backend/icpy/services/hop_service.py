@@ -243,7 +243,13 @@ class HopService:
             if field_name in data:
                 setattr(cred, field_name, data[field_name])
         if "port" in data:
-            cred.port = int(data["port"]) or 22
+            port_val = data["port"]
+            if port_val is not None:
+                try:
+                    cred.port = int(port_val) or 22
+                except (TypeError, ValueError):
+                    logger.debug(f"Invalid port value: {port_val}, keeping existing")
+                    pass
         if "privateKeyId" in data:
             cred.privateKeyId = data["privateKeyId"]
         cred.updatedAt = _now_iso()
@@ -317,7 +323,7 @@ class HopService:
                     password=password if cred.auth == "password" else None,
                     client_keys=client_keys,
                     passphrase=passphrase if cred.auth == "privateKey" else None,
-                    known_hosts=None,
+                    # Use default known_hosts behavior for host key verification
                     connect_timeout=CONNECTION_TIMEOUT,
                 )
                 try:

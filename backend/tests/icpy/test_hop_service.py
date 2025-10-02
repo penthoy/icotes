@@ -14,8 +14,11 @@ from icpy.services.hop_service import HopService
 
 
 def test_credentials_crud_tmpdir(tmp_path, monkeypatch):
-    # Redirect data dir
+    # Redirect data dir and workspace for isolation
+    workspace_dir = tmp_path / "workspace"
+    workspace_dir.mkdir()
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("WORKSPACE_ROOT", str(workspace_dir))
 
     svc = HopService()
 
@@ -55,7 +58,10 @@ def test_credentials_crud_tmpdir(tmp_path, monkeypatch):
 
 
 def test_key_upload_permissions(tmp_path, monkeypatch):
+    workspace_dir = tmp_path / "workspace"
+    workspace_dir.mkdir()
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("WORKSPACE_ROOT", str(workspace_dir))
     svc = HopService()
 
     key_id = svc.store_private_key(b"TEST-KEY")
@@ -73,7 +79,10 @@ def test_key_upload_permissions(tmp_path, monkeypatch):
 
 
 def test_status_default_local(tmp_path, monkeypatch):
+    workspace_dir = tmp_path / "workspace"
+    workspace_dir.mkdir()
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("WORKSPACE_ROOT", str(workspace_dir))
     svc = HopService()
     st = svc.status()
     assert st.contextId == "local"

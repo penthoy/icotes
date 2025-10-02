@@ -73,13 +73,14 @@ class ContextRouter:
                 "[ContextRouter] FS decision: status=%s contextId=%s has_conn=%s has_sftp=%s",
                 getattr(session, 'status', None), getattr(session, 'contextId', None), has_conn, has_sftp
             )
-            # Only use remote when SSH connection object is present and session is connected
+            # Only use remote when SSH connection object is present, session is connected, and SFTP is available
             if (
                 session
                 and session.status == "connected"
                 and session.contextId
                 and session.contextId != "local"
                 and has_conn
+                and has_sftp
             ):
                 # Return a transient remote adapter bound to current hop connection
                 remote = await get_remote_filesystem_adapter()

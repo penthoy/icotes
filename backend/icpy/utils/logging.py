@@ -11,6 +11,7 @@ from typing import Any, Dict, Optional
 
 # Patterns to detect potential secrets
 SECRET_PATTERNS = [
+    # Double-quoted JSON style
     (re.compile(r'("password"\s*:\s*")[^"]*(")', re.IGNORECASE), r'\1***REDACTED***\2'),
     (re.compile(r'("passphrase"\s*:\s*")[^"]*(")', re.IGNORECASE), r'\1***REDACTED***\2'),
     (re.compile(r'("token"\s*:\s*")[^"]*(")', re.IGNORECASE), r'\1***REDACTED***\2'),
@@ -19,6 +20,16 @@ SECRET_PATTERNS = [
     (re.compile(r'("private_key"\s*:\s*")[^"]*(")', re.IGNORECASE), r'\1***REDACTED***\2'),
     (re.compile(r'("privateKey"\s*:\s*")[^"]*(")', re.IGNORECASE), r'\1***REDACTED***\2'),
     (re.compile(r'("secret"\s*:\s*")[^"]*(")', re.IGNORECASE), r'\1***REDACTED***\2'),
+    # Single-quoted repr() style (for safe_repr)
+    (re.compile(r"('password'\s*:\s*')[^']*(')", re.IGNORECASE), r"\1***REDACTED***\2"),
+    (re.compile(r"('passphrase'\s*:\s*')[^']*(')", re.IGNORECASE), r"\1***REDACTED***\2"),
+    (re.compile(r"('token'\s*:\s*')[^']*(')", re.IGNORECASE), r"\1***REDACTED***\2"),
+    (re.compile(r"('api_?key'\s*:\s*')[^']*(')", re.IGNORECASE), r"\1***REDACTED***\2"),
+    (re.compile(r"('apiKey'\s*:\s*')[^']*(')", re.IGNORECASE), r"\1***REDACTED***\2"),
+    (re.compile(r"('private_?key'\s*:\s*')[^']*(')", re.IGNORECASE), r"\1***REDACTED***\2"),
+    (re.compile(r"('privateKey'\s*:\s*')[^']*(')", re.IGNORECASE), r"\1***REDACTED***\2"),
+    (re.compile(r"('secret'\s*:\s*')[^']*(')", re.IGNORECASE), r"\1***REDACTED***\2"),
+    # Query string style
     (re.compile(r'(password=)[^\s&]+', re.IGNORECASE), r'\1***REDACTED***'),
     (re.compile(r'(passphrase=)[^\s&]+', re.IGNORECASE), r'\1***REDACTED***'),
     (re.compile(r'(token=)[^\s&]+', re.IGNORECASE), r'\1***REDACTED***'),
