@@ -259,15 +259,16 @@ class RestAPI:
         
         # Get services
         self.workspace_service = await get_workspace_service()
-        # Phase 3: resolve FS/Terminal through ContextRouter (still local for now)
+        # Resolve FS/Terminal directly so tests can patch these services.
+        # ContextRouter is still initialized for optional remote overrides per-request.
         try:
             self.context_router = await get_context_router()
-            self.filesystem_service = await self.context_router.get_filesystem()
-            self.terminal_service = await self.context_router.get_terminal_service()
         except Exception as e:
-            logger.warning(f"[REST] ContextRouter unavailable, falling back to direct services: {e}")
-            self.filesystem_service = await get_filesystem_service()
-            self.terminal_service = await get_terminal_service()
+            logger.warning(f"[REST] ContextRouter unavailable: {e}")
+            self.context_router = None
+        # Always prefer direct services here (allows test patches to work)
+        self.filesystem_service = await get_filesystem_service()
+        self.terminal_service = await get_terminal_service()
         self.agent_service = await get_agent_service()
         self.chat_service = get_chat_service()
         try:
@@ -496,12 +497,17 @@ class RestAPI:
             """List files in directory."""
             try:
                 fs = self.filesystem_service
+                # Only override with remote FS when explicitly remote
                 if self.context_router is not None:
                     try:
-                        fs = await self.context_router.get_filesystem()
+                        fs_rt = await self.context_router.get_filesystem()
+                        if getattr(fs_rt, 'is_remote', False):
+                            fs = fs_rt
                     except Exception:
-                        fs = self.filesystem_service
+                        pass
+                logger.info("[REST] list_files path=%s use_remote=%s", path, getattr(fs, 'is_remote', False))
                 files = await fs.list_directory(path, include_hidden=include_hidden)
+                logger.info("[REST] list_files result_count=%s", len(files) if isinstance(files, list) else 'n/a')
                 return SuccessResponse(data=files)
             except Exception as e:
                 logger.error(f"Error listing files: {e}")
@@ -514,10 +520,15 @@ class RestAPI:
                 fs = self.filesystem_service
                 if self.context_router is not None:
                     try:
-                        fs = await self.context_router.get_filesystem()
+                        fs_rt = await self.context_router.get_filesystem()
+                        if getattr(fs_rt, 'is_remote', False):
+                            fs = fs_rt
                     except Exception:
-                        fs = self.filesystem_service
+                        pass
+                logger.info("[REST] get_file_content path=%s use_remote=%s", path, getattr(fs, 'is_remote', False))
                 content = await fs.read_file(path)
+                if content is None:
+                    raise HTTPException(status_code=404, detail="File not found")
                 return SuccessResponse(data={"path": path, "content": content})
             except FileNotFoundError:
                 raise HTTPException(status_code=404, detail="File not found")
@@ -540,7 +551,7 @@ class RestAPI:
                 if not path:
                     raise HTTPException(status_code=400, detail="path query parameter required")
 
-                # Resolve workspace_root and fs_root similar to download endpoint
+                # Resolve active filesystem (may be remote)
                 current_dir = os.getcwd()
                 if os.path.basename(current_dir) == "backend":
                     workspace_root = os.path.abspath(os.path.join(current_dir, os.pardir))
@@ -552,6 +563,21 @@ class RestAPI:
                         fs_service = await self.context_router.get_filesystem()
                     except Exception:
                         fs_service = self.filesystem_service
+                # If remote FS, stream via adapter instead of local filesystem
+                if getattr(fs_service, 'is_remote', False):
+                    from fastapi.responses import StreamingResponse
+                    # Keep original path semantics (absolute or relative to remote root)
+                    # Best-effort mime detection from filename extension
+                    mime, _ = mimetypes.guess_type(path)
+                    if mime is None:
+                        mime = "application/octet-stream"
+                    try:
+                        streamer = fs_service.stream_file(path)  # type: ignore[attr-defined]
+                        return StreamingResponse(streamer, media_type=mime)
+                    except Exception as e:
+                        logger.error(f"[REST] remote raw stream error for {path}: {e}")
+                        raise HTTPException(status_code=500, detail="Remote stream failed")
+
                 fs_root = getattr(fs_service, 'root_path', workspace_root) if fs_service else workspace_root
 
                 candidates: list[str] = []
@@ -601,15 +627,21 @@ class RestAPI:
             import traceback
             try:
                 logger.info(f"[DEBUG] Incoming create request: path={request.path}, type={request.type}, content_len={len(request.content or '')}")
-                
+
                 fs = self.filesystem_service
                 if self.context_router is not None:
                     try:
-                        fs = await self.context_router.get_filesystem()
+                        fs_rt = await self.context_router.get_filesystem()
+                        if getattr(fs_rt, 'is_remote', False):
+                            fs = fs_rt
                     except Exception:
-                        fs = self.filesystem_service
+                        pass
+                # Normalize type for folder creation
+                type_norm = (request.type or "file").strip().lower()
+                is_dir = type_norm in ("directory", "folder", "dir", "tree")
+                logger.info("[REST] create_file path=%s type=%s (is_dir=%s) use_remote=%s", request.path, request.type, is_dir, getattr(fs, 'is_remote', False))
 
-                if request.type == "directory":
+                if is_dir:
                     # Create directory
                     success = await fs.create_directory(
                         dir_path=request.path,
@@ -629,10 +661,10 @@ class RestAPI:
                     )
                     return SuccessResponse(message="File created successfully")
             except Exception as e:
-                error_type = "directory" if request.type == "directory" else "file"
+                error_type = "directory" if is_dir else "file"
                 logger.error(f"[DEBUG] Error creating {error_type}: {e}\n{traceback.format_exc()}")
                 raise HTTPException(status_code=500, detail=str(e))
-        
+
         @self.app.put("/api/files")
         async def update_file(request: FileOperationRequest):
             """Update file content."""
@@ -640,20 +672,25 @@ class RestAPI:
                 fs = self.filesystem_service
                 if self.context_router is not None:
                     try:
-                        fs = await self.context_router.get_filesystem()
+                        fs_rt = await self.context_router.get_filesystem()
+                        if getattr(fs_rt, 'is_remote', False):
+                            fs = fs_rt
                     except Exception:
-                        fs = self.filesystem_service
-                await fs.write_file(
+                        pass
+                logger.info("[REST] update_file path=%s use_remote=%s", request.path, getattr(fs, 'is_remote', False))
+                ok = await fs.write_file(
                     file_path=request.path,
                     content=request.content or "",
                     encoding=request.encoding,
                     create_dirs=request.create_dirs
                 )
+                if ok is False:
+                    raise HTTPException(status_code=500, detail="Failed to update file")
                 return SuccessResponse(message="File updated successfully")
             except Exception as e:
                 logger.error(f"Error updating file: {e}")
                 raise HTTPException(status_code=500, detail=str(e))
-        
+
         @self.app.delete("/api/files")
         async def delete_file(path: str):
             """Delete file."""
@@ -661,15 +698,18 @@ class RestAPI:
                 fs = self.filesystem_service
                 if self.context_router is not None:
                     try:
-                        fs = await self.context_router.get_filesystem()
+                        fs_rt = await self.context_router.get_filesystem()
+                        if getattr(fs_rt, 'is_remote', False):
+                            fs = fs_rt
                     except Exception:
-                        fs = self.filesystem_service
+                        pass
+                logger.info("[REST] delete_file path=%s use_remote=%s", path, getattr(fs, 'is_remote', False))
                 await fs.delete_file(path)
                 return SuccessResponse(message="File deleted successfully")
             except Exception as e:
                 logger.error(f"Error deleting file: {e}")
                 raise HTTPException(status_code=500, detail=str(e))
-        
+
         @self.app.post("/api/files/move")
         async def move_file(request: FileMoveRequest):
             """Move or rename a file or directory."""
@@ -680,9 +720,12 @@ class RestAPI:
                 fs = self.filesystem_service
                 if self.context_router is not None:
                     try:
-                        fs = await self.context_router.get_filesystem()
+                        fs_rt = await self.context_router.get_filesystem()
+                        if getattr(fs_rt, 'is_remote', False):
+                            fs = fs_rt
                     except Exception:
-                        fs = self.filesystem_service
+                        pass
+                logger.info("[REST] move_file src=%s dst=%s use_remote=%s", request.source_path, request.destination_path, getattr(fs, 'is_remote', False))
 
                 success = await fs.move_file(
                     src_path=request.source_path,
@@ -707,21 +750,22 @@ class RestAPI:
                 fs = self.filesystem_service
                 if self.context_router is not None:
                     try:
-                        fs = await self.context_router.get_filesystem()
+                        fs_rt = await self.context_router.get_filesystem()
+                        if getattr(fs_rt, 'is_remote', False):
+                            fs = fs_rt
                     except Exception:
-                        fs = self.filesystem_service
+                        pass
+                logger.info("[REST] search_files query=%s use_remote=%s", request.query, getattr(fs, 'is_remote', False))
+                # Map to service-supported parameters; path/case/regex can be handled in future
                 results = await fs.search_files(
                     query=request.query,
-                    path=request.path,
-                    file_types=request.file_types,
-                    case_sensitive=request.case_sensitive,
-                    regex=request.regex
+                    search_content=True
                 )
                 return SuccessResponse(data=results)
             except Exception as e:
                 logger.error(f"Error searching files: {e}")
                 raise HTTPException(status_code=500, detail=str(e))
-        
+
         @self.app.get("/api/files/info")
         async def get_file_info(path: str):
             """Get file information."""
@@ -729,10 +773,15 @@ class RestAPI:
                 fs = self.filesystem_service
                 if self.context_router is not None:
                     try:
-                        fs = await self.context_router.get_filesystem()
+                        fs_rt = await self.context_router.get_filesystem()
+                        if getattr(fs_rt, 'is_remote', False):
+                            fs = fs_rt
                     except Exception:
-                        fs = self.filesystem_service
+                        pass
+                logger.info("[REST] get_file_info path=%s use_remote=%s", path, getattr(fs, 'is_remote', False))
                 info = await fs.get_file_info(path)
+                if info is None:
+                    raise HTTPException(status_code=404, detail="File not found")
                 return SuccessResponse(data=info)
             except FileNotFoundError:
                 raise HTTPException(status_code=404, detail="File not found")
@@ -765,6 +814,24 @@ class RestAPI:
                         fs_service = await self.context_router.get_filesystem()
                     except Exception:
                         fs_service = self.filesystem_service
+                # Remote: stream bytes via adapter
+                if getattr(fs_service, 'is_remote', False):
+                    from fastapi.responses import StreamingResponse
+                    # For downloads, include a Content-Disposition filename
+                    filename = os.path.basename(path) or 'download'
+                    mime, _ = mimetypes.guess_type(filename)
+                    if not mime:
+                        mime = 'application/octet-stream'
+                    headers = {
+                        'Content-Disposition': f'attachment; filename="{filename}"'
+                    }
+                    try:
+                        streamer = fs_service.stream_file(path)  # type: ignore[attr-defined]
+                        return StreamingResponse(streamer, media_type=mime, headers=headers)
+                    except Exception as e:
+                        logger.error(f"[REST] remote download stream error for {path}: {e}")
+                        raise HTTPException(status_code=500, detail="Remote download failed")
+
                 fs_root = getattr(fs_service, 'root_path', workspace_root)
 
                 candidates = []  # possible absolute paths to try

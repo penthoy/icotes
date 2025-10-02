@@ -37,6 +37,16 @@ def cleanup_temp_workspaces(workspace_root=None):
         except Exception as e:
             print(f"✗ Failed to remove {temp_dir}: {e}")
     
+    # Clean up per-test isolated workspaces created by ChatService
+    test_dirs = list(workspace_root.glob('.icotes_test_*'))
+    for d in test_dirs:
+        try:
+            shutil.rmtree(d)
+            print(f"✓ Removed test workspace: {d}")
+            cleaned_count += 1
+        except Exception as e:
+            print(f"✗ Failed to remove {d}: {e}")
+
     # Clean up session files in main .icotes directory
     icotes_dir = workspace_root / '.icotes'
     if icotes_dir.exists():

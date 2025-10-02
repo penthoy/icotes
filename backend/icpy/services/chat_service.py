@@ -214,7 +214,7 @@ class ChatService:
             history_root = Path(workspace_root) / 'chat_history'
             history_root.mkdir(parents=True, exist_ok=True)
             self.history_root = history_root
-            self._temp_workspace = None  # Track for cleanup
+            # Keep self._temp_workspace as set above when needs_isolation is True
         except Exception:
             # Fallback to local directory if workspace resolution fails
             self.history_root = Path('.icotes/chat_history')

@@ -23,6 +23,7 @@ from typing import Optional
 from .hop_service import get_hop_service, HopService, HopSession
 from .filesystem_service import get_filesystem_service, FileSystemService
 from .terminal_service import get_terminal_service, TerminalService
+from .remote_fs_adapter import get_remote_filesystem_adapter, RemoteFileSystemAdapter  # Phase 5
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +56,28 @@ class ContextRouter:
         return an SFTP-backed adapter when hop is connected.
         """
         await self._ensure_dependencies()
-        # TODO(Phase 5): if hop connected -> return remote FS adapter
+        try:
+            session = self._hop_service.status() if self._hop_service else None
+            has_conn = getattr(self._hop_service, "_conn", None) is not None
+            has_sftp = getattr(self._hop_service, "_sftp", None) is not None
+            logger.info(
+                "[ContextRouter] FS decision: status=%s contextId=%s has_conn=%s has_sftp=%s",
+                getattr(session, 'status', None), getattr(session, 'contextId', None), has_conn, has_sftp
+            )
+            # Only use remote when SSH connection object is present and session is connected
+            if (
+                session
+                and session.status == "connected"
+                and session.contextId
+                and session.contextId != "local"
+                and has_conn
+            ):
+                # Return a transient remote adapter bound to current hop connection
+                remote = await get_remote_filesystem_adapter()
+                logger.info("[ContextRouter] Using RemoteFileSystemAdapter")
+                return remote  # type: ignore[return-value]
+        except Exception as e:
+            logger.warning(f"[ContextRouter] Remote FS unavailable, falling back to local: {e}")
         return self._local_fs  # type: ignore[return-value]
 
     async def get_terminal_service(self) -> TerminalService:

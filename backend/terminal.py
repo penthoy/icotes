@@ -28,10 +28,11 @@ class TerminalManager:
     def __init__(self):
         self.terminal_connections: Dict[str, Dict] = {}
     
-    async def connect_terminal(self, websocket: WebSocket, terminal_id: str):
+    async def connect_terminal(self, websocket: WebSocket, terminal_id: str, already_accepted: bool = False):
         """Create a new terminal session with PTY support"""
         try:
-            await websocket.accept()
+            if not already_accepted:
+                await websocket.accept()
             logger.info(f"[TERM] Connection start terminal_id={terminal_id} client={websocket.client}")
             logger.info(f"[TERM] Headers: {dict(websocket.headers)}")
 

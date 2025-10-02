@@ -110,6 +110,8 @@ class HopService:
     """Manage credentials & a single active hop session."""
 
     def __init__(self) -> None:
+        # Capture the home directory at instantiation time to detect env changes in tests
+        self._home_dir: str = os.path.expanduser("~")
         self._creds: Dict[str, SSHCredential] = {}
         self._session: HopSession = HopSession()
         # runtime connection objects (not serialized)
@@ -274,6 +276,28 @@ class HopService:
                     self._sftp = None
 
                 self._session.status = "connected"
+                # Determine remote home/cwd if not provided
+                if not cred.defaultPath:
+                    try:
+                        # Prefer environment HOME
+                        run_res = await self._conn.run('printenv HOME', check=False)
+                        home = (run_res.stdout or '').strip()
+                        if not home:
+                            # Fallback to pwd
+                            run_res = await self._conn.run('pwd', check=False)
+                            home = (run_res.stdout or '').strip() or '/'
+                        # Validate directory exists via SFTP if available
+                        if self._sftp:
+                            try:
+                                await self._sftp.stat(home)
+                                self._session.cwd = home
+                            except Exception:
+                                self._session.cwd = '/'
+                        else:
+                            self._session.cwd = home or '/'
+                    except Exception:
+                        # Keep existing default
+                        pass
                 logger.info(f"[HopService] Connected: {cred.host}:{cred.port}")
                 return self._session
             except Exception as e:
@@ -323,6 +347,11 @@ _hop_service_singleton: Optional[HopService] = None
 
 async def get_hop_service() -> HopService:
     global _hop_service_singleton
-    if _hop_service_singleton is None:
+    current_home = os.path.expanduser("~")
+    if (
+        _hop_service_singleton is None
+        or getattr(_hop_service_singleton, "_home_dir", None) != current_home
+    ):
+        # Recreate singleton if HOME changed (common in tests)
         _hop_service_singleton = HopService()
     return _hop_service_singleton

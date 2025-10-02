@@ -433,8 +433,52 @@ async def terminal_websocket_endpoint(websocket: WebSocket, terminal_id: str):
         return
     
     try:
-        # Connect terminal using TerminalManager
-        master_fd, proc = await terminal_manager.connect_terminal(websocket, terminal_id)
+        # Accept once here to avoid double-accept across remote/local paths
+        await websocket.accept()
+        # Determine if SSH hop is active; align decision with ContextRouter FS
+        use_remote = False
+        remote_mgr = None
+        context_fs_is_remote = False
+        try:
+            from icpy.services.context_router import get_context_router
+            context_router = await get_context_router()
+            fs_rt = await context_router.get_filesystem()
+            context_fs_is_remote = bool(getattr(fs_rt, 'is_remote', False))
+        except Exception as e:
+            logger.debug(f"[TERM] ContextRouter check failed: {e}")
+        try:
+            from icpy.services.hop_service import get_hop_service
+            hop = await get_hop_service()
+            session = hop.status()
+            has_conn = getattr(hop, '_conn', None) is not None
+            has_sftp = getattr(hop, '_sftp', None) is not None
+            use_remote = bool(session and session.status == 'connected' and has_conn)
+            logger.info("[TERM] Decision use_remote=%s status=%s cwd=%s contextId=%s has_conn=%s has_sftp=%s fs_is_remote=%s", use_remote, getattr(session,'status',None), getattr(session,'cwd',None), getattr(session,'contextId',None), has_conn, has_sftp, context_fs_is_remote)
+            # If FS says remote but decision false, retry briefly to avoid race on freshly-connected hop
+            if context_fs_is_remote and not use_remote:
+                logger.info("[TERM] FS indicates remote but conn not ready; retrying hop check shortly")
+                await asyncio.sleep(0.3)
+                session = hop.status()
+                has_conn = getattr(hop, '_conn', None) is not None
+                use_remote = bool(session and session.status == 'connected' and has_conn)
+                logger.info("[TERM] Recheck use_remote=%s status=%s has_conn=%s", use_remote, getattr(session,'status',None), has_conn)
+        except Exception as e:
+            logger.debug(f"[TERM] Hop service check failed: {e}")
+
+        if use_remote:
+            try:
+                logger.info(f"[TERM] Using remote terminal for {terminal_id}")
+                from icpy.services.remote_terminal_manager import get_remote_terminal_manager
+                remote_mgr = await get_remote_terminal_manager()
+                await remote_mgr.connect_terminal(websocket, terminal_id)
+                logger.info(f"[DEBUG] Remote terminal tasks completed for terminal_id: {terminal_id}")
+                return
+            except Exception as e:
+                logger.warning(f"[TERM] Remote terminal failed, falling back to local for {terminal_id}: {e}")
+                # Fall through to local
+
+        # Local PTY path
+        master_fd, proc = await terminal_manager.connect_terminal(websocket, terminal_id, already_accepted=True)
         logger.info(f"[DEBUG] Terminal connected for terminal_id: {terminal_id}")
         
         # Handle WebSocket communication
@@ -459,7 +503,15 @@ async def terminal_websocket_endpoint(websocket: WebSocket, terminal_id: str):
     finally:
         if terminal_manager:
             logger.info(f"[DEBUG] Disconnecting terminal {terminal_id}")
-            terminal_manager.disconnect_terminal(terminal_id)
+            try:
+                terminal_manager.disconnect_terminal(terminal_id)
+            except Exception:
+                pass
+        try:
+            if remote_mgr:
+                await remote_mgr.disconnect_terminal(terminal_id)
+        except Exception:
+            pass
 
 
 # Enhanced WebSocket endpoint (now the primary /ws endpoint)
