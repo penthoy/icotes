@@ -20,12 +20,21 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from .hop_service import get_hop_service, HopService, HopSession
+from .hop_service import get_hop_service, HopService, HopSession, ASYNCSSH_AVAILABLE
 from .filesystem_service import get_filesystem_service, FileSystemService
 from .terminal_service import get_terminal_service, TerminalService
 from .remote_fs_adapter import get_remote_filesystem_adapter, RemoteFileSystemAdapter  # Phase 5
 
 logger = logging.getLogger(__name__)
+
+# Phase 6 import - conditional to avoid circular dependency
+try:
+    from .remote_terminal_manager import get_remote_terminal_manager, RemoteTerminalManager
+    REMOTE_TERMINAL_AVAILABLE = True
+except ImportError:
+    RemoteTerminalManager = None  # type: ignore
+    REMOTE_TERMINAL_AVAILABLE = False
+    logger.debug("[ContextRouter] RemoteTerminalManager not available")
 
 
 class ContextRouter:
@@ -80,14 +89,48 @@ class ContextRouter:
             logger.warning(f"[ContextRouter] Remote FS unavailable, falling back to local: {e}")
         return self._local_fs  # type: ignore[return-value]
 
-    async def get_terminal_service(self) -> TerminalService:
+    async def get_terminal_service(self):
         """Return a terminal service for the active context.
 
-        For now, returns the local TerminalService. In Phase 6, this will
-        provide a remote PTY-backed terminal when hop is connected.
+        Phase 6 complete: Returns RemoteTerminalManager when hop is connected,
+        otherwise returns local TerminalService.
+        
+        Returns:
+            TerminalService or RemoteTerminalManager - both have compatible
+            connect_terminal() interface for WebSocket connections.
         """
         await self._ensure_dependencies()
-        # TODO(Phase 6): if hop connected -> return remote terminal adapter
+        
+        # Check if we should use remote terminal
+        if REMOTE_TERMINAL_AVAILABLE and ASYNCSSH_AVAILABLE:
+            try:
+                session = self._hop_service.status() if self._hop_service else None
+                has_conn = getattr(self._hop_service, "_conn", None) is not None
+                
+                logger.info(
+                    "[ContextRouter] Terminal decision: status=%s contextId=%s has_conn=%s",
+                    getattr(session, 'status', None), 
+                    getattr(session, 'contextId', None), 
+                    has_conn
+                )
+                
+                # Only use remote when SSH connection is active
+                if (
+                    session
+                    and session.status == "connected"
+                    and session.contextId
+                    and session.contextId != "local"
+                    and has_conn
+                ):
+                    # Return remote terminal manager
+                    remote_term = await get_remote_terminal_manager()
+                    logger.info("[ContextRouter] Using RemoteTerminalManager")
+                    return remote_term
+            except Exception as e:
+                logger.warning(f"[ContextRouter] Remote terminal check failed, using local: {e}")
+        
+        # Return local terminal service
+        logger.debug("[ContextRouter] Using local TerminalService")
         return self._local_term  # type: ignore[return-value]
 
     async def get_context(self) -> HopSession:

@@ -14,6 +14,7 @@ Security:
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import logging
 import os
@@ -309,19 +310,56 @@ class HopService:
                 return self._session
 
     async def _close_connection(self):
+        """Gracefully close SFTP and SSH connection with timeouts and abort fallback.
+
+        Rationale: In some cases (e.g., active remote PTY channels), a graceful
+        close can hang indefinitely. Use short timeouts and escalate to abort()
+        to guarantee forward progress and avoid memory growth from stuck tasks.
+        """
+        start_ts = time.time()
+        used_abort = False
+        sftp_closed = False
         try:
+            # Close SFTP first
             if self._sftp:
                 try:
-                    self._sftp.exit()
+                    res = self._sftp.exit()
+                    if inspect.isawaitable(res):
+                        await asyncio.wait_for(res, timeout=1.5)
+                    sftp_closed = True
                 except Exception:
+                    # Ignore SFTP close errors/timeouts
                     pass
+
+            # Then close SSH connection
             if self._conn:
-                self._conn.close()
                 try:
-                    await self._conn.wait_closed()
+                    self._conn.close()
                 except Exception:
                     pass
+                # Wait briefly for clean shutdown; fall back to abort
+                try:
+                    await asyncio.wait_for(self._conn.wait_closed(), timeout=2.5)
+                except (asyncio.TimeoutError, Exception):
+                    # Force-close if graceful close hangs due to open channels
+                    try:
+                        if hasattr(self._conn, 'abort'):
+                            self._conn.abort()
+                            used_abort = True
+                    except Exception:
+                        pass
+                    # Best effort wait after abort
+                    try:
+                        await asyncio.wait_for(self._conn.wait_closed(), timeout=1.0)
+                    except Exception:
+                        pass
         finally:
+            logger.info(
+                "[HopService] _close_connection complete in %.3fs (sftp_closed=%s, used_abort=%s)",
+                time.time() - start_ts,
+                sftp_closed,
+                used_abort,
+            )
             self._conn = None
             self._sftp = None
 

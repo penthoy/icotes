@@ -424,94 +424,88 @@ async def receive_frontend_logs(request: FrontendLogsRequest):
 # Terminal WebSocket endpoint (moved before generic /ws to fix routing)
 @app.websocket("/ws/terminal/{terminal_id}")
 async def terminal_websocket_endpoint(websocket: WebSocket, terminal_id: str):
-    """Terminal WebSocket endpoint."""
-    logger.info(f"[DEBUG] Terminal WebSocket connection attempt for terminal_id: {terminal_id}")
+    """Terminal WebSocket endpoint.
+    
+    Phase 6 Refinement: Uses ContextRouter to determine local vs remote terminal,
+    providing architectural consistency with filesystem routing.
+    """
+    logger.info(f"[TERM] WebSocket connection attempt for terminal_id: {terminal_id}")
     
     if not TERMINAL_AVAILABLE or terminal_manager is None:
-        logger.error(f"[DEBUG] Terminal service not available for terminal_id: {terminal_id}")
+        logger.error(f"[TERM] Terminal service not available for terminal_id: {terminal_id}")
         await websocket.close(code=1011, reason="Terminal service not available")
         return
     
+    terminal_service = None  # The service selected by ContextRouter (may be remote)
+    is_remote = False
+    local_impl = None  # Will hold the legacy local terminal manager when used
+    
     try:
-        # Accept once here to avoid double-accept across remote/local paths
+        # Accept WebSocket connection
         await websocket.accept()
-        # Determine if SSH hop is active; align decision with ContextRouter FS
-        use_remote = False
-        remote_mgr = None
-        context_fs_is_remote = False
+        
+        # Use ContextRouter to get appropriate terminal service (local or remote)
         try:
             from icpy.services.context_router import get_context_router
             context_router = await get_context_router()
-            fs_rt = await context_router.get_filesystem()
-            context_fs_is_remote = bool(getattr(fs_rt, 'is_remote', False))
+            terminal_service = await context_router.get_terminal_service()
+            is_remote = hasattr(terminal_service, '_hop')  # RemoteTerminalManager has _hop attribute
+            logger.info(f"[TERM] Using {'remote' if is_remote else 'local'} terminal for {terminal_id}")
         except Exception as e:
-            logger.debug(f"[TERM] ContextRouter check failed: {e}")
-        try:
-            from icpy.services.hop_service import get_hop_service
-            hop = await get_hop_service()
-            session = hop.status()
-            has_conn = getattr(hop, '_conn', None) is not None
-            has_sftp = getattr(hop, '_sftp', None) is not None
-            use_remote = bool(session and session.status == 'connected' and has_conn)
-            logger.info("[TERM] Decision use_remote=%s status=%s cwd=%s contextId=%s has_conn=%s has_sftp=%s fs_is_remote=%s", use_remote, getattr(session,'status',None), getattr(session,'cwd',None), getattr(session,'contextId',None), has_conn, has_sftp, context_fs_is_remote)
-            # If FS says remote but decision false, retry briefly to avoid race on freshly-connected hop
-            if context_fs_is_remote and not use_remote:
-                logger.info("[TERM] FS indicates remote but conn not ready; retrying hop check shortly")
-                await asyncio.sleep(0.3)
-                session = hop.status()
-                has_conn = getattr(hop, '_conn', None) is not None
-                use_remote = bool(session and session.status == 'connected' and has_conn)
-                logger.info("[TERM] Recheck use_remote=%s status=%s has_conn=%s", use_remote, getattr(session,'status',None), has_conn)
-        except Exception as e:
-            logger.debug(f"[TERM] Hop service check failed: {e}")
+            logger.warning(f"[TERM] ContextRouter failed, falling back to local: {e}")
+            terminal_service = None
+            is_remote = False
+            local_impl = terminal_manager
+        
+        # Connect terminal based on service type
+        if is_remote:
+            # RemoteTerminalManager.connect_terminal(websocket, terminal_id) handles everything
+            await terminal_service.connect_terminal(websocket, terminal_id)
+            logger.info(f"[TERM] Remote terminal session completed for {terminal_id}")
+        else:
+            # Use legacy local terminal manager to maintain existing contract
+            # If ContextRouter returned TerminalService (no connect_terminal), prefer terminal_manager
+            if local_impl is None:
+                # Detect if the selected service exposes the expected API; otherwise, fallback
+                if hasattr(terminal_service, 'connect_terminal') and hasattr(terminal_service, 'read_from_terminal'):
+                    local_impl = terminal_service
+                else:
+                    local_impl = terminal_manager
 
-        if use_remote:
-            try:
-                logger.info(f"[TERM] Using remote terminal for {terminal_id}")
-                from icpy.services.remote_terminal_manager import get_remote_terminal_manager
-                remote_mgr = await get_remote_terminal_manager()
-                await remote_mgr.connect_terminal(websocket, terminal_id)
-                logger.info(f"[DEBUG] Remote terminal tasks completed for terminal_id: {terminal_id}")
-                return
-            except Exception as e:
-                logger.warning(f"[TERM] Remote terminal failed, falling back to local for {terminal_id}: {e}")
-                # Fall through to local
-
-        # Local PTY path
-        master_fd, proc = await terminal_manager.connect_terminal(websocket, terminal_id, already_accepted=True)
-        logger.info(f"[DEBUG] Terminal connected for terminal_id: {terminal_id}")
-        
-        # Handle WebSocket communication
-        async def read_from_terminal():
-            logger.info(f"[DEBUG] Starting read_from_terminal task for terminal_id: {terminal_id}")
-            if terminal_manager:
-                await terminal_manager.read_from_terminal(websocket, master_fd)
-        
-        async def write_to_terminal():
-            logger.info(f"[DEBUG] Starting write_to_terminal task for terminal_id: {terminal_id}")
-            if terminal_manager:
-                await terminal_manager.write_to_terminal(websocket, master_fd)
-        
-        # Wait for tasks to complete
-        await asyncio.gather(read_from_terminal(), write_to_terminal(), return_exceptions=True)
-        logger.info(f"[DEBUG] Terminal tasks completed for terminal_id: {terminal_id}")
+            master_fd, proc = await local_impl.connect_terminal(websocket, terminal_id, already_accepted=True)
+            logger.info(f"[TERM] Local terminal connected for {terminal_id}")
+            
+            # Handle WebSocket communication for local terminal
+            async def read_from_terminal():
+                logger.debug(f"[TERM] Starting read task for {terminal_id}")
+                await local_impl.read_from_terminal(websocket, master_fd)
+            
+            async def write_to_terminal():
+                logger.debug(f"[TERM] Starting write task for {terminal_id}")
+                await local_impl.write_to_terminal(websocket, master_fd)
+            
+            # Wait for tasks to complete
+            await asyncio.gather(read_from_terminal(), write_to_terminal(), return_exceptions=True)
+            logger.info(f"[TERM] Local terminal session completed for {terminal_id}")
+            
     except asyncio.CancelledError:
-        # Normal disconnect path; avoid noisy error logs
-        logger.info(f"[DEBUG] Terminal WebSocket cancelled for terminal_id: {terminal_id}")
+        logger.info(f"[TERM] WebSocket cancelled for {terminal_id}")
     except Exception as e:
-        logger.error(f"[DEBUG] Terminal WebSocket error for terminal_id {terminal_id}: {e}")
+        logger.error(f"[TERM] WebSocket error for {terminal_id}: {e}")
+        import traceback
+        traceback.print_exc()
     finally:
-        if terminal_manager:
-            logger.info(f"[DEBUG] Disconnecting terminal {terminal_id}")
-            try:
-                terminal_manager.disconnect_terminal(terminal_id)
-            except Exception:
-                pass
+        # Cleanup terminal session
+        logger.debug(f"[TERM] Disconnecting terminal {terminal_id}")
         try:
-            if remote_mgr:
-                await remote_mgr.disconnect_terminal(terminal_id)
-        except Exception:
-            pass
+            if is_remote and terminal_service is not None:
+                # Remote manager uses async disconnect
+                await terminal_service.disconnect_terminal(terminal_id)
+            elif local_impl is not None:
+                # Local manager uses sync disconnect
+                local_impl.disconnect_terminal(terminal_id)
+        except Exception as cleanup_error:
+            logger.debug(f"[TERM] Cleanup error for {terminal_id}: {cleanup_error}")
 
 
 # Enhanced WebSocket endpoint (now the primary /ws endpoint)
