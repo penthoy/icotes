@@ -153,7 +153,9 @@ class ChatService:
     """
     
     def __init__(self):
-        # Unique instance id for isolating on-disk artifacts (prevents test cross-talk)
+        # Unique instance id (kept for backward-compat parsing of legacy files).
+        # We no longer use this as a filename prefix in normal runtime to avoid
+        # cross-process invisibility when multiple workers are used.
         self._instance_id = uuid.uuid4().hex[:8]
         # Lazy references; can be coroutine functions, resolve when used
         self.message_broker = get_message_broker()
@@ -207,11 +209,14 @@ class ChatService:
             if needs_isolation:
                 workspace_root = str(Path(base_workspace_root) / f'.icotes_test_{_uuid.uuid4().hex[:8]}')
                 self._temp_workspace = workspace_root  # Track for cleanup
+                # For tests, the workspace_root already includes .icotes_test prefix
+                history_root = Path(workspace_root) / 'chat_history'
             else:
                 workspace_root = base_workspace_root
                 self._temp_workspace = None  # Not a temp workspace
-
-            history_root = Path(workspace_root) / 'chat_history'
+                # For production, store in .icotes/chat_history
+                history_root = Path(workspace_root) / '.icotes' / 'chat_history'
+            
             history_root.mkdir(parents=True, exist_ok=True)
             self.history_root = history_root
             # Keep self._temp_workspace as set above when needs_isolation is True
@@ -254,6 +259,53 @@ class ChatService:
                 self._persist_task = asyncio.create_task(self._flush_loop())
             except RuntimeError:
                 self._persist_task = None
+
+    # -------------------------
+    # File path helpers (new)
+    # -------------------------
+    def _session_file_new(self, session_id: str) -> Path:
+        """Preferred path for session JSONL (no instance prefix)."""
+        return self.history_root / f"{session_id}.jsonl"
+
+    def _session_file_legacy(self, session_id: str) -> Path:
+        """Legacy path using this instance prefix (for backward compat)."""
+        return self.history_root / f"{self._instance_id}_{session_id}.jsonl"
+
+    def _resolve_session_file_for_write(self, session_id: str) -> Path:
+        """Choose file to write to.
+
+        If a non-prefixed file exists, write there. Else if any legacy-prefixed
+        file for this session exists (from older versions), continue writing to it.
+        Otherwise, create the new non-prefixed file.
+        """
+        new_path = self._session_file_new(session_id)
+        if new_path.exists():
+            return new_path
+        # Check for any legacy file of form *_<session_id>.jsonl
+        candidates = list(self.history_root.glob(f"*_{session_id}.jsonl"))
+        if candidates:
+            return candidates[0]
+        return new_path
+
+    def _iter_all_session_files(self) -> List[Path]:
+        """List all JSONL files representing sessions (legacy + new)."""
+        files = [p for p in self.history_root.glob('*.jsonl') if not p.name.endswith('.meta.json')]
+        return files
+
+    def _derive_session_id_from_file(self, file: Path) -> str:
+        """Derive session_id from filename, handling legacy prefixes.
+
+        Accept both:
+        - session_<...>.jsonl
+        - <8hex>_session_<...>.jsonl (legacy, any 8-hex prefix)
+        """
+        stem = file.stem
+        # Legacy: <8hex>_rest
+        if '_' in stem:
+            first, rest = stem.split('_', 1)
+            if len(first) == 8 and all(c in '0123456789abcdef' for c in first.lower()) and rest.startswith('session_'):
+                return rest
+        return stem
     
     def _normalize_attachments(self, raw_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Normalize various frontend attachment shapes into a standard dict.
@@ -433,8 +485,8 @@ class ChatService:
         # Store message
         await self._store_message(message)
         
-        # Tests expect broadcasting of user messages as well
-        await self._broadcast_message(message)
+        # Don't broadcast user messages back to clients - they already have them
+        # Only AI responses should be broadcasted
         
         # Process with appropriate agent based on type
         # Check if agent_type is a custom agent (dynamic check)
@@ -1173,7 +1225,7 @@ class ChatService:
                 async with self._persist_lock:
                     self._persist_buffer.setdefault(session_id, []).append(message)
             else:
-                file_path = self.history_root / f"{self._instance_id}_{session_id}.jsonl"
+                file_path = self._resolve_session_file_for_write(session_id)
                 with open(file_path, 'a', encoding='utf-8') as f:
                     f.write(json.dumps(message.to_dict(), ensure_ascii=False) + "\n")
         except Exception as e:
@@ -1203,7 +1255,7 @@ class ChatService:
         for session_id, items in tmp.items():
             if not items:
                 continue
-            file_path = self.history_root / f"{self._instance_id}_{session_id}.jsonl"
+            file_path = self._resolve_session_file_for_write(session_id)
             try:
                 with open(file_path, 'a', encoding='utf-8') as f:
                     for msg in items:
@@ -1217,21 +1269,27 @@ class ChatService:
         try:
             messages: List[ChatMessage] = []
             if session_id:
-                file_path = self.history_root / f"{self._instance_id}_{session_id}.jsonl"
-                if file_path.exists():
-                    with open(file_path, 'r', encoding='utf-8') as f:
-                        for line in f:
-                            line = line.strip()
-                            if not line:
-                                continue
-                            try:
+                # Prefer new path, then legacy candidates
+                candidates: List[Path] = []
+                new_p = self._session_file_new(session_id)
+                if new_p.exists():
+                    candidates = [new_p]
+                else:
+                    candidates = list(self.history_root.glob(f"*_{session_id}.jsonl"))
+                for fp in candidates:
+                    try:
+                        with open(fp, 'r', encoding='utf-8') as f:
+                            for line in f:
+                                line = line.strip()
+                                if not line:
+                                    continue
                                 data = json.loads(line)
                                 messages.append(ChatMessage.from_dict(data))
-                            except Exception:
-                                pass
+                    except Exception:
+                        continue
             else:
-                # Aggregate across all sessions
-                for file in self.history_root.glob(f'{self._instance_id}_*.jsonl'):
+                # Aggregate across all sessions (legacy + new)
+                for file in self._iter_all_session_files():
                     try:
                         with open(file, 'r', encoding='utf-8') as f:
                             for line in f:
@@ -1256,11 +1314,20 @@ class ChatService:
         """Clear message history for a session or all sessions (JSONL)."""
         try:
             if session_id:
-                file_path = self.history_root / f"{self._instance_id}_{session_id}.jsonl"
-                if file_path.exists():
-                    file_path.unlink()
+                # Remove both new and any legacy-prefixed files for this session
+                removed = False
+                new_p = self._session_file_new(session_id)
+                if new_p.exists():
+                    new_p.unlink()
+                    removed = True
+                for legacy in list(self.history_root.glob(f"*_{session_id}.jsonl")):
+                    try:
+                        legacy.unlink()
+                        removed = True
+                    except Exception:
+                        pass
             else:
-                for file in self.history_root.glob(f'{self._instance_id}_*.jsonl'):
+                for file in self._iter_all_session_files():
                     try:
                         file.unlink()
                     except Exception:
@@ -1349,14 +1416,12 @@ class ChatService:
     async def get_sessions(self) -> List[Dict[str, Any]]:
         """Get list of all chat sessions with metadata."""
         try:
-            sessions = []
-            for file in self.history_root.glob(f'{self._instance_id}_*.jsonl'):
-                session_id = file.stem
-                if session_id.startswith(f"{self._instance_id}_"):
-                    session_id = session_id[len(self._instance_id)+1:]
+            sessions_map: Dict[str, Dict[str, Any]] = {}
+            for file in self._iter_all_session_files():
                 try:
+                    session_id = self._derive_session_id_from_file(file)
                     stat = file.stat()
-                    # Count messages in session
+                    # Count messages and last timestamp
                     message_count = 0
                     last_message_time = None
                     with open(file, 'r', encoding='utf-8') as f:
@@ -1367,10 +1432,10 @@ class ChatService:
                                 try:
                                     data = json.loads(line)
                                     last_message_time = data.get('timestamp')
-                                except:
+                                except Exception:
                                     pass
-                    
-                    # Try reading metadata sidecar for display name
+
+                    # Read sidecar meta if present
                     meta_name = None
                     meta_path = self.history_root / f"{session_id}.meta.json"
                     if meta_path.exists():
@@ -1380,20 +1445,31 @@ class ChatService:
                                 meta_name = meta.get('name') or None
                         except Exception:
                             meta_name = None
-                    
-                    sessions.append({
+
+                    # Merge if both legacy and new exist for same session
+                    prev = sessions_map.get(session_id)
+                    created = stat.st_ctime
+                    updated = stat.st_mtime
+                    if prev:
+                        created = min(prev['created'], created)
+                        updated = max(prev['updated'], updated)
+                        message_count = max(prev.get('message_count', 0), message_count)
+                        if not meta_name:
+                            meta_name = prev.get('name')
+
+                    sessions_map[session_id] = {
                         'id': session_id,
-                        'name': meta_name or session_id,  # Default to session ID as name
-                        'created': stat.st_ctime,
-                        'updated': stat.st_mtime,
+                        'name': meta_name or session_id,
+                        'created': created,
+                        'updated': updated,
                         'message_count': message_count,
                         'last_message_time': last_message_time
-                    })
+                    }
                 except Exception as e:
-                    logger.error(f"Error processing session {session_id}: {e}")
+                    logger.error(f"Error processing session file {file.name}: {e}")
                     continue
-            
-            # Sort by updated time, newest first
+
+            sessions = list(sessions_map.values())
             sessions.sort(key=lambda s: s['updated'], reverse=True)
             return sessions
         except Exception as e:
@@ -1405,8 +1481,8 @@ class ChatService:
         try:
             session_id = f"session_{int(time.time())}_{uuid.uuid4().hex[:8]}"
             
-            # Create empty JSONL file to establish the session
-            file_path = self.history_root / f"{self._instance_id}_{session_id}.jsonl"
+            # Create empty JSONL file to establish the session (new format)
+            file_path = self._session_file_new(session_id)
             file_path.touch()
             
             # Persist display name if provided
@@ -1424,8 +1500,10 @@ class ChatService:
     async def update_session(self, session_id: str, name: str) -> bool:
         """Update session metadata (rename)."""
         try:
-            file_path = self.history_root / f"{self._instance_id}_{session_id}.jsonl"
-            if not file_path.exists():
+            # Consider both new and legacy file existence
+            new_path = self._session_file_new(session_id)
+            legacy_exists = any(self.history_root.glob(f"*_{session_id}.jsonl"))
+            if not new_path.exists() and not legacy_exists:
                 return False
             
             meta_path = self.history_root / f"{session_id}.meta.json"
@@ -1441,11 +1519,20 @@ class ChatService:
     async def delete_session(self, session_id: str) -> bool:
         """Delete a chat session and its history."""
         try:
-            file_path = self.history_root / f"{session_id}.jsonl"
-            if not file_path.exists():
+            # Remove both new and any legacy-prefixed file(s)
+            removed = False
+            file_path = self._session_file_new(session_id)
+            if file_path.exists():
+                file_path.unlink()
+                removed = True
+            for legacy in list(self.history_root.glob(f"*_{session_id}.jsonl")):
+                try:
+                    legacy.unlink()
+                    removed = True
+                except Exception:
+                    pass
+            if not removed:
                 return False
-            
-            file_path.unlink()
             # Remove sidecar metadata if present
             try:
                 meta_path = self.history_root / f"{session_id}.meta.json"
