@@ -21,6 +21,8 @@ const ICUIHop: React.FC<{ className?: string }> = ({ className = '' }) => {
   const [session, setSession] = useState<any>(null);
   const [newCred, setNewCred] = useState<Partial<Credential>>({ port: 22, auth: 'password' });
   const [uploadedKeyId, setUploadedKeyId] = useState<string | null>(null);
+    const [editingId, setEditingId] = useState<string | null>(null);
+  const [editCred, setEditCred] = useState<Partial<Credential>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -145,6 +147,54 @@ const ICUIHop: React.FC<{ className?: string }> = ({ className = '' }) => {
     }
   };
 
+  const handleEdit = (cred: Credential) => {
+    setEditingId(cred.id);
+    setEditCred({ ...cred });
+    setUploadedKeyId(null); // Clear any previously uploaded key
+  };
+
+  const handleCancelEdit = () => {
+    setEditingId(null);
+    setEditCred({});
+    setUploadedKeyId(null); // Clear any uploaded key when canceling
+  };
+
+  const handleSaveEdit = async () => {
+    try {
+      if (!editingId) return;
+      setLoading(true);
+      setError(null);
+      const payload: any = {
+        name: editCred.name?.trim(),
+        host: editCred.host?.trim(),
+        port: Number(editCred.port) || 22,
+        username: editCred.username || '',
+        auth: editCred.auth || 'password',
+        defaultPath: editCred.defaultPath || undefined,
+        privateKeyId: undefined as string | undefined,
+      };
+      // If auth is privateKey and we have an uploaded key, use it; otherwise keep existing
+      if (payload.auth === 'privateKey' && uploadedKeyId) {
+        payload.privateKeyId = uploadedKeyId;
+      } else if (payload.auth === 'privateKey') {
+        payload.privateKeyId = editCred.privateKeyId;
+      }
+      if (!payload.name || !payload.host) {
+        setError('Name and host are required');
+        return;
+      }
+      await (backendService as any).updateHopCredential?.(editingId, payload);
+      setEditingId(null);
+      setEditCred({});
+      setUploadedKeyId(null);
+      await load();
+    } catch (e: any) {
+      setError(e?.message || 'Update credential failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleKeyUpload = async (file: File) => {
     try {
       setLoading(true);
@@ -193,7 +243,10 @@ const ICUIHop: React.FC<{ className?: string }> = ({ className = '' }) => {
           <input className="px-2 py-1 rounded border bg-transparent" placeholder="Default Path (optional)" value={newCred.defaultPath || ''} onChange={e => setNewCred(v => ({ ...v, defaultPath: e.target.value }))} />
           {newCred.auth === 'privateKey' && (
             <div className="md:col-span-2 flex items-center space-x-2">
-              <input type="file" onChange={e => e.target.files && e.target.files[0] && handleKeyUpload(e.target.files[0])} />
+              <label className="px-3 py-1 rounded border cursor-pointer hover:bg-[var(--icui-bg-tertiary)]">
+                Choose File
+                <input type="file" className="hidden" onChange={e => e.target.files && e.target.files[0] && handleKeyUpload(e.target.files[0])} />
+              </label>
               {uploadedKeyId && <span className="opacity-70">Key uploaded: {uploadedKeyId.slice(0,8)}…</span>}
             </div>
           )}
@@ -210,26 +263,63 @@ const ICUIHop: React.FC<{ className?: string }> = ({ className = '' }) => {
             <div className="p-3 opacity-70">No credentials yet.</div>
           )}
           {credentials.map((c) => (
-            <div key={c.id} className="p-2 flex items-center justify-between hover:bg-[var(--icui-bg-tertiary)]">
-              <div className="space-x-2">
-                <span className="font-medium">{c.name}</span>
-                <span className="opacity-70">{c.username ? `${c.username}@` : ''}{c.host}:{c.port}</span>
-              </div>
-              <div className="space-x-2">
-                {!session?.connected && (
-                  <button className="px-2 py-1 rounded border" onClick={() => handleConnect(c)} disabled={loading}>
-                    Connect
-                  </button>
-                )}
-                {session?.connected && session?.credential_id === c.id && (
-                  <button className="px-2 py-1 rounded border" onClick={handleDisconnect} disabled={loading}>
-                    Disconnect
-                  </button>
-                )}
-                <button className="px-2 py-1 rounded border border-red-400 text-red-300" onClick={() => handleDelete(c.id)} disabled={loading}>
-                  Delete
-                </button>
-              </div>
+            <div key={c.id} className="p-2">
+              {editingId === c.id ? (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                  <input className="px-2 py-1 rounded border bg-transparent" placeholder="Name" value={editCred.name || ''} onChange={e => setEditCred(v => ({ ...v, name: e.target.value }))} />
+                  <input className="px-2 py-1 rounded border bg-transparent" placeholder="Host" value={editCred.host || ''} onChange={e => setEditCred(v => ({ ...v, host: e.target.value }))} />
+                  <input className="px-2 py-1 rounded border bg-transparent" placeholder="Port" type="number" value={editCred.port || 22} onChange={e => setEditCred(v => ({ ...v, port: Number(e.target.value) }))} />
+                  <input className="px-2 py-1 rounded border bg-transparent" placeholder="Username (optional)" value={editCred.username || ''} onChange={e => setEditCred(v => ({ ...v, username: e.target.value }))} />
+                  <select className="px-2 py-1 rounded border bg-transparent" value={editCred.auth || 'password'} onChange={e => setEditCred(v => ({ ...v, auth: e.target.value as any }))}>
+                    <option value="password">Password</option>
+                    <option value="privateKey">Private Key</option>
+                    <option value="agent">SSH Agent</option>
+                  </select>
+                  <input className="px-2 py-1 rounded border bg-transparent" placeholder="Default Path (optional)" value={editCred.defaultPath || ''} onChange={e => setEditCred(v => ({ ...v, defaultPath: e.target.value }))} />
+                  {editCred.auth === 'privateKey' && (
+                    <div className="md:col-span-2 flex items-center space-x-2">
+                      <label className="px-3 py-1 rounded border cursor-pointer hover:bg-[var(--icui-bg-tertiary)]">
+                        Choose File
+                        <input type="file" className="hidden" onChange={e => e.target.files && e.target.files[0] && handleKeyUpload(e.target.files[0])} />
+                      </label>
+                      {uploadedKeyId && <span className="opacity-70">Key uploaded: {uploadedKeyId.slice(0,8)}…</span>}
+                    </div>
+                  )}
+                  <div className="flex space-x-2">
+                    <button className="px-3 py-1 rounded border border-green-400 text-green-300" onClick={handleSaveEdit} disabled={loading}>
+                      Save
+                    </button>
+                    <button className="px-3 py-1 rounded border" onClick={handleCancelEdit} disabled={loading}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between hover:bg-[var(--icui-bg-tertiary)]">
+                  <div className="space-x-2">
+                    <span className="font-medium">{c.name}</span>
+                    <span className="opacity-70">{c.username ? `${c.username}@` : ''}{c.host}:{c.port}</span>
+                  </div>
+                  <div className="space-x-2">
+                    {!session?.connected && (
+                      <button className="px-2 py-1 rounded border" onClick={() => handleConnect(c)} disabled={loading}>
+                        Connect
+                      </button>
+                    )}
+                    {session?.connected && session?.credential_id === c.id && (
+                      <button className="px-2 py-1 rounded border" onClick={handleDisconnect} disabled={loading}>
+                        Disconnect
+                      </button>
+                    )}
+                    <button className="px-2 py-1 rounded border" onClick={() => handleEdit(c)} disabled={loading || (session?.connected && session?.credential_id === c.id)}>
+                      Edit
+                    </button>
+                    <button className="px-2 py-1 rounded border border-red-400 text-red-300" onClick={() => handleDelete(c.id)} disabled={loading}>
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>
