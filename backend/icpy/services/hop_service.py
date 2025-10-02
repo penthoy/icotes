@@ -1,14 +1,11 @@
 """
 Hop Service: Manage SSH credentials, keys, and active hop session.
 
-Phases implemented:
-- Phase 1: Credentials CRUD, key upload (store-only), status stub
-- Phase 2: Real SSH connectivity with asyncssh, connect/disconnect/status
-
 Security:
 - Passwords and passphrases are treated as write-only and never persisted or returned
-- Private keys are stored under ~/.icotes/ssh/keys with 0600 permissions
+- Private keys are stored under workspace/.icotes/ssh/keys with 0600 permissions
 - No secrets are logged
+- Workspace-based storage ensures Docker container persistence
 """
 
 from __future__ import annotations
@@ -42,11 +39,30 @@ def _now_iso() -> str:
 
 
 def _app_data_dir() -> Path:
-    """Return the base directory for icotes data in the user's home.
+    """Return the base directory for icotes SSH data in the workspace.
 
-    We keep hop-related files under ~/.icotes/ssh
+    We keep hop-related files under workspace/.icotes/ssh for Docker persistence.
+    This ensures credentials survive container restarts when workspace is mounted as a volume.
     """
-    base = Path(os.path.expanduser("~/.icotes/ssh"))
+    # Get workspace root from environment or fallback
+    workspace_root = os.environ.get('WORKSPACE_ROOT')
+    if not workspace_root:
+        # Fallback: search upwards for workspace dir
+        current = Path(__file__).resolve()
+        for parent in list(current.parents):
+            candidate = parent / 'workspace'
+            if candidate.is_dir():
+                workspace_root = str(candidate)
+                break
+    
+    if not workspace_root:
+        # Docker fallback
+        if Path('/app/workspace').exists():
+            workspace_root = '/app/workspace'
+        else:
+            workspace_root = str(Path.cwd() / 'workspace')
+    
+    base = Path(workspace_root) / '.icotes' / 'ssh'
     base.mkdir(parents=True, exist_ok=True)
     # Set safe dir perms (700) if possible
     try:
@@ -111,8 +127,6 @@ class HopService:
     """Manage credentials & a single active hop session."""
 
     def __init__(self) -> None:
-        # Capture the home directory at instantiation time to detect env changes in tests
-        self._home_dir: str = os.path.expanduser("~")
         self._creds: Dict[str, SSHCredential] = {}
         self._session: HopSession = HopSession()
         # runtime connection objects (not serialized)
@@ -385,11 +399,6 @@ _hop_service_singleton: Optional[HopService] = None
 
 async def get_hop_service() -> HopService:
     global _hop_service_singleton
-    current_home = os.path.expanduser("~")
-    if (
-        _hop_service_singleton is None
-        or getattr(_hop_service_singleton, "_home_dir", None) != current_home
-    ):
-        # Recreate singleton if HOME changed (common in tests)
+    if _hop_service_singleton is None:
         _hop_service_singleton = HopService()
     return _hop_service_singleton
