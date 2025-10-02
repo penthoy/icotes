@@ -89,7 +89,16 @@ def sanitize_dict(data: Dict[str, Any]) -> Dict[str, Any]:
         elif isinstance(value, dict):
             result[key] = sanitize_dict(value)
         elif isinstance(value, list):
-            result[key] = [sanitize_dict(item) if isinstance(item, dict) else item for item in value]
+            # Recursively sanitize list items (dicts and strings)
+            sanitized_items = []
+            for item in value:
+                if isinstance(item, dict):
+                    sanitized_items.append(sanitize_dict(item))
+                elif isinstance(item, str):
+                    sanitized_items.append(sanitize_string(item))
+                else:
+                    sanitized_items.append(item)
+            result[key] = sanitized_items
         elif isinstance(value, str):
             result[key] = sanitize_string(value)
         else:

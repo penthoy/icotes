@@ -308,7 +308,11 @@ class RemoteFileSystemAdapter:
             if overwrite:
                 try:
                     st = await sftp.stat(dst)
-                    if stat.S_ISDIR(st.st_mode):
+                    # SFTP attrs might expose st_mode or permissions
+                    mode = getattr(st, 'st_mode', None)
+                    if mode is None:
+                        mode = getattr(st, 'permissions', 0)
+                    if stat.S_ISDIR(mode):
                         await self._rmtree(sftp, dst)
                     else:
                         await sftp.remove(dst)

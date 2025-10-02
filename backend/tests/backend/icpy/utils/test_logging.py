@@ -161,3 +161,25 @@ def test_multiple_secrets_in_string():
     assert 'tok123' not in result
     assert 'key456' not in result
     assert result.count('***REDACTED***') == 3
+
+
+def test_sanitize_list_with_strings():
+    """Test that string items in lists are sanitized (not just dicts)."""
+    # Test case from CodeRabbit review - nested lists with string secrets
+    data = {
+        'headers': [
+            '{"password": "my_secret"}',  # JSON string with secret
+            'token="bearer_token_123"',  # Query string format
+            'api_key=sk_live_12345',  # Another secret format
+            'normal text',  # Non-secret preserved
+        ]
+    }
+    result = sanitize_dict(data)
+    # Secrets in string list items should be redacted
+    assert 'my_secret' not in result['headers'][0]
+    assert 'bearer_token_123' not in result['headers'][1]
+    assert 'sk_live_12345' not in result['headers'][2]
+    assert '***REDACTED***' in result['headers'][0]
+    assert '***REDACTED***' in result['headers'][1]
+    assert '***REDACTED***' in result['headers'][2]
+    assert result['headers'][3] == 'normal text'  # Non-secret preserved
