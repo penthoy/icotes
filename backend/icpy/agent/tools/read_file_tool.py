@@ -1,19 +1,21 @@
 """
 Read file tool for agents
+
+Phase 7: Uses ContextRouter to work with active hop context (local or remote)
 """
 
 import os
 import logging
 from typing import Dict, Any, Optional
 from .base_tool import BaseTool, ToolResult
+from .context_helpers import get_contextual_filesystem
 
 logger = logging.getLogger(__name__)
 
 
 async def get_filesystem_service():
-    """Import and return filesystem service"""
-    from icpy.services.filesystem_service import get_filesystem_service as _get_filesystem_service
-    return await _get_filesystem_service()
+    """Import and return filesystem service for the active context (Phase 7)"""
+    return await get_contextual_filesystem()
 
 
 async def get_workspace_service():

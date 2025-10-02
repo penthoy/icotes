@@ -257,7 +257,6 @@ class TestChatService:
         session_id = await chat_service.connect_websocket(websocket_id)
         
         with patch.object(chat_service, '_store_message', new=AsyncMock()) as mock_store, \
-             patch.object(chat_service, '_broadcast_message', new=AsyncMock()) as mock_broadcast, \
              patch.object(chat_service, '_process_with_agent', new=AsyncMock()) as mock_process:
             
             message = await chat_service.handle_user_message(websocket_id, "Hello!")
@@ -267,7 +266,7 @@ class TestChatService:
             assert message.session_id == session_id
             
             mock_store.assert_called_once()
-            mock_broadcast.assert_called_once()
+            # User messages should NOT be broadcast back - clients already have them
             mock_process.assert_called_once()
     
     @pytest.mark.asyncio

@@ -62,6 +62,8 @@ export class ICUIBackendService extends EventEmitter {
   // Health monitoring
   private healthStatus: any = null;
   private connectionStats: any = null;
+  // Hop (SSH) context
+  private hopSession: any = null;
   
   // Configuration
   private config: EnhancedBackendConfig = {
@@ -855,7 +857,7 @@ export class ICUIBackendService extends EventEmitter {
 
       // Removed excessive debug: console.log('[ICUIBackendService] Message received:', message);
       
-      // Handle different message types
+  // Handle different message types
       if (message.type === 'filesystem_event') {
         // Handle filesystem events and emit them for the explorer
         log.debug('ICUIBackendService', '[BE] Filesystem event received', { event: message.event, data: message.data });
@@ -874,6 +876,18 @@ export class ICUIBackendService extends EventEmitter {
           path: filePath,
           data: message.data
         });
+      } else if (message.type === 'hop_event') {
+        // Unified hop events coming from backend websocket_api
+        // Example: { type: 'hop_event', event: 'hop.status', data: { ...session } }
+        try {
+          if (message.event === 'hop.status') {
+            this.hopSession = this.normalizeHopSession(message.data);
+            this.emit('hop_status', this.hopSession);
+          }
+          this.emit('hop_event', { event: message.event, data: message.data });
+        } catch (e) {
+          console.warn('[ICUIBackendService] Failed to process hop_event:', e);
+        }
       } else if (message.type === 'subscribed') {
         log.info('ICUIBackendService', '[BE] Subscription confirmed', { topics: message.topics });
         // Reduced debug: console.log('[ICUIBackendService] Subscription confirmed:', message.topics);
@@ -896,6 +910,124 @@ export class ICUIBackendService extends EventEmitter {
     } catch (error) {
       console.error('[ICUIBackendService] Error parsing message:', error);
     }
+  }
+
+  // ==================== Hop (SSH) API ====================
+  /**
+   * Get current hop session status (local vs remote).
+   * Also updates cached hopSession and emits 'hop_status'.
+   */
+  async getHopStatus(): Promise<any> {
+    await this.ensureInitialized();
+    try {
+      const url = `${this.baseUrl}/api/hop/status`;
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const session = await resp.json();
+  this.hopSession = this.normalizeHopSession(session);
+      this.emit('hop_status', this.hopSession);
+      return session;
+    } catch (e) {
+      console.warn('[ICUIBackendService] getHopStatus failed:', e);
+      return this.hopSession;
+    }
+  }
+
+  /** List saved SSH credentials */
+  async listHopCredentials(): Promise<any[]> {
+    await this.ensureInitialized();
+    const resp = await fetch(`${this.baseUrl}/api/hop/credentials`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    return resp.json();
+  }
+
+  /** Create SSH credential */
+  async createHopCredential(cred: {
+    name: string; host: string; port?: number; username?: string; auth?: 'password'|'privateKey'|'agent'; privateKeyId?: string; defaultPath?: string;
+  }): Promise<any> {
+    await this.ensureInitialized();
+    const resp = await fetch(`${this.baseUrl}/api/hop/credentials`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(cred)
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+    this.emit('hop_credentials_updated');
+    return data;
+  }
+
+  /** Update SSH credential */
+  async updateHopCredential(id: string, updates: Partial<{ name: string; host: string; port: number; username: string; auth: 'password'|'privateKey'|'agent'; privateKeyId: string; defaultPath: string; }>): Promise<any> {
+    await this.ensureInitialized();
+    const resp = await fetch(`${this.baseUrl}/api/hop/credentials/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates)
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+    this.emit('hop_credentials_updated');
+    return data;
+  }
+
+  /** Delete SSH credential */
+  async deleteHopCredential(id: string): Promise<void> {
+    await this.ensureInitialized();
+    const resp = await fetch(`${this.baseUrl}/api/hop/credentials/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    this.emit('hop_credentials_updated');
+  }
+
+  /** Upload private key, returns keyId */
+  async uploadHopKey(file: File): Promise<string> {
+    await this.ensureInitialized();
+    const form = new FormData();
+    form.append('file', file);
+    const resp = await fetch(`${this.baseUrl}/api/hop/keys`, { method: 'POST', body: form });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+    return data.keyId as string;
+  }
+
+  /** Connect using a credential */
+  async connectHop(credentialId: string, opts?: { password?: string; passphrase?: string }): Promise<any> {
+    await this.ensureInitialized();
+    const resp = await fetch(`${this.baseUrl}/api/hop/connect`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ credentialId, password: opts?.password, passphrase: opts?.passphrase })
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const session = await resp.json();
+    this.hopSession = this.normalizeHopSession(session);
+    this.emit('hop_status', this.hopSession);
+    return session;
+  }
+
+  /** Disconnect current hop */
+  async disconnectHop(): Promise<any> {
+    await this.ensureInitialized();
+    const resp = await fetch(`${this.baseUrl}/api/hop/disconnect`, { method: 'POST' });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const session = await resp.json();
+    this.hopSession = this.normalizeHopSession(session);
+    this.emit('hop_status', this.hopSession);
+    return session;
+  }
+
+  private normalizeHopSession(raw: any) {
+    if (!raw || typeof raw !== 'object') return raw;
+    const status = raw.status || (raw.connected ? 'connected' : 'disconnected');
+    const connected = status === 'connected';
+    // Map common aliases
+    return {
+      ...raw,
+      status,
+      connected,
+      credential_id: raw.credentialId ?? raw.credential_id,
+      context_id: raw.contextId ?? raw.context_id,
+    };
   }
 
   /**

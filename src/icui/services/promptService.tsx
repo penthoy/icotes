@@ -14,6 +14,7 @@ export interface PromptOptions {
   placeholder?: string;
   initialValue?: string;
   multiline?: boolean;
+  password?: boolean; // when true, render input as password type
   confirmText?: string;
   cancelText?: string;
   validate?: (value: string) => string | null; // return string error or null when valid

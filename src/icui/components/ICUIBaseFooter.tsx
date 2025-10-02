@@ -39,6 +39,7 @@ export const ICUIBaseFooter: React.FC<ICUIBaseFooterProps> = ({
 }) => {
   const [realConnectionStatus, setRealConnectionStatus] = useState<'connected' | 'disconnected' | 'connecting' | 'error'>('connecting');
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
+  const [hopSummary, setHopSummary] = useState<string>('local');
   
   // Use centralized theme service instead of manual theme detection
   const { theme } = useTheme();
@@ -67,6 +68,31 @@ export const ICUIBaseFooter: React.FC<ICUIBaseFooterProps> = ({
     const interval = setInterval(checkBackendConnection, 30000); // Check every 30s
     return () => clearInterval(interval);
   }, [checkBackendConnection]);
+
+  // Hop status indicator (non-blocking)
+  useEffect(() => {
+    let mounted = true;
+    const updateHop = async () => {
+      try {
+        if ((backendService as any).getHopStatus) {
+          const s = await (backendService as any).getHopStatus();
+          if (!mounted) return;
+          if (s?.connected) {
+            setHopSummary(`${s.username || ''}@${s.host || 'remote'}`);
+          } else {
+            setHopSummary('local');
+          }
+        }
+      } catch { /* ignore */ }
+    };
+    updateHop();
+    const onHop = (s: any) => {
+      if (s?.connected) setHopSummary(`${s.username || ''}@${s.host || 'remote'}`);
+      else setHopSummary('local');
+    };
+    (backendService as any).on?.('hop_status', onHop);
+    return () => { mounted = false; (backendService as any).off?.('hop_status', onHop); };
+  }, []);
 
   // Use provided connection status or fall back to real status
   const effectiveConnectionStatus = connectionStatus || realConnectionStatus;
@@ -146,9 +172,8 @@ export const ICUIBaseFooter: React.FC<ICUIBaseFooterProps> = ({
             className="w-2 h-2 rounded-full"
             style={{ backgroundColor: getConnectionStatusColor() }}
           />
-          <span className="text-xs">
-            {getConnectionStatusText()}
-          </span>
+          <span className="text-xs">{getConnectionStatusText()}</span>
+          <span className="text-xs opacity-80">[{hopSummary}]</span>
         </div>
       </div>
     </div>

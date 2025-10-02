@@ -10,9 +10,7 @@ This software is provided "as is," without warranties or support.
 That said, feel free to try it out and share feedback—would love to hear your thoughts. 
 
 # Quick change log
-## [1.11.3] Drag and drop explorer items and bugfixes:
-This version is mostly bug fix/performance enhancement with small feature for drag and drop support for explorer
-to be able to rearange items and also drage from explorer to chat panel
+## [1.12.0] - Add hop panel
 
 # Features at a glance #
 

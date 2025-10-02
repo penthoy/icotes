@@ -111,6 +111,7 @@ docs/saasplan/
 
 # workspace
 workspace/.icotes/chat_history/
+workspace/.icotes/ssh/
 workspace/.icotes_tmp*/
 
 # Playwright

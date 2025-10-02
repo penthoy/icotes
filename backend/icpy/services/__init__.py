@@ -1,6 +1,6 @@
 """
-Services module for icpy backend
-Contains modular services for workspace, filesystem, terminal, state synchronization, agent management, and preview
+Services module for icpy backend.
+Contains modular services for workspace, filesystem, terminal, state synchronization, agent management, preview, and hop (SSH) service.
 """
 
 from .workspace_service import WorkspaceService, get_workspace_service, shutdown_workspace_service
@@ -12,10 +12,12 @@ from .chat_service import ChatService, get_chat_service, shutdown_chat_service
 from .code_execution_service import CodeExecutionService, get_code_execution_service, shutdown_code_execution_service
 from .source_control_service import SourceControlService, get_source_control_service, shutdown_source_control_service
 from .preview_service import PreviewService, get_preview_service, initialize_preview_service, shutdown_preview_service
+from .hop_service import get_hop_service
+from .context_router import get_context_router, ContextRouter
 
 __all__ = [
     'WorkspaceService',
-    'get_workspace_service', 
+    'get_workspace_service',
     'shutdown_workspace_service',
     'FileSystemService',
     'get_filesystem_service',
@@ -41,5 +43,8 @@ __all__ = [
     'PreviewService',
     'get_preview_service',
     'initialize_preview_service',
-    'shutdown_preview_service'
+    'shutdown_preview_service',
+    'get_hop_service',
+    'get_context_router',
+    'ContextRouter',
 ]
