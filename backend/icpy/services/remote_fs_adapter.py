@@ -21,14 +21,26 @@ import posixpath
 import stat
 import time
 from dataclasses import asdict
-from typing import Any, Dict, List, Optional, Tuple, AsyncIterator
+from typing import Any, Dict, List, Optional, Tuple, AsyncIterator, Coroutine, TypeVar
 from types import SimpleNamespace
 
-from .hop_service import get_hop_service, ASYNCSSH_AVAILABLE
+from .hop_service import get_hop_service, ASYNCSSH_AVAILABLE, OPERATION_TIMEOUT
 from .filesystem_service import FileInfo, FileType, FilePermission
 from ..core.message_broker import get_message_broker
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar('T')
+
+async def _with_timeout(coro: Coroutine[Any, Any, T], timeout: float = None, operation: str = "operation") -> T:
+    """Phase 8: Wrap async operations with timeout and better error messages."""
+    if timeout is None:
+        timeout = OPERATION_TIMEOUT
+    
+    try:
+        return await asyncio.wait_for(coro, timeout=timeout)
+    except asyncio.TimeoutError:
+        raise TimeoutError(f"Remote {operation} timed out after {timeout}s")
 
 
 class RemoteFileSystemAdapter:
@@ -214,14 +226,18 @@ class RemoteFileSystemAdapter:
             return None
         path = self._resolve(file_path)
         try:
+            # Phase 8: Add timeout protection
             async with sftp.open(path, 'rb') as f:
-                data = await f.read()
+                data = await _with_timeout(f.read(), operation=f"read file {path}")
             try:
                 text = data.decode(encoding)
             except Exception:
                 text = data.decode('utf-8', errors='replace')
             await self._publish('fs.file_read', {'file_path': path, 'size': len(text), 'encoding': encoding, 'timestamp': time.time()})
             return text
+        except TimeoutError as e:
+            logger.error(f"[RemoteFS] read_file timeout {path}: {e}")
+            return None
         except Exception as e:
             logger.error(f"[RemoteFS] read_file error {path}: {e}")
             return None
@@ -234,10 +250,11 @@ class RemoteFileSystemAdapter:
         try:
             if create_dirs:
                 dirp = posixpath.dirname(path)
-                await self._mkdirs(sftp, dirp)
+                await _with_timeout(self._mkdirs(sftp, dirp), operation="create directories")
             data = content.encode(encoding)
+            # Phase 8: Add timeout protection
             async with sftp.open(path, 'wb') as f:
-                await f.write(data)
+                await _with_timeout(f.write(data), operation=f"write file {path}")
             await self._publish('fs.file_written', {'file_path': path, 'size': len(data), 'encoding': encoding, 'created': False, 'timestamp': time.time()})
             return True
         except Exception as e:

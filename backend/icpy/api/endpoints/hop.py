@@ -170,3 +170,11 @@ async def status():
     except Exception:
         pass
     return session.__dict__
+
+
+@router.get("/health")
+async def check_health():
+    """Phase 8: Check connection health without affecting status."""
+    service = await get_hop_service()
+    quality = await service.check_connection_health()
+    return {"quality": quality}

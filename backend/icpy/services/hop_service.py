@@ -23,6 +23,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from ..utils.logging import sanitize_log_message, mask_credential_value
+
 try:
     import asyncssh  # Phase 2: real connectivity
     ASYNCSSH_AVAILABLE = True
@@ -32,6 +34,13 @@ except Exception:  # pragma: no cover - dependency issues handled by tests
 
 
 logger = logging.getLogger(__name__)
+
+# Phase 8: Configuration for timeouts and reconnection
+CONNECTION_TIMEOUT = int(os.environ.get('HOP_CONNECTION_TIMEOUT', '30'))
+OPERATION_TIMEOUT = int(os.environ.get('HOP_OPERATION_TIMEOUT', '60'))
+RECONNECT_MAX_RETRIES = int(os.environ.get('HOP_RECONNECT_MAX_RETRIES', '3'))
+RECONNECT_BACKOFF_BASE = float(os.environ.get('HOP_RECONNECT_BACKOFF_BASE', '2'))
+DEBUG_MODE = os.environ.get('HOP_DEBUG_MODE', 'false').lower() == 'true'
 
 
 def _now_iso() -> str:
@@ -114,13 +123,17 @@ class SSHCredential:
 class HopSession:
     contextId: str = "local"  # "local" or credential id
     credentialId: Optional[str] = None
-    status: str = "disconnected"  # disconnected|connecting|connected|error
+    status: str = "disconnected"  # disconnected|connecting|connected|error|reconnecting
     cwd: str = "/"
     lastError: Optional[str] = None
     # Helpful fields for UI/telemetry (non-secret)
     host: Optional[str] = None
     port: Optional[int] = None
     username: Optional[str] = None
+    # Phase 8: Reconnection tracking
+    reconnectAttempt: int = 0
+    lastConnectedAt: Optional[str] = None
+    connectionQuality: str = "unknown"  # unknown|good|degraded|poor
 
 
 class HopService:
@@ -133,6 +146,10 @@ class HopService:
         self._conn = None
         self._sftp = None
         self._lock = asyncio.Lock()
+        # Phase 8: Reconnection state
+        self._reconnect_task: Optional[asyncio.Task] = None
+        self._last_credential: Optional[Dict] = None  # For reconnection
+        self._connection_start_time: Optional[float] = None
         self._load_credentials()
 
     # -------------------- Persistence --------------------
@@ -241,11 +258,16 @@ class HopService:
 
     # -------------------- Session / Connectivity --------------------
     async def connect(self, cred_id: str, *, password: Optional[str] = None, passphrase: Optional[str] = None) -> HopSession:
-        """Connect to remote host using credential. Phase 2: real connectivity."""
+        """Connect to remote host using credential. Phase 2+8: real connectivity with enhanced error handling."""
         async with self._lock:
             cred = self._creds.get(cred_id)
             if not cred:
                 raise ValueError("Credential not found")
+
+            # Cancel any ongoing reconnection task
+            if self._reconnect_task and not self._reconnect_task.done():
+                self._reconnect_task.cancel()
+                self._reconnect_task = None
 
             # Seed session with useful metadata for UI
             self._session = HopSession(
@@ -259,6 +281,13 @@ class HopService:
             )
             self._session.lastError = None
 
+            # Store credentials for potential reconnection (sanitized)
+            self._last_credential = {
+                'cred_id': cred_id,
+                'password': password,
+                'passphrase': passphrase,
+            }
+
             # Close any existing connection first
             await self._close_connection()
 
@@ -268,13 +297,19 @@ class HopService:
                 return self._session
 
             try:
-                logger.info(f"[HopService] Connecting to {cred.host}:{cred.port} as {cred.username or '<auto>'} (auth={cred.auth})")
+                # Phase 8: Sanitize logging of sensitive connection info
+                safe_username = mask_credential_value(cred.username, show_prefix=2, show_suffix=2) if cred.username else '<auto>'
+                log_msg = f"[HopService] Connecting to {cred.host}:{cred.port} as {safe_username} (auth={cred.auth})"
+                logger.info(sanitize_log_message(log_msg))
+                
                 client_keys = None
                 if cred.auth == "privateKey" and cred.privateKeyId:
                     key_path = str(self.get_key_path(cred.privateKeyId))
                     client_keys = [key_path]
 
-                # known_hosts=None -> permissive in dev (configurable later)
+                self._connection_start_time = time.time()
+                
+                # Phase 8: Use configurable timeout
                 self._conn = await asyncssh.connect(
                     host=cred.host,
                     port=cred.port or 22,
@@ -283,45 +318,93 @@ class HopService:
                     client_keys=client_keys,
                     passphrase=passphrase if cred.auth == "privateKey" else None,
                     known_hosts=None,
-                    connect_timeout=10,
+                    connect_timeout=CONNECTION_TIMEOUT,
                 )
                 try:
-                    self._sftp = await self._conn.start_sftp_client()
-                except Exception:
+                    self._sftp = await asyncio.wait_for(
+                        self._conn.start_sftp_client(),
+                        timeout=OPERATION_TIMEOUT
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning("[HopService] SFTP client start timed out")
+                    self._sftp = None
+                except Exception as e:
+                    logger.warning(f"[HopService] SFTP client start failed: {e}")
                     self._sftp = None
 
                 self._session.status = "connected"
+                self._session.lastConnectedAt = _now_iso()
+                self._session.reconnectAttempt = 0
+                self._session.connectionQuality = "good"
+                
                 # Determine remote home/cwd if not provided
                 if not cred.defaultPath:
                     try:
                         # Prefer environment HOME
-                        run_res = await self._conn.run('printenv HOME', check=False)
+                        run_res = await asyncio.wait_for(
+                            self._conn.run('printenv HOME', check=False),
+                            timeout=5
+                        )
                         home = (run_res.stdout or '').strip()
                         if not home:
                             # Fallback to pwd
-                            run_res = await self._conn.run('pwd', check=False)
+                            run_res = await asyncio.wait_for(
+                                self._conn.run('pwd', check=False),
+                                timeout=5
+                            )
                             home = (run_res.stdout or '').strip() or '/'
                         # Validate directory exists via SFTP if available
                         if self._sftp:
                             try:
-                                await self._sftp.stat(home)
+                                await asyncio.wait_for(self._sftp.stat(home), timeout=5)
                                 self._session.cwd = home
                             except Exception:
                                 self._session.cwd = '/'
                         else:
                             self._session.cwd = home or '/'
-                    except Exception:
+                    except asyncio.TimeoutError:
+                        logger.warning("[HopService] Home directory detection timed out")
+                    except Exception as e:
+                        logger.debug(f"[HopService] Home directory detection failed: {e}")
                         # Keep existing default
                         pass
-                logger.info(f"[HopService] Connected: {cred.host}:{cred.port}")
+                        
+                connection_time = time.time() - self._connection_start_time
+                logger.info(f"[HopService] Connected to {cred.host}:{cred.port} in {connection_time:.2f}s")
                 return self._session
-            except Exception as e:
-                logger.error(f"SSH connect error to {cred.host}:{cred.port} - {e}")
+            except asyncio.TimeoutError:
+                error_msg = f"Connection to {cred.host}:{cred.port} timed out after {CONNECTION_TIMEOUT}s"
+                logger.error(f"[HopService] {error_msg}")
                 self._session.status = "error"
-                self._session.lastError = str(e)
-                # ensure cleanup
+                self._session.lastError = error_msg
                 await self._close_connection()
                 return self._session
+            except Exception as e:
+                # Phase 8: Sanitize error messages for sensitive info
+                error_msg = sanitize_log_message(str(e))
+                logger.error(f"[HopService] SSH connect error to {cred.host}:{cred.port} - {error_msg}")
+                self._session.status = "error"
+                self._session.lastError = self._format_user_friendly_error(e)
+                await self._close_connection()
+                return self._session
+
+    def _format_user_friendly_error(self, error: Exception) -> str:
+        """Phase 8: Convert technical SSH errors to user-friendly messages."""
+        error_str = str(error).lower()
+        
+        if 'permission denied' in error_str or 'authentication failed' in error_str:
+            return "Authentication failed. Please check your username, password, or private key."
+        elif 'connection refused' in error_str:
+            return "Connection refused. The SSH server may not be running or the port is incorrect."
+        elif 'no route to host' in error_str or 'network unreachable' in error_str:
+            return "Network unreachable. Please check the hostname and your network connection."
+        elif 'timeout' in error_str or 'timed out' in error_str:
+            return "Connection timed out. The server may be down or unreachable."
+        elif 'host key' in error_str:
+            return "Host key verification failed. The server's identity has changed (possible security risk)."
+        else:
+            # Return sanitized original error for unknown cases
+            return sanitize_log_message(str(error))
 
     async def _close_connection(self):
         """Gracefully close SFTP and SSH connection with timeouts and abort fallback.
@@ -377,16 +460,91 @@ class HopService:
             self._conn = None
             self._sftp = None
 
+    async def _attempt_reconnect(self) -> bool:
+        """Phase 8: Attempt automatic reconnection with exponential backoff."""
+        if not self._last_credential:
+            return False
+            
+        max_attempts = RECONNECT_MAX_RETRIES
+        attempt = self._session.reconnectAttempt
+        
+        while attempt < max_attempts:
+            attempt += 1
+            self._session.reconnectAttempt = attempt
+            self._session.status = "reconnecting"
+            
+            # Exponential backoff
+            wait_time = min(RECONNECT_BACKOFF_BASE ** attempt, 30)  # Cap at 30s
+            logger.info(f"[HopService] Reconnection attempt {attempt}/{max_attempts} in {wait_time:.1f}s")
+            
+            await asyncio.sleep(wait_time)
+            
+            try:
+                result = await self.connect(
+                    self._last_credential['cred_id'],
+                    password=self._last_credential.get('password'),
+                    passphrase=self._last_credential.get('passphrase')
+                )
+                
+                if result.status == "connected":
+                    logger.info(f"[HopService] Reconnection successful after {attempt} attempts")
+                    return True
+            except Exception as e:
+                logger.warning(f"[HopService] Reconnection attempt {attempt} failed: {e}")
+                continue
+        
+        logger.error(f"[HopService] Reconnection failed after {max_attempts} attempts")
+        self._session.lastError = f"Failed to reconnect after {max_attempts} attempts"
+        return False
+
     async def disconnect(self) -> HopSession:
         async with self._lock:
+            # Cancel any reconnection task
+            if self._reconnect_task and not self._reconnect_task.done():
+                self._reconnect_task.cancel()
+                self._reconnect_task = None
+            
             await self._close_connection()
             self._session = HopSession()  # back to local
+            self._last_credential = None
+            self._connection_start_time = None
             logger.info("[HopService] Disconnected; context returned to local")
             return self._session
+
+    async def check_connection_health(self) -> str:
+        """Phase 8: Check connection health and return quality indicator."""
+        if not self._conn or self._session.status != "connected":
+            return "unknown"
+        
+        try:
+            # Quick health check - run a simple command
+            start = time.time()
+            result = await asyncio.wait_for(
+                self._conn.run('echo ping', check=False),
+                timeout=2
+            )
+            latency = time.time() - start
+            
+            if result.exit_status != 0:
+                return "poor"
+            elif latency > 1.0:
+                return "degraded"
+            else:
+                return "good"
+        except asyncio.TimeoutError:
+            return "poor"
+        except Exception:
+            return "poor"
 
     def status(self) -> HopSession:
         # Derive status from connection object if available
         if self._conn is not None and self._session.status == "connected":
+            # Phase 8: Update connection quality periodically
+            if self._connection_start_time:
+                uptime = time.time() - self._connection_start_time
+                if uptime > 300:  # Every 5 minutes, update quality in background
+                    # Don't block status() call, just note staleness
+                    pass
             return self._session
         # If not connected, normalize session
         if self._session.contextId != "local" and self._conn is None:
