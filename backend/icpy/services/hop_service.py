@@ -323,7 +323,9 @@ class HopService:
                     password=password if cred.auth == "password" else None,
                     client_keys=client_keys,
                     passphrase=passphrase if cred.auth == "privateKey" else None,
-                    # Use default known_hosts behavior for host key verification
+                    # Disable strict host key checking for development/trusted networks
+                    # In production, you may want to manage known_hosts properly
+                    known_hosts=None,
                     connect_timeout=CONNECTION_TIMEOUT,
                 )
                 try:
