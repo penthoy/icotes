@@ -6,20 +6,6 @@
  * 
  * Key Features:
  * - Centralized backend service for file operations
- * - Multi-file tabs with bac      const newStatus = {
-        connected: false,
-        error: (error as Error).message || 'Unknown error',
-        timestamp: Date.now()
-      };
-      // Backend connection error
-      setConnectionStatus(newStatus);
-      if (onConnectionStatusChange) {
-        // Calling onConnectionStatusChange callback with error
-        onConnectionStatusChange(newStatus);
-      } else {
-        // No onCon  const activateFile = useCallback(async (fileId: string) => {
-    // console.log('Activating file:', fileId);ctionStatusChange callback available
-      }zation
  * - Auto-save with debouncing
  * - Real-time file loading from backend
  * - CodeMirror 6 integration with syntax highlighting
@@ -28,188 +14,26 @@
  */
 
 import React, { useState, useRef, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react';
-import {
-  EditorView,
-  keymap,
-  lineNumbers,
-  dropCursor,
-  rectangularSelection,
-  crosshairCursor,
-  ViewPlugin,
-  Decoration,
-  ViewUpdate
-} from "@codemirror/view";
-import { EditorState, Extension } from "@codemirror/state";
-import {
-  defaultKeymap,
-  history,
-  historyKeymap,
-  indentWithTab,
-} from "@codemirror/commands";
-import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
-import { backendService, ICUIFile, useTheme, ConnectionStatus } from '../../services';
+import { EditorView } from "@codemirror/view";
+import { EditorState } from "@codemirror/state";
+import { backendService, useTheme, ConnectionStatus } from '../../services';
 import { getWorkspaceRoot } from '../../lib';
-import {
-  autocompletion,
-  completionKeymap,
-  closeBrackets,
-  closeBracketsKeymap,
-} from "@codemirror/autocomplete";
-import {
-  syntaxHighlighting,
-  indentOnInput,
-  bracketMatching,
-  foldKeymap,
-  foldGutter,
-} from "@codemirror/language";
-import { python } from '@codemirror/lang-python';
-import { javascript } from '@codemirror/lang-javascript';
-import { markdown } from '@codemirror/lang-markdown';
-import { json } from '@codemirror/lang-json';
-import { html } from '@codemirror/lang-html';
-import { css } from '@codemirror/lang-css';
-import { cpp } from '@codemirror/lang-cpp';
-import { rust } from '@codemirror/lang-rust';
-import { go } from '@codemirror/lang-go';
-import { StreamLanguage } from '@codemirror/language';
-import { yaml } from '@codemirror/legacy-modes/mode/yaml';
-import { shell } from '@codemirror/legacy-modes/mode/shell';
-import { createICUISyntaxHighlighting, createICUIEnhancedEditorTheme } from '../../utils/syntaxHighlighting';
 
-// File interface (using centralized ICUIFile type)
-interface EditorFile extends ICUIFile {
-  isTemporary?: boolean; // VS Code-like temporary file state
-  // Diff metadata (only for diff virtual tabs)
-  __diffMeta?: {
-    added: Set<number>;
-    removed: Set<number>;
-    hunk: Set<number>;
-    originalPath?: string;
-  };
-}
-
-
-
-// Notification system (following simpleeditor pattern)
-class EditorNotificationService {
-  static show(message: string, type: 'success' | 'error' | 'warning' | 'info' = 'info'): void {
-    const notification = document.createElement('div');
-    const colors = {
-      success: 'bg-green-500 text-white',
-      error: 'bg-red-500 text-white',
-      warning: 'bg-yellow-500 text-black',
-      info: 'bg-blue-500 text-white'
-    };
-    
-    notification.className = `fixed top-4 right-4 px-4 py-2 rounded shadow-lg z-50 transition-opacity ${colors[type]}`;
-    notification.textContent = message;
-    
-    document.body.appendChild(notification);
-    
-    setTimeout(() => {
-      notification.style.opacity = '0';
-      setTimeout(() => {
-        if (notification.parentNode) {
-          notification.parentNode.removeChild(notification);
-        }
-      }, 300);
-    }, 3000);
-  }
-}
-
-// Image Viewer Panel Component
-interface ImageViewerPanelProps {
-  filePath: string;
-  fileName: string;
-}
-
-const ImageViewerPanel: React.FC<ImageViewerPanelProps> = ({ filePath, fileName }) => {
-  const [imageLoaded, setImageLoaded] = React.useState(false);
-  const [imageError, setImageError] = React.useState(false);
-  const [imageDimensions, setImageDimensions] = React.useState<{ width: number; height: number } | null>(null);
-
-  const imageUrl = `/api/files/raw?path=${encodeURIComponent(filePath)}`;
-
-  const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
-    setImageLoaded(true);
-    setImageError(false);
-    const img = e.currentTarget;
-    setImageDimensions({ width: img.naturalWidth, height: img.naturalHeight });
-  };
-
-  const handleImageError = () => {
-    setImageError(true);
-    setImageLoaded(false);
-  };
-
-  return (
-    <div className="h-full w-full flex flex-col" style={{ backgroundColor: 'var(--icui-bg-primary)' }}>
-      {/* Info Bar */}
-      <div className="flex items-center justify-between px-4 py-2 border-b" style={{ borderColor: 'var(--icui-border)', backgroundColor: 'var(--icui-bg-secondary)' }}>
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium" style={{ color: 'var(--icui-text-primary)' }}>
-            {fileName}
-          </span>
-          {imageDimensions && (
-            <span className="text-xs" style={{ color: 'var(--icui-text-secondary)' }}>
-              {imageDimensions.width} × {imageDimensions.height}
-            </span>
-          )}
-        </div>
-        <span className="text-xs" style={{ color: 'var(--icui-text-secondary)' }}>
-          {filePath}
-        </span>
-      </div>
-
-      {/* Image Display Area */}
-      <div className="flex-1 flex items-center justify-center p-8 overflow-auto">
-        {!imageError ? (
-          <div className="relative max-w-full max-h-full">
-            <img 
-              src={imageUrl}
-              alt={fileName}
-              className="max-w-full max-h-full object-contain"
-              style={{ 
-                imageRendering: 'auto',
-                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
-                opacity: imageLoaded ? 1 : 0,
-                transition: 'opacity 0.2s'
-              }}
-              onLoad={handleImageLoad}
-              onError={handleImageError}
-            />
-            {!imageLoaded && (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="w-8 h-8 border-2 rounded-full animate-spin" style={{ 
-                  borderColor: 'var(--icui-border)',
-                  borderTopColor: 'var(--icui-accent)'
-                }} />
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="flex flex-col items-center gap-3 p-8" style={{ color: 'var(--icui-text-secondary)' }}>
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="10"/>
-              <line x1="12" y1="8" x2="12" y2="12"/>
-              <line x1="12" y1="16" x2="12.01" y2="16"/>
-            </svg>
-            <span className="text-sm">Failed to load image: {fileName}</span>
-            <span className="text-xs">The file may be corrupted or in an unsupported format</span>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
-// Ref interface for imperative control
-interface ICUIEditorRef {
-  openFile: (filePath: string) => Promise<void>;
-  openFileTemporary: (filePath: string) => Promise<void>;
-  openFilePermanent: (filePath: string) => Promise<void>;
-  openDiffPatch: (filePath: string) => Promise<void>; // Phase 4: open unified diff as read-only tab
-}
+// Import from editor module
+import { 
+  EditorFile, 
+  ICUIEditorRef, 
+  EditorNotificationService,
+  ImageViewerPanel,
+  EditorTabBar,
+  EditorActionBar,
+  LanguageSelectorModal,
+  detectLanguageFromExtension,
+  supportedLanguages,
+  processDiffPatch,
+  createEditorExtensions,
+  useFileOperations
+} from '../editor';
 
 interface ICUIEditorProps {
   className?: string;
@@ -257,22 +81,6 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
   // Language fallback selector
   const [showLanguageFallback, setShowLanguageFallback] = useState(false);
   const [pendingFile, setPendingFile] = useState<{ file: any; filePath: string } | null>(null);
-  
-  const supportedLanguages = [
-    { id: 'python', name: 'Python' },
-    { id: 'javascript', name: 'JavaScript' },
-    { id: 'typescript', name: 'TypeScript' },
-    { id: 'markdown', name: 'Markdown' },
-    { id: 'json', name: 'JSON' },
-    { id: 'html', name: 'HTML' },
-    { id: 'css', name: 'CSS' },
-    { id: 'yaml', name: 'YAML' },
-    { id: 'shell', name: 'Shell/Bash' },
-    { id: 'cpp', name: 'C++' },
-    { id: 'rust', name: 'Rust' },
-    { id: 'go', name: 'Go' },
-    { id: 'text', name: 'Plain Text' }
-  ];
 
   // Refs (following ICUIEnhancedEditorPanel pattern)
   const editorRef = useRef<HTMLDivElement>(null);
@@ -287,67 +95,6 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
 
   // Get workspace root from environment (following ICUIExplorer pattern)
   const effectiveWorkspaceRoot = workspaceRoot || getWorkspaceRoot();
-
-  // Helper function to detect language from file extension
-  const detectLanguageFromExtension = useCallback((filePath: string): string | null => {
-    const fileName = filePath.split('/').pop() || '';
-    const ext = fileName.includes('.') ? fileName.split('.').pop()?.toLowerCase() || '' : '';
-    
-    const langMap: Record<string, string> = {
-      'py': 'python',
-      'js': 'javascript',
-      'jsx': 'javascript',
-      'ts': 'typescript',
-      'tsx': 'typescript',
-      'md': 'markdown',
-      'json': 'json',
-      'jsonl': 'json',
-      'html': 'html',
-      'htm': 'html',
-      'css': 'css',
-      'scss': 'css',
-      'sass': 'sass',
-      'yaml': 'yaml',
-      'yml': 'yaml',
-      'sh': 'shell',
-      'bash': 'shell',
-      'zsh': 'shell',
-      'fish': 'shell',
-      'cpp': 'cpp',
-      'cxx': 'cpp',
-      'cc': 'cpp',
-      'c': 'cpp',
-      'h': 'cpp',
-      'hpp': 'cpp',
-      'rs': 'rust',
-      'go': 'go',
-      'env': 'shell', // .env files use shell-like syntax
-      'gitignore': 'shell', // .gitignore can use shell highlighting
-      'txt': 'text', // Plain text files
-      // Image extensions - will be handled differently in the editor
-      'png': 'image',
-      'jpg': 'image',
-      'jpeg': 'image',
-      'gif': 'image',
-      'svg': 'image',
-      'webp': 'image',
-      'bmp': 'image',
-      'ico': 'image'
-    };
-    
-    // If no extension found (no dot in filename), treat as plain text
-    if (!ext) {
-      return 'text';
-    }
-    
-    return langMap[ext] || null; // Return null for unsupported extensions
-  }, []);
-
-  // Helper function to get available language options for fallback
-  const getAvailableLanguages = () => [
-    'text', 'python', 'javascript', 'typescript', 'markdown', 'json', 
-    'html', 'css', 'yaml', 'shell', 'cpp', 'rust', 'go'
-  ];
 
   // Helper function to handle language fallback selection
   const handleLanguageFallback = useCallback((selectedLanguage: string) => {
@@ -543,83 +290,37 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
       setIsLoading(true);
       const tabId = `diff:${filePath}`;
       
-      let focused = false;
-      const processedResult = (() => {
-        // Process synthetic diff for highlighting
-        const rawLines = patch.split('\n');
-        const added = new Set<number>();
-        const removed = new Set<number>();
-        const hunk = new Set<number>();
-        const processed: string[] = [];
-        
-        for (const line of rawLines) {
-          if (
-            line.startsWith('+++ ') || line.startsWith('--- ') ||
-            line.startsWith('index ') || line.startsWith('diff ') ||
-            line.startsWith('new file mode') || line.startsWith('deleted file mode') ||
-            line.startsWith('rename from') || line.startsWith('rename to') ||
-            line.startsWith('similarity index')
-          ) {
-            processed.push(line); // keep file headers as-is
-            continue;
-          }
-          if (line.startsWith('@@')) {
-            hunk.add(processed.length + 1);
-            processed.push(line); // keep hunk header
-            continue;
-          }
-          if (line.startsWith('+') && !line.startsWith('+++ ')) {
-            added.add(processed.length + 1);
-            processed.push(line.slice(1));
-            continue;
-          }
-          if (line.startsWith('-') && !line.startsWith('--- ')) {
-            removed.add(processed.length + 1);
-            processed.push(line.slice(1));
-            continue;
-          }
-          processed.push(line); // fallback
-        }
-        
-        const processedPatch = processed.join('\n');
-        const name = `${filePath.split('/').pop() || filePath} (diff)`;
-        
-        const diffFile: EditorFile = {
-          id: tabId,
-          name,
-          language: 'diff',
-          content: processedPatch,
-          modified: false,
-          path: filePath,
-          // @ts-ignore add virtual flags
-          isDiff: true,
-          // @ts-ignore
-          readOnly: true,
-          // @ts-ignore
-          diffKind: 'synthetic',
-          // @ts-ignore
-          originalPath: filePath,
-          __diffMeta: { added, removed, hunk, originalPath: filePath }
-        } as any;
-        
-        return diffFile;
-      })();
-
-      setFiles(prev => {
-        if (prev.some(f => f.id === tabId)) {
-          focused = true;
-          return prev;
-        }
-        return [...prev, processedResult];
-      });
-      
-      if (focused) {
+      // Check if tab already exists
+      const existing = files.find(f => f.id === tabId);
+      if (existing) {
         console.log('[ICUIEditor] Synthetic diff tab already exists, focusing:', tabId);
         setActiveFileId(tabId);
         return;
       }
       
-      console.log('[ICUIEditor] Creating new synthetic diff tab:', processedResult.name);
+      // Process diff using extracted utility
+      const processed = processDiffPatch(patch);
+      const name = `${filePath.split('/').pop() || filePath} (diff)`;
+      
+      const diffFile: EditorFile = {
+        id: tabId,
+        name,
+        language: 'diff',
+        content: processed.content,
+        modified: false,
+        path: filePath,
+        // @ts-ignore add virtual flags
+        isDiff: true,
+        // @ts-ignore
+        readOnly: true,
+        // @ts-ignore
+        diffKind: 'synthetic',
+        // @ts-ignore
+        originalPath: filePath,
+        __diffMeta: { ...processed.metadata, originalPath: filePath }
+      } as any;
+      
+      setFiles(prev => [...prev, diffFile]);
       setActiveFileId(tabId);
       console.log('[ICUIEditor] Synthetic diff tab created successfully');
       EditorNotificationService.show(`Opened diff for ${filePath}`, 'info');
@@ -629,100 +330,58 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [files]);
 
   // Phase 4: Open unified diff patch for a file as a virtual read-only tab
   const openDiffPatch = useCallback(async (filePath: string) => {
     console.log('[ICUIEditor] openDiffPatch called for:', filePath);
     try {
       setIsLoading(true);
-      // Reuse existing diff endpoint
-      console.log('[ICUIEditor] Fetching diff from backend...');
-      const diffData = await backendService.getScmDiff(filePath);
-      console.log('[ICUIEditor] Diff data received:', diffData);
-      if (!diffData || typeof diffData.patch !== 'string') {
-        console.warn('[ICUIEditor] No valid diff data:', diffData);
-        EditorNotificationService.show(`No diff available for ${filePath}`, 'warning');
-        return;
-      }
       const tabId = `diff:${filePath}`;
       
-      let focused = false;
-      const processedResult = (() => {
-        const name = `${filePath.split('/').pop() || filePath} (diff)`;
-        console.log('[ICUIEditor] Creating new diff tab:', name);
-
-        // Preprocess unified diff for improved syntax highlighting:
-        // - Strip leading diff markers (+, -, space) from code lines
-        // - Record line numbers for added/removed/hunk to apply background decorations
-        const rawLines = diffData.patch.split('\n');
-        const added = new Set<number>();
-        const removed = new Set<number>();
-        const hunk = new Set<number>();
-        const processed: string[] = [];
-        for (const line of rawLines) {
-          if (line.startsWith('+++ ') || line.startsWith('--- ') || line.startsWith('index ') || line.startsWith('diff ')) {
-            processed.push(line); // keep file headers as-is
-            continue;
-          }
-          if (line.startsWith('@@')) {
-            hunk.add(processed.length + 1);
-            processed.push(line); // keep hunk header
-            continue;
-          }
-          if (line.startsWith('+') && !line.startsWith('+++ ')) {
-            added.add(processed.length + 1);
-            processed.push(line.slice(1));
-            continue;
-          }
-          if (line.startsWith('-') && !line.startsWith('--- ')) {
-            removed.add(processed.length + 1);
-            processed.push(line.slice(1));
-            continue;
-          }
-          if (line.startsWith(' ')) {
-            processed.push(line.slice(1)); // unchanged line (unified diff prefix space)
-            continue;
-          }
-          processed.push(line); // fallback
-        }
-        const processedPatch = processed.join('\n');
-        
-        const diffFile: EditorFile = {
-          id: tabId,
-          name,
-          language: 'diff',
-          content: processedPatch,
-          modified: false,
-          path: filePath,
-          // @ts-ignore add virtual flags
-          isDiff: true,
-          // @ts-ignore
-          readOnly: true,
-          // @ts-ignore
-          diffKind: 'patch',
-          // @ts-ignore
-          originalPath: filePath,
-          __diffMeta: { added, removed, hunk, originalPath: filePath }
-        } as any;
-        
-        return diffFile;
-      })();
-
-      setFiles(prev => {
-        if (prev.some(f => f.id === tabId)) {
-          focused = true;
-          return prev;
-        }
-        return [...prev, processedResult];
-      });
-      
-      if (focused) {
+      // Check if tab already exists
+      const existing = files.find(f => f.id === tabId);
+      if (existing) {
         console.log('[ICUIEditor] Diff tab already exists, focusing:', tabId);
         setActiveFileId(tabId);
         return;
       }
       
+      // Fetch diff from backend
+      console.log('[ICUIEditor] Fetching diff from backend...');
+      const diffData = await backendService.getScmDiff(filePath);
+      console.log('[ICUIEditor] Diff data received:', diffData);
+      
+      if (!diffData || typeof diffData.patch !== 'string') {
+        console.warn('[ICUIEditor] No valid diff data:', diffData);
+        EditorNotificationService.show(`No diff available for ${filePath}`, 'warning');
+        return;
+      }
+      
+      // Process diff using extracted utility
+      const name = `${filePath.split('/').pop() || filePath} (diff)`;
+      console.log('[ICUIEditor] Creating new diff tab:', name);
+      const processed = processDiffPatch(diffData.patch);
+      
+      const diffFile: EditorFile = {
+        id: tabId,
+        name,
+        language: 'diff',
+        content: processed.content,
+        modified: false,
+        path: filePath,
+        // @ts-ignore add virtual flags
+        isDiff: true,
+        // @ts-ignore
+        readOnly: true,
+        // @ts-ignore
+        diffKind: 'patch',
+        // @ts-ignore
+        originalPath: filePath,
+        __diffMeta: { ...processed.metadata, originalPath: filePath }
+      } as any;
+      
+      setFiles(prev => [...prev, diffFile]);
       setActiveFileId(tabId);
       console.log('[ICUIEditor] Diff tab created successfully');
       EditorNotificationService.show(`Opened diff for ${filePath}`, 'info');
@@ -732,7 +391,7 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [files]);
 
   // Listen for global diff open events (fallback when panel prop not passed)
   useEffect(() => {
@@ -911,21 +570,6 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
     };
   }, [checkBackendConnection]);
 
-  // Auto-load files disabled to start with empty editor
-  // Files are now loaded only when explicitly requested through explorer interaction
-  // useEffect(() => {
-  //   console.log('Load files effect triggered:', {
-  //     connected: connectionStatus.connected,
-  //     propFilesLength: propFiles.length,
-  //     loadFilesAvailable: !!loadFiles
-  //   });
-  //   
-  //   if (connectionStatus.connected && propFiles.length === 0) {
-  //     console.log('Triggering loadFiles...');
-  //     loadFiles(); // Only auto-load if no propFiles provided
-  //   }
-  // }, [connectionStatus.connected, loadFiles, propFiles.length]);
-
   // Update files when propFiles change
   useEffect(() => {
     if (propFiles.length > 0) {
@@ -1013,186 +657,16 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
   }, [activeFileId]);
 
 
-  // Create editor extensions (FIXED: Stable function to prevent recreating editor)
-  const createExtensions = useCallback((file: EditorFile | undefined): Extension[] => {
-    const language = file?.language || 'text';
-    const extensions: Extension[] = [
-      lineNumbers(),
-      foldGutter(),
-      dropCursor(),
-  // Note: Do NOT enable global line wrapping here. We'll add it conditionally
-  // for .jsonl files during editor initialization to avoid layout issues in
-  // other languages like Python.
-      indentOnInput(),
-      bracketMatching(),
-      closeBrackets(),
-      autocompletion(),
-      rectangularSelection(),
-      crosshairCursor(),
-      highlightSelectionMatches(),
-      history(),
-      // Custom keybindings: Ctrl/Cmd+S to save
-      keymap.of([
-        {
-          key: 'Mod-s',
-          run: () => {
-            try {
-              const fn = saveHandlerRef.current;
-              if (fn) fn();
-            } catch (e) {
-              console.warn('Save shortcut failed:', e);
-            }
-            // Returning true prevents the browser default Save Page dialog
-            return true;
-          }
-        },
-        ...closeBracketsKeymap,
-        ...defaultKeymap,
-        ...searchKeymap,
-        ...historyKeymap,
-        ...foldKeymap,
-        ...completionKeymap,
-        indentWithTab,
-      ]),
-      syntaxHighlighting(createICUISyntaxHighlighting(isDarkTheme)),
-  EditorView.theme(createICUIEnhancedEditorTheme(isDarkTheme)),
-      // Add update listener to handle content changes - using stable ref
-      EditorView.updateListener.of((update) => {
-        if (update.docChanged) {
-          const newContent = update.state.doc.toString();
-          // Compare against the ref to avoid stale closure issues
-          if (newContent !== currentContentRef.current) {
-            currentContentRef.current = newContent;
-            // Use a more stable approach by calling through ref
-            if (contentChangeHandlerRef.current) {
-              contentChangeHandlerRef.current(newContent);
-            }
-          }
-        }
-      }),
-    ];
-
-    // Diff highlighting (unified patch) - lightweight decoration pass
-    if (language === 'diff') {
-      const added = Decoration.line({ class: 'cm-diff-added' });
-      const removed = Decoration.line({ class: 'cm-diff-removed' });
-      const hunk = Decoration.line({ class: 'cm-diff-hunk' });
-      const meta = file?.__diffMeta || { added: new Set<number>(), removed: new Set<number>(), hunk: new Set<number>() };
-      const plugin = ViewPlugin.fromClass(class {
-        decorations: any;
-        constructor(view: EditorView) { this.decorations = this.build(view); }
-        update(u: ViewUpdate) { if (u.docChanged) this.decorations = this.build(u.view); }
-        build(view: EditorView) {
-          const ranges: any[] = [];
-          for (let i = 1; i <= view.state.doc.lines; i++) {
-            if (meta.hunk.has(i)) {
-              ranges.push(hunk.range(view.state.doc.line(i).from));
-              continue;
-            }
-            if (meta.added.has(i)) {
-              ranges.push(added.range(view.state.doc.line(i).from));
-              continue;
-            }
-            if (meta.removed.has(i)) {
-              ranges.push(removed.range(view.state.doc.line(i).from));
-              continue;
-            }
-          }
-          return Decoration.set(ranges);
-        }
-      }, { decorations: v => v.decorations });
-      const diffTheme = EditorView.theme({
-        '.cm-diff-added': { backgroundColor: 'rgba(76,175,80,0.18)' },
-        '.cm-diff-removed': { backgroundColor: 'rgba(244,67,54,0.18)' },
-        '.cm-diff-hunk': { backgroundColor: 'rgba(120,120,120,0.25)', fontStyle: 'italic' },
-      });
-      extensions.push(plugin, diffTheme);
-
-      // Attempt to infer underlying language from diff header lines (--- a/path, +++ b/path)
-      try {
-        const underlyingPath = meta.originalPath || '';
-        if (underlyingPath) {
-          const ext = underlyingPath.split('.').pop()?.toLowerCase() || '';
-          // Map to our language identifiers
-          const underlyingLang = (
-            ext === 'tsx' ? 'tsx' :
-            ext === 'ts' ? 'typescript' :
-            ext === 'jsx' ? 'jsx' :
-            ext === 'js' ? 'javascript' :
-            ext === 'py' ? 'python' :
-            ext === 'md' ? 'markdown' :
-            ext === 'json' || ext === 'jsonl' ? 'json' :
-            ext === 'html' || ext === 'htm' ? 'html' :
-            ext === 'css' || ext === 'scss' || ext === 'sass' ? 'css' :
-            ext === 'yaml' || ext === 'yml' ? 'yaml' :
-            ext === 'sh' || ext === 'bash' ? 'shell' :
-            ext === 'cpp' || ext === 'c' || ext === 'hpp' || ext === 'h' ? 'cpp' :
-            ext === 'rs' ? 'rust' :
-            ext === 'go' ? 'go' :
-            'text'
-          );
-          // Push underlying language highlighter AFTER diff decorations so token colors appear within backgrounds
-          if (underlyingLang === 'typescript') {
-            extensions.push(javascript({ typescript: true }));
-          } else if (underlyingLang === 'tsx') {
-            extensions.push(javascript({ typescript: true, jsx: true }));
-          } else if (underlyingLang === 'javascript') {
-            extensions.push(javascript({ jsx: false }));
-          } else if (underlyingLang === 'jsx') {
-            extensions.push(javascript({ jsx: true }));
-          } else if (underlyingLang === 'python') {
-            extensions.push(python());
-          } else if (underlyingLang === 'markdown') {
-            extensions.push(markdown());
-          } else if (underlyingLang === 'json') {
-            extensions.push(json());
-          } else if (underlyingLang === 'html') {
-            extensions.push(html());
-          } else if (underlyingLang === 'css') {
-            extensions.push(css());
-          } else if (underlyingLang === 'yaml') {
-            extensions.push(StreamLanguage.define(yaml));
-          } else if (underlyingLang === 'shell') {
-            extensions.push(StreamLanguage.define(shell));
-          } else if (underlyingLang === 'cpp') {
-            extensions.push(cpp());
-          } else if (underlyingLang === 'rust') {
-            extensions.push(rust());
-          } else if (underlyingLang === 'go') {
-            extensions.push(go());
-          }
-        }
-      } catch (e) {
-        console.warn('[ICUIEditor] Failed underlying language detection for diff:', e);
-      }
-    } else if (language === 'python') {
-      extensions.push(python());
-    } else if (language === 'javascript' || language === 'typescript') {
-      extensions.push(javascript({ typescript: language === 'typescript' }));
-    } else if (language === 'markdown') {
-      extensions.push(markdown());
-    } else if (language === 'json') {
-      extensions.push(json());
-    } else if (language === 'html') {
-      extensions.push(html());
-    } else if (language === 'css') {
-      extensions.push(css());
-    } else if (language === 'yaml') {
-      extensions.push(StreamLanguage.define(yaml));
-    } else if (language === 'bash' || language === 'shell' || language === 'sh') {
-      extensions.push(StreamLanguage.define(shell));
-    } else if (language === 'cpp' || language === 'c') {
-      extensions.push(cpp());
-    } else if (language === 'rust') {
-      extensions.push(rust());
-    } else if (language === 'go') {
-      extensions.push(go());
-    }
-  // Note: For unsupported extensions (or diff), base theme already applied.
-    // Users can manually select a language via the language selector
-
-    return extensions;
-  }, [isDarkTheme]); // Only depend on isDarkTheme
+  // Create editor extensions using extracted factory
+  const extensions = React.useMemo(() => {
+    return createEditorExtensions({
+      file: activeFile,
+      isDarkTheme,
+      saveHandlerRef,
+      contentChangeHandlerRef,
+      currentContentRef
+    });
+  }, [activeFile?.id, activeFile?.language, isDarkTheme]);
 
   // Initialize CodeMirror editor (FIXED: Only recreate on relevant changes)
   useEffect(() => {
@@ -1217,7 +691,7 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
     currentContentRef.current = initialContent;
 
     // Create new editor state
-  const baseExtensions = createExtensions(activeFile);
+    const baseExtensions = extensions;
     const isDiff = (activeFile as any).isDiff;
     if ((activeFile as any).readOnly || isDiff) {
       // Dynamically import readOnly extension only when needed to keep bundle lean
@@ -1227,11 +701,11 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
 
     // Enable soft wrap ONLY for .jsonl files
     const isJsonl = (activeFile.path || activeFile.name || '').toLowerCase().endsWith('.jsonl');
-    const extensions = isJsonl ? [...baseExtensions, EditorView.lineWrapping] : baseExtensions;
+    const finalExtensions = isJsonl ? [...baseExtensions, EditorView.lineWrapping] : baseExtensions;
 
     const state = EditorState.create({
       doc: initialContent,
-      extensions,
+      extensions: finalExtensions,
     });
 
     // Create editor view - no custom dispatch, let CodeMirror handle it
@@ -1251,7 +725,7 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
         // Editor instance destroyed on cleanup
       }
     };
-  }, [isDarkTheme, createExtensions, activeFile?.id, activeFile?.name, activeFile?.path]); // Recreate when file identity or name/path changes
+  }, [isDarkTheme, extensions, activeFile?.id, activeFile?.name, activeFile?.path]); // Recreate when file identity or name/path changes
 
   // Update editor content when switching between files (FIXED: Prevent infinite loop)
   useEffect(() => {
@@ -1466,81 +940,32 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
   }, []);
 
   return (
-  <div className={`icui-editor-container h-full flex flex-col ${className}`}>
-      {/* File Tabs - FIXED: Use ICUI theme variables for consistency */}
-  <div className="flex border-b icui-tabs">
-        {files.map((file) => (
-          <div
-            key={file.id}
-    className={`icui-tab ${file.id === activeFileId ? 'active' : ''}`}
-            onClick={() => handleActivateFile(file.id)}
-            onMouseDown={(e) => {
-              // Middle-click (wheel button) to close tab - like VS Code and browsers
-              if (e.button === 1) {
-                e.preventDefault();
-                e.stopPropagation();
-                handleCloseFile(file.id);
-              }
-            }}
-          >
-            <span className={`icui-tab-title ${file.isTemporary ? 'italic' : ''}`}>
-              {file.name}
-              {file.modified && <span className="ml-1 icui-dot-modified">•</span>}
-            </span>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                handleCloseFile(file.id);
-              }}
-      className="icui-close-btn"
-            >
-              ×
-            </button>
-          </div>
-        ))}
+    <div className={`icui-editor-container h-full flex flex-col ${className}`}>
+      {/* File Tabs */}
+      <EditorTabBar
+        files={files}
+        activeFileId={activeFileId}
+        onActivateFile={handleActivateFile}
+        onCloseFile={handleCloseFile}
+      />
 
-      </div>
-
-      {/* File Actions - Simplified without connection status */}
+      {/* File Actions */}
       {activeFile && (
-        <div className="flex items-center justify-between p-2 border-b icui-editor-actions">
-          <div className="flex items-center space-x-4">
-            <span className="text-xs font-mono icui-text-secondary">
-              {activeFile.path || `${effectiveWorkspaceRoot}/${activeFile.name}`}
-            </span>
-            {isLoading && (
-              <div className="icui-spinner" />
-            )}
-          </div>
-          <div className="flex items-center space-x-2">
-            <button
-              onClick={() => handleSaveFile(activeFile.id)}
-              disabled={!activeFile.modified || !connectionStatus.connected || isLoading}
-              className="px-3 py-1 text-xs rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed icui-btn-save"
-            >
-              Save
-            </button>
-            <div className="flex items-center space-x-1">
-              <input
-                type="checkbox"
-                id="auto-save-checkbox"
-                checked={autoSaveEnabled}
-                onChange={(e) => {
-                  setAutoSaveEnabled(e.target.checked);
-                  if (e.target.checked) {
-                    EditorNotificationService.show('Auto-save enabled', 'info');
-                  } else {
-                    EditorNotificationService.show('Auto-save disabled', 'info');
-                  }
-                }}
-                className="w-3 h-3"
-              />
-              <label htmlFor="auto-save-checkbox" className="text-xs cursor-pointer icui-text-secondary">
-                Auto
-              </label>
-            </div>
-          </div>
-        </div>
+        <EditorActionBar
+          activeFile={activeFile}
+          isLoading={isLoading}
+          connectionStatus={connectionStatus}
+          autoSaveEnabled={autoSaveEnabled}
+          effectiveWorkspaceRoot={effectiveWorkspaceRoot}
+          onSave={() => handleSaveFile(activeFile.id)}
+          onToggleAutoSave={(enabled) => {
+            setAutoSaveEnabled(enabled);
+            EditorNotificationService.show(
+              `Auto-save ${enabled ? 'enabled' : 'disabled'}`,
+              'info'
+            );
+          }}
+        />
       )}
 
       {/* Editor Container */}
@@ -1575,44 +1000,14 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
       
       {/* Language Fallback Selector Modal */}
       {showLanguageFallback && pendingFile && (
-        <div 
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
-          onClick={() => {
+        <LanguageSelectorModal
+          fileName={pendingFile.file.name}
+          onSelect={handleLanguageFallback}
+          onCancel={() => {
             setShowLanguageFallback(false);
             setPendingFile(null);
           }}
-        >
-          <div className="icui-modal rounded-lg shadow-lg p-6 max-w-md w-full mx-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="text-lg font-semibold mb-4">Select Language Highlighting</h3>
-            <p className="text-sm mb-4 icui-text-secondary">
-              The file extension for "{pendingFile.file.name}" is not recognized. Please select a syntax highlighting mode:
-            </p>
-            <div className="grid grid-cols-2 gap-2 max-h-60 overflow-y-auto">
-              {supportedLanguages.map((lang) => (
-                <button
-                  key={lang.id}
-                  onClick={() => handleLanguageFallback(lang.id)}
-                  className="icui-language-button text-sm"
-                >
-                  {lang.name}
-                </button>
-              ))}
-            </div>
-            <div className="flex justify-end mt-4 space-x-2">
-              <button
-                onClick={() => {
-                  setShowLanguageFallback(false);
-                  setPendingFile(null);
-                }}
-                className="icui-button-secondary text-sm"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
+        />
       )}
     </div>
   );
