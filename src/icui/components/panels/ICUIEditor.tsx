@@ -117,6 +117,92 @@ class EditorNotificationService {
   }
 }
 
+// Image Viewer Panel Component
+interface ImageViewerPanelProps {
+  filePath: string;
+  fileName: string;
+}
+
+const ImageViewerPanel: React.FC<ImageViewerPanelProps> = ({ filePath, fileName }) => {
+  const [imageLoaded, setImageLoaded] = React.useState(false);
+  const [imageError, setImageError] = React.useState(false);
+  const [imageDimensions, setImageDimensions] = React.useState<{ width: number; height: number } | null>(null);
+
+  const imageUrl = `/api/files/raw?path=${encodeURIComponent(filePath)}`;
+
+  const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    setImageLoaded(true);
+    setImageError(false);
+    const img = e.currentTarget;
+    setImageDimensions({ width: img.naturalWidth, height: img.naturalHeight });
+  };
+
+  const handleImageError = () => {
+    setImageError(true);
+    setImageLoaded(false);
+  };
+
+  return (
+    <div className="h-full w-full flex flex-col" style={{ backgroundColor: 'var(--icui-bg-primary)' }}>
+      {/* Info Bar */}
+      <div className="flex items-center justify-between px-4 py-2 border-b" style={{ borderColor: 'var(--icui-border)', backgroundColor: 'var(--icui-bg-secondary)' }}>
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium" style={{ color: 'var(--icui-text-primary)' }}>
+            {fileName}
+          </span>
+          {imageDimensions && (
+            <span className="text-xs" style={{ color: 'var(--icui-text-secondary)' }}>
+              {imageDimensions.width} × {imageDimensions.height}
+            </span>
+          )}
+        </div>
+        <span className="text-xs" style={{ color: 'var(--icui-text-secondary)' }}>
+          {filePath}
+        </span>
+      </div>
+
+      {/* Image Display Area */}
+      <div className="flex-1 flex items-center justify-center p-8 overflow-auto">
+        {!imageError ? (
+          <div className="relative max-w-full max-h-full">
+            <img 
+              src={imageUrl}
+              alt={fileName}
+              className="max-w-full max-h-full object-contain"
+              style={{ 
+                imageRendering: 'auto',
+                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+                opacity: imageLoaded ? 1 : 0,
+                transition: 'opacity 0.2s'
+              }}
+              onLoad={handleImageLoad}
+              onError={handleImageError}
+            />
+            {!imageLoaded && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-8 h-8 border-2 rounded-full animate-spin" style={{ 
+                  borderColor: 'var(--icui-border)',
+                  borderTopColor: 'var(--icui-accent)'
+                }} />
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="flex flex-col items-center gap-3 p-8" style={{ color: 'var(--icui-text-secondary)' }}>
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="12" y1="8" x2="12" y2="12"/>
+              <line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            <span className="text-sm">Failed to load image: {fileName}</span>
+            <span className="text-xs">The file may be corrupted or in an unsupported format</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 // Ref interface for imperative control
 interface ICUIEditorRef {
   openFile: (filePath: string) => Promise<void>;
@@ -204,7 +290,9 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
 
   // Helper function to detect language from file extension
   const detectLanguageFromExtension = useCallback((filePath: string): string | null => {
-    const ext = filePath.split('.').pop()?.toLowerCase() || '';
+    const fileName = filePath.split('/').pop() || '';
+    const ext = fileName.includes('.') ? fileName.split('.').pop()?.toLowerCase() || '' : '';
+    
     const langMap: Record<string, string> = {
       'py': 'python',
       'js': 'javascript',
@@ -213,12 +301,12 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
       'tsx': 'typescript',
       'md': 'markdown',
       'json': 'json',
-  'jsonl': 'json',
+      'jsonl': 'json',
       'html': 'html',
       'htm': 'html',
       'css': 'css',
       'scss': 'css',
-      'sass': 'css',
+      'sass': 'sass',
       'yaml': 'yaml',
       'yml': 'yaml',
       'sh': 'shell',
@@ -236,8 +324,22 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
       'env': 'shell', // .env files use shell-like syntax
       'gitignore': 'shell', // .gitignore can use shell highlighting
       'txt': 'text', // Plain text files
-      '': 'text' // Files without extension
+      // Image extensions - will be handled differently in the editor
+      'png': 'image',
+      'jpg': 'image',
+      'jpeg': 'image',
+      'gif': 'image',
+      'svg': 'image',
+      'webp': 'image',
+      'bmp': 'image',
+      'ico': 'image'
     };
+    
+    // If no extension found (no dot in filename), treat as plain text
+    if (!ext) {
+      return 'text';
+    }
+    
     return langMap[ext] || null; // Return null for unsupported extensions
   }, []);
 
@@ -253,8 +355,8 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
       const { file, filePath } = pendingFile;
       const fileWithLanguage = { ...file, language: selectedLanguage };
       
-  // Check if a NON-diff version of the file is already open (ignore diff tabs sharing path)
-  const existingFileIndex = files.findIndex(f => f.path === filePath && !(f as any).isDiff);
+      // Check if a NON-diff version of the file is already open (ignore diff tabs sharing path)
+      const existingFileIndex = files.findIndex(f => f.path === filePath && !(f as any).isDiff);
       if (existingFileIndex >= 0) {
         // File is already open, just activate it and update language
         setFiles(prev => prev.map((f, index) => 
@@ -287,10 +389,44 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
   const openFile = useCallback(async (filePath: string) => {
     try {
       setIsLoading(true);
-      const fileData = await backendService.getFile(filePath);
       
-      // Auto-detect language from file extension
+      // Auto-detect language from file extension first
       const detectedLanguage = detectLanguageFromExtension(filePath);
+      
+      // For image files, we don't need to load the text content
+      if (detectedLanguage === 'image') {
+        const fileName = filePath.split('/').pop() || 'image';
+        const fileData = {
+          id: `file-${Date.now()}-${Math.random()}`,
+          name: fileName,
+          path: filePath,
+          content: '', // No content needed for images
+          language: 'image',
+          modified: false
+        };
+        
+        // Check if this image is already open
+        const existingFileIndex = files.findIndex(f => f.path === filePath && !(f as any).isDiff);
+        if (existingFileIndex >= 0) {
+          // File is already open, just activate it
+          setFiles(prev => prev.map((f, index) => 
+            index === existingFileIndex ? { ...f, isTemporary: false } : f
+          ));
+          setActiveFileId(files[existingFileIndex].id);
+        } else {
+          // Add new image file
+          const permanentFile = { ...fileData, isTemporary: false };
+          setFiles(prev => [...prev, permanentFile]);
+          setActiveFileId(permanentFile.id);
+        }
+        
+        EditorNotificationService.show(`Opened ${fileName}`, 'success');
+        setIsLoading(false);
+        return;
+      }
+      
+      // For non-image files, load the content
+      const fileData = await backendService.getFile(filePath);
       
       if (detectedLanguage === null) {
         // Show language fallback selector for unsupported extensions
@@ -302,8 +438,8 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
       
       const fileWithLanguage = { ...fileData, language: detectedLanguage };
       
-  // Check if a NON-diff version of the file is already open (ignore diff tabs sharing path)
-  const existingFileIndex = files.findIndex(f => f.path === filePath && !(f as any).isDiff);
+      // Check if a NON-diff version of the file is already open (ignore diff tabs sharing path)
+      const existingFileIndex = files.findIndex(f => f.path === filePath && !(f as any).isDiff);
       if (existingFileIndex >= 0) {
         // File is already open, just activate it and mark as permanent
         setFiles(prev => prev.map((f, index) => 
@@ -336,6 +472,7 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
         // File is already open, just activate it
         const existingFile = files[existingFileIndex];
         setActiveFileId(existingFile.id);
+        setIsLoading(false);
         return;
       }
 
@@ -346,9 +483,31 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
         setFiles(prev => prev.filter(f => !f.isTemporary));
       }
 
+      // Auto-detect language from file extension first
+      const detectedLanguage = detectLanguageFromExtension(filePath);
+      
+      // For image files, we don't need to load the text content
+      if (detectedLanguage === 'image') {
+        const fileName = filePath.split('/').pop() || 'image';
+        const fileData = {
+          id: `file-${Date.now()}-${Math.random()}`,
+          name: fileName,
+          path: filePath,
+          content: '', // No content needed for images
+          language: 'image',
+          modified: false,
+          isTemporary: true
+        };
+        
+        setFiles(prev => [...prev.filter(f => !f.isTemporary), fileData]);
+        setActiveFileId(fileData.id);
+        EditorNotificationService.show(`Opened ${fileName} (temporary)`, 'info');
+        setIsLoading(false);
+        return;
+      }
+
       // Load the new file and mark it as temporary
       const fileData = await backendService.getFile(filePath);
-      const detectedLanguage = detectLanguageFromExtension(filePath);
       
       if (detectedLanguage === null) {
         // Show language fallback selector for unsupported extensions
@@ -1387,7 +1546,16 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
       {/* Editor Container */}
       <div className="flex-1 relative overflow-hidden">
         {activeFile && files.find(f => f.id === activeFileId) ? (
-          <div ref={editorRef} className="h-full w-full" />
+          activeFile.language === 'image' ? (
+            // Image Viewer - Display images like VS Code with enhanced features
+            <ImageViewerPanel 
+              filePath={activeFile.path || ''}
+              fileName={activeFile.name}
+            />
+          ) : (
+            // Code Editor
+            <div ref={editorRef} className="h-full w-full" />
+          )
         ) : (
     <div className="flex items-center justify-center h-full icui-editor-empty">
             <div className="text-center">
