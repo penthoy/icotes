@@ -86,6 +86,14 @@
       "description": "Ultra fast coding agent",
       "category": "Built-in",
       "order": 999
+    },
+    "NanoBananaAgent": {
+      "enabled": true,
+      "displayName": "Nano Banana 🍌",
+      "description": "AI image generation powered by Google's Gemini 2.5 Flash Image Preview (Nano Banana)",
+      "category": "Image Generation",
+      "order": 1,
+      "icon": "🎨"
     }
   },
   "categories": {
@@ -100,6 +108,10 @@
     "Built-in": {
       "icon": "\ud83e\udde0",
       "order": 3
+    },
+    "Image Generation": {
+      "icon": "\ud83c\udfa8",
+      "order": 0
     }
   },
   "settings": {
