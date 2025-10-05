@@ -8,7 +8,7 @@ It verifies that:
  3. We can successfully decode and write the image to disk.
 
 To run (inside backend directory):
-    python -m tests.test_gemini_image_generation
+    uv run python -m tests.test_gemini_image_generation
 
 Environment:
   Requires OPENROUTER_API_KEY to be set.

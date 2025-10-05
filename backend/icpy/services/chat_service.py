@@ -23,6 +23,8 @@ from ..core.message_broker import MessageBroker, get_message_broker, Message, Me
 from ..core.connection_manager import ConnectionManager, get_connection_manager
 from ..services.agent_service import AgentService, get_agent_service, AgentSessionStatus
 from ..services.media_service import get_media_service
+from ..services.image_reference_service import ImageReferenceService, ImageReference
+from ..services.image_cache import get_image_cache
 
 # Custom agent imports
 try:
@@ -226,6 +228,21 @@ class ChatService:
             self.history_root.mkdir(parents=True, exist_ok=True)
         
         # JSONL is the primary store for message persistence
+        
+        # Initialize image reference service for Phase 1
+        try:
+            # Determine workspace path for image service
+            if needs_isolation and self._temp_workspace:
+                image_workspace = self._temp_workspace
+            else:
+                image_workspace = workspace_root
+            self.image_service = ImageReferenceService(workspace_path=image_workspace)
+            self.image_cache = get_image_cache()
+            logger.info(f"Image reference service initialized: workspace={image_workspace}")
+        except Exception as e:
+            logger.warning(f"Failed to initialize image reference service: {e}")
+            self.image_service = None
+            self.image_cache = None
         
         # Setup message broker subscriptions (only if broker is available)
         if hasattr(self.message_broker, 'subscribe'):
@@ -1217,17 +1234,131 @@ class ChatService:
         except Exception as e:
             logger.warning(f"Could not broadcast message: {e}")
     
+    async def _convert_image_data_to_reference(self, message_dict: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Convert imageData in message to ImageReference before storage.
+        Phase 1 integration: Replaces large base64 with lightweight reference.
+        """
+        if not self.image_service:
+            return message_dict
+        
+        try:
+            # Check if message contains imageData in metadata
+            metadata = message_dict.get('metadata', {})
+            
+            # Look for imageData in various locations where it might appear
+            locations_to_check = [
+                ('tool_output', metadata.get('tool_output')),
+                ('response', metadata.get('response')),
+                ('content', message_dict.get('content'))
+            ]
+            
+            for location_name, location_data in locations_to_check:
+                if not location_data:
+                    continue
+                
+                # Handle dict
+                if isinstance(location_data, dict) and 'imageData' in location_data:
+                    image_data = location_data['imageData']
+                    
+                    # Extract metadata
+                    filename = location_data.get('filePath', 'generated_image.png')
+                    prompt = location_data.get('prompt', 'Generated image')
+                    model = location_data.get('model', 'unknown')
+                    mime_type = location_data.get('mimeType', 'image/png')
+                    
+                    # Save base64 to file first
+                    try:
+                        # Decode base64 to bytes
+                        import base64
+                        from pathlib import Path
+                        
+                        image_bytes = base64.b64decode(image_data)
+                        
+                        # Save to workspace
+                        workspace_path = Path(self.image_service.workspace_path)
+                        image_path = workspace_path / filename
+                        
+                        # Ensure directory exists
+                        image_path.parent.mkdir(parents=True, exist_ok=True)
+                        
+                        # Write image file
+                        with open(image_path, 'wb') as f:
+                            f.write(image_bytes)
+                        
+                        logger.info(f"Saved image to {image_path}")
+                        
+                    except Exception as e:
+                        logger.error(f"Failed to save image file: {e}")
+                        raise
+                    
+                    # Create image reference
+                    try:
+                        ref = await self.image_service.create_reference(
+                            image_data=image_data,
+                            filename=filename,
+                            prompt=prompt,
+                            model=model,
+                            mime_type=mime_type
+                        )
+                        
+                        # Cache the image data for immediate access
+                        if self.image_cache:
+                            self.image_cache.put(
+                                image_id=ref.image_id,
+                                base64_data=image_data,
+                                mime_type=mime_type
+                            )
+                        
+                        # Replace imageData with imageReference
+                        location_data['imageReference'] = ref.to_dict()
+                        del location_data['imageData']
+                        
+                        logger.info(
+                            f"Converted imageData to reference: {ref.image_id} "
+                            f"(size reduction: {len(image_data)} → {len(json.dumps(ref.to_dict()))} chars)"
+                        )
+                        
+                    except Exception as e:
+                        logger.error(f"Failed to create image reference: {e}")
+                        # Keep imageData if conversion fails
+                
+                # Handle string (JSON encoded)
+                elif isinstance(location_data, str):
+                    try:
+                        parsed = json.loads(location_data)
+                        if isinstance(parsed, dict) and 'imageData' in parsed:
+                            # Recursively process
+                            if location_name == 'tool_output':
+                                metadata['tool_output'] = await self._convert_image_data_to_reference(
+                                    {'metadata': {'tool_output': parsed}}
+                                ).get('metadata', {}).get('tool_output', parsed)
+                    except (json.JSONDecodeError, Exception):
+                        pass
+            
+            return message_dict
+            
+        except Exception as e:
+            logger.error(f"Error converting image data to reference: {e}")
+            return message_dict
+    
     async def _store_message(self, message: ChatMessage):
         """Store a message to JSONL per session."""
         try:
             session_id = message.session_id or "default"
+            
+            # Convert imageData to ImageReference before storage (Phase 1)
+            message_dict = await self._convert_image_data_to_reference(message.to_dict())
+            
             if self.enable_buffered_store:
                 async with self._persist_lock:
-                    self._persist_buffer.setdefault(session_id, []).append(message)
+                    # Store converted message
+                    converted_message = ChatMessage.from_dict(message_dict)
+                    self._persist_buffer.setdefault(session_id, []).append(converted_message)
             else:
                 file_path = self._resolve_session_file_for_write(session_id)
                 with open(file_path, 'a', encoding='utf-8') as f:
-                    f.write(json.dumps(message.to_dict(), ensure_ascii=False) + "\n")
+                    f.write(json.dumps(message_dict, ensure_ascii=False) + "\n")
         except Exception as e:
             logger.error(f"Failed to store message (JSONL): {e}")
 
