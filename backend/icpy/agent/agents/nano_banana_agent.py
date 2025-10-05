@@ -61,6 +61,7 @@ try:
         ToolDefinitionLoader,
         OpenAIStreamingHandler,
         add_context_to_agent_prompt,
+        get_workspace_path,
     )
 
     DEPENDENCIES_AVAILABLE = True
@@ -381,8 +382,8 @@ Please create an image that exactly matches what the user described. Be precise 
                             safe_prompt = "image"
                         filename = f"nano_banana_{safe_prompt}_{timestamp}.png"
                         
-                        # Save to workspace folder (parent of .icotes)
-                        workspace_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+                        # Save to workspace folder using helper function
+                        workspace_dir = get_workspace_path()
                         filepath = os.path.join(workspace_dir, filename)
                         
                         with open(filepath, 'wb') as f:

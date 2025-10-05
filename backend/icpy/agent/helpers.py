@@ -95,6 +95,12 @@ BASE_SYSTEM_PROMPT_TEMPLATE = """You are {AGENT_NAME}, a helpful and versatile A
 - create it under workspace which is your work root unless specified otherwise.
 - Create it using html/css/js by default unless the user specifies otherwise.
 
+**File Operations Best Practices:**
+- Always save generated files (images, documents, code) to the workspace directory
+- Use the `get_workspace_path()` helper function from `icpy.agent.helpers` to get the correct workspace path
+- Never hardcode workspace paths - use the helper function for proper path detection
+- The workspace directory is automatically detected and is the proper location for all user-facing files
+
 **Core Behavior:**
 - Be helpful, accurate, and informative in your responses
 - Use tools when appropriate to provide better assistance
@@ -589,10 +595,14 @@ class OpenAIStreamingHandler:
                 api_params = {
                     "model": self.model_name,
                     "messages": conv,
-                    "tools": tools if tools else None,
-                    "tool_choice": "auto" if tools else None,
                     "stream": True
                 }
+                
+                # Only add tools and tool_choice if we actually have tools
+                # Some providers (like Groq) reject tool_choice when tools array is empty or null
+                if tools:
+                    api_params["tools"] = tools
+                    api_params["tool_choice"] = "auto"
                 
                 # Add the appropriate token parameter
                 if max_tokens is not None:
@@ -1227,6 +1237,24 @@ def _detect_workspace_root() -> Optional[str]:
     
     # Default fallback
     return current_dir
+
+
+def get_workspace_path() -> str:
+    """
+    Get the workspace directory path for saving files.
+    
+    This is the recommended way for agents to get the workspace path for saving
+    generated files (images, documents, etc.).
+    
+    Returns:
+        Absolute path to the workspace directory
+    """
+    workspace_root = _detect_workspace_root()
+    if workspace_root:
+        return os.path.abspath(workspace_root)
+    
+    # Fallback: use current directory if detection fails
+    return os.getcwd()
 
 
 def _get_directory_size(directory: str) -> int:
