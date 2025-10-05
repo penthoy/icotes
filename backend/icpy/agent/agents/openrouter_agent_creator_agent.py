@@ -22,7 +22,13 @@ logger = logging.getLogger(__name__)
 
 # Model selection identifier for UI/router consumption
 # Update to your preferred OpenRouter model if needed
-AGENT_MODEL_ID = "qwen/qwen3-coder"
+
+"""
+"qwen/qwen3-coder"
+"z-ai/glm-4.6"
+"""
+
+AGENT_MODEL_ID = "z-ai/glm-4.6"
 
 # Import required modules and backend helpers
 try:

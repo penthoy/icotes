@@ -326,22 +326,27 @@ class ToolDefinitionLoader:
     def __init__(self):
         self.registry = get_tool_registry()
     
-    def get_openai_tools(self) -> List[Dict[str, Any]]:
+    def get_openai_tools(self, exclude_tools: List[str] = None) -> List[Dict[str, Any]]:
         """
         Get all available tools in OpenAI function calling format.
+        
+        Args:
+            exclude_tools: Optional list of tool names to exclude
         
         Returns:
             List of tool definitions compatible with OpenAI function calling
         """
         tools = []
+        exclude_tools = exclude_tools or []
         
         try:
             for tool in self.registry.all():
-                tools.append({
-                    "type": "function", 
-                    "function": tool.to_openai_function()
-                })
-            logger.info(f"Loaded {len(tools)} tools from registry")
+                if tool.name not in exclude_tools:
+                    tools.append({
+                        "type": "function", 
+                        "function": tool.to_openai_function()
+                    })
+            logger.info(f"Loaded {len(tools)} tools from registry (excluded: {exclude_tools})")
             return tools
         except Exception as e:
             logger.warning(f"Failed to load tools from registry: {e}")
@@ -409,6 +414,11 @@ class ToolResultFormatter:
                     output = output[:200] + "... (truncated)"
                 return f"✅ **Success**: Command executed\nOutput: {output}\n"
             
+            elif tool_name == 'generate_image' and isinstance(data, dict):
+                # For image generation, return full result as JSON for the widget to parse
+                # The widget needs imageData to display the image
+                return f"✅ **Success**: {json.dumps(data)}\n"
+            
             else:
                 # For other tools, show data as-is but truncate if too long
                 data_str = str(data)
@@ -427,16 +437,18 @@ class OpenAIStreamingHandler:
     tool call accumulation, execution, and conversation continuation.
     """
     
-    def __init__(self, client, model_name: str):
+    def __init__(self, client, model_name: str, exclude_tools: List[str] = None):
         """
         Initialize the streaming handler.
         
         Args:
             client: OpenAI client instance
             model_name: Model name to use for completions
+            exclude_tools: Optional list of tool names to exclude (e.g., for API compatibility)
         """
         self.client = client
         self.model_name = model_name
+        self.exclude_tools = exclude_tools or []
         self.tool_executor = ToolExecutor()
         self.tool_loader = ToolDefinitionLoader()
         self.formatter = ToolResultFormatter()
@@ -556,8 +568,8 @@ class OpenAIStreamingHandler:
             except Exception as ex:
                 logger.debug("OpenAIStreamingHandler: preview generation failed: %s", ex)
 
-            # Get available tools
-            tools = self.tool_loader.get_openai_tools()
+            # Get available tools (excluding incompatible ones)
+            tools = self.tool_loader.get_openai_tools(exclude_tools=self.exclude_tools)
             
             # Start the conversation loop for tool calls
             continue_round = 0
@@ -693,6 +705,39 @@ class OpenAIStreamingHandler:
         
         return collected_chunks, tool_calls_list, finish_reason
     
+    def _sanitize_tool_result_for_llm(self, tool_name: str, result: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Sanitize tool results before sending to LLM.
+        
+        Removes large binary data (like base64 images) that would:
+        1. Waste tokens
+        2. Cause API errors with providers that don't support binary data
+        
+        Args:
+            tool_name: Name of the tool that was executed
+            result: Raw tool result
+            
+        Returns:
+            Sanitized result safe for LLM consumption
+        """
+        # For image generation, strip out the base64 image data
+        if tool_name == 'generate_image' and result.get('success'):
+            sanitized = {
+                "success": True,
+                "data": {
+                    "message": result.get('data', {}).get('message', 'Image generated successfully'),
+                    "prompt": result.get('data', {}).get('prompt', ''),
+                    "filePath": result.get('data', {}).get('filePath', ''),
+                    "model": result.get('data', {}).get('model', ''),
+                    "timestamp": result.get('data', {}).get('timestamp', '')
+                    # Intentionally omit imageData, imageUrl to keep response small
+                }
+            }
+            return sanitized
+        
+        # For other tools, return as-is
+        return result
+    
     def _handle_tool_calls(self, messages: List[Dict], collected_chunks: List[str], 
                           tool_calls_list: List[Dict]) -> AsyncGenerator[str, None]:
         """
@@ -735,11 +780,14 @@ class OpenAIStreamingHandler:
                 # Format and display result
                 yield self.formatter.format_tool_result(tool_name, result)
                 
+                # Sanitize result for LLM (remove large binary data like images)
+                sanitized_result = self._sanitize_tool_result_for_llm(tool_name, result)
+                
                 # Add tool result to conversation
                 tool_message = {
                     "role": "tool",
                     "tool_call_id": tc['id'],
-                    "content": json.dumps(result)
+                    "content": json.dumps(sanitized_result)
                 }
                 messages.append(tool_message)
                 

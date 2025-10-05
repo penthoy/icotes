@@ -46,6 +46,11 @@ class AgentRegistry:
         builtin_path = Path(__file__).parent
         paths.append(str(builtin_path))
         
+        # Built-in agents subfolder path (backend/icpy/agent/agents/)
+        agents_subfolder = builtin_path / "agents"
+        if agents_subfolder.exists():
+            paths.append(str(agents_subfolder))
+        
         # Workspace plugins path (relative to project root, not backend dir)
         project_root = Path(__file__).parent.parent.parent.parent  # Go up from backend/icpy/agent/
         workspace_plugins = project_root / "workspace" / ".icotes" / "plugins"
@@ -154,8 +159,11 @@ class AgentRegistry:
         try:
             # Build module path
             if agent_path.endswith('icpy/agent'):
-                # Built-in agents
+                # Built-in agents in main folder
                 full_module_name = f"icpy.agent.{module_name}"
+            elif agent_path.endswith('icpy/agent/agents'):
+                # Built-in agents in agents subfolder
+                full_module_name = f"icpy.agent.agents.{module_name}"
             else:
                 # Workspace/custom agents - use spec loading
                 module_file = Path(agent_path) / f"{module_name}.py"
