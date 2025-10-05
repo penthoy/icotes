@@ -79,6 +79,10 @@ const ImageGenerationWidget: React.FC<ImageGenerationWidgetProps> = ({
         data.imageData = output.data || output.imageData || output.image_data;
         data.timestamp = output.timestamp || Date.now();
         data.status = 'success';
+          // Fallback: if prompt not set from input, try output
+          if (!data.prompt && (output.prompt || output.description)) {
+            data.prompt = output.prompt || output.description;
+          }
       } catch (e) {
         console.warn('Failed to parse image generation output:', e);
       }

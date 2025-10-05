@@ -1,21 +1,22 @@
 """
-Nano Banana Agent - Image Generation AI Agent
+Nano Banana Agent - Image Generation and Editing AI Agent
 
 This agent uses Google's Gemini 2.5 Flash Image Preview ("Nano Banana") model
-via OpenRouter for direct image generation from text descriptions.
+directly via Google's native API for image generation and editing.
 
-The model natively generates images as part of its response - no separate
+The model natively generates and edits images as part of its response - no separate
 image generation API needed!
 
 Capabilities:
 1. Text-to-image generation using Gemini's native capabilities
-2. Understanding complex image descriptions
-3. Multi-turn conversations about images
-4. Image generation with contextual understanding
-5. Generates images directly in base64 format
+2. Image editing (modify existing images based on text descriptions)
+3. Image understanding and analysis
+4. Multi-turn conversations about images
+5. Image generation with contextual understanding
+6. Multimodal input support (text + images)
+7. Generates images directly in base64 format
 
-Model: google/gemini-2.5-flash-image-preview (Nano Banana)
-Pricing: $0.30/M input, $2.50/M output, $0.03/K output imgs
+Model: gemini-2.5-flash-image-preview (Google Native API)
 """
 
 import json
@@ -28,8 +29,8 @@ from typing import Dict, Any, List
 # Configure logging
 logger = logging.getLogger(__name__)
 
-# Model configuration - using Gemini for native image generation
-AGENT_MODEL_ID = "google/gemini-2.5-flash-image-preview"
+# Model configuration - using Google's native Gemini model
+AGENT_MODEL_ID = "gemini-2.5-flash-image-preview"
 
 # Import required modules and backend helpers
 try:
@@ -51,8 +52,8 @@ try:
     
     sys.path.append(backend_path)
 
-    # Import OpenRouter client and streaming handler + shared helpers
-    from icpy.agent.clients import get_openrouter_client
+    # Import native Google SDK for image generation
+    import google.generativeai as genai
     from icpy.agent.helpers import (
         create_standard_agent_metadata,
         create_environment_reload_function,
@@ -68,7 +69,7 @@ try:
     # Agent metadata using helper
     AGENT_METADATA = create_standard_agent_metadata(
         name="NanoBananaAgent",
-        description="AI image generation agent powered by Google's Gemini 2.5 Flash Image Preview (Nano Banana)",
+        description="AI image generation agent powered by Google's Gemini native API",
         version="1.0.0",
         author="ICOTES",
         model=AGENT_MODEL_ID,
@@ -94,7 +95,7 @@ except ImportError as e:
     # Fallback metadata if helpers are not available
     MODEL_NAME = AGENT_MODEL_ID
     AGENT_NAME = "NanoBananaAgent"
-    AGENT_DESCRIPTION = "AI image generation agent powered by Google's Gemini 2.5 Flash Image Preview (Nano Banana)"
+    AGENT_DESCRIPTION = "AI image generation agent powered by Google's Gemini native API"
     AGENT_VERSION = "1.0.0"
     AGENT_AUTHOR = "ICOTES"
 
@@ -122,11 +123,8 @@ def get_tools():
     """
     Get available tools for NanoBananaAgent.
     
-    Note: Gemini 2.5 Flash Image Preview does NOT support tool calling.
-    It generates images directly as part of its response content.
-    
-    We return an empty tools list for now. Future versions may include
-    file operations or other non-generation tools if needed.
+    Note: Gemini 2.0 Flash generates images directly in response.
+    We return an empty tools list for this specialized agent.
     """
     tools = []
     
@@ -134,110 +132,64 @@ def get_tools():
     return tools
 
 
-def extract_image_from_response(response):
+def extract_image_from_native_response(response):
     """
-    Extract base64 image data from Gemini's response.
+    Extract binary image data from native Google SDK response.
     
-    The OpenAI SDK stores Gemini images in message.images field (not content).
-    The images field contains a list of image objects with base64 data.
+    Native SDK returns images in response.parts with inline_data containing
+    binary image bytes (not base64 encoded).
+    
+    Returns: tuple of (image_bytes, mime_type) or (None, None)
     """
     try:
-        # Get the message
-        if not hasattr(response, 'choices') or not response.choices:
-            logger.error("No choices in response")
-            return None
-            
-        message = response.choices[0].message
+        if not hasattr(response, 'parts'):
+            logger.error("Native response has no parts")
+            return None, None
         
-        # Check if message has images field
-        if not hasattr(message, 'images'):
-            logger.error("Message has no images field")
-            return None
-            
-        images = message.images
+        # Iterate through parts to find image data
+        for part in response.parts:
+            if hasattr(part, 'inline_data') and part.inline_data:
+                inline = part.inline_data
+                if hasattr(inline, 'data') and inline.data:
+                    mime_type = getattr(inline, 'mime_type', 'image/png')
+                    logger.info(f"Found inline_data with {len(inline.data)} bytes, mime={mime_type}")
+                    return inline.data, mime_type
         
-        # Images should be a list
-        if not isinstance(images, list):
-            logger.error(f"Images field is not a list: {type(images)}")
-            return None
-            
-        # Check if we have at least one image
-        if len(images) == 0:
-            logger.error("Images list is empty")
-            return None
-            
-        # Get the first image
-        # The image might be a dict with different structures or might have direct data access
-        first_image = images[0]
-        
-        # Try to extract base64 data
-        if isinstance(first_image, dict):
-            # Try image_url format first (actual API response)
-            if 'image_url' in first_image:
-                img_url_field = first_image['image_url']
-                if isinstance(img_url_field, dict) and 'url' in img_url_field:
-                    data = img_url_field['url']
-                    if data and data.startswith('data:image/'):
-                        return data
-                elif isinstance(img_url_field, str) and img_url_field.startswith('data:image/'):
-                    return img_url_field
-            
-            # Try image_data format (backward compatibility)
-            if 'image_data' in first_image:
-                img_data_field = first_image['image_data']
-                if isinstance(img_data_field, dict) and 'data' in img_data_field:
-                    data = img_data_field['data']
-                    if data and data.startswith('data:image/'):
-                        return data
-                elif isinstance(img_data_field, str) and img_data_field.startswith('data:image/'):
-                    return img_data_field
-            
-            # Try direct 'data' key (another fallback)
-            data = first_image.get('data', '')
-            if data and data.startswith('data:image/'):
-                return data
-                
-        elif isinstance(first_image, str):
-            if first_image.startswith('data:image/'):
-                return first_image
-        
-        # If image is an object, try to access data attribute
-        if hasattr(first_image, 'data'):
-            data = first_image.data
-            if data and data.startswith('data:image/'):
-                return data
-                
-        logger.error(f"Could not extract base64 data from image: {type(first_image)}")
-        return None
+        logger.warning("No inline_data found in any response parts")
+        return None, None
         
     except Exception as e:
-        logger.error(f"Error extracting image from response: {e}")
-        return None
+        logger.error(f"Error extracting image from native response: {e}")
+        import traceback
+        traceback.print_exc()
+        return None, None
 
 
 def chat(message, history):
     """
-    Nano Banana Agent streaming chat function with native image generation.
+    Nano Banana Agent streaming chat function with native image generation and editing.
 
-    Uses Google's Gemini 2.5 Flash Image Preview model which generates images
-    directly in the response content (no tool calling needed).
+    Uses Google's Gemini model which generates images directly in the response content
+    and can also understand input images for editing tasks.
 
     Args:
-        message: str - User message
+        message: str or dict - User message (can be multimodal with images)
         history: List[Dict] or str (JSON) - Conversation history
 
     Yields:
         str - Response chunks for streaming, including widget data for images
     """
     if not DEPENDENCIES_AVAILABLE:
-        yield "🚫 Dependencies not available for NanoBananaAgent. Please check your OpenRouter configuration."
+        yield "🚫 Dependencies not available for NanoBananaAgent. Please check your Google API configuration."
         return
 
-    # System prompt for Gemini-native image generation
-    base_system_prompt = """You are Nano Banana 🍌, an advanced AI image generation assistant powered by Google's Gemini 2.5 Flash Image Preview model.
+    # System prompt for Gemini-native image generation and editing
+    base_system_prompt = """You are Nano Banana 🍌, an advanced AI image generation and editing assistant powered by Google's Gemini.
 
-🎨 Your Core Capability:
-You can GENERATE IMAGES DIRECTLY as part of your response! When users ask for images, you create them naturally without needing any external tools.
+🎨 Your Core Capabilities:
+1. **Image Generation**: You can GENERATE IMAGES DIRECTLY as part of your response!
+2. **Image Editing**: You can SEE and EDIT images provided by users!
+3. **Image Understanding**: You can analyze and describe images in detail.
 
 📝 How Image Generation Works:
 - When a user requests an image, simply generate it directly
@@ -245,9 +197,17 @@ You can GENERATE IMAGES DIRECTLY as part of your response! When users ask for im
 - You can create photorealistic, artistic, or stylized images
 - You understand complex scene descriptions and compositions
 
-💡 Best Practices:
+�️ How Image Editing Works:
+- When a user provides an image with an edit request (e.g., "add a hat to this cat"), you can:
+  1. Understand what's in the image
+  2. Apply the requested modifications
+  3. Generate a new version with the changes
+- You maintain the style and context of the original while applying edits
+
+�💡 Best Practices:
 - Listen carefully to what the user wants
 - Be creative and specific in your generations
+- For edits, preserve the original style unless asked otherwise
 - Consider composition, lighting, colors, and style
 - You can have multi-turn conversations about the images
 - Ask clarifying questions if needed
@@ -255,18 +215,27 @@ You can GENERATE IMAGES DIRECTLY as part of your response! When users ask for im
 Example Requests:
 - "Create a sunset over mountains"
 - "Draw a cute robot"
-- "Generate a cyberpunk city scene"
-- "Make a logo for my coffee shop"
+- "Add a hat to this cat" (with image)
+- "Make this photo look like a painting" (with image)
+- "Change the background to a beach" (with image)
 
-Always be helpful, creative, and focused on creating images that match the user's vision!"""
+Always be helpful, creative, and focused on creating or editing images that match the user's vision!"""
 
     # Add context information to the system prompt
     system_prompt = add_context_to_agent_prompt(base_system_prompt)
 
     try:
-        # Initialize OpenRouter client
-        client = get_openrouter_client()
-
+        # Initialize native Google SDK
+        api_key = os.environ.get("GOOGLE_API_KEY")
+        if not api_key:
+            yield "🚫 GOOGLE_API_KEY not set. Please configure your Google API key."
+            return
+        
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel(MODEL_NAME)
+        
+        logger.info(f"NanoBananaAgent: Initialized native SDK with model {MODEL_NAME}")
+        
         # Handle JSON string history (gradio compatibility)
         if isinstance(history, str):
             try:
@@ -277,111 +246,116 @@ Always be helpful, creative, and focused on creating images that match the user'
         if not isinstance(history, list):
             logger.warning(f"Unexpected history type {type(history)}; defaulting to []")
             history = []
-
-        # --- Sanitization Helpers -------------------------------------------------
-        def _sanitize_content(content: str) -> str:
-            """Remove/placeholder large embedded image data from prior assistant messages.
-
-            We replace:
-              1. data:image/...;base64,<very long base64>
-              2. JSON "imageData": "<very long base64>" values
-
-            This prevents context length explosions when prior assistant
-            messages containing full image base64 are echoed back to the model.
-            """
-            if not content or not isinstance(content, str):
-                return content
-
-            original_len = len(content)
-
-            # Pattern 1: data URI (keep mime, strip payload)
-            content = re.sub(
-                r"data:image/([a-zA-Z0-9.+-]+);base64,[A-Za-z0-9+/=\n\r]+",
-                r"data:image/\1;base64,[OMITTED]",
-                content,
-            )
-
-            # Pattern 2: "imageData": "...." (allow small ones < 2k chars)
-            def _image_data_repl(match):
-                b64 = match.group(2)
-                if len(b64) <= 2048:
-                    return match.group(0)  # keep small inline icons, etc.
-                return f'"imageData": "[OMITTED_{len(b64)}chars]"'
-
-            content = re.sub(
-                r'("imageData"\s*:\s*")([A-Za-z0-9+/=\n\r]+)(")',
-                lambda m: _image_data_repl(m),
-                content,
-            )
-
-            # Extreme fallback: if message still huge (>150k chars) just truncate middle
-            MAX_LEN = 150_000
-            if len(content) > MAX_LEN:
-                head = content[:50_000]
-                tail = content[-50_000:]
-                content = head + f"\n...[OMITTED_{len(content)-100_000}_CHARS]...\n" + tail
-
-            if len(content) != original_len:
-                logger.debug(
-                    f"NanoBananaAgent: Sanitized message content from {original_len} to {len(content)} chars"
-                )
-            return content
-
-        # Build sanitized history for model input (do NOT mutate original history object)
-        sanitized_history: List[Dict[str, Any]] = []
-        for h in history or []:
-            if isinstance(h, dict) and 'role' in h and 'content' in h:
-                sanitized_history.append({
-                    'role': h['role'],
-                    'content': _sanitize_content(h.get('content', ''))
-                })
-            else:
-                # Skip malformed entries silently
-                continue
-
-        # Prepend system prompt ONLY to first user message (embed as part of content)
-        if not sanitized_history:
-            enhanced_message = f"{system_prompt}\n\nUser request: {message}"
+        
+        # If message is empty, try to get the latest user message from history
+        if not message or (isinstance(message, str) and not message.strip()):
+            logger.info("NanoBananaAgent: Empty message received, checking history for latest user message")
+            if history:
+                # Get the last user message from history
+                for hist_item in reversed(history):
+                    if isinstance(hist_item, dict) and hist_item.get("role") == "user":
+                        message = hist_item.get("content", "")
+                        logger.info(f"NanoBananaAgent: Retrieved message from history: {str(message)[:100]}")
+                        break
+        
+        # Process message - it may be multimodal (list with text and images)
+        text_prompt = ""
+        input_images = []
+        
+        if isinstance(message, list):
+            # Multimodal content - extract text and images
+            for item in message:
+                if isinstance(item, dict):
+                    if item.get("type") == "text":
+                        text_prompt = item.get("text", "")
+                    elif item.get("type") == "image_url":
+                        # Extract image URL (can be data URI or regular URL)
+                        img_data = item.get("image_url", {})
+                        if isinstance(img_data, dict):
+                            url = img_data.get("url", "")
+                        else:
+                            url = img_data if isinstance(img_data, str) else ""
+                        
+                        if url:
+                            # Handle data URI (base64 encoded images)
+                            if url.startswith("data:image/"):
+                                try:
+                                    # Extract base64 data after comma
+                                    base64_data = url.split(",", 1)[1] if "," in url else url
+                                    image_bytes = base64.b64decode(base64_data)
+                                    
+                                    # Use PIL to create image object for Gemini
+                                    from PIL import Image
+                                    import io
+                                    pil_image = Image.open(io.BytesIO(image_bytes))
+                                    input_images.append(pil_image)
+                                    logger.info(f"NanoBananaAgent: Loaded image from data URI ({len(image_bytes)} bytes)")
+                                except Exception as e:
+                                    logger.error(f"Error decoding image data URI: {e}")
+                            else:
+                                # Regular URL - Gemini can handle URLs directly
+                                input_images.append(url)
+                                logger.info(f"NanoBananaAgent: Added image URL: {url[:50]}...")
+                elif isinstance(item, str):
+                    text_prompt += item
+        elif isinstance(message, str):
+            text_prompt = message
         else:
-            enhanced_message = message
-
-        user_msg = {"role": "user", "content": enhanced_message}
-        messages_for_model = [*sanitized_history, user_msg]
-
-        # The original (unsanitized) history is preserved implicitly by the caller / UI; we do not echo
-        # large base64 blobs back to the model now.
-        messages = messages_for_model  # keep variable name expected below
-
-        logger.info("NanoBananaAgent: Starting chat with native image generation")
+            text_prompt = str(message)
         
-        # Get the FULL response (NOT streaming) because Gemini images come in message.images
-        # after the stream completes, not during streaming
-        response = client.chat.completions.create(
-            model=MODEL_NAME,
-            messages=messages,
-            stream=False,  # IMPORTANT: Must be False to get images in message.images
-        )
-        
-        logger.info(f"NanoBananaAgent: Received response with {len(response.choices)} choices")
-        
-        if not response.choices:
-            yield "🚫 No response from model"
+        # Validate that we have a prompt
+        if not text_prompt or not text_prompt.strip():
+            logger.error("NanoBananaAgent: Empty prompt received")
+            yield "🚫 Error: Empty prompt. Please provide a description of the image you want to generate."
             return
-            
-        message_obj = response.choices[0].message
-        text_content = message_obj.content or ""
         
-        # First, yield the text content
-        if text_content:
-            yield text_content
-            logger.info(f"NanoBananaAgent: Yielded text content ({len(text_content)} chars)")
-        
-        # Check for images in message.images field (this is where Gemini puts them!)
-        if hasattr(message_obj, 'images') and message_obj.images:
-            logger.info(f"NanoBananaAgent: Found {len(message_obj.images)} images in message.images")
+        # Build the prompt content for Gemini
+        if input_images:
+            # Image editing/analysis mode
+            logger.info(f"NanoBananaAgent: Processing {len(input_images)} input image(s) with prompt: {text_prompt[:100]}")
             
-            # Extract image data using our helper function
-            image_data_uri = extract_image_from_response(response)
+            # Build multimodal prompt: system context + user request + images
+            full_prompt = f"""{system_prompt}
+
+User request: {text_prompt}
+
+Please analyze the provided image(s) and fulfill the user's request. If they want edits, generate a new image with those changes applied."""
+            
+            # Gemini expects content as list: [text, image, text, ...] or [image, text]
+            prompt_parts = [full_prompt]
+            prompt_parts.extend(input_images)
+            
+            response = model.generate_content(prompt_parts)
+        else:
+            # Text-only image generation mode
+            full_prompt = f"""{system_prompt}
+
+User request: {text_prompt}
+
+Please create an image that exactly matches what the user described. Be precise and creative."""
+            
+            logger.info(f"NanoBananaAgent: Starting native image generation for: {text_prompt[:100]}")
+            response = model.generate_content(full_prompt)
+        
+        logger.info("NanoBananaAgent: Received response from native SDK")
+        
+        # Extract text content first (if any)
+        try:
+            if hasattr(response, 'text') and response.text:
+                text_content = response.text
+                yield text_content + "\n\n"
+                logger.info(f"NanoBananaAgent: Yielded text content ({len(text_content)} chars)")
+        except Exception as text_err:
+            logger.debug(f"No text content in response: {text_err}")
+        
+        # Extract image data from native response
+        image_bytes, mime_type = extract_image_from_native_response(response)
+        
+        if image_bytes and len(image_bytes) > 0:
+            logger.info(f"NanoBananaAgent: Successfully extracted image ({len(image_bytes)} bytes, {mime_type})")
+            
+            # Convert binary image to base64 data URI
+            image_data_uri = f"data:{mime_type};base64,{base64.b64encode(image_bytes).decode('utf-8')}"
             
             if image_data_uri:
                 logger.info(f"NanoBananaAgent: Successfully extracted image data ({len(image_data_uri)} chars)")
@@ -400,8 +374,11 @@ Always be helpful, creative, and focused on creating images that match the user'
                         # Generate filename with timestamp
                         import time
                         timestamp = int(time.time())
-                        # Sanitize prompt for filename
-                        safe_prompt = re.sub(r'[^\w\s-]', '', message[:30]).strip().replace(' ', '_')
+                        # Sanitize prompt for filename (use text_prompt which is always a string)
+                        prompt_for_filename = text_prompt if text_prompt else "image"
+                        safe_prompt = re.sub(r'[^\w\s-]', '', prompt_for_filename[:30]).strip().replace(' ', '_')
+                        if not safe_prompt:
+                            safe_prompt = "image"
                         filename = f"nano_banana_{safe_prompt}_{timestamp}.png"
                         
                         # Save to workspace folder (parent of .icotes)
@@ -424,8 +401,6 @@ Always be helpful, creative, and focused on creating images that match the user'
                     import traceback
                     traceback.print_exc()
                 
-                # Use the standard tool call format that the frontend understands
-                # This follows the same pattern as other tools (file operations, etc.)
                 # Provide raw base64 (without data URI prefix) to reduce duplication.
                 # Still include a data URI variant if needed later (can be reconstructed client-side).
                 raw_b64 = image_data_uri.split(',', 1)[1] if ',' in image_data_uri else image_data_uri
@@ -433,18 +408,25 @@ Always be helpful, creative, and focused on creating images that match the user'
                     "success": True,
                     "imageData": raw_b64,  # raw base64 ONLY
                     "mimeType": "image/png",
-                    "prompt": message[:200],
+                    "prompt": text_prompt[:200],  # Use text_prompt string
                     "filePath": saved_file_path,
                     "note": "imageData truncated from history in future turns to control context size"
                 }
                 
                 # Format as a tool execution block that the frontend parser recognizes
+                # Important: emit input with prompt so widget displays it
+                tool_input = {
+                    "prompt": text_prompt,  # Use text_prompt string for display
+                    "size": "1024x1024",
+                    "style": "natural"
+                }
+                
                 yield "\n\n🔧 **Executing tools...**\n\n"
-                yield f"📋 **generate_image**: {json.dumps({'prompt': message[:200]})}\n"
+                yield f"📋 **generate_image**: {json.dumps(tool_input)}\n"
                 yield f"✅ **Success**: {json.dumps(tool_call_output)}\n"
                 yield "\n🔧 **Tool execution complete. Continuing...**\n\n"
                 
-                logger.info("NanoBananaAgent: Yielded image tool call")
+                logger.info("NanoBananaAgent: Yielded image tool call with input")
             else:
                 logger.warning("NanoBananaAgent: Could not extract image data")
         else:
@@ -453,10 +435,10 @@ Always be helpful, creative, and focused on creating images that match the user'
         logger.info("NanoBananaAgent: Chat completed")
 
     except Exception as e:
-        logger.error(f"Error in NanoBananaAgent streaming: {e}")
+        logger.error(f"Error in NanoBananaAgent: {e}")
         import traceback
         traceback.print_exc()
-        yield f"🚫 Error processing request: {str(e)}\n\nPlease check your OpenRouter API key configuration."
+        yield f"🚫 Error processing request: {str(e)}\n\nPlease check your Google API key configuration and ensure google-generativeai is installed."
 
 
 if __name__ == "__main__":

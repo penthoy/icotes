@@ -62,7 +62,9 @@ def get_openai_client():
 
 def get_google_client():
     """
-    Initializes and returns an OpenAI client configured for Google's API.
+    Initializes and returns an OpenAI client configured for Google's Gemini API.
+    
+    Uses Google's Gemini API endpoint which is OpenAI-compatible.
     """
     google_api_key = os.getenv("GOOGLE_API_KEY")
     if not google_api_key:
@@ -70,7 +72,7 @@ def get_google_client():
 
     return OpenAI(
         api_key=google_api_key,
-        base_url="https://api.google.com/v1",
+        base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
     )
 
 
