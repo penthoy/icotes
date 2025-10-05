@@ -361,6 +361,54 @@ class ToolDefinitionLoader:
     def get_tool_names(self) -> List[str]:
         """Get list of all available tool names."""
         return [tool.name for tool in self.registry.all()]
+    
+    def get_openai_tools_compact(self, exclude_tools: List[str] = None) -> List[Dict[str, Any]]:
+        """Get tools with minimal descriptions for context-limited providers.
+        
+        This version strips verbose descriptions and examples from parameter docs
+        to save tokens while preserving full functionality.
+        
+        Args:
+            exclude_tools: Optional list of tool names to exclude
+        
+        Returns:
+            List of compact tool definitions
+        """
+        tools = []
+        exclude_tools = exclude_tools or []
+        
+        try:
+            for tool in self.registry.all():
+                if tool.name not in exclude_tools:
+                    # Get base tool definition
+                    func_def = tool.to_openai_function()
+                    
+                    # Compact the description (keep first sentence only)
+                    if 'description' in func_def:
+                        desc = func_def['description']
+                        first_sentence = desc.split('.')[0] + '.' if '.' in desc else desc
+                        func_def['description'] = first_sentence[:100]  # Cap at 100 chars
+                    
+                    # Compact parameter descriptions
+                    if 'parameters' in func_def and 'properties' in func_def['parameters']:
+                        for param_name, param_def in func_def['parameters']['properties'].items():
+                            if isinstance(param_def, dict) and 'description' in param_def:
+                                desc = param_def['description']
+                                # Keep first sentence only, max 80 chars
+                                first_sentence = desc.split('.')[0] + '.' if '.' in desc else desc
+                                param_def['description'] = first_sentence[:80]
+                    
+                    tools.append({
+                        "type": "function",
+                        "function": func_def
+                    })
+            
+            logger.info(f"Loaded {len(tools)} compact tools (excluded: {exclude_tools})")
+            return tools
+        except Exception as e:
+            logger.warning(f"Failed to load compact tools: {e}")
+            # Fallback to regular tools
+            return self.get_openai_tools(exclude_tools)
 
 
 class ToolResultFormatter:
@@ -443,7 +491,7 @@ class OpenAIStreamingHandler:
     tool call accumulation, execution, and conversation continuation.
     """
     
-    def __init__(self, client, model_name: str, exclude_tools: List[str] = None):
+    def __init__(self, client, model_name: str, exclude_tools: List[str] = None, use_compact_tools: bool = False):
         """
         Initialize the streaming handler.
         
@@ -451,10 +499,12 @@ class OpenAIStreamingHandler:
             client: OpenAI client instance
             model_name: Model name to use for completions
             exclude_tools: Optional list of tool names to exclude (e.g., for API compatibility)
+            use_compact_tools: If True, use compact tool schemas to save tokens (for context-limited providers)
         """
         self.client = client
         self.model_name = model_name
         self.exclude_tools = exclude_tools or []
+        self.use_compact_tools = use_compact_tools
         self.tool_executor = ToolExecutor()
         self.tool_loader = ToolDefinitionLoader()
         self.formatter = ToolResultFormatter()
@@ -575,7 +625,10 @@ class OpenAIStreamingHandler:
                 logger.debug("OpenAIStreamingHandler: preview generation failed: %s", ex)
 
             # Get available tools (excluding incompatible ones)
-            tools = self.tool_loader.get_openai_tools(exclude_tools=self.exclude_tools)
+            if self.use_compact_tools:
+                tools = self.tool_loader.get_openai_tools_compact(exclude_tools=self.exclude_tools)
+            else:
+                tools = self.tool_loader.get_openai_tools(exclude_tools=self.exclude_tools)
             
             # Start the conversation loop for tool calls
             continue_round = 0
@@ -595,14 +648,10 @@ class OpenAIStreamingHandler:
                 api_params = {
                     "model": self.model_name,
                     "messages": conv,
+                    "tools": tools if tools else None,
+                    "tool_choice": "auto" if tools else None,
                     "stream": True
                 }
-                
-                # Only add tools and tool_choice if we actually have tools
-                # Some providers (like Groq) reject tool_choice when tools array is empty or null
-                if tools:
-                    api_params["tools"] = tools
-                    api_params["tool_choice"] = "auto"
                 
                 # Add the appropriate token parameter
                 if max_tokens is not None:

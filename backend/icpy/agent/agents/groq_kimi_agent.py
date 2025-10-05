@@ -44,15 +44,16 @@ try:
     # Client + helpers
     from icpy.agent.clients import get_groq_client
     from icpy.agent.helpers import (
-        create_standard_agent_metadata,
-        create_environment_reload_function,
-        get_available_tools_summary,
-        OpenAIStreamingHandler,
-        add_context_to_agent_prompt,
-        flatten_message_content,
-        normalize_history,
-        BASE_SYSTEM_PROMPT_TEMPLATE,
-    )
+            create_standard_agent_metadata,
+            create_environment_reload_function,
+            get_available_tools_summary,
+            OpenAIStreamingHandler,
+            add_context_to_agent_prompt,
+            flatten_message_content,
+            normalize_history,
+            BASE_SYSTEM_PROMPT_TEMPLATE,
+            ToolDefinitionLoader,  # For minimal tool name list
+        )
 
     DEPENDENCIES_AVAILABLE = True
     logger.info("All dependencies available for GroqKimiAgent")
@@ -103,16 +104,27 @@ def chat(message: str, history: List[Dict[str, str]]) -> Generator[str, None, No
         yield "🚫 GroqKimiAgent dependencies are not available. Please check your setup and try again."
         return
 
-    # Build base system prompt with current tools summary and add dynamic context info
-    tools_summary = get_available_tools_summary()
-    base_system_prompt = BASE_SYSTEM_PROMPT_TEMPLATE.format(AGENT_NAME=AGENT_NAME, TOOLS_SUMMARY=tools_summary)
-    system_prompt = add_context_to_agent_prompt(base_system_prompt)
+    # Build a very compact system prompt to avoid Groq context limit errors.
+    # Note: We keep the system prompt minimal to save tokens, but we MUST enable tools
+    # in the API call so the model can properly format tool calls.
+    system_prompt = (
+        f"You are {AGENT_NAME}, a helpful AI assistant. "
+        "When you need to perform actions like generating images, reading files, or executing code, "
+        "use the available tools. Keep responses clear and concise."
+    )
 
     try:
         client = get_groq_client()
 
         # Normalize history (handles JSON string input and content flattening)
         normalized_history = normalize_history(history)
+        
+        # Aggressively trim history. Keep only last 3 user/assistant exchange pairs (≈6 msgs)
+        if len(normalized_history) > 6:
+            logger.info(
+                f"GroqKimiAgent: Trimming history from {len(normalized_history)} to 6 messages for Groq compact mode"
+            )
+            normalized_history = normalized_history[-6:]
 
         # Base conversation messages
         system_message = {"role": "system", "content": system_prompt}
@@ -146,9 +158,17 @@ def chat(message: str, history: List[Dict[str, str]]) -> Generator[str, None, No
         except Exception:
             pass
 
-        handler = OpenAIStreamingHandler(client, MODEL_NAME)
-        logger.info("GroqKimiAgent: Starting chat with tools using Groq client")
-        yield from handler.stream_chat_with_tools(safe_messages)
+        # Use compact tools mode to save tokens while preserving full functionality
+        # IMPORTANT: We must NOT exclude tools, otherwise the model will output raw tool call syntax
+        # (like <|tool_calls_section_begin|>) instead of properly formatted OpenAI-compatible tool calls.
+        # To manage Groq's strict context limits, we:
+        # 1. Keep system prompt minimal (done above)
+        # 2. Trim history aggressively (done above to 6 messages)
+        # 3. Use compact tool schemas (strips verbose descriptions to save ~30-40% tokens)
+        # 4. Use moderate max_tokens (800)
+        handler = OpenAIStreamingHandler(client, MODEL_NAME, use_compact_tools=True)
+        logger.info("GroqKimiAgent: Starting chat with tools enabled (compact mode)")
+        yield from handler.stream_chat_with_tools(safe_messages, max_tokens=800, auto_continue=False)
         logger.info("GroqKimiAgent: Chat completed successfully")
 
     except Exception as e:
