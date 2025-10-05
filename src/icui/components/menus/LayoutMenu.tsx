@@ -76,7 +76,7 @@ export const LayoutMenu: React.FC<LayoutMenuProps> = ({
   const panelCreationOptions: PanelCreationOption[] = [
     {
       type: 'editor',
-      label: 'Code Editor',
+      label: 'Editor',
       description: 'Create a new code editor panel',
       icon: '📝'
     },

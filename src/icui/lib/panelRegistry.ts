@@ -559,7 +559,7 @@ export class CorePanelMetadata {
     return {
       id: 'core-editor',
       type: 'editor',
-      displayName: 'Code Editor',
+      displayName: 'Editor',
       description: 'Source code editor with syntax highlighting',
       icon: '📝',
       category: 'development',

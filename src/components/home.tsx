@@ -544,7 +544,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
       {
         id: 'editor',
         type: 'editor',
-        title: 'Code Editor',
+        title: 'Editor',
         icon: '📝',
         closable: true,
         content: createEditorContent()
