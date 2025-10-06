@@ -61,7 +61,17 @@ const ImageGenerationWidget: React.FC<ImageGenerationWidgetProps> = ({
           ? JSON.parse(toolCall.input) 
           : toolCall.input;
         data.prompt = input.prompt || '';
-        data.size = input.size || '1024x1024';
+        
+        // Check for width/height parameters first (Phase 7 resolution control)
+        if (input.width || input.height) {
+          const w = input.width || 'auto';
+          const h = input.height || 'auto';
+          data.size = `${w}x${h}`;
+        } else {
+          // Fall back to size parameter or default
+          data.size = input.size || '1024x1024';
+        }
+        
         data.style = input.style || 'natural';
       } catch (e) {
         console.warn('Failed to parse image generation input:', e);
@@ -74,6 +84,11 @@ const ImageGenerationWidget: React.FC<ImageGenerationWidgetProps> = ({
         const output = typeof toolCall.output === 'string' 
           ? JSON.parse(toolCall.output) 
           : toolCall.output;
+        
+        // Override size from output if available (actual dimensions)
+        if (output.size) {
+          data.size = output.size;
+        }
         
         // Check if output has imageReference (Phase 1 storage optimization)
         if (output.imageReference) {
