@@ -34,20 +34,15 @@ export const ImageViewerPanel: React.FC<ImageViewerPanelProps> = ({ filePath, fi
   return (
     <div className="h-full w-full flex flex-col" style={{ backgroundColor: 'var(--icui-bg-primary)' }}>
       {/* Info Bar */}
-      <div className="flex items-center justify-between px-4 py-2 border-b" style={{ borderColor: 'var(--icui-border)', backgroundColor: 'var(--icui-bg-secondary)' }}>
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium" style={{ color: 'var(--icui-text-primary)' }}>
-            {fileName}
-          </span>
-          {imageDimensions && (
-            <span className="text-xs" style={{ color: 'var(--icui-text-secondary)' }}>
-              {imageDimensions.width} × {imageDimensions.height}
-            </span>
-          )}
-        </div>
-        <span className="text-xs" style={{ color: 'var(--icui-text-secondary)' }}>
-          {filePath}
+      <div className="flex items-center gap-2 px-4 py-2 border-b" style={{ borderColor: 'var(--icui-border)', backgroundColor: 'var(--icui-bg-secondary)' }}>
+        <span className="text-sm font-medium" style={{ color: 'var(--icui-text-primary)' }}>
+          {fileName}
         </span>
+        {imageDimensions && (
+          <span className="text-xs" style={{ color: 'var(--icui-text-secondary)' }}>
+            {imageDimensions.width} × {imageDimensions.height}
+          </span>
+        )}
       </div>
 
       {/* Image Display Area */}
