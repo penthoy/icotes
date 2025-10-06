@@ -1005,10 +1005,39 @@ export class ICUIBackendService extends EventEmitter {
     return session;
   }
 
-  /** Disconnect current hop */
-  async disconnectHop(): Promise<any> {
+  /** Disconnect current hop or a specific context */
+  async disconnectHop(contextId?: string): Promise<any> {
     await this.ensureInitialized();
-    const resp = await fetch(`${this.baseUrl}/api/hop/disconnect`, { method: 'POST' });
+    const body = contextId ? JSON.stringify({ context_id: contextId }) : undefined;
+    const resp = await fetch(`${this.baseUrl}/api/hop/disconnect`, { 
+      method: 'POST',
+      headers: body ? { 'Content-Type': 'application/json' } : undefined,
+      body,
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const session = await resp.json();
+    this.hopSession = this.normalizeHopSession(session);
+    this.emit('hop_status', this.hopSession);
+    return session;
+  }
+
+  /** List all active hop sessions */
+  async listHopSessions(): Promise<any[]> {
+    await this.ensureInitialized();
+    const resp = await fetch(`${this.baseUrl}/api/hop/sessions`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+    return data.sessions || [];
+  }
+
+  /** Hop to a different context */
+  async hopTo(contextId: string): Promise<any> {
+    await this.ensureInitialized();
+    const resp = await fetch(`${this.baseUrl}/api/hop/hop`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contextId }),
+    });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const session = await resp.json();
     this.hopSession = this.normalizeHopSession(session);

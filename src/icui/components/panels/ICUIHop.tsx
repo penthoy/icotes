@@ -19,21 +19,27 @@ const ICUIHop: React.FC<{ className?: string }> = ({ className = '' }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [session, setSession] = useState<any>(null);
+  const [sessions, setSessions] = useState<any[]>([]);  // All active sessions
   const [newCred, setNewCred] = useState<Partial<Credential>>({ port: 22, auth: 'password' });
   const [uploadedKeyId, setUploadedKeyId] = useState<string | null>(null);
-    const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [editCred, setEditCred] = useState<Partial<Credential>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [creds, status] = await Promise.all([
+      const [creds, status, allSessions] = await Promise.all([
         (backendService as any).listHopCredentials?.(),
         (backendService as any).getHopStatus?.(),
+        (backendService as any).listHopSessions?.().catch(() => []),
       ]);
       if (Array.isArray(creds)) setCredentials(creds);
       setSession(status || null);
+      if (Array.isArray(allSessions)) {
+        setSessions(allSessions);
+        console.log('[ICUIHop] Sessions loaded:', allSessions);
+      }
     } catch (e: any) {
       setError(e?.message || 'Failed to load hop data');
     } finally {
@@ -53,6 +59,13 @@ const ICUIHop: React.FC<{ className?: string }> = ({ className = '' }) => {
       }
       if (name === 'hop.status') {
         setSession(evt?.data);
+      }
+      if (name === 'hop.sessions') {
+        // Update session list when it changes
+        const sessions = evt?.data?.sessions;
+        if (Array.isArray(sessions)) {
+          setSessions(sessions);
+        }
       }
     };
     (backendService as any).on?.('hop_status', onHop);
@@ -79,6 +92,8 @@ const ICUIHop: React.FC<{ className?: string }> = ({ className = '' }) => {
       const session = await (backendService as any).connectHop?.(cred.id, opts);
       if (session?.status === 'connected' || session?.connected) {
         notificationService.success(`Connected to ${cred.username ? cred.username + '@' : ''}${cred.host}`);
+        // Reload to update sessions list
+        await load();
       } else if (session?.status === 'error') {
         notificationService.error(`Connection failed: ${session?.lastError || 'Unknown error'}`);
       } else {
@@ -92,12 +107,33 @@ const ICUIHop: React.FC<{ className?: string }> = ({ className = '' }) => {
     }
   };
 
-  const handleDisconnect = async () => {
+  const handleDisconnect = async (contextId?: string) => {
     try {
       setLoading(true);
-      await (backendService as any).disconnectHop?.();
+      await (backendService as any).disconnectHop?.(contextId);
+      notificationService.success(contextId ? `Disconnected from ${contextId}` : 'Disconnected');
+      // Reload to update sessions list
+      await load();
     } catch (e: any) {
       setError(e?.message || 'Disconnect failed');
+      notificationService.error(e?.message || 'Disconnect failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleHopTo = async (contextId: string) => {
+    try {
+      setLoading(true);
+      await (backendService as any).hopTo?.(contextId);
+      const ses = sessions.find(s => s.contextId === contextId);
+      const label = ses?.host ? `${ses.username || ''}@${ses.host}` : contextId;
+      notificationService.success(`Switched to ${label}`);
+      // Reload to update active session
+      await load();
+    } catch (e: any) {
+      setError(e?.message || 'Hop failed');
+      notificationService.error(e?.message || 'Hop failed');
     } finally {
       setLoading(false);
     }
@@ -228,6 +264,64 @@ const ICUIHop: React.FC<{ className?: string }> = ({ className = '' }) => {
         <div className="mb-2 text-red-400">{error}</div>
       )}
 
+      {/* Active Sessions */}
+      {sessions.length > 1 && (
+        <div className="border rounded mb-3" style={{ borderColor: 'var(--icui-border-subtle)' }}>
+          <div className="p-2 border-b" style={{ borderColor: 'var(--icui-border-subtle)' }}>Active Sessions</div>
+          <div className="max-h-40 overflow-auto">
+            {sessions.map((s) => {
+              const isActive = s.active || s.contextId === session?.contextId;
+              const isConnected = s.status === 'connected';
+              const displayName = s.contextId === 'local' ? 'Local' : `${s.username || ''}@${s.host || s.contextId}`;
+              
+              return (
+                <div 
+                  key={s.contextId} 
+                  className={`p-2 flex items-center justify-between hover:bg-[var(--icui-bg-tertiary)] ${isActive ? 'bg-[var(--icui-bg-tertiary)]' : ''}`}
+                >
+                  <div className="flex items-center space-x-2">
+                    <div
+                      className="w-2 h-2 rounded-full"
+                      style={{ backgroundColor: isConnected ? 'var(--icui-success)' : 'var(--icui-error)' }}
+                      title={isConnected ? 'Connected' : 'Disconnected'}
+                    />
+                    <span className={isActive ? 'font-medium' : ''}>
+                      {displayName}
+                      {isActive && <span className="ml-1 opacity-60">(active)</span>}
+                    </span>
+                    {s.cwd && s.cwd !== '/' && (
+                      <span className="opacity-60 text-xs">:{s.cwd}</span>
+                    )}
+                  </div>
+                  <div className="space-x-2">
+                    {!isActive && isConnected && (
+                      <button 
+                        className="px-2 py-1 rounded border text-xs" 
+                        onClick={() => handleHopTo(s.contextId)}
+                        disabled={loading}
+                        title="Switch to this context"
+                      >
+                        Hop
+                      </button>
+                    )}
+                    {s.contextId !== 'local' && (
+                      <button 
+                        className="px-2 py-1 rounded border border-red-400 text-red-300 text-xs" 
+                        onClick={() => handleDisconnect(s.contextId)}
+                        disabled={loading}
+                        title="Disconnect this session"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <div className="border rounded mb-3" style={{ borderColor: 'var(--icui-border-subtle)' }}>
         <div className="p-2 border-b" style={{ borderColor: 'var(--icui-border-subtle)' }}>Add credential</div>
         <div className="p-3 grid grid-cols-1 md:grid-cols-3 gap-2">
@@ -301,17 +395,60 @@ const ICUIHop: React.FC<{ className?: string }> = ({ className = '' }) => {
                     <span className="opacity-70">{c.username ? `${c.username}@` : ''}{c.host}:{c.port}</span>
                   </div>
                   <div className="space-x-2">
-                    {!session?.connected && (
-                      <button className="px-2 py-1 rounded border" onClick={() => handleConnect(c)} disabled={loading}>
-                        Connect
-                      </button>
-                    )}
-                    {session?.connected && session?.credential_id === c.id && (
-                      <button className="px-2 py-1 rounded border" onClick={handleDisconnect} disabled={loading}>
-                        Disconnect
-                      </button>
-                    )}
-                    <button className="px-2 py-1 rounded border" onClick={() => handleEdit(c)} disabled={loading || (session?.connected && session?.credential_id === c.id)}>
+                    {(() => {
+                      // Find if this credential has an active session (handle both camelCase and snake_case)
+                      const credSession = sessions.find(s => 
+                        s.credentialId === c.id || 
+                        s.credential_id === c.id ||
+                        s.contextId === c.id ||
+                        s.context_id === c.id
+                      );
+                      const isConnected = credSession && credSession.status === 'connected';
+                      const isActive = credSession && (
+                        credSession.active || 
+                        credSession.contextId === session?.contextId ||
+                        credSession.contextId === session?.context_id ||
+                        credSession.context_id === session?.contextId ||
+                        credSession.context_id === session?.context_id
+                      );
+                      
+                      console.log(`[ICUIHop] Credential ${c.id}:`, {
+                        credSession,
+                        isConnected,
+                        isActive,
+                        allSessions: sessions,
+                        currentSession: session
+                      });
+                      
+                      if (!isConnected) {
+                        // Not connected - show Connect button
+                        return (
+                          <button className="px-2 py-1 rounded border" onClick={() => handleConnect(c)} disabled={loading}>
+                            Connect
+                          </button>
+                        );
+                      } else if (isActive) {
+                        // Connected and active - show Disconnect button
+                        return (
+                          <button className="px-2 py-1 rounded border" onClick={() => handleDisconnect()} disabled={loading}>
+                            Disconnect
+                          </button>
+                        );
+                      } else {
+                        // Connected but not active - show Hop and Disconnect buttons
+                        return (
+                          <>
+                            <button className="px-2 py-1 rounded border border-blue-400 text-blue-300" onClick={() => handleHopTo(credSession.contextId)} disabled={loading} title="Switch focus to this server">
+                              Hop
+                            </button>
+                            <button className="px-2 py-1 rounded border" onClick={() => handleDisconnect(credSession.contextId)} disabled={loading}>
+                              Disconnect
+                            </button>
+                          </>
+                        );
+                      }
+                    })()}
+                    <button className="px-2 py-1 rounded border" onClick={() => handleEdit(c)} disabled={loading}>
                       Edit
                     </button>
                     <button className="px-2 py-1 rounded border border-red-400 text-red-300" onClick={() => handleDelete(c.id)} disabled={loading}>

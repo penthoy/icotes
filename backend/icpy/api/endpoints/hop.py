@@ -131,10 +131,13 @@ async def connect(payload: HopConnectRequest):
         logger.info(f"[HopAPI] Connect requested for credential={payload.credentialId} (asyncssh_available={ASYNCSSH_AVAILABLE})")
         session = await service.connect(payload.credentialId, password=payload.password, passphrase=payload.passphrase)
         logger.info(f"[HopAPI] Connect result: status={session.status} host={session.host} user={session.username} error={session.lastError}")
-        # Broadcast status change
+        # Broadcast status change and session list update
         try:
             broker = await get_message_broker()
             await broker.publish('hop.status', session.__dict__)
+            # Publish updated session list
+            sessions = service.list_sessions()
+            await broker.publish('hop.sessions', {"sessions": sessions})
         except Exception:
             pass
         return session.__dict__
@@ -147,13 +150,21 @@ async def connect(payload: HopConnectRequest):
 
 
 @router.post("/disconnect")
-async def disconnect():
+async def disconnect(context_id: Optional[str] = Body(None, embed=True)):
+    """Disconnect a specific context or the active context if none specified.
+    
+    Args:
+        context_id: Optional context ID to disconnect. If not provided, disconnects active context.
+    """
     service = await get_hop_service()
-    logger.info("[HopAPI] Disconnect requested")
-    session = await service.disconnect()
+    logger.info(f"[HopAPI] Disconnect requested for context={context_id or 'active'}")
+    session = await service.disconnect(context_id)
     try:
         broker = await get_message_broker()
         await broker.publish('hop.status', session.__dict__)
+        # Also publish session list update
+        sessions = service.list_sessions()
+        await broker.publish('hop.sessions', {"sessions": sessions})
     except Exception:
         pass
     return session.__dict__
@@ -178,3 +189,47 @@ async def check_health():
     service = await get_hop_service()
     quality = await service.check_connection_health()
     return {"quality": quality}
+
+
+@router.get("/sessions")
+async def list_sessions():
+    """List all active sessions including local."""
+    service = await get_hop_service()
+    sessions = service.list_sessions()
+    return {"sessions": sessions}
+
+
+class HopToRequest(BaseModel):
+    contextId: str
+
+
+@router.post("/hop")
+async def hop_to(payload: HopToRequest):
+    """Switch the active context to a different session.
+    
+    Args:
+        payload: Contains the contextId to hop to
+    
+    Returns:
+        The newly active session
+    """
+    service = await get_hop_service()
+    try:
+        logger.info(f"[HopAPI] Hop requested to context={payload.contextId}")
+        session = await service.hop_to(payload.contextId)
+        logger.info(f"[HopAPI] Hopped to {payload.contextId}, status={session.status}")
+        # Broadcast status change
+        try:
+            broker = await get_message_broker()
+            await broker.publish('hop.status', session.__dict__)
+            # Also publish updated session list
+            sessions = service.list_sessions()
+            await broker.publish('hop.sessions', {"sessions": sessions})
+        except Exception:
+            pass
+        return session.__dict__
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Hop failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Hop failed: {str(e)}")
