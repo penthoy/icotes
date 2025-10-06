@@ -5,6 +5,8 @@ This tool allows any agent to generate images using Google's native Gemini model
 that generates images directly in its response.
 
 Requires: GOOGLE_API_KEY environment variable
+
+Phase 7 Update: Added hop support, resolution control, and custom filenames
 """
 from __future__ import annotations
 
@@ -16,9 +18,19 @@ from typing import Any, Dict, Optional, Tuple
 from datetime import datetime
 
 from .base_tool import BaseTool, ToolResult
+from .context_helpers import get_contextual_filesystem, get_current_context
 
 # Import native Google SDK for image generation
 import google.generativeai as genai
+
+# Import PIL for image resizing
+try:
+    from PIL import Image
+    import io
+    PIL_AVAILABLE = True
+except ImportError:
+    PIL_AVAILABLE = False
+    logging.warning("PIL (Pillow) not available - resolution control disabled")
 
 logger = logging.getLogger(__name__)
 
@@ -37,9 +49,12 @@ class ImagenTool(BaseTool):
         self.name = "generate_image"
         self.description = (
             "Generate or edit images using Google's Gemini models. "
+            "Supports custom filenames, arbitrary resolutions, and hop contexts (remote servers). "
             "If image_data is supplied the prompt is treated as edit instructions. "
             "IMPORTANT: When editing images, use the file:// path from previous generation results (e.g., imageUrl field). "
-            "The tool automatically loads the file."
+            "The tool automatically loads the file from the current context (local or remote hop). "
+            "Use 'width' and 'height' parameters to generate images at specific resolutions. "
+            "Use 'filename' parameter to specify a custom filename (without extension)."
         )
         self.parameters = {
             "type": "object",
@@ -64,6 +79,18 @@ class ImagenTool(BaseTool):
                 "save_to_workspace": {
                     "type": "boolean",
                     "description": "Whether to save the generated image to workspace (default: true)"
+                },
+                "filename": {
+                    "type": "string",
+                    "description": "Optional custom filename (without extension). If not provided, auto-generates from prompt and timestamp"
+                },
+                "width": {
+                    "type": "integer",
+                    "description": "Desired image width in pixels (requires Pillow). Generated image will be resized to this width maintaining aspect ratio"
+                },
+                "height": {
+                    "type": "integer",
+                    "description": "Desired image height in pixels (requires Pillow). Generated image will be resized to this height maintaining aspect ratio"
                 }
             },
             "required": ["prompt"]
@@ -117,45 +144,96 @@ class ImagenTool(BaseTool):
             traceback.print_exc()
             return None, None
 
-    def _save_image_to_workspace(self, data_uri: str, prompt: str) -> Optional[str]:
+    async def _save_image_to_workspace(
+        self, 
+        image_bytes: bytes, 
+        prompt: str, 
+        custom_filename: Optional[str] = None
+    ) -> Optional[str]:
         """
-        Save image data URI to workspace folder.
+        Save image bytes to workspace folder (hop-aware).
         
-        Returns the relative file path if successful, None otherwise.
+        Phase 7: Uses ContextRouter to save to current context (local or remote).
+        
+        Args:
+            image_bytes: Binary image data
+            prompt: Generation prompt (used for auto-generated filename)
+            custom_filename: Optional custom filename (without extension)
+            
+        Returns:
+            Relative file path if successful, None otherwise.
         """
         try:
-            if not data_uri.startswith('data:image/'):
-                logger.error("Invalid data URI format")
-                return None
+            # Generate filename
+            if custom_filename:
+                # Sanitize custom filename
+                safe_name = re.sub(r'[^\w\s-]', '', custom_filename).strip().replace(' ', '_')
+                filename = f"{safe_name}.png"
+            else:
+                # Auto-generate from prompt and timestamp
+                timestamp = int(datetime.now().timestamp())
+                safe_prompt = re.sub(r'[^\w\s-]', '', prompt[:30]).strip().replace(' ', '_')
+                filename = f"generated_image_{safe_prompt}_{timestamp}.png"
+            
+            # Determine workspace root
+            workspace_root = os.environ.get('WORKSPACE_ROOT')
+            if not workspace_root:
+                # Default to workspace directory relative to backend
+                current_file = os.path.abspath(__file__)
+                # Go up: tools -> agent -> icpy -> backend -> icotes root
+                icotes_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(current_file)))))
+                workspace_root = os.path.join(icotes_root, "workspace")
+            
+            filepath = os.path.join(workspace_root, filename)
+            
+            # Get current context
+            context = await get_current_context()
+            context_name = context.get('contextId', 'local')
+            
+            # Check if we're on remote context
+            if context_name != 'local':
+                # Use filesystem service for remote (hop-aware)
+                # Remote filesystem expects string content, so we base64 encode
+                filesystem_service = await get_contextual_filesystem()
+                # For remote, we need to write using SFTP which handles bytes
+                # Get the SFTP connection and write directly
+                try:
+                    from icpy.services.context_router import get_context_router
+                    router = await get_context_router()
+                    fs = await router.get_filesystem()
+                    
+                    # Check if this is RemoteFileSystemAdapter
+                    if hasattr(fs, '_sftp'):
+                        # Direct SFTP write for binary data
+                        sftp = fs._sftp()
+                        if sftp:
+                            import posixpath
+                            remote_path = posixpath.join('/home', 'penthoy', 'icotes', 'workspace', filename)
+                            async with sftp.open(remote_path, 'wb') as f:
+                                await f.write(image_bytes)
+                            logger.info(f"Saved image to {remote_path} ({len(image_bytes)} bytes) on remote context: {context_name}")
+                        else:
+                            raise Exception("SFTP connection not available")
+                    else:
+                        # Fallback: base64 encode and write as text
+                        base64_content = base64.b64encode(image_bytes).decode('utf-8')
+                        await filesystem_service.write_file(filepath, base64_content)
+                        logger.info(f"Saved image (base64) to {filepath} on context: {context_name}")
+                except Exception as e:
+                    logger.error(f"Remote write failed: {e}, falling back to local")
+                    # Fall through to local write
+                    context_name = 'local'
+            
+            if context_name == 'local':
+                # For local, write bytes directly to file
+                # Ensure directory exists
+                os.makedirs(workspace_root, exist_ok=True)
                 
-            # Extract base64 data after the comma
-            base64_data = data_uri.split(',', 1)[1] if ',' in data_uri else data_uri
-            
-            # Decode base64 to binary
-            image_bytes = base64.b64decode(base64_data)
-            
-            # Generate filename with timestamp
-            timestamp = int(datetime.now().timestamp())
-            # Sanitize prompt for filename (max 30 chars)
-            safe_prompt = re.sub(r'[^\w\s-]', '', prompt[:30]).strip().replace(' ', '_')
-            filename = f"generated_image_{safe_prompt}_{timestamp}.png"
-            
-            # Save to workspace folder (assuming we're in backend/icpy/agent/tools/)
-            # Navigate up to icotes root, then to workspace
-            current_file = os.path.abspath(__file__)
-            # Go up: tools -> agent -> icpy -> backend -> icotes root
-            icotes_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(current_file)))))
-            workspace_dir = os.path.join(icotes_root, "workspace")
-            
-            if not os.path.exists(workspace_dir):
-                os.makedirs(workspace_dir, exist_ok=True)
-            
-            filepath = os.path.join(workspace_dir, filename)
-            
-            with open(filepath, 'wb') as f:
-                f.write(image_bytes)
-            
-            logger.info(f"Saved image to {filepath} ({len(image_bytes)} bytes)")
+                # Write binary file directly
+                with open(filepath, 'wb') as f:
+                    f.write(image_bytes)
+                
+                logger.info(f"Saved image to {filepath} ({len(image_bytes)} bytes) on local context")
             
             # Return relative path for display
             return filename
@@ -166,9 +244,14 @@ class ImagenTool(BaseTool):
             traceback.print_exc()
             return None
 
-    def _decode_image_input(self, image_data: str, explicit_mime: Optional[str]) -> Optional[Dict[str, Any]]:
-        """Decode image input (data URI, raw base64, or file:// path) into dict expected by Gemini SDK.
-        Returns None on failure."""
+    async def _decode_image_input(self, image_data: str, explicit_mime: Optional[str]) -> Optional[Dict[str, Any]]:
+        """
+        Decode image input (data URI, raw base64, or file:// path) into dict expected by Gemini SDK.
+        
+        Phase 7 Update: Hop-aware file loading using ContextRouter.
+        
+        Returns None on failure.
+        """
         logger.info(f"_decode_image_input called: data length={len(image_data) if image_data else 0}")
         if not image_data:
             logger.warning("_decode_image_input: image_data is empty/None")
@@ -177,17 +260,30 @@ class ImagenTool(BaseTool):
             mime_type = explicit_mime or "image/png"
             image_bytes = None
             
-            # Handle file:// paths (from Phase 1 storage optimization)
+            # Handle file:// paths (hop-aware)
             if image_data.startswith("file://"):
                 logger.info(f"_decode_image_input: Detected file:// path")
                 file_path = image_data.replace("file://", "")
                 logger.info(f"_decode_image_input: Resolved to {file_path}")
-                if not os.path.exists(file_path):
+                
+                # Use contextual filesystem to load file (works for both local and remote)
+                try:
+                    filesystem_service = await get_contextual_filesystem()
+                    image_bytes = await filesystem_service.read_file(file_path)
+                    
+                    # Convert string to bytes if needed (some FS services return str)
+                    if isinstance(image_bytes, str):
+                        # If it's a base64 string, decode it
+                        if image_bytes.startswith('data:image/'):
+                            # Extract base64 part
+                            _, b64_data = image_bytes.split(',', 1)
+                            image_bytes = base64.b64decode(b64_data)
+                        else:
+                            # Assume it's raw base64
+                            image_bytes = base64.b64decode(image_bytes)
+                except FileNotFoundError:
                     logger.error(f"File does not exist: {file_path}")
                     return None
-                    
-                with open(file_path, 'rb') as f:
-                    image_bytes = f.read()
                     
                 # Infer mime type from file extension
                 ext = os.path.splitext(file_path)[1].lower()
@@ -224,6 +320,87 @@ class ImagenTool(BaseTool):
             traceback.print_exc()
             return None
 
+    def _get_image_dimensions(self, image_bytes: bytes) -> Optional[Tuple[int, int]]:
+        """
+        Extract actual dimensions from image bytes.
+        
+        Returns:
+            Tuple of (width, height) or None if unable to determine
+        """
+        if not PIL_AVAILABLE:
+            return None
+        
+        try:
+            img = Image.open(io.BytesIO(image_bytes))
+            return img.size  # Returns (width, height)
+        except Exception as e:
+            logger.error(f"Failed to get image dimensions: {e}")
+            return None
+
+    def _resize_image(
+        self, 
+        image_bytes: bytes, 
+        width: Optional[int] = None, 
+        height: Optional[int] = None
+    ) -> Tuple[bytes, str]:
+        """
+        Resize image to specified dimensions.
+        
+        Args:
+            image_bytes: Original image bytes
+            width: Target width (optional)
+            height: Target height (optional)
+            
+        Returns:
+            Tuple of (resized_image_bytes, mime_type)
+            
+        Note: If only one dimension is provided, maintains aspect ratio.
+              If both provided, resizes to exact dimensions.
+        """
+        if not PIL_AVAILABLE:
+            logger.warning("PIL not available, returning original image")
+            return image_bytes, "image/png"
+        
+        if not width and not height:
+            return image_bytes, "image/png"
+        
+        try:
+            # Open image from bytes
+            img = Image.open(io.BytesIO(image_bytes))
+            original_width, original_height = img.size
+            
+            # Calculate target dimensions
+            if width and height:
+                # Both dimensions specified - resize to exact
+                target_size = (width, height)
+            elif width:
+                # Only width specified - maintain aspect ratio
+                aspect_ratio = original_height / original_width
+                target_size = (width, int(width * aspect_ratio))
+            else:
+                # Only height specified - maintain aspect ratio
+                aspect_ratio = original_width / original_height
+                target_size = (int(height * aspect_ratio), height)
+            
+            # Resize with high-quality LANCZOS resampling
+            resized = img.resize(target_size, Image.Resampling.LANCZOS)
+            
+            # Convert back to bytes
+            output = io.BytesIO()
+            resized.save(output, format='PNG')
+            resized_bytes = output.getvalue()
+            
+            logger.info(f"Resized image from {original_width}x{original_height} to {target_size[0]}x{target_size[1]}")
+            
+            return resized_bytes, "image/png"
+            
+        except Exception as e:
+            logger.error(f"Error resizing image: {e}")
+            import traceback
+            traceback.print_exc()
+            # Return original on error
+            return image_bytes, "image/png"
+
     def _build_content(self, prompt: str, image_part: Optional[Dict[str, Any]]) -> Any:
         if image_part:
             instruction = (
@@ -244,9 +421,14 @@ class ImagenTool(BaseTool):
         """
         Execute image generation using native Google SDK.
         
+        Phase 7 Update: Added hop support, resolution control, and custom filenames.
+        
         Args:
             prompt: Text description of image to generate
             save_to_workspace: Whether to save image to workspace (default: True)
+            filename: Optional custom filename (without extension)
+            width: Optional target width in pixels
+            height: Optional target height in pixels
             
         Returns:
             ToolResult with image data
@@ -273,11 +455,14 @@ class ImagenTool(BaseTool):
             input_image_data = kwargs.get("image_data")
             input_image_mime = kwargs.get("image_mime_type")
             mode = kwargs.get("mode", "auto")
+            custom_filename = kwargs.get("filename")
+            target_width = kwargs.get("width")
+            target_height = kwargs.get("height")
 
             image_part = None
             if (mode in ("auto", "edit")) and input_image_data:
                 logger.info(f"ImagenTool: Attempting to decode image_data (mode={mode}, length={len(input_image_data)})")
-                image_part = self._decode_image_input(input_image_data, input_image_mime)
+                image_part = await self._decode_image_input(input_image_data, input_image_mime)
                 logger.info(f"ImagenTool: Decode result: image_part is {'None' if image_part is None else 'valid'}")
                 if image_part is None and mode == "edit":
                     return ToolResult(success=False, error="Failed to decode provided image for editing")
@@ -325,16 +510,30 @@ class ImagenTool(BaseTool):
             
             logger.info(f"Successfully extracted image data ({len(image_bytes)} bytes, {mime_type})")
             
+            # Resize image if dimensions specified
+            if target_width or target_height:
+                image_bytes, mime_type = self._resize_image(image_bytes, target_width, target_height)
+                logger.info(f"Image resized to {target_width or 'auto'}x{target_height or 'auto'}")
+            
+            # Get actual image dimensions for widget display
+            actual_dimensions = self._get_image_dimensions(image_bytes)
+            if actual_dimensions:
+                actual_width, actual_height = actual_dimensions
+                logger.info(f"Final image dimensions: {actual_width}x{actual_height}")
+            
             # Convert binary image to base64 data URI
             image_data_uri = f"data:{mime_type};base64,{base64.b64encode(image_bytes).decode('utf-8')}"
             
-            # Optionally save to workspace
+            # Optionally save to workspace (hop-aware)
             saved_path = None
             if save_to_workspace:
-                saved_path = self._save_image_to_workspace(image_data_uri, str(prompt))
+                saved_path = await self._save_image_to_workspace(image_bytes, str(prompt), custom_filename)
             
             # Extract raw base64 (without data URI prefix) for response
             raw_base64 = base64.b64encode(image_bytes).decode('utf-8')
+            
+            # Get current context for result metadata
+            context = await get_current_context()
             
             # Return successful result with image data
             result_data = {
@@ -345,14 +544,30 @@ class ImagenTool(BaseTool):
                 "model": self._model,
                 "timestamp": datetime.now().isoformat(),
                 "mode": effective_mode,
-                "attemptedModels": attempted
+                "attemptedModels": attempted,
+                "context": context.get('contextId', 'local'),
+                "contextHost": context.get('host')
             }
+            
+            # Add actual dimensions for widget display
+            if actual_dimensions:
+                result_data["size"] = f"{actual_dimensions[0]}x{actual_dimensions[1]}"
+                result_data["width"] = actual_dimensions[0]
+                result_data["height"] = actual_dimensions[1]
+            
             if image_part:
                 result_data["sourceImageProvided"] = True
             
+            if target_width or target_height:
+                result_data["resizedTo"] = f"{target_width or 'auto'}x{target_height or 'auto'}"
+            
             if saved_path:
                 result_data["filePath"] = saved_path
-                result_data["message"] = f"Image generated successfully and saved to workspace/{saved_path}"
+                context_name = context.get('contextId', 'local')
+                if context_name != 'local':
+                    result_data["message"] = f"Image generated and saved to workspace/{saved_path} on {context_name}"
+                else:
+                    result_data["message"] = f"Image generated successfully and saved to workspace/{saved_path}"
             else:
                 result_data["message"] = "Image generated successfully"
             
