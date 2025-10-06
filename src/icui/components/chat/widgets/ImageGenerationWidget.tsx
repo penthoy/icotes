@@ -75,9 +75,24 @@ const ImageGenerationWidget: React.FC<ImageGenerationWidgetProps> = ({
           ? JSON.parse(toolCall.output) 
           : toolCall.output;
         
-        data.imageUrl = output.url || output.imageUrl || output.image_url;
-        data.imageData = output.data || output.imageData || output.image_data;
-        data.timestamp = output.timestamp || Date.now();
+        // Check if output has imageReference (Phase 1 storage optimization)
+        if (output.imageReference) {
+          const ref = output.imageReference;
+          // Use thumbnail_base64 for display instead of file:// paths
+          if (ref.thumbnail_base64) {
+            data.imageData = ref.thumbnail_base64;
+            console.log('Using thumbnail from imageReference');
+          }
+          // Store metadata for potential full image fetch
+          data.timestamp = ref.timestamp ? ref.timestamp * 1000 : Date.now();
+          if (ref.prompt) data.prompt = ref.prompt;
+        } else {
+          // Legacy format: direct imageUrl/imageData
+          data.imageUrl = output.url || output.imageUrl || output.image_url;
+          data.imageData = output.data || output.imageData || output.image_data;
+          data.timestamp = output.timestamp || Date.now();
+        }
+        
         data.status = 'success';
           // Fallback: if prompt not set from input, try output
           if (!data.prompt && (output.prompt || output.description)) {
