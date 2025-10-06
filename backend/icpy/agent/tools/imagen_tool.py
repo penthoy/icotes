@@ -37,7 +37,9 @@ class ImagenTool(BaseTool):
         self.name = "generate_image"
         self.description = (
             "Generate or edit images using Google's Gemini models. "
-            "If image_data is supplied the prompt is treated as edit instructions."
+            "If image_data is supplied the prompt is treated as edit instructions. "
+            "IMPORTANT: When editing images, use the file:// path from previous generation results (e.g., imageUrl field). "
+            "The tool automatically loads the file."
         )
         self.parameters = {
             "type": "object",
@@ -48,7 +50,7 @@ class ImagenTool(BaseTool):
                 },
                 "image_data": {
                     "type": "string",
-                    "description": "Optional base64 or data URI source image for editing"
+                    "description": "Optional source image for editing. Can be: base64, data URI, or file:// path (from previous generation)"
                 },
                 "image_mime_type": {
                     "type": "string",
@@ -165,26 +167,61 @@ class ImagenTool(BaseTool):
             return None
 
     def _decode_image_input(self, image_data: str, explicit_mime: Optional[str]) -> Optional[Dict[str, Any]]:
-        """Decode image input (data URI or raw base64) into dict expected by Gemini SDK.
+        """Decode image input (data URI, raw base64, or file:// path) into dict expected by Gemini SDK.
         Returns None on failure."""
+        logger.info(f"_decode_image_input called: data length={len(image_data) if image_data else 0}")
         if not image_data:
+            logger.warning("_decode_image_input: image_data is empty/None")
             return None
         try:
             mime_type = explicit_mime or "image/png"
-            raw_b64 = image_data
-            if image_data.startswith("data:image/"):
+            image_bytes = None
+            
+            # Handle file:// paths (from Phase 1 storage optimization)
+            if image_data.startswith("file://"):
+                logger.info(f"_decode_image_input: Detected file:// path")
+                file_path = image_data.replace("file://", "")
+                logger.info(f"_decode_image_input: Resolved to {file_path}")
+                if not os.path.exists(file_path):
+                    logger.error(f"File does not exist: {file_path}")
+                    return None
+                    
+                with open(file_path, 'rb') as f:
+                    image_bytes = f.read()
+                    
+                # Infer mime type from file extension
+                ext = os.path.splitext(file_path)[1].lower()
+                mime_map = {
+                    '.png': 'image/png',
+                    '.jpg': 'image/jpeg',
+                    '.jpeg': 'image/jpeg',
+                    '.webp': 'image/webp',
+                    '.gif': 'image/gif'
+                }
+                mime_type = mime_map.get(ext, mime_type)
+                logger.info(f"Loaded image from file: {file_path} ({len(image_bytes)} bytes, {mime_type})")
+                
+            # Handle data URI
+            elif image_data.startswith("data:image/"):
                 header, b64 = image_data.split(',', 1) if ',' in image_data else (image_data, '')
                 mt = re.match(r"data:([^;]+);base64", header)
                 if mt:
                     mime_type = mt.group(1)
-                raw_b64 = b64
-            raw_b64 = re.sub(r"\s+", "", raw_b64)
-            image_bytes = base64.b64decode(raw_b64)
+                raw_b64 = re.sub(r"\s+", "", b64)
+                image_bytes = base64.b64decode(raw_b64)
+                
+            # Handle raw base64
+            else:
+                raw_b64 = re.sub(r"\s+", "", image_data)
+                image_bytes = base64.b64decode(raw_b64)
+                
             if not image_bytes:
                 return None
             return {"mime_type": mime_type, "data": image_bytes}
         except Exception as e:
             logger.error(f"Failed to decode input image: {e}")
+            import traceback
+            traceback.print_exc()
             return None
 
     def _build_content(self, prompt: str, image_part: Optional[Dict[str, Any]]) -> Any:
@@ -214,6 +251,16 @@ class ImagenTool(BaseTool):
         Returns:
             ToolResult with image data
         """
+        logger.info(f"=== ImagenTool.execute START ===")
+        logger.info(f"  kwargs keys: {list(kwargs.keys())}")
+        logger.info(f"  image_data present: {bool(kwargs.get('image_data'))}")
+        if kwargs.get('image_data'):
+            img_data = kwargs['image_data']
+            preview = img_data[:100] if len(img_data) > 100 else img_data
+            logger.info(f"  image_data preview: {preview}")
+        logger.info(f"  mode: {kwargs.get('mode', 'NOT SET')}")
+        logger.info(f"  prompt length: {len(kwargs.get('prompt', ''))}")
+        
         try:
             prompt = kwargs.get("prompt")
             if not prompt or not str(prompt).strip():
@@ -229,7 +276,9 @@ class ImagenTool(BaseTool):
 
             image_part = None
             if (mode in ("auto", "edit")) and input_image_data:
+                logger.info(f"ImagenTool: Attempting to decode image_data (mode={mode}, length={len(input_image_data)})")
                 image_part = self._decode_image_input(input_image_data, input_image_mime)
+                logger.info(f"ImagenTool: Decode result: image_part is {'None' if image_part is None else 'valid'}")
                 if image_part is None and mode == "edit":
                     return ToolResult(success=False, error="Failed to decode provided image for editing")
 

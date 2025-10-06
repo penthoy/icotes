@@ -244,6 +244,15 @@ class ChatService:
             self.image_service = None
             self.image_cache = None
         
+        # Initialize context builder for Phase 2
+        try:
+            from ..services.context_builder import create_context_builder
+            self.context_builder = create_context_builder(workspace_path=image_workspace if self.image_service else None)
+            logger.info("Context builder initialized for smart image loading")
+        except Exception as e:
+            logger.warning(f"Failed to initialize context builder: {e}")
+            self.context_builder = None
+        
         # Setup message broker subscriptions (only if broker is available)
         if hasattr(self.message_broker, 'subscribe'):
             self.message_broker.subscribe(BrokerMessageType.AGENT_STATUS_UPDATED, self._handle_agent_status_update)
@@ -801,8 +810,14 @@ class ChatService:
             # Send typing indicator
             await self._send_typing_indicator(user_message.session_id, True)
             
-            # Get message history for context
-            history = await self.get_message_history(user_message.session_id, limit=10)
+            # Get message history for context (Phase 2: with optimized image loading)
+            # Use metadata_only strategy to prevent token exhaustion from images
+            history = await self.get_message_history(
+                user_message.session_id,
+                limit=10,
+                load_full_images=False,
+                context_strategy="metadata_only"
+            )
             history_list = []
             for msg in history:
                 if msg.sender == MessageSender.USER:
@@ -964,31 +979,39 @@ class ChatService:
             custom_stream = call_custom_agent_stream(agent_type, "", history_list)
             
             # Process streaming response
-            async for chunk in custom_stream:
-                if chunk:  # Only process non-empty chunks
-                    # Send stream start for first chunk
-                    if is_first_chunk:
-                        await self._send_streaming_start(
+            chunk_count = 0
+            try:
+                async for chunk in custom_stream:
+                    if chunk:  # Only process non-empty chunks
+                        chunk_count += 1
+                        # Send stream start for first chunk
+                        if is_first_chunk:
+                            await self._send_streaming_start(
+                                user_message.session_id,
+                                message_id,
+                                user_message.id,
+                                agent_type=agent_type,
+                                agent_id=agent_type,
+                                agent_name=agent_type.title()
+                            )
+                            is_first_chunk = False
+                        
+                        # Send chunk
+                        await self._send_streaming_chunk(
                             user_message.session_id,
                             message_id,
-                            user_message.id,
-                            agent_type=agent_type,
-                            agent_id=agent_type,
-                            agent_name=agent_type.title()
+                            chunk,
+                            user_message.id
                         )
-                        is_first_chunk = False
-                    
-                    # Send chunk
-                    await self._send_streaming_chunk(
-                        user_message.session_id,
-                        message_id,
-                        chunk,
-                        user_message.id
-                    )
-                    full_content += chunk
-                    
-                    # CRITICAL FIX: Prevent WebSocket message batching
-                    await asyncio.sleep(0.01)  # 10ms delay between chunks
+                        full_content += chunk
+                        
+                        # CRITICAL FIX: Prevent WebSocket message batching
+                        await asyncio.sleep(0.01)  # 10ms delay between chunks
+                        
+                logger.info(f"Streaming complete: received {chunk_count} chunks, total {len(full_content)} chars")
+            except Exception as e:
+                logger.error(f"Error during streaming: {e}", exc_info=True)
+                # Continue to store what we have
 
             # Send stream end
             await self._send_streaming_end(
@@ -1239,12 +1262,15 @@ class ChatService:
         Convert imageData in message to ImageReference before storage.
         Phase 1 integration: Replaces large base64 with lightweight reference.
         """
+        logger.info("=== Phase 1 Conversion Called ===")
         if not self.image_service:
+            logger.warning("Phase 1 Conversion SKIPPED: No image service available")
             return message_dict
         
         try:
             # Check if message contains imageData in metadata
             metadata = message_dict.get('metadata', {})
+            logger.info(f"Phase 1: Checking metadata keys: {list(metadata.keys())}")
             
             # Look for imageData in various locations where it might appear
             locations_to_check = [
@@ -1252,13 +1278,34 @@ class ChatService:
                 ('response', metadata.get('response')),
                 ('content', message_dict.get('content'))
             ]
+            logger.info(f"Phase 1: Checking locations: {[loc[0] for loc in locations_to_check]}")
+
+            async def _create_reference_and_cache(image_data: str, filename: str, prompt: str, model: str, mime_type: str):
+                """Create an image reference and populate cache. Returns reference dict."""
+                ref = await self.image_service.create_reference(
+                    image_data=image_data,
+                    filename=filename,
+                    prompt=prompt,
+                    model=model,
+                    mime_type=mime_type
+                )
+                if self.image_cache:
+                    self.image_cache.put(
+                        image_id=ref.image_id,
+                        base64_data=image_data,
+                        mime_type=mime_type
+                    )
+                return ref.to_dict()
             
             for location_name, location_data in locations_to_check:
+                logger.info(f"Phase 1: Checking location '{location_name}', data type: {type(location_data)}")
                 if not location_data:
+                    logger.info(f"Phase 1: Location '{location_name}' is empty, skipping")
                     continue
                 
                 # Handle dict
                 if isinstance(location_data, dict) and 'imageData' in location_data:
+                    logger.info(f"Phase 1: Found imageData in dict at location '{location_name}'")
                     image_data = location_data['imageData']
                     
                     # Extract metadata
@@ -1323,29 +1370,283 @@ class ChatService:
                         logger.error(f"Failed to create image reference: {e}")
                         # Keep imageData if conversion fails
                 
-                # Handle string (JSON encoded)
+                # Handle string (JSON encoded, markdown with JSON blocks, or embedded JSON fragments)
                 elif isinstance(location_data, str):
+                    logger.info(f"Phase 1: Processing string at location '{location_name}', length: {len(location_data)}")
+                    import re
+                    json_block_pattern = r'```json\s*\n(.*?)\n```'
+
+                    async def _process_parsed_dict(parsed: Dict[str, Any]) -> Dict[str, Any]:
+                        """Given a parsed dict, create reference if imageData present and mutate it."""
+                        if not (isinstance(parsed, dict) and 'imageData' in parsed):
+                            return parsed
+                        image_data_inner = parsed['imageData']
+                        filename_inner = parsed.get('filePath', 'generated_image.png')
+                        prompt_inner = parsed.get('prompt', 'Generated image')
+                        model_inner = parsed.get('model', 'unknown')
+                        mime_type_inner = parsed.get('mimeType', 'image/png')
+                        try:
+                            ref_dict = await _create_reference_and_cache(
+                                image_data_inner, filename_inner, prompt_inner, model_inner, mime_type_inner
+                            )
+                            parsed['imageReference'] = ref_dict
+                            del parsed['imageData']
+                            
+                            # CRITICAL FIX: Also remove/truncate imageUrl which contains the full base64 as data URL
+                            if 'imageUrl' in parsed:
+                                original_url = parsed['imageUrl']
+                                # Replace with reference to the file instead of data URL
+                                parsed['imageUrl'] = f"file://{ref_dict['absolute_path']}"
+                                logger.info(
+                                    f"Removed base64 data URL from imageUrl field "
+                                    f"(size reduction: {len(original_url)} → {len(parsed['imageUrl'])} chars)"
+                                )
+                            
+                            parsed['note'] = "imageData converted to reference for storage"
+                            logger.info(
+                                f"Converted imageData in {location_name} string to reference: {ref_dict.get('image_id')} "
+                                f"(size reduction: {len(image_data_inner)} → {len(json.dumps(ref_dict))} chars)"
+                            )
+                        except Exception as e:
+                            logger.error(f"Failed to create image reference from string ({location_name}): {e}")
+                        return parsed
+
+                    # 1. Extract markdown fenced JSON blocks first
+                    async_replacements: Dict[str, str] = {}
                     try:
-                        parsed = json.loads(location_data)
-                        if isinstance(parsed, dict) and 'imageData' in parsed:
-                            # Recursively process
-                            if location_name == 'tool_output':
-                                metadata['tool_output'] = await self._convert_image_data_to_reference(
-                                    {'metadata': {'tool_output': parsed}}
-                                ).get('metadata', {}).get('tool_output', parsed)
-                    except (json.JSONDecodeError, Exception):
-                        pass
+                        def _replacement(match: re.Match) -> str:
+                            original_json = match.group(1)
+                            key = f"__JSON_BLOCK_{len(async_replacements)}__"
+                            async_replacements[key] = original_json
+                            return f"```json\n{key}\n```"  # placeholder
+                        logger.info(f"Phase 1: Applying regex substitution to {location_name} for fenced JSON blocks...")
+                        temp_string = re.sub(json_block_pattern, _replacement, location_data, flags=re.DOTALL)
+                        logger.info(f"Phase 1: Regex substitution completed; found {len(async_replacements)} fenced JSON blocks")
+                        # Process each extracted fenced block
+                        for placeholder, json_str in async_replacements.items():
+                            try:
+                                parsed_block = json.loads(json_str)
+                                parsed_block = await _process_parsed_dict(parsed_block)
+                                new_block = json.dumps(parsed_block, indent=2)
+                                temp_string = temp_string.replace(placeholder, new_block)
+                            except Exception as e:
+                                logger.error(f"Failed processing fenced JSON block in {location_name}: {e}")
+                    except Exception as e:
+                        logger.error(f"Phase 1: Error during fenced JSON processing for {location_name}: {e}")
+                        temp_string = location_data  # fallback
+                        async_replacements = {}
+
+                    if async_replacements:
+                        # Fenced blocks handled; update content/metadata and skip to next location
+                        logger.info(f"Phase 1: Fenced JSON blocks processed for {location_name}; skipping embedded/direct parsing")
+                        if location_name == 'content':
+                            message_dict['content'] = temp_string
+                        else:
+                            metadata[location_name] = temp_string
+                            message_dict['metadata'] = metadata
+                        continue
+                    else:
+                        logger.info(f"Phase 1: No fenced JSON blocks found for {location_name}; attempting direct JSON parse")
+
+                    # 2. Direct full-string JSON parse attempt
+                    parsed_direct = None
+                    try:
+                        logger.info(f"Phase 1: Attempting full direct JSON parse for {location_name}...")
+                        parsed_direct = json.loads(location_data)
+                        logger.info(f"Phase 1: Direct parse success for {location_name}; type={type(parsed_direct)}")
+                        before = json.dumps(parsed_direct)
+                        parsed_direct = await _process_parsed_dict(parsed_direct)
+                        after = json.dumps(parsed_direct)
+                        if before != after:
+                            logger.info(f"Phase 1: Direct JSON mutation succeeded for {location_name}")
+                            new_string = json.dumps(parsed_direct, indent=2)
+                            if location_name == 'content':
+                                message_dict['content'] = new_string
+                            else:
+                                metadata[location_name] = new_string
+                                message_dict['metadata'] = metadata
+                            continue
+                        else:
+                            logger.info(f"Phase 1: Direct JSON contained no imageData for {location_name}")
+                            # fall through to embedded search
+                    except json.JSONDecodeError as jde:
+                        logger.info(f"Phase 1: Direct JSON parse failed for {location_name} (not pure JSON): {str(jde)[:120]} ... proceeding to embedded scan")
+                    except Exception as e:
+                        logger.error(f"Phase 1: Unexpected error during direct JSON parse for {location_name}: {e}")
+
+                    # 2.5. ToolResultFormatter pattern detection (✅ **Success**: {JSON})
+                    # This is a common pattern from helpers.ToolResultFormatter.format_tool_result()
+                    # Use a more careful approach: find the pattern, then manually parse balanced braces
+                    success_marker = '✅ **Success**: '
+                    success_idx = location_data.find(success_marker)
+                    if success_idx != -1:
+                        logger.info(f"Phase 1: Found ToolResultFormatter success pattern in {location_name}")
+                        try:
+                            # Find the JSON object by matching balanced braces
+                            json_start = location_data.find('{', success_idx)
+                            if json_start != -1:
+                                # Parse balanced braces
+                                brace_count = 0
+                                json_end = json_start
+                                in_string = False
+                                escape = False
+                                
+                                for i in range(json_start, len(location_data)):
+                                    char = location_data[i]
+                                    
+                                    if escape:
+                                        escape = False
+                                        continue
+                                    
+                                    if char == '\\':
+                                        escape = True
+                                        continue
+                                    
+                                    if char == '"' and not escape:
+                                        in_string = not in_string
+                                    
+                                    if not in_string:
+                                        if char == '{':
+                                            brace_count += 1
+                                        elif char == '}':
+                                            brace_count -= 1
+                                            if brace_count == 0:
+                                                json_end = i + 1
+                                                break
+                                
+                                if brace_count == 0 and json_end > json_start:
+                                    json_str = location_data[json_start:json_end]
+                                    parsed_success = json.loads(json_str)
+                                    
+                                    if isinstance(parsed_success, dict) and 'imageData' in parsed_success:
+                                        logger.info(f"Phase 1: ToolResultFormatter JSON contains imageData (size: {len(json_str)})")
+                                        parsed_success = await _process_parsed_dict(parsed_success)
+                                        new_json_str = json.dumps(parsed_success)
+                                        
+                                        # Check if ImageReference thumbnail is complete
+                                        if 'imageReference' in parsed_success:
+                                            thumb_b64 = parsed_success['imageReference'].get('thumbnail_base64', '')
+                                            logger.info(f"Phase 1: ImageReference thumbnail_base64 length: {len(thumb_b64)} chars")
+                                            if thumb_b64:
+                                                # Verify complete (proper base64 ends with = padding or is divisible by 4)
+                                                is_padded = thumb_b64.endswith(('=', '=='))
+                                                is_aligned = len(thumb_b64) % 4 == 0
+                                                if not (is_padded or is_aligned):
+                                                    logger.error(f"Phase 1: thumbnail_base64 TRUNCATED! length={len(thumb_b64)}, ends with '{thumb_b64[-4:]}'")
+                                        
+                                        # Reconstruct content with balanced replacement
+                                        new_content = location_data[:json_start] + new_json_str + location_data[json_end:]
+                                        
+                                        logger.info(f"Phase 1: Reconstructed content length: {len(new_content)} (original: {len(location_data)})")
+                                        
+                                        if location_name == 'content':
+                                            message_dict['content'] = new_content
+                                        else:
+                                            metadata[location_name] = new_content
+                                            message_dict['metadata'] = metadata
+                                        logger.info(f"Phase 1: Successfully converted imageData in ToolResultFormatter pattern for {location_name}")
+                                        continue  # Skip to next location
+                                    else:
+                                        logger.info(f"Phase 1: ToolResultFormatter JSON does not contain imageData")
+                                else:
+                                    logger.warning(f"Phase 1: Failed to find balanced braces in ToolResultFormatter JSON (brace_count={brace_count})")
+                        except Exception as e:
+                            logger.error(f"Phase 1: Failed to parse ToolResultFormatter pattern: {e}", exc_info=True)
+                    
+                    # 3. Embedded JSON fragment discovery (search for object containing "imageData")
+                    logger.info(f'Phase 1: Initiating embedded JSON fragment scan for {location_name} looking for "imageData" key')
+                    content_str = location_data
+                    key_pattern = '"imageData"'
+                    max_attempts = 5  # avoid excessive scans in huge content
+                    found_fragment = False
+                    attempt = 0
+                    for match in re.finditer(key_pattern, content_str):
+                        attempt += 1
+                        if attempt > max_attempts:
+                            logger.info(f"Phase 1: Reached embedded scan attempt limit ({max_attempts}) for {location_name}")
+                            break
+                        key_index = match.start()
+                        # Heuristic backward search window
+                        start_window = max(0, key_index - 10000)
+                        # Search backwards for a '{'
+                        candidate_start = None
+                        for i in range(key_index, start_window - 1, -1):
+                            if content_str[i] == '{':
+                                candidate_start = i
+                                break
+                        if candidate_start is None:
+                            continue
+                        # Scan forward to find balanced braces
+                        depth = 0
+                        in_string = False
+                        escape = False
+                        fragment_end = None
+                        for j in range(candidate_start, len(content_str)):
+                            c = content_str[j]
+                            if in_string:
+                                if escape:
+                                    escape = False
+                                elif c == '\\':
+                                    escape = True
+                                elif c == '"':
+                                    in_string = False
+                            else:
+                                if c == '"':
+                                    in_string = True
+                                elif c == '{':
+                                    depth += 1
+                                elif c == '}':
+                                    depth -= 1
+                                    if depth == 0:
+                                        fragment_end = j
+                                        break
+                            # Safety cut-off for enormous unexpected objects
+                            if j - candidate_start > 2_000_000:  # 2MB fragment safety
+                                logger.info("Phase 1: Aborting fragment attempt due to size >2MB")
+                                break
+                        if fragment_end is None:
+                            continue
+                        fragment = content_str[candidate_start:fragment_end + 1]
+                        try:
+                            parsed_fragment = json.loads(fragment)
+                        except Exception:
+                            continue
+                        if not (isinstance(parsed_fragment, dict) and 'imageData' in parsed_fragment):
+                            continue
+                        logger.info(f"Phase 1: Embedded JSON fragment with imageData found (len={len(fragment)}) at indices {candidate_start}:{fragment_end}")
+                        # Process fragment
+                        before_fragment = fragment
+                        parsed_fragment = await _process_parsed_dict(parsed_fragment)
+                        after_fragment = json.dumps(parsed_fragment, indent=2)
+                        if before_fragment != after_fragment:
+                            # Replace in content
+                            new_content = content_str[:candidate_start] + after_fragment + content_str[fragment_end + 1:]
+                            if location_name == 'content':
+                                message_dict['content'] = new_content
+                            else:
+                                metadata[location_name] = new_content
+                                message_dict['metadata'] = metadata
+                            logger.info(f"Phase 1: Embedded JSON fragment converted and replaced for {location_name} (delta={len(before_fragment)-len(after_fragment)} chars)")
+                            found_fragment = True
+                        else:
+                            logger.info("Phase 1: Embedded fragment contained imageData but produced no mutation (unexpected)")
+                        break  # stop after first successful fragment
+
+                    if not found_fragment:
+                        logger.info(f"Phase 1: No convertible embedded JSON fragment with imageData found for {location_name}")
             
+            logger.info("Phase 1: Conversion completed, returning processed message")
             return message_dict
             
         except Exception as e:
-            logger.error(f"Error converting image data to reference: {e}")
+            logger.error(f"Phase 1: ERROR converting image data to reference: {e}", exc_info=True)
             return message_dict
     
     async def _store_message(self, message: ChatMessage):
         """Store a message to JSONL per session."""
         try:
             session_id = message.session_id or "default"
+            logger.info(f"=== _store_message called for session {session_id} ===")
             
             # Convert imageData to ImageReference before storage (Phase 1)
             message_dict = await self._convert_image_data_to_reference(message.to_dict())
@@ -1394,9 +1695,27 @@ class ChatService:
             except Exception as e:
                 logger.error(f"Failed writing batch for session {session_id}: {e}")
     
-    async def get_message_history(self, session_id: str = None, limit: int = 50, offset: int = 0) -> List[ChatMessage]:
-        """Get message history with pagination from JSONL files.
-        If session_id is None, aggregates across all sessions, sorted by timestamp."""
+    async def get_message_history(
+        self,
+        session_id: str = None,
+        limit: int = 50,
+        offset: int = 0,
+        load_full_images: bool = False,
+        context_strategy: str = "metadata_only"
+    ) -> List[ChatMessage]:
+        """
+        Get message history with pagination from JSONL files.
+        
+        Args:
+            session_id: Session ID to filter by, or None for all sessions
+            limit: Maximum number of messages to return
+            offset: Number of messages to skip
+            load_full_images: Whether to load full base64 images (default: False for Phase 2)
+            context_strategy: Strategy for image context ("metadata_only", "thumbnails_only", "recent_full", "selective")
+        
+        Returns:
+            List of ChatMessage objects with optimized image context
+        """
         try:
             messages: List[ChatMessage] = []
             if session_id:
@@ -1436,7 +1755,36 @@ class ChatService:
             # Apply offset/limit from the beginning per tests' expectation
             slice_start = offset if offset >= 0 else 0
             slice_end = slice_start + limit if limit is not None else None
-            return messages[slice_start:slice_end]
+            messages = messages[slice_start:slice_end]
+            
+            # Phase 2: Apply context building if enabled and not loading full images
+            if not load_full_images and self.context_builder:
+                try:
+                    from ..services.context_builder import ContextConfig, ContextStrategy
+                    
+                    # Map strategy string to enum
+                    strategy_map = {
+                        "metadata_only": ContextStrategy.METADATA_ONLY,
+                        "thumbnails_only": ContextStrategy.THUMBNAILS_ONLY,
+                        "recent_full": ContextStrategy.RECENT_FULL,
+                        "selective": ContextStrategy.SELECTIVE,
+                        "all_full": ContextStrategy.ALL_FULL
+                    }
+                    
+                    strategy = strategy_map.get(context_strategy, ContextStrategy.METADATA_ONLY)
+                    config = ContextConfig(strategy=strategy, max_history_length=limit)
+                    
+                    # Build optimized context
+                    optimized_dicts = self.context_builder.build_context(messages, config)
+                    
+                    # Convert back to ChatMessage objects
+                    messages = [ChatMessage.from_dict(d) for d in optimized_dicts]
+                    
+                    logger.debug(f"Applied context building with {context_strategy} strategy")
+                except Exception as e:
+                    logger.warning(f"Context building failed, using original messages: {e}")
+            
+            return messages
         except Exception as e:
             logger.error(f"Failed to retrieve message history (JSONL): {e}")
             return []

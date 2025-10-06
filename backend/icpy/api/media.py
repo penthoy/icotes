@@ -237,3 +237,18 @@ async def create_zip(body: Dict = Body(...)):
     return StreamingResponse(io.BytesIO(data), media_type='application/zip', headers={
         'Content-Disposition': 'attachment; filename="media_bundle.zip"'
     })
+
+
+# ============================================================================
+# Phase 3: Image Reference System Endpoints
+# Note: These endpoints are planned for full Phase 3 implementation
+# Currently commented out until ImageReferenceService has get_reference() method
+# ============================================================================
+
+# @router.get("/image/{image_id}")
+# async def get_image_by_id(image_id: str, thumbnail: bool = False):
+#     """
+#     Serve image by ID with path resolution (Phase 3).
+#     TODO: Implement when ImageReferenceService.get_reference() is available
+#     """
+#     pass

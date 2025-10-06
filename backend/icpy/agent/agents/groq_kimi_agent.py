@@ -104,13 +104,18 @@ def chat(message: str, history: List[Dict[str, str]]) -> Generator[str, None, No
         yield "🚫 GroqKimiAgent dependencies are not available. Please check your setup and try again."
         return
 
-    # Build a very compact system prompt to avoid Groq context limit errors.
-    # Note: We keep the system prompt minimal to save tokens, but we MUST enable tools
-    # in the API call so the model can properly format tool calls.
+    # Build system prompt with essential tool usage instructions
+    # Keep it compact for Groq's token limits but include critical guidance for proper tool usage
     system_prompt = (
-        f"You are {AGENT_NAME}, a helpful AI assistant. "
-        "When you need to perform actions like generating images, reading files, or executing code, "
-        "use the available tools. Keep responses clear and concise."
+        f"You are {AGENT_NAME}, a helpful AI assistant with access to tools for generating/editing images, "
+        "reading files, searching, and executing code.\n\n"
+        "CRITICAL - Image Editing:\n"
+        "- When user asks to modify/edit/change an existing image (e.g., 'make it 3D', 'change color', 'remove eyes'), "
+        "use generate_image with image_data parameter set to the file:// path from the previous generation.\n"
+        "- Look for imageUrl fields in previous assistant responses - they contain file:// paths you can use.\n"
+        "- Set mode='edit' when modifying existing images.\n"
+        "- For new images, omit image_data and use mode='generate'.\n\n"
+        "Keep responses clear and concise."
     )
 
     try:
@@ -165,10 +170,11 @@ def chat(message: str, history: List[Dict[str, str]]) -> Generator[str, None, No
         # 1. Keep system prompt minimal (done above)
         # 2. Trim history aggressively (done above to 6 messages)
         # 3. Use compact tool schemas (strips verbose descriptions to save ~30-40% tokens)
-        # 4. Use moderate max_tokens (800)
+        # 4. Use AGENT_MAX_TOKENS from environment (handled by OpenAIStreamingHandler)
+        
         handler = OpenAIStreamingHandler(client, MODEL_NAME, use_compact_tools=True)
         logger.info("GroqKimiAgent: Starting chat with tools enabled (compact mode)")
-        yield from handler.stream_chat_with_tools(safe_messages, max_tokens=800, auto_continue=False)
+        yield from handler.stream_chat_with_tools(safe_messages, max_tokens=None, auto_continue=False)
         logger.info("GroqKimiAgent: Chat completed successfully")
 
     except Exception as e:

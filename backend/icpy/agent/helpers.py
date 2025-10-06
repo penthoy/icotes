@@ -471,7 +471,9 @@ class ToolResultFormatter:
             elif tool_name == 'generate_image' and isinstance(data, dict):
                 # For image generation, return full result as JSON for the widget to parse
                 # The widget needs imageData to display the image
-                return f"✅ **Success**: {json.dumps(data)}\n"
+                json_str = json.dumps(data)
+                logger.info(f"ToolResultFormatter: Generating image result JSON ({len(json_str)} chars)")
+                return f"✅ **Success**: {json_str}\n"
             
             else:
                 # For other tools, show data as-is but truncate if too long
@@ -836,8 +838,21 @@ class OpenAIStreamingHandler:
                 # Execute the tool
                 result = self.tool_executor.execute_tool_call_sync(tool_name, arguments)
                 
-                # Format and display result
-                yield self.formatter.format_tool_result(tool_name, result)
+                # Format and display result - yield in smaller chunks for large responses
+                formatted_result = self.formatter.format_tool_result(tool_name, result)
+                
+                # For large responses (>1KB), stream in chunks to avoid WebSocket/buffer truncation
+                if len(formatted_result) > 1024:
+                    chunk_size = 1024  # 1KB chunks
+                    total_chunks = (len(formatted_result) + chunk_size - 1) // chunk_size
+                    logger.info(f"Streaming large tool result in {total_chunks} chunks ({len(formatted_result)} chars total)")
+                    for i in range(0, len(formatted_result), chunk_size):
+                        chunk = formatted_result[i:i+chunk_size]
+                        logger.debug(f"Yielding chunk {i//chunk_size + 1}/{total_chunks}: {len(chunk)} chars")
+                        yield chunk
+                    logger.info(f"Finished streaming {total_chunks} chunks for {tool_name}")
+                else:
+                    yield formatted_result
                 
                 # Sanitize result for LLM (remove large binary data like images)
                 sanitized_result = self._sanitize_tool_result_for_llm(tool_name, result)
