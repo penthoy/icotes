@@ -88,12 +88,41 @@ async def get_credential(cred_id: str):
 @router.put("/credentials/{cred_id}")
 async def update_credential(cred_id: str, payload: SSHCredentialUpdate):
     service = await get_hop_service()
-    c = service.update_credential(cred_id, payload.model_dump(exclude_unset=True))
+    updates = payload.model_dump(exclude_unset=True)
+    # Track whether defaultPath is being changed so we can reflect it in any active session
+    default_path_changed = 'defaultPath' in updates
+    c = service.update_credential(cred_id, updates)
     if not c:
         raise HTTPException(status_code=404, detail="Credential not found")
     try:
         broker = await get_message_broker()
         await broker.publish('hop.credentials.updated', {"credential": c})
+        # If this credential is currently connected (there may be an active session for it),
+        # and defaultPath changed, update the session cwd live so the UI (Explorer) can hop correctly next time.
+        if default_path_changed:
+            # Find session with matching credentialId/contextId
+            try:
+                sessions = service.list_sessions()
+                updated_any = False
+                for s in sessions:
+                    if s.get('contextId') == cred_id or s.get('credentialId') == cred_id:
+                        # Only update if still connected
+                        if s.get('status') == 'connected':
+                            # Mutate the underlying service session object
+                            # service._sessions is internal; safe targeted update for live refresh benefit
+                            svc_session = service._sessions.get(s.get('contextId'))  # type: ignore[attr-defined]
+                            if svc_session:
+                                svc_session.cwd = c.get('defaultPath') or svc_session.cwd or '/'
+                                updated_any = True
+                if updated_any:
+                    # Broadcast updated status for active context if affected
+                    active = service.status()
+                    await broker.publish('hop.status', active.__dict__)
+                    # Also broadcast full session list (reflects cwd change)
+                    sessions = service.list_sessions()
+                    await broker.publish('hop.sessions', {"sessions": sessions})
+            except Exception:
+                pass
     except Exception:
         pass
     return c
