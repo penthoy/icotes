@@ -589,9 +589,11 @@ export class ExplorerFileOperations {
       const errorCount = result?.errors?.length || 0;
       
       if (errorCount > 0) {
+        const errorDetails = result?.errors?.slice(0, 3).join('\n') || 'Unknown errors';
+        const moreErrors = errorCount > 3 ? `\n... and ${errorCount - 3} more` : '';
         await confirmService.confirm({
           title: 'Send Completed with Errors',
-          message: `Sent ${createdCount} items to ${targetContextId}, but ${errorCount} failed.`,
+          message: `Sent ${createdCount} items to ${targetContextId}, but ${errorCount} failed:\n\n${errorDetails}${moreErrors}`,
           confirmText: 'OK'
         });
       } else {
@@ -620,6 +622,16 @@ export class ExplorerFileOperations {
 
   private computeCommonPrefix(paths: string[]): string | null {
     if (paths.length === 0) return null;
+    
+    // For a single file, return its parent directory
+    if (paths.length === 1) {
+      const path = paths[0];
+      const lastSlash = path.lastIndexOf('/');
+      if (lastSlash <= 0) return null; // Root or no slash
+      return path.substring(0, lastSlash);
+    }
+    
+    // For multiple files, find common prefix
     const splitPaths = paths.map(p => p.split('/').filter(Boolean));
     const first = splitPaths[0];
     let prefix: string[] = [];

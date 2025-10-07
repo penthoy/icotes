@@ -350,11 +350,14 @@ async def send_files(payload: SendFilesRequest):
         try:
             if sftp_src:
                 st = await sftp_src.stat(src_path)  # type: ignore
-                is_dir = statmod.S_ISDIR(st.st_mode)
+                # AsyncSSH SFTPAttrs uses 'permissions' instead of 'st_mode'
+                mode = getattr(st, 'st_mode', None) or getattr(st, 'permissions', 0)
+                is_dir = statmod.S_ISDIR(mode)
             else:
                 is_dir = os.path.isdir(src_path)  # type: ignore
-        except Exception:
-            errors.append(f"stat failed: {src_path}")
+        except Exception as e:
+            logger.warning(f"[/api/hop/send-files] stat failed path={src_path}: {e}")
+            errors.append(f"stat failed: {src_path}: {e}")
             return
         if not is_dir:
             await copy_file(src_path, rel_prefix)
@@ -397,6 +400,8 @@ async def send_files(payload: SendFilesRequest):
         pass
 
     logger.info(f"[/api/hop/send-files] Completed src={src_ctx} dst={dst_ctx} created={len(created)} errors={len(errors)} dest_base={dest_base}")
+    if errors:
+        logger.warning(f"[/api/hop/send-files] Errors encountered: {errors}")
     return {"success": True, "created": created, "errors": errors}
 
 
