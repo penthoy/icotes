@@ -113,6 +113,17 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
     return () => explorerFileOperations.unregisterCommands();
   }, []);
 
+  // Initial hop sessions fetch so context menu has data on first open
+  useEffect(() => {
+    if (!backendService) return;
+    try {
+      // Fire and forget. Cache used by context menu builder.
+      (backendService as any).listHopSessions?.().catch(() => {});
+    } catch (_) {
+      /* ignore */
+    }
+  }, [backendService]);
+
   // Update command context when selection or path changes
   useEffect(() => {
     const ctx: FileOperationContext = {

@@ -231,6 +231,174 @@ async def list_sessions():
 class HopToRequest(BaseModel):
     contextId: str
 
+class SendFilesRequest(BaseModel):
+    target_context_id: str
+    paths: List[str]
+    source_context_id: Optional[str] = None
+    common_prefix: Optional[str] = None
+
+@router.post("/send-files")
+async def send_files(payload: SendFilesRequest):
+    """Send (copy) files/folders from a source context to a target context.
+
+    Behaviors:
+    - Supports local⇄remote (when SFTP available) and local→local (noop safeguard)
+    - Preserves relative layout using provided common_prefix when possible
+    - Creates intermediate directories
+    - Returns lists of created paths and per-path errors (does not abort on first error)
+    """
+    import os, posixpath, stat as statmod
+
+    service = await get_hop_service()
+    hop = service
+
+    src_ctx = payload.source_context_id or hop.status().contextId
+    dst_ctx = payload.target_context_id
+
+    if not payload.paths:
+        logger.info(f"[/api/hop/send-files] No paths provided (src={src_ctx} dst={dst_ctx})")
+        return {"success": True, "message": "No paths provided", "created": [], "errors": []}
+    if dst_ctx == src_ctx:
+        logger.info(f"[/api/hop/send-files] Source and target identical (ctx={src_ctx})")
+        return {"success": True, "message": "Source and target context identical; nothing to do", "created": [], "errors": []}
+
+    # Workspace root resolver
+    def _workspace_root() -> str:
+        return os.environ.get('WORKSPACE_ROOT') or os.environ.get('VITE_WORKSPACE_ROOT') or '/'
+
+    # Resolve default destination base path for context
+    def _cred_default_path(ctx_id: str) -> str:
+        if ctx_id == 'local':
+            return _workspace_root()
+        cred = hop.get_credential(ctx_id)
+        if cred and cred.get('defaultPath'):
+            return cred['defaultPath']
+        ses = hop._sessions.get(ctx_id)  # type: ignore[attr-defined]
+        if ses and getattr(ses, 'cwd', None):
+            return getattr(ses, 'cwd')
+        return '/'
+
+    dest_base = _cred_default_path(dst_ctx).rstrip('/') or '/'
+    common_prefix = (payload.common_prefix or '').rstrip('/')
+    if common_prefix and any('..' in p for p in common_prefix.split('/')):
+        logger.warning(f"[/api/hop/send-files] Ignoring suspicious common_prefix={common_prefix!r}")
+        common_prefix = ''
+
+    # SFTP handles (None if local or not connected / feature unavailable)
+    sftp_src = hop._sftp_clients.get(src_ctx) if src_ctx != 'local' else None  # type: ignore[attr-defined]
+    sftp_dst = hop._sftp_clients.get(dst_ctx) if dst_ctx != 'local' else None  # type: ignore[attr-defined]
+
+    # Guard: remote operations require SFTP client
+    errors: List[str] = []
+    created: List[str] = []
+    if src_ctx != 'local' and not sftp_src:
+        msg = f"Source context {src_ctx} not available (no SFTP)"
+        logger.warning(f"[/api/hop/send-files] {msg}")
+        return {"success": False, "created": [], "errors": [msg]}
+    if dst_ctx != 'local' and not sftp_dst:
+        msg = f"Target context {dst_ctx} not available (no SFTP)"
+        logger.warning(f"[/api/hop/send-files] {msg}")
+        return {"success": False, "created": [], "errors": [msg]}
+
+    def _rel_for(path: str) -> str:
+        if common_prefix and path.startswith(common_prefix + '/'):
+            rel = path[len(common_prefix)+1:]
+        else:
+            rel = posixpath.basename(path)
+        parts = [p for p in rel.split('/') if p and p not in ('.', '..')]
+        return '/'.join(parts)
+
+    async def copy_file(src_path: str, rel_path: str):
+        try:
+            dest_path = posixpath.normpath(f"{dest_base}/{rel_path}")
+            # Read bytes
+            if sftp_src:
+                async with sftp_src.open(src_path, 'rb') as f:  # type: ignore
+                    data = await f.read()
+            else:
+                with open(src_path, 'rb') as f:  # type: ignore
+                    data = f.read()
+            # Ensure directory exists
+            dest_dir = posixpath.dirname(dest_path)
+            if sftp_dst:
+                segments = [seg for seg in dest_dir.strip('/').split('/') if seg]
+                cur = ''
+                for seg in segments:
+                    cur = f"{cur}/{seg}" if cur else f"/{seg}"
+                    try:
+                        await sftp_dst.stat(cur)  # type: ignore
+                    except Exception:
+                        try:
+                            await sftp_dst.mkdir(cur)  # type: ignore
+                        except Exception:
+                            pass
+            else:
+                os.makedirs(dest_dir, exist_ok=True)
+            # Write bytes
+            if sftp_dst:
+                async with sftp_dst.open(dest_path, 'wb') as f:  # type: ignore
+                    await f.write(data)
+            else:
+                with open(dest_path, 'wb') as f:  # type: ignore
+                    f.write(data)
+            created.append(dest_path)
+        except Exception as e:
+            logger.warning(f"[/api/hop/send-files] copy_file failed src={src_path} rel={rel_path}: {e}")
+            errors.append(f"{src_path}: {e}")
+
+    async def recurse_path(src_path: str, rel_prefix: str = ''):
+        try:
+            if sftp_src:
+                st = await sftp_src.stat(src_path)  # type: ignore
+                is_dir = statmod.S_ISDIR(st.st_mode)
+            else:
+                is_dir = os.path.isdir(src_path)  # type: ignore
+        except Exception:
+            errors.append(f"stat failed: {src_path}")
+            return
+        if not is_dir:
+            await copy_file(src_path, rel_prefix)
+            return
+        # Directory branch
+        try:
+            if sftp_src:
+                names = await sftp_src.listdir(src_path)  # type: ignore
+            else:
+                names = os.listdir(src_path)  # type: ignore
+            # Ensure directory exists at destination
+            if rel_prefix:
+                dir_path = posixpath.normpath(f"{dest_base}/{rel_prefix}")
+                if sftp_dst:
+                    try:
+                        await sftp_dst.mkdir(dir_path)  # type: ignore
+                    except Exception:
+                        pass
+                else:
+                    os.makedirs(dir_path, exist_ok=True)
+            for name in names:
+                child_src = src_path.rstrip('/') + '/' + name
+                child_rel = (rel_prefix.rstrip('/') + '/' + name).lstrip('/') if rel_prefix else name
+                await recurse_path(child_src, child_rel)
+        except Exception as e:
+            logger.warning(f"[/api/hop/send-files] recurse list failed path={src_path}: {e}")
+            errors.append(f"list failed: {src_path}: {e}")
+
+    logger.info(f"[/api/hop/send-files] Begin transfer src={src_ctx} dst={dst_ctx} count={len(payload.paths)} dest_base={dest_base} common_prefix={common_prefix!r}")
+    for p in payload.paths:
+        rel = _rel_for(p)
+        logger.debug(f"[/api/hop/send-files] processing path={p} rel={rel}")
+        await recurse_path(p, rel)
+
+    try:
+        broker = await get_message_broker()
+        if created:
+            await broker.publish('hop.send_files.completed', {"count": len(created), "target": dst_ctx})
+    except Exception:
+        pass
+
+    logger.info(f"[/api/hop/send-files] Completed src={src_ctx} dst={dst_ctx} created={len(created)} errors={len(errors)} dest_base={dest_base}")
+    return {"success": True, "created": created, "errors": errors}
+
 
 @router.post("/hop")
 async def hop_to(payload: HopToRequest):

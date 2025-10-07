@@ -64,6 +64,7 @@ export class ICUIBackendService extends EventEmitter {
   private connectionStats: any = null;
   // Hop (SSH) context
   private hopSession: any = null;
+  private hopSessionsCache: any[] = [];
   
   // Configuration
   private config: EnhancedBackendConfig = {
@@ -884,6 +885,9 @@ export class ICUIBackendService extends EventEmitter {
             this.hopSession = this.normalizeHopSession(message.data);
             this.emit('hop_status', this.hopSession);
           }
+          if (message.event === 'hop.sessions' && message.data?.sessions) {
+            this.hopSessionsCache = message.data.sessions;
+          }
           this.emit('hop_event', { event: message.event, data: message.data });
         } catch (e) {
           console.warn('[ICUIBackendService] Failed to process hop_event:', e);
@@ -1027,8 +1031,14 @@ export class ICUIBackendService extends EventEmitter {
     const resp = await fetch(`${this.baseUrl}/api/hop/sessions`);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
-    return data.sessions || [];
+    if (Array.isArray(data.sessions)) {
+      this.hopSessionsCache = data.sessions;
+    }
+    return this.hopSessionsCache;
   }
+
+  /** Return cached hop sessions (populated via events or explicit listHopSessions). */
+  listHopSessionsCached(): any[] { return this.hopSessionsCache; }
 
   /** Hop to a different context */
   async hopTo(contextId: string): Promise<any> {
@@ -1043,6 +1053,32 @@ export class ICUIBackendService extends EventEmitter {
     this.hopSession = this.normalizeHopSession(session);
     this.emit('hop_status', this.hopSession);
     return session;
+  }
+
+  /** Send (copy) a set of files/folders from current (or specified) context to target context default path */
+  async sendFilesToContext(targetContextId: string, paths: string[], opts?: { sourceContextId?: string; commonPrefix?: string }): Promise<any> {
+    await this.ensureInitialized();
+    if (!paths || paths.length === 0) return { success: true, created: [] };
+    const payload: any = {
+      target_context_id: targetContextId,
+      paths,
+    };
+    if (opts?.sourceContextId) payload.source_context_id = opts.sourceContextId;
+    if (opts?.commonPrefix) payload.common_prefix = opts.commonPrefix;
+    log.info('BackendService', 'sendFilesToContext request', { targetContextId, count: paths.length, payload });
+    const resp = await fetch(`${this.baseUrl}/api/hop/send-files`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!resp.ok) {
+      const detail = await resp.json().catch(() => ({}));
+      log.error('BackendService', 'sendFilesToContext failed', { status: resp.status, detail });
+      throw new Error(detail?.detail || `Failed to send files: HTTP ${resp.status}`);
+    }
+    const data = await resp.json();
+    log.info('BackendService', 'sendFilesToContext response', { created: data?.created?.length, errors: data?.errors?.length });
+    return data;
   }
 
   private normalizeHopSession(raw: any) {

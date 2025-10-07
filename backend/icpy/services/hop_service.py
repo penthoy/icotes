@@ -651,6 +651,11 @@ class HopService:
         for context_id, session in self._sessions.items():
             session_dict = asdict(session)
             session_dict['active'] = (context_id == self._active_context_id)
+            # Include credential name for easier UI identification
+            if session.credentialId and context_id != 'local':
+                cred = self.get_credential(session.credentialId)
+                if cred:
+                    session_dict['credentialName'] = cred.get('name', context_id)
             result.append(session_dict)
         return result
     

@@ -7,7 +7,7 @@
  */
 
 import { MenuSchema, MenuItem, MenuContext } from '../../lib/menuSchemas';
-import { ICUIFileNode } from '../../services';
+import { ICUIFileNode, backendService } from '../../services';
 import { explorerFileOperations } from './FileOperations';
 import { globalCommandRegistry } from '../../lib/commandRegistry';
 
@@ -231,6 +231,63 @@ export function createExplorerContextMenu(
     isVisible: () => true,
     isEnabled: () => true,
   });
+
+  // "Send to" submenu (available when selection and at least one other context exists)
+  try {
+    let hopSessions: any[] = [];
+    if (backendService && (backendService as any).listHopSessionsCached) {
+      hopSessions = (backendService as any).listHopSessionsCached();
+    }
+    console.log('[ExplorerContextMenu] Cached hop sessions:', hopSessions);
+    // If cache empty attempt a synchronous fire-and-forget async load (will populate next time)
+    if ((!hopSessions || hopSessions.length === 0) && (backendService as any).listHopSessions) {
+      console.log('[ExplorerContextMenu] Cache empty, triggering async load for next time');
+      (backendService as any).listHopSessions().catch(() => {});
+    }
+    const targets: { id: string; label: string }[] = [];
+    if (Array.isArray(hopSessions) && hopSessions.length > 0) {
+      hopSessions.forEach((s: any) => {
+        const cid = s.contextId || s.context_id;
+        if (!cid) return;
+        const active = !!s.active;
+        const credName = s.credentialName || s.credential_name;
+        // For remote: prefer credential name (hop1/hop2) over username@host for cleaner UI
+        let label: string;
+        if (cid === 'local') {
+          label = 'Local workspace' + (active ? ' (active)' : '');
+        } else if (credName) {
+          // Show credential name (hop1, hop2, etc.)
+          label = `${credName}${active ? ' (active)' : ''}`;
+        } else {
+          // Fallback to username@host
+          const host = s.host || cid;
+          label = `${s.username ? s.username + '@' : ''}${host}${active ? ' (active)' : ''}`;
+        }
+        targets.push({ id: cid, label });
+      });
+    }
+    if (context.selectedFiles.length > 0 && targets.length >= 2) {
+      const sendChildren: MenuItem[] = targets.map(t => ({
+        id: `sendto-${t.id}`,
+        label: t.label,
+        icon: '📤',
+        commandId: 'explorer.sendTo',
+        args: { targetContextId: t.id },
+        isVisible: () => true,
+        isEnabled: () => true,
+      }));
+      items.push({
+        id: 'sendTo',
+        label: 'Send to',
+        icon: '📨',
+        children: sendChildren,
+        isVisible: () => true,
+        isEnabled: () => true,
+      });
+    }
+  } catch (e) {
+    // Silently skip Send to menu if hop sessions unavailable
+  }
 
   // Selection actions (when multi-select is active)
   if (isMultiSelect) {

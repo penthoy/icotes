@@ -76,10 +76,10 @@ const ContextMenuItem: React.FC<{
   }
 
   const handleClick = useCallback((e: React.MouseEvent) => {
+    if (!isEnabled) return;
+    
     e.preventDefault();
     e.stopPropagation();
-    
-    if (!isEnabled) return;
     
     if (item.children && item.children.length > 0) {
       const rect = itemRef.current?.getBoundingClientRect();
@@ -98,10 +98,11 @@ const ContextMenuItem: React.FC<{
       if (rect) {
         onOpenSubMenu(item, { x: rect.right, y: rect.top });
       }
-    } else {
-      onCloseSubMenu();
     }
-  }, [onMouseEnter, item, onOpenSubMenu, onCloseSubMenu]);
+    // Note: We don't call onCloseSubMenu here for items without children
+    // because that would close any open submenu when hovering sibling items
+    // The parent menu will handle closing submenus when mouse leaves the menu area
+  }, [onMouseEnter, item, onOpenSubMenu]);
 
   const ariaProps = getMenuItemAriaProps({
     selected: focused,
@@ -130,6 +131,7 @@ const ContextMenuItem: React.FC<{
         borderRadius: '4px',
         margin: '1px 4px',
         whiteSpace: 'nowrap',
+        pointerEvents: 'auto', // Ensure clicks are captured
       }}
       onClick={handleClick}
       onMouseEnter={handleMouseEnter}
@@ -281,7 +283,10 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
     if (!visible) return;
 
     const handleClickOutside = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      // Check if click is on any context menu (including submenus rendered in portals)
+      const isOnMenu = target instanceof Element && target.closest('.icui-context-menu');
+      if (!isOnMenu) {
         onClose();
       }
     };
