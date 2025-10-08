@@ -39,10 +39,21 @@ class RemoteTerminalManager:
         """
         if not ASYNCSSH_AVAILABLE:
             raise RuntimeError("AsyncSSH not available for remote terminal")
-        if not self._hop or getattr(self._hop, "_conn", None) is None:
-            raise RuntimeError("No active SSH connection for remote terminal")
-
-        conn = getattr(self._hop, "_conn", None)
+        # Use method call instead of getattr to ensure it works correctly in Docker
+        conn = self._hop.get_active_connection() if self._hop else None
+        session = self._hop.status() if self._hop else None
+        logger.info(
+            "[RemoteTerm] connect_terminal called: terminal_id=%s has_hop=%s has_conn=%s session_status=%s contextId=%s",
+            terminal_id,
+            self._hop is not None,
+            conn is not None,
+            getattr(session, 'status', None),
+            getattr(session, 'contextId', None)
+        )
+        if not self._hop or conn is None:
+            error_msg = f"No active SSH connection (hop={self._hop is not None}, conn={conn is not None})"
+            logger.error(f"[RemoteTerm] {error_msg}")
+            raise RuntimeError(error_msg)
         session = self._hop.status()
         cwd = session.cwd or "/"
         env = {

@@ -503,11 +503,10 @@ class RestAPI:
                         fs_rt = await self.context_router.get_filesystem()
                         if getattr(fs_rt, 'is_remote', False):
                             fs = fs_rt
-                    except Exception:
+                    except Exception as e:
+                        logger.warning(f"[REST] FS routing error, falling back local: {e}")
                         pass
-                logger.info("[REST] list_files path=%s use_remote=%s", path, getattr(fs, 'is_remote', False))
                 files = await fs.list_directory(path, include_hidden=include_hidden)
-                logger.info("[REST] list_files result_count=%s", len(files) if isinstance(files, list) else 'n/a')
                 return SuccessResponse(data=files)
             except Exception as e:
                 logger.error(f"Error listing files: {e}")

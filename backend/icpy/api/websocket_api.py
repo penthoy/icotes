@@ -247,7 +247,8 @@ class WebSocketAPI:
             # Apply safe default subscriptions so clients receive critical events even
             # if they miss initial subscribe timing on first load/reconnect.
             # Keep this conservative: filesystem events are needed by Explorer UI.
-            default_topics = {"fs.*"}
+            # hop.* is needed for SSH Hop panel to maintain connection state across reconnects.
+            default_topics = {"fs.*", "hop.*"}
             connection.subscriptions.update(default_topics)
             logger.info(f"[WS] Connection {connection_id} auto-subscribed to defaults: {sorted(default_topics)}")
 

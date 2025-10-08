@@ -95,6 +95,11 @@ workspace/.icotes/chat_history/
 *.chat
 *.jsonl
 
+# SSH credentials and keys (security - never include in Docker images)
+workspace/.icotes/ssh/
+**/ssh/keys/
+**/ssh/credentials.json
+
 # Temporary files
 *.tmp
 *.temp

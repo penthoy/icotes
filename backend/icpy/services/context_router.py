@@ -67,12 +67,11 @@ class ContextRouter:
         await self._ensure_dependencies()
         try:
             session = self._hop_service.status() if self._hop_service else None
-            has_conn = getattr(self._hop_service, "_conn", None) is not None
-            has_sftp = getattr(self._hop_service, "_sftp", None) is not None
-            logger.info(
-                "[ContextRouter] FS decision: status=%s contextId=%s has_conn=%s has_sftp=%s",
-                getattr(session, 'status', None), getattr(session, 'contextId', None), has_conn, has_sftp
-            )
+            # Use method calls instead of getattr to ensure properties work correctly in Docker
+            active_conn = self._hop_service.get_active_connection() if self._hop_service else None
+            active_sftp = self._hop_service.get_active_sftp() if self._hop_service else None
+            has_conn = active_conn is not None
+            has_sftp = active_sftp is not None
             # Only use remote when SSH connection object is present, session is connected, and SFTP is available
             if (
                 session
@@ -84,8 +83,14 @@ class ContextRouter:
             ):
                 # Return a transient remote adapter bound to current hop connection
                 remote = await get_remote_filesystem_adapter()
-                logger.info("[ContextRouter] Using RemoteFileSystemAdapter")
                 return remote  # type: ignore[return-value]
+            else:
+                # Log only critical failures for debugging
+                if session and session.status == 'connected' and session.contextId != 'local' and (not has_conn or not has_sftp):
+                    logger.warning(
+                        f"[ContextRouter] Remote FS unavailable despite connected status: "
+                        f"context={session.contextId}, conn={has_conn}, sftp={has_sftp}"
+                    )
         except Exception as e:
             logger.warning(f"[ContextRouter] Remote FS unavailable, falling back to local: {e}")
         return self._local_fs  # type: ignore[return-value]
@@ -106,14 +111,9 @@ class ContextRouter:
         if REMOTE_TERMINAL_AVAILABLE and ASYNCSSH_AVAILABLE:
             try:
                 session = self._hop_service.status() if self._hop_service else None
-                has_conn = getattr(self._hop_service, "_conn", None) is not None
-                
-                logger.info(
-                    "[ContextRouter] Terminal decision: status=%s contextId=%s has_conn=%s",
-                    getattr(session, 'status', None), 
-                    getattr(session, 'contextId', None), 
-                    has_conn
-                )
+                # Use method call instead of getattr to ensure properties work correctly in Docker
+                active_conn = self._hop_service.get_active_connection() if self._hop_service else None
+                has_conn = active_conn is not None
                 
                 # Only use remote when SSH connection is active
                 if (
@@ -125,8 +125,14 @@ class ContextRouter:
                 ):
                     # Return remote terminal manager
                     remote_term = await get_remote_terminal_manager()
-                    logger.info("[ContextRouter] Using RemoteTerminalManager")
                     return remote_term
+                else:
+                    # Log only critical failures for debugging
+                    if session and session.status == 'connected' and session.contextId != 'local' and not has_conn:
+                        logger.warning(
+                            f"[ContextRouter] Remote terminal unavailable despite connected status: "
+                            f"context={session.contextId}, conn={has_conn}"
+                        )
             except Exception as e:
                 logger.warning(f"[ContextRouter] Remote terminal check failed, using local: {e}")
         

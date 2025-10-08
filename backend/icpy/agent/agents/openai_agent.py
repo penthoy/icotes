@@ -70,7 +70,11 @@ try:
     ])
 
 except ImportError as e:
-    logger.warning(f"Import error in OpenAIAgent: {e}")
+    import traceback
+    logger.error(f"[OpenAIAgent] Import error: {e}")
+    logger.error(f"[OpenAIAgent] Full traceback:\n{traceback.format_exc()}")
+    logger.error(f"[OpenAIAgent] sys.path: {sys.path if 'sys' in dir() else 'sys not imported'}")
+    logger.error(f"[OpenAIAgent] ICOTES_BACKEND_PATH: {os.environ.get('ICOTES_BACKEND_PATH', 'NOT SET')}")
     DEPENDENCIES_AVAILABLE = False
     AGENT_METADATA = {
         "AGENT_NAME": AGENT_NAME,

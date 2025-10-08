@@ -86,7 +86,8 @@ class RemoteFileSystemAdapter:
         if not self._hop:
             return None
         # Access the live SFTP client; HopService ensures lifecycle
-        return getattr(self._hop, "_sftp", None)
+        # Use method call instead of getattr to ensure it works correctly in Docker
+        return self._hop.get_active_sftp()
 
     async def _publish(self, topic: str, payload: Dict[str, Any]):
         try:

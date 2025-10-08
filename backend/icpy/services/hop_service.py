@@ -574,7 +574,9 @@ class HopService:
             # Remove session and credentials
             self._sessions.pop(context_id, None)
             self._last_credentials.pop(context_id, None)
-            self._connection_start_times.pop(context_id, None)
+            # NOTE: Do NOT clear _connection_start_times - we keep it to prove
+            # that a connection was established in this runtime session
+            # This prevents false-positive stale session detection
             
             # If we disconnected the active context, switch to local
             if self._active_context_id == context_id:
@@ -639,9 +641,18 @@ class HopService:
                     if uptime > 300:  # Every 5 minutes, update quality in background
                         # Don't block status() call, just note staleness
                         pass
-            # If not connected, normalize session
-            elif conn is None and active_session.status == "connected":
-                active_session.status = "disconnected"
+            else:
+                # Normalization: If session says connected but there's no live connection object
+                # and we never started a connection in this runtime, treat as stale (e.g. container restart)
+                if (
+                    active_session.status == "connected"
+                    and conn is None
+                    and self._active_context_id not in self._connection_start_times
+                ):
+                    active_session.status = "disconnected"
+                    # Fall back to local context to avoid misleading routing
+                    self._active_context_id = "local"
+                    active_session = self._sessions["local"]
         
         return active_session
     
@@ -649,6 +660,13 @@ class HopService:
         """List all active sessions (including local)."""
         result = []
         for context_id, session in self._sessions.items():
+            if (
+                context_id != "local"
+                and session.status == "connected"
+                and context_id not in self._connections
+                and context_id not in self._connection_start_times
+            ):
+                session.status = "disconnected"
             session_dict = asdict(session)
             session_dict['active'] = (context_id == self._active_context_id)
             # Include credential name for easier UI identification
@@ -688,7 +706,8 @@ class HopService:
         """
         if self._active_context_id == "local":
             return None
-        return self._connections.get(self._active_context_id)
+        conn = self._connections.get(self._active_context_id)
+        return conn
     
     def get_active_sftp(self):
         """Get the SFTP client for the active context.
@@ -697,7 +716,8 @@ class HopService:
         """
         if self._active_context_id == "local":
             return None
-        return self._sftp_clients.get(self._active_context_id)
+        sftp = self._sftp_clients.get(self._active_context_id)
+        return sftp
     
     # Legacy property accessors for backward compatibility
     @property
