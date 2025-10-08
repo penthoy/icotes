@@ -58,7 +58,12 @@ const ICUIHop: React.FC<{ className?: string }> = ({ className = '' }) => {
     load();
     // Subscribe to hop websocket topics for realtime updates
     (backendService as any).notify?.('subscribe', { topics: ['hop.*'] }).catch(() => {/* ignore */});
-    const onHop = (s: any) => { logHop('event: hop_status direct', s); setSession(s); };
+    
+    const onHop = (s: any) => { 
+      logHop('event: hop_status direct', s); 
+      setSession(s); 
+    };
+    
     const onHopEvent = (evt: any) => {
       const name = evt?.event || '';
       logHop('event: hop_event', name, evt);
