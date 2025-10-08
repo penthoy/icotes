@@ -122,24 +122,71 @@ class ImagenTool(BaseTool):
         Returns: tuple of (image_bytes, mime_type) or (None, None)
         """
         try:
-            if not hasattr(response, 'parts'):
-                logger.error("Native response has no parts")
+            # Some legacy code (now removed) attempted: base64.b64encode(image_bytes)
+            # which produced NameError when image_bytes wasn't defined. We guard explicitly.
+            image_bytes: Optional[bytes] = None
+            mime_type: Optional[str] = None
+
+            # Primary expected shape: response.parts[*].inline_data.data
+            if hasattr(response, 'parts') and response.parts:
+                for idx, part in enumerate(response.parts):
+                    try:
+                        inline = getattr(part, 'inline_data', None)
+                        if inline and getattr(inline, 'data', None):
+                            candidate = inline.data
+                            # Some SDK variants return memoryview / bytearray
+                            if isinstance(candidate, (bytearray, memoryview)):
+                                candidate = bytes(candidate)
+                            # Occasionally data may already be base64 str
+                            if isinstance(candidate, str):
+                                # Heuristic: base64 strings are usually longer & only b64 charset
+                                b64_candidate = candidate.replace('\n', '')
+                                if re.fullmatch(r'[A-Za-z0-9+/=]+', b64_candidate):
+                                    try:
+                                        candidate = base64.b64decode(b64_candidate)
+                                    except Exception:
+                                        # leave as-is; will skip if not bytes
+                                        pass
+                            if isinstance(candidate, bytes) and len(candidate) > 0:
+                                image_bytes = candidate
+                                mime_type = getattr(inline, 'mime_type', 'image/png')
+                                logger.info(f"Found inline_data part[{idx}] with {len(image_bytes)} bytes (mime={mime_type})")
+                                break
+                    except Exception as inner_e:
+                        logger.warning(f"Failed inspecting part[{idx}]: {inner_e}")
+
+            # Alternate shape: response.candidates[0].content.parts
+            if image_bytes is None and hasattr(response, 'candidates'):
+                try:
+                    candidates = getattr(response, 'candidates') or []
+                    for c_idx, cand in enumerate(candidates):
+                        content = getattr(cand, 'content', None)
+                        parts = getattr(content, 'parts', None) if content else None
+                        if parts:
+                            for p_idx, p in enumerate(parts):
+                                inline = getattr(p, 'inline_data', None)
+                                if inline and getattr(inline, 'data', None):
+                                    data_val = inline.data
+                                    if isinstance(data_val, (bytearray, memoryview)):
+                                        data_val = bytes(data_val)
+                                    if isinstance(data_val, bytes) and len(data_val) > 0:
+                                        image_bytes = data_val
+                                        mime_type = getattr(inline, 'mime_type', 'image/png')
+                                        logger.info(f"Found candidate[{c_idx}].part[{p_idx}] inline_data with {len(image_bytes)} bytes (mime={mime_type})")
+                                        break
+                            if image_bytes:
+                                break
+                except Exception as alt_e:
+                    logger.warning(f"Alternate extraction path failed: {alt_e}")
+
+            if image_bytes is None:
+                logger.warning("No image bytes found in native response (parts / candidates scanned)")
                 return None, None
-            
-            # Iterate through parts to find image data
-            for part in response.parts:
-                if hasattr(part, 'inline_data') and part.inline_data:
-                    inline = part.inline_data
-                    if hasattr(inline, 'data') and inline.data:
-                        mime_type = getattr(inline, 'mime_type', 'image/png')
-                        logger.info(f"Found inline_data with {len(inline.data)} bytes, mime={mime_type}")
-                        return inline.data, mime_type
-            
-            logger.warning("No inline_data found in any response parts")
-            return None, None
-            
+
+            return image_bytes, mime_type or 'image/png'
+
         except Exception as e:
-            logger.error(f"Error extracting image from native response: {e}")
+            logger.error(f"Error extracting image from native response (defensive handler): {e}")
             import traceback
             traceback.print_exc()
             return None, None

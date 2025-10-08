@@ -163,7 +163,13 @@ const ImageGenerationWidget: React.FC<ImageGenerationWidgetProps> = ({
   const handleDownload = useCallback(() => {
     if (generationData.imageUrl) {
       const link = document.createElement('a');
-      link.href = generationData.imageUrl;
+      // Convert file:// URLs to API endpoints
+      if (generationData.imageUrl.startsWith('file://')) {
+        const filePath = generationData.imageUrl.replace('file://', '');
+        link.href = `/api/files/raw?path=${encodeURIComponent(filePath)}`;
+      } else {
+        link.href = generationData.imageUrl;
+      }
       link.download = `generated-image-${Date.now()}.png`;
       document.body.appendChild(link);
       link.click();
@@ -193,12 +199,20 @@ const ImageGenerationWidget: React.FC<ImageGenerationWidgetProps> = ({
 
   // Get display image source
   const imageSrc = useMemo(() => {
-    if (generationData.imageUrl) {
-      return generationData.imageUrl;
-    }
+    // Priority 1: Use thumbnail from imageData (small, fast)
     if (generationData.imageData) {
       return `data:image/png;base64,${generationData.imageData}`;
     }
+    
+    // Priority 2: Convert file:// URLs to API endpoints for full image
+    if (generationData.imageUrl) {
+      if (generationData.imageUrl.startsWith('file://')) {
+        const filePath = generationData.imageUrl.replace('file://', '');
+        return `/api/files/raw?path=${encodeURIComponent(filePath)}`;
+      }
+      return generationData.imageUrl;
+    }
+    
     return null;
   }, [generationData]);
 

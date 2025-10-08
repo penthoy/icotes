@@ -1361,6 +1361,16 @@ class ChatService:
                         location_data['imageReference'] = ref.to_dict()
                         del location_data['imageData']
                         
+                        # CRITICAL: Also remove/replace imageUrl which may contain full base64 data URL
+                        if 'imageUrl' in location_data:
+                            original_url = location_data['imageUrl']
+                            # Replace with file:// path instead of data: URL
+                            location_data['imageUrl'] = f"file://{ref.absolute_path}"
+                            logger.info(
+                                f"Replaced base64 data URL in imageUrl field "
+                                f"(size reduction: {len(original_url)} → {len(location_data['imageUrl'])} chars)"
+                            )
+                        
                         logger.info(
                             f"Converted imageData to reference: {ref.image_id} "
                             f"(size reduction: {len(image_data)} → {len(json.dumps(ref.to_dict()))} chars)"
