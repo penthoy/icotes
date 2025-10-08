@@ -269,18 +269,31 @@ class ImagenTool(BaseTool):
                 # Use contextual filesystem to load file (works for both local and remote)
                 try:
                     filesystem_service = await get_contextual_filesystem()
-                    image_bytes = await filesystem_service.read_file(file_path)
                     
-                    # Convert string to bytes if needed (some FS services return str)
-                    if isinstance(image_bytes, str):
-                        # If it's a base64 string, decode it
-                        if image_bytes.startswith('data:image/'):
-                            # Extract base64 part
-                            _, b64_data = image_bytes.split(',', 1)
-                            image_bytes = base64.b64decode(b64_data)
-                        else:
-                            # Assume it's raw base64
-                            image_bytes = base64.b64decode(image_bytes)
+                    # Try to read as binary first (proper way for images)
+                    if hasattr(filesystem_service, 'read_file_binary'):
+                        image_bytes = await filesystem_service.read_file_binary(file_path)
+                        if image_bytes is None:
+                            logger.error(f"Failed to read binary file: {file_path}")
+                            return None
+                    else:
+                        # Fallback to text read with base64 conversion (for older FS implementations)
+                        image_bytes = await filesystem_service.read_file(file_path)
+                        
+                        # Convert string to bytes if needed (some FS services return str)
+                        if isinstance(image_bytes, str):
+                            # If it's a base64 string, decode it
+                            if image_bytes.startswith('data:image/'):
+                                # Extract base64 part
+                                _, b64_data = image_bytes.split(',', 1)
+                                image_bytes = base64.b64decode(b64_data)
+                            else:
+                                # Assume it's raw base64
+                                image_bytes = base64.b64decode(image_bytes)
+                        elif image_bytes is None:
+                            logger.error(f"Failed to read file: {file_path}")
+                            return None
+                            
                 except FileNotFoundError:
                     logger.error(f"File does not exist: {file_path}")
                     return None

@@ -469,10 +469,31 @@ class ToolResultFormatter:
                 return f"✅ **Success**: Command executed\nOutput: {output}\n"
             
             elif tool_name == 'generate_image' and isinstance(data, dict):
-                # For image generation, return full result as JSON for the widget to parse
-                # The widget needs imageData to display the image
-                json_str = json.dumps(data)
-                logger.info(f"ToolResultFormatter: Generating image result JSON ({len(json_str)} chars)")
+                # For image generation, return metadata WITHOUT imageData
+                # The imageData is huge (4-5MB) and gets converted to imageReference during storage
+                # Streaming it causes massive delays - widget gets the image from the reference instead
+                summary_data = {
+                    "message": data.get('message', 'Image generated successfully'),
+                    "prompt": data.get('prompt', ''),
+                    "filePath": data.get('filePath', ''),
+                    # Include imageUrl explicitly so the frontend widget has a direct display source.
+                    # If the original result didn't include it (some older tool versions), build from filePath.
+                    "imageUrl": data.get('imageUrl') or (
+                        f"file://{data.get('filePath')}" if data.get('filePath') and not str(data.get('filePath')).startswith('file://') else data.get('filePath')
+                    ),
+                    "mimeType": data.get('mimeType', 'image/png'),
+                    "model": data.get('model', ''),
+                    "timestamp": data.get('timestamp', ''),
+                    "size": data.get('size', ''),
+                    "width": data.get('width'),
+                    "height": data.get('height'),
+                    "mode": data.get('mode', ''),
+                    "context": data.get('context', 'local'),
+                    "imageReference": data.get('imageReference'),  # CRITICAL: Widget needs this for thumbnail
+                    "note": "imageData excluded from streaming, widget uses imageReference"
+                }
+                json_str = json.dumps(summary_data)
+                logger.info(f"ToolResultFormatter: Generating image result JSON ({len(json_str)} chars, imageData excluded, imageReference included)")
                 return f"✅ **Success**: {json_str}\n"
             
             else:

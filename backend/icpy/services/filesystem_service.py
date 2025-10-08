@@ -808,6 +808,45 @@ class FileSystemService:
             logger.error(f"Error reading file {file_path}: {e}")
             return None
 
+    async def read_file_binary(self, file_path: str) -> Optional[bytes]:
+        """Read file content as binary data.
+        
+        Args:
+            file_path: Path to the file to read
+            
+        Returns:
+            File content as bytes or None if error
+        """
+        try:
+            if not os.path.exists(file_path):
+                return None
+            
+            # Check file size
+            file_size = os.path.getsize(file_path)
+            if file_size > self.max_file_size:
+                logger.warning(f"File too large to read: {file_path}")
+                return None
+
+            async with aiofiles.open(file_path, 'rb') as f:
+                content = await f.read()
+
+            self.stats['files_read'] += 1
+            self.stats['total_bytes_read'] += len(content)
+            
+            # Publish event
+            await self.message_broker.publish('fs.file_read', {
+                'file_path': file_path,
+                'size': len(content),
+                'encoding': 'binary',
+                'timestamp': time.time()
+            })
+            
+            return content
+                
+        except Exception as e:
+            logger.error(f"Error reading binary file {file_path}: {e}")
+            return None
+
     async def write_file(self, file_path: str, content: str, encoding: str = 'utf-8', create_dirs: bool = True) -> bool:
         """Write content to file.
         
