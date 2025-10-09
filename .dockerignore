@@ -100,6 +100,10 @@ workspace/.icotes/ssh/
 **/ssh/keys/
 **/ssh/credentials.json
 
+# .icotes subdirectories (exclude from Docker builds, except plugins)
+workspace/.icotes/media/
+workspace/.icotes/thumbnails/
+
 # Temporary files
 *.tmp
 *.temp
