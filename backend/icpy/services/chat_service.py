@@ -161,11 +161,10 @@ class ChatService:
         self._instance_id = uuid.uuid4().hex[:8]
         # Lazy references; can be coroutine functions, resolve when used
         self.message_broker = get_message_broker()
-        # Note: tests patch get_connection_manager to return a Mock manager. We call it here so
-        # connection_manager is an object with patchable attributes (e.g. send_to_connection).
-        # In normal runtime this import is async; when unpatched it returns a coroutine. We'll
-        # store whatever is returned and resolve it lazily in _send_typing_indicator.
-        self.connection_manager = get_connection_manager()
+        # Note: tests patch get_connection_manager to return a Mock manager. We set it to None here
+        # and later wrap it with a proxy that handles sending messages. The proxy will be created
+        # in the initialization code below that checks needs_proxy.
+        self.connection_manager = None
         self.agent_service: Optional[AgentService] = None
         
         # Chat sessions and configuration
@@ -221,6 +220,11 @@ class ChatService:
             
             history_root.mkdir(parents=True, exist_ok=True)
             self.history_root = history_root
+            # Persist detected workspace root for downstream embedding/security checks
+            try:
+                self.workspace_root = str(Path(workspace_root).resolve()) if workspace_root else None
+            except Exception:
+                self.workspace_root = workspace_root or None
             # Keep self._temp_workspace as set above when needs_isolation is True
         except Exception:
             # Fallback to local directory if workspace resolution fails
@@ -350,22 +354,20 @@ class ChatService:
                 if not isinstance(item, dict):
                     continue
                 att_id = str(item.get('id') or item.get('attachment_id') or '')
-                # Determine path fields (preserve absolute path separately to allow secure local embedding)
+                # Determine path fields
                 orig_path = item.get('path') or ''
                 rel_path = item.get('relative_path') or item.get('rel_path') or ''
                 abs_path: str = ''
                 try:
                     if isinstance(orig_path, str) and orig_path:
-                        # Absolute OS path? keep separate; else treat as storage-relative
                         from pathlib import Path as _P
                         if _P(orig_path).is_absolute():
                             abs_path = orig_path
                         else:
-                            # If caller only provided a relative path, consider it as storage-relative
                             if not rel_path:
                                 rel_path = orig_path
                 except Exception as e:
-                    logger.debug("Attachment path normalization issue: %s", e)
+                    logger.debug(f"Attachment path normalization issue for {att_id}: {e}")
                 mime = item.get('mime_type') or item.get('mime') or 'application/octet-stream'
                 size = item.get('size_bytes') or item.get('size') or 0
                 kind = item.get('kind') or item.get('type') or ''
@@ -422,6 +424,8 @@ class ChatService:
                     'relative_path': rel_path,
                     # Preserve absolute path for explorer references so downstream can embed as data URL
                     'absolute_path': abs_path or None,
+                    # Provide original path as generic field for raw endpoint fallbacks
+                    'path': orig_path or abs_path or rel_path,
                     'kind': kind,
                     'url': url
                 })
@@ -493,8 +497,10 @@ class ChatService:
                 raw_attachments = metadata.get('attachments') or []
             if isinstance(raw_attachments, list):
                 attachments = self._normalize_attachments(raw_attachments)
+                if attachments:
+                    logger.debug(f"Normalized {len(attachments)} attachments for message")
         except Exception as e:
-            logger.warning(f"Failed to normalize attachments: {e}")
+            logger.error(f"Failed to normalize attachments: {e}")
             attachments = []
 
         # Create user message including normalized attachments
@@ -543,7 +549,7 @@ class ChatService:
                 self.agent_service = await get_agent_service()
             
             if not self.config.agent_id:
-                logger.warning("⚠️ No agent ID configured, sending demo response")
+                logger.warning("No agent ID configured, sending demo response")
                 # Send default response if no agent configured - simple echo/demo response
                 await self._send_ai_response(
                     user_message.session_id,
@@ -565,7 +571,7 @@ class ChatService:
                     break
             
             if not agent_session:
-                logger.error(f"❌ No agent session found for agent_id: {self.config.agent_id}")
+                logger.error(f"No agent session found for agent_id: {self.config.agent_id}")
                 await self._send_ai_response(
                     user_message.session_id,
                     "I'm sorry, the AI agent is currently unavailable. Please try again later.",
@@ -575,7 +581,7 @@ class ChatService:
                 return
                 
             if agent_session.status.value not in ['ready', 'running']:
-                logger.error(f"❌ Agent session not ready. Status: {agent_session.status.value}")
+                logger.error(f"Agent session not ready. Status: {agent_session.status.value}")
                 await self._send_ai_response(
                     user_message.session_id,
                     "I'm sorry, the AI agent is currently unavailable. Please try again later.",
@@ -585,18 +591,15 @@ class ChatService:
                 return
             
             # Execute agent task with streaming
-            logger.info(f"🚀 Executing streaming agent task for session: {agent_session.session_id}")
-            task_description = user_message.content  # Use the user's message as the task
+            task_description = user_message.content
             task_context = {
                 'type': 'chat_response',
                 'session_id': user_message.session_id,
                 'system_prompt': self.config.system_prompt,
                 'user_message': user_message.content,
-                # Include attachments for agent/tooling consumption
                 'attachments': user_message.attachments or []
             }
-            logger.info(f"📝 Task description: {task_description}")
-            logger.info(f"📝 Task context: {task_context}")
+            logger.debug(f"Executing streaming agent task for session: {agent_session.session_id}")
             
             # Stream the response using the new streaming method
             await self._execute_streaming_agent_task(
@@ -805,7 +808,7 @@ class ChatService:
     
     async def _process_with_custom_agent(self, user_message: ChatMessage, agent_type: str):
         """Process user message with a custom agent"""
-        logger.info(f"🤖 Processing message with custom agent: {agent_type}")
+        logger.debug(f"Processing message with custom agent: {agent_type}")
         try:
             # Send typing indicator
             await self._send_typing_indicator(user_message.session_id, True)
@@ -830,30 +833,44 @@ class ChatService:
                 # Build message content with attachment information
                 message_text = user_message.content
                 
-                # Add file attachment information to the message text for non-image files
+                # Add attachment information to the message text so non-vision agents can still act on file paths
                 if user_message.attachments:
-                    non_image_attachments = []
+                    non_image_attachments: List[Dict[str, Any]] = []
+                    image_attachments_for_text: List[Dict[str, Any]] = []
                     for att in user_message.attachments:
                         kind = att.get('kind')
                         mime = att.get('mime_type') or att.get('mime') or ''
                         filename = att.get('filename') or 'unknown file'
-                        
-                        # Skip images as they'll be processed as multimodal content
-                        if not ((isinstance(mime, str) and mime.startswith('image/')) or kind in ('image', 'images')):
-                            rel_path = att.get('relative_path') or att.get('rel_path') or att.get('path') or ''
-                            abs_path = att.get('absolute_path') or ''
-                            
-                            # Determine the path to show to the agent
-                            display_path = abs_path if abs_path else (rel_path if rel_path else filename)
-                            
-                            non_image_attachments.append({
-                                'filename': filename,
-                                'path': display_path,
-                                'mime_type': mime,
-                                'size': att.get('size_bytes') or att.get('size') or 0
-                            })
-                    
-                    # Append attachment information to message text if there are non-image files
+
+                        rel_path = att.get('relative_path') or att.get('rel_path') or att.get('path') or ''
+                        abs_path = att.get('absolute_path') or ''
+                        url_hint = att.get('url') or ''
+
+                        # Determine the path to show to the agent
+                        display_path = ''
+                        if abs_path:
+                            # Prefer file:// for absolute workspace paths to help tools consume it
+                            display_path = f"file://{abs_path}"
+                        elif rel_path:
+                            display_path = rel_path
+                        elif url_hint:
+                            display_path = url_hint
+                        else:
+                            display_path = filename
+
+                        is_image = (isinstance(mime, str) and mime.startswith('image/')) or kind in ('image', 'images')
+                        info = {
+                            'filename': filename,
+                            'path': display_path,
+                            'mime_type': mime,
+                            'size': att.get('size_bytes') or att.get('size') or 0
+                        }
+                        if is_image:
+                            image_attachments_for_text.append(info)
+                        else:
+                            non_image_attachments.append(info)
+
+                    # Append non-image files block
                     if non_image_attachments:
                         attachment_info = "\n\n[Attached files:"
                         for att_info in non_image_attachments:
@@ -861,6 +878,15 @@ class ChatService:
                             attachment_info += f"\n- {att_info['filename']} (path: {att_info['path']}){size_str}"
                         attachment_info += "]"
                         message_text += attachment_info
+
+                    # Append image files block (textual hint) to assist non-vision agents/tools
+                    if image_attachments_for_text:
+                        images_info = "\n\n[Attached images:"
+                        for att_info in image_attachments_for_text:
+                            size_str = f" ({att_info['size']} bytes)" if att_info['size'] else ""
+                            images_info += f"\n- {att_info['filename']} (path: {att_info['path']}){size_str}"
+                        images_info += "]"
+                        message_text += images_info
                 
                 content_parts: List[Dict[str, Any]] = [{"type": "text", "text": message_text}]
                 if user_message.attachments:
@@ -879,15 +905,6 @@ class ChatService:
                     added_images = 0
                     for att in user_message.attachments:
                         try:
-                            logger.debug(
-                                "Custom agent: Processing attachment id=%s kind=%s mime=%s rel=%s has_abs=%s size=%s",
-                                att.get('id'),
-                                att.get('kind'),
-                                att.get('mime_type') or att.get('mime'),
-                                att.get('relative_path') or att.get('rel_path'),
-                                bool(att.get('absolute_path')),
-                                att.get('size_bytes') or att.get('size'),
-                            )
                             kind = att.get('kind')
                             mime = att.get('mime_type') or att.get('mime') or ''
                             # Fast reject for non-image
@@ -926,48 +943,51 @@ class ChatService:
                             # Try workspace absolute path (for explorer-dropped files)
                             if not data_url and isinstance(absolute_field, str) and absolute_field:
                                 try:
-                                    logger.info(f"Custom agent: Attempting to embed explorer image from absolute path")
                                     import os
                                     from pathlib import Path
-                                    ws_root = os.environ.get('WORKSPACE_ROOT')
+                                    ws_root_env = os.environ.get('WORKSPACE_ROOT')
+                                    ws_root = getattr(self, 'workspace_root', None) or ws_root_env
                                     abs_path = Path(absolute_field).resolve()
-                                    # Require WORKSPACE_ROOT and enforce sandbox
-                                    if not ws_root:
-                                        raise PermissionError('WORKSPACE_ROOT not set; absolute paths are not allowed')
-                                    ws_root_p = Path(ws_root).resolve()
-                                    abs_path.relative_to(ws_root_p)  # raises if outside
+                                    if ws_root:
+                                        ws_root_p = Path(ws_root).resolve()
+                                        abs_path.relative_to(ws_root_p)
                                     if not abs_path.is_file():
                                         raise FileNotFoundError('Invalid path')
                                     if abs_path.exists() and abs_path.is_file():
-                                        # Skip overly large images to reduce memory pressure
                                         try:
                                             size_bytes = abs_path.stat().st_size
                                             if size_bytes > int(max_img_mb * 1024 * 1024):
-                                                # Link via URL instead of embedding
                                                 raise ValueError('image_too_large')
                                         except Exception:
-                                            # If stat fails fall back to attempt embed
                                             pass
                                         import base64
                                         with open(abs_path, 'rb') as f:
                                             b64 = base64.b64encode(f.read()).decode('ascii')
                                         data_url = f"data:{mime};base64,{b64}"
-                                        logger.info(f"Custom agent: Successfully embedded explorer image as data URL (length: {len(data_url)})")
+                                        logger.debug(f"Embedded explorer image as data URL")
                                 except Exception as e:
-                                    logger.warning(f"Custom agent: Failed to embed explorer image: {e}")
+                                    logger.warning(f"Failed to embed explorer image: {e}")
                                     data_url = None
                             if not data_url:
+                                # Prefer explicit URL field if provided by normalization
+                                url_field = att.get('url')
                                 att_id = att.get('id')
-                                if att_id:
+                                if url_field:
+                                    data_url = url_field
+                                elif att_id and not (isinstance(att_id, str) and att_id.startswith('explorer-')):
+                                    # Only use media file endpoint for real media IDs, not explorer references
                                     data_url = f"/api/media/file/{att_id}"
                             if data_url:
                                 content_parts.append({"type": "image_url", "image_url": {"url": data_url}})
                                 added_images += 1
-                        except Exception:
+                        except Exception as embed_error:
+                            logger.error(f"Failed to process attachment: {embed_error}")
                             continue
+                if added_images > 0:
+                    logger.debug(f"Added {added_images} images to multimodal content")
                 history_list.append({"role": "user", "content": content_parts})
             except Exception as e:
-                logger.warning(f"Failed to attach multimodal content for custom agent: {e}")
+                logger.error(f"Failed to attach multimodal content for custom agent: {e}")
             
             # Prepare streaming response
             full_content = ""
@@ -1034,10 +1054,10 @@ class ChatService:
                 await self._store_message(final_message)
             
             await self._send_typing_indicator(user_message.session_id, False)
-            logger.info(f"✅ Custom agent {agent_type} response completed")
+            logger.debug(f"Custom agent {agent_type} response completed")
             
         except Exception as e:
-            logger.error(f"❌ Error processing message with custom agent {agent_type}: {e}")
+            logger.error(f"Error processing message with custom agent {agent_type}: {e}")
             await self._send_typing_indicator(user_message.session_id, False)
             await self._send_ai_response(
                 user_message.session_id,
@@ -1260,17 +1280,14 @@ class ChatService:
     async def _convert_image_data_to_reference(self, message_dict: Dict[str, Any]) -> Dict[str, Any]:
         """
         Convert imageData in message to ImageReference before storage.
-        Phase 1 integration: Replaces large base64 with lightweight reference.
+        Replaces large base64 with lightweight reference.
         """
-        logger.info("=== Phase 1 Conversion Called ===")
         if not self.image_service:
-            logger.warning("Phase 1 Conversion SKIPPED: No image service available")
             return message_dict
         
         try:
             # Check if message contains imageData in metadata
             metadata = message_dict.get('metadata', {})
-            logger.info(f"Phase 1: Checking metadata keys: {list(metadata.keys())}")
             
             # Look for imageData in various locations where it might appear
             locations_to_check = [
@@ -1278,7 +1295,6 @@ class ChatService:
                 ('response', metadata.get('response')),
                 ('content', message_dict.get('content'))
             ]
-            logger.info(f"Phase 1: Checking locations: {[loc[0] for loc in locations_to_check]}")
 
             async def _create_reference_and_cache(image_data: str, filename: str, prompt: str, model: str, mime_type: str):
                 """Create an image reference and populate cache. Returns reference dict."""
@@ -1298,14 +1314,11 @@ class ChatService:
                 return ref.to_dict()
             
             for location_name, location_data in locations_to_check:
-                logger.info(f"Phase 1: Checking location '{location_name}', data type: {type(location_data)}")
                 if not location_data:
-                    logger.info(f"Phase 1: Location '{location_name}' is empty, skipping")
                     continue
                 
                 # Handle dict
                 if isinstance(location_data, dict) and 'imageData' in location_data:
-                    logger.info(f"Phase 1: Found imageData in dict at location '{location_name}'")
                     image_data = location_data['imageData']
                     
                     # Extract metadata
@@ -1361,20 +1374,11 @@ class ChatService:
                         location_data['imageReference'] = ref.to_dict()
                         del location_data['imageData']
                         
-                        # CRITICAL: Also remove/replace imageUrl which may contain full base64 data URL
+                        # Replace imageUrl with file path if present
                         if 'imageUrl' in location_data:
-                            original_url = location_data['imageUrl']
-                            # Replace with file:// path instead of data: URL
                             location_data['imageUrl'] = f"file://{ref.absolute_path}"
-                            logger.info(
-                                f"Replaced base64 data URL in imageUrl field "
-                                f"(size reduction: {len(original_url)} → {len(location_data['imageUrl'])} chars)"
-                            )
                         
-                        logger.info(
-                            f"Converted imageData to reference: {ref.image_id} "
-                            f"(size reduction: {len(image_data)} → {len(json.dumps(ref.to_dict()))} chars)"
-                        )
+                        logger.debug(f"Converted imageData to reference: {ref.image_id}")
                         
                     except Exception as e:
                         logger.error(f"Failed to create image reference: {e}")
@@ -1382,7 +1386,6 @@ class ChatService:
                 
                 # Handle string (JSON encoded, markdown with JSON blocks, or embedded JSON fragments)
                 elif isinstance(location_data, str):
-                    logger.info(f"Phase 1: Processing string at location '{location_name}', length: {len(location_data)}")
                     import re
                     json_block_pattern = r'```json\s*\n(.*?)\n```'
 
@@ -1402,21 +1405,12 @@ class ChatService:
                             parsed['imageReference'] = ref_dict
                             del parsed['imageData']
                             
-                            # CRITICAL FIX: Also remove/truncate imageUrl which contains the full base64 as data URL
+                            # Replace imageUrl with file path if present
                             if 'imageUrl' in parsed:
-                                original_url = parsed['imageUrl']
-                                # Replace with reference to the file instead of data URL
                                 parsed['imageUrl'] = f"file://{ref_dict['absolute_path']}"
-                                logger.info(
-                                    f"Removed base64 data URL from imageUrl field "
-                                    f"(size reduction: {len(original_url)} → {len(parsed['imageUrl'])} chars)"
-                                )
                             
                             parsed['note'] = "imageData converted to reference for storage"
-                            logger.info(
-                                f"Converted imageData in {location_name} string to reference: {ref_dict.get('image_id')} "
-                                f"(size reduction: {len(image_data_inner)} → {len(json.dumps(ref_dict))} chars)"
-                            )
+                            logger.debug(f"Converted imageData to reference: {ref_dict.get('image_id')}")
                         except Exception as e:
                             logger.error(f"Failed to create image reference from string ({location_name}): {e}")
                         return parsed
@@ -1428,10 +1422,8 @@ class ChatService:
                             original_json = match.group(1)
                             key = f"__JSON_BLOCK_{len(async_replacements)}__"
                             async_replacements[key] = original_json
-                            return f"```json\n{key}\n```"  # placeholder
-                        logger.info(f"Phase 1: Applying regex substitution to {location_name} for fenced JSON blocks...")
+                            return f"```json\n{key}\n```"
                         temp_string = re.sub(json_block_pattern, _replacement, location_data, flags=re.DOTALL)
-                        logger.info(f"Phase 1: Regex substitution completed; found {len(async_replacements)} fenced JSON blocks")
                         # Process each extracted fenced block
                         for placeholder, json_str in async_replacements.items():
                             try:
@@ -1442,33 +1434,27 @@ class ChatService:
                             except Exception as e:
                                 logger.error(f"Failed processing fenced JSON block in {location_name}: {e}")
                     except Exception as e:
-                        logger.error(f"Phase 1: Error during fenced JSON processing for {location_name}: {e}")
-                        temp_string = location_data  # fallback
+                        logger.debug(f"Error during fenced JSON processing: {e}")
+                        temp_string = location_data
                         async_replacements = {}
 
                     if async_replacements:
                         # Fenced blocks handled; update content/metadata and skip to next location
-                        logger.info(f"Phase 1: Fenced JSON blocks processed for {location_name}; skipping embedded/direct parsing")
                         if location_name == 'content':
                             message_dict['content'] = temp_string
                         else:
                             metadata[location_name] = temp_string
                             message_dict['metadata'] = metadata
                         continue
-                    else:
-                        logger.info(f"Phase 1: No fenced JSON blocks found for {location_name}; attempting direct JSON parse")
 
                     # 2. Direct full-string JSON parse attempt
                     parsed_direct = None
                     try:
-                        logger.info(f"Phase 1: Attempting full direct JSON parse for {location_name}...")
                         parsed_direct = json.loads(location_data)
-                        logger.info(f"Phase 1: Direct parse success for {location_name}; type={type(parsed_direct)}")
                         before = json.dumps(parsed_direct)
                         parsed_direct = await _process_parsed_dict(parsed_direct)
                         after = json.dumps(parsed_direct)
                         if before != after:
-                            logger.info(f"Phase 1: Direct JSON mutation succeeded for {location_name}")
                             new_string = json.dumps(parsed_direct, indent=2)
                             if location_name == 'content':
                                 message_dict['content'] = new_string
@@ -1476,21 +1462,15 @@ class ChatService:
                                 metadata[location_name] = new_string
                                 message_dict['metadata'] = metadata
                             continue
-                        else:
-                            logger.info(f"Phase 1: Direct JSON contained no imageData for {location_name}")
-                            # fall through to embedded search
-                    except json.JSONDecodeError as jde:
-                        logger.info(f"Phase 1: Direct JSON parse failed for {location_name} (not pure JSON): {str(jde)[:120]} ... proceeding to embedded scan")
+                    except json.JSONDecodeError:
+                        pass
                     except Exception as e:
-                        logger.error(f"Phase 1: Unexpected error during direct JSON parse for {location_name}: {e}")
+                        logger.debug(f"Error during direct JSON parse: {e}")
 
                     # 2.5. ToolResultFormatter pattern detection (✅ **Success**: {JSON})
-                    # This is a common pattern from helpers.ToolResultFormatter.format_tool_result()
-                    # Use a more careful approach: find the pattern, then manually parse balanced braces
                     success_marker = '✅ **Success**: '
                     success_idx = location_data.find(success_marker)
                     if success_idx != -1:
-                        logger.info(f"Phase 1: Found ToolResultFormatter success pattern in {location_name}")
                         try:
                             # Find the JSON object by matching balanced braces
                             json_start = location_data.find('{', success_idx)
@@ -1529,42 +1509,21 @@ class ChatService:
                                     parsed_success = json.loads(json_str)
                                     
                                     if isinstance(parsed_success, dict) and 'imageData' in parsed_success:
-                                        logger.info(f"Phase 1: ToolResultFormatter JSON contains imageData (size: {len(json_str)})")
                                         parsed_success = await _process_parsed_dict(parsed_success)
                                         new_json_str = json.dumps(parsed_success)
-                                        
-                                        # Check if ImageReference thumbnail is complete
-                                        if 'imageReference' in parsed_success:
-                                            thumb_b64 = parsed_success['imageReference'].get('thumbnail_base64', '')
-                                            logger.info(f"Phase 1: ImageReference thumbnail_base64 length: {len(thumb_b64)} chars")
-                                            if thumb_b64:
-                                                # Verify complete (proper base64 ends with = padding or is divisible by 4)
-                                                is_padded = thumb_b64.endswith(('=', '=='))
-                                                is_aligned = len(thumb_b64) % 4 == 0
-                                                if not (is_padded or is_aligned):
-                                                    logger.error(f"Phase 1: thumbnail_base64 TRUNCATED! length={len(thumb_b64)}, ends with '{thumb_b64[-4:]}'")
-                                        
-                                        # Reconstruct content with balanced replacement
                                         new_content = location_data[:json_start] + new_json_str + location_data[json_end:]
-                                        
-                                        logger.info(f"Phase 1: Reconstructed content length: {len(new_content)} (original: {len(location_data)})")
                                         
                                         if location_name == 'content':
                                             message_dict['content'] = new_content
                                         else:
                                             metadata[location_name] = new_content
                                             message_dict['metadata'] = metadata
-                                        logger.info(f"Phase 1: Successfully converted imageData in ToolResultFormatter pattern for {location_name}")
-                                        continue  # Skip to next location
-                                    else:
-                                        logger.info(f"Phase 1: ToolResultFormatter JSON does not contain imageData")
-                                else:
-                                    logger.warning(f"Phase 1: Failed to find balanced braces in ToolResultFormatter JSON (brace_count={brace_count})")
+                                        logger.debug(f"Converted imageData in ToolResultFormatter pattern")
+                                        continue
                         except Exception as e:
-                            logger.error(f"Phase 1: Failed to parse ToolResultFormatter pattern: {e}", exc_info=True)
+                            logger.debug(f"Failed to parse ToolResultFormatter pattern: {e}")
                     
                     # 3. Embedded JSON fragment discovery (search for object containing "imageData")
-                    logger.info(f'Phase 1: Initiating embedded JSON fragment scan for {location_name} looking for "imageData" key')
                     content_str = location_data
                     key_pattern = '"imageData"'
                     max_attempts = 5  # avoid excessive scans in huge content
@@ -1573,7 +1532,6 @@ class ChatService:
                     for match in re.finditer(key_pattern, content_str):
                         attempt += 1
                         if attempt > max_attempts:
-                            logger.info(f"Phase 1: Reached embedded scan attempt limit ({max_attempts}) for {location_name}")
                             break
                         key_index = match.start()
                         # Heuristic backward search window
@@ -1611,8 +1569,7 @@ class ChatService:
                                         fragment_end = j
                                         break
                             # Safety cut-off for enormous unexpected objects
-                            if j - candidate_start > 2_000_000:  # 2MB fragment safety
-                                logger.info("Phase 1: Aborting fragment attempt due to size >2MB")
+                            if j - candidate_start > 2_000_000:
                                 break
                         if fragment_end is None:
                             continue
@@ -1623,7 +1580,6 @@ class ChatService:
                             continue
                         if not (isinstance(parsed_fragment, dict) and 'imageData' in parsed_fragment):
                             continue
-                        logger.info(f"Phase 1: Embedded JSON fragment with imageData found (len={len(fragment)}) at indices {candidate_start}:{fragment_end}")
                         # Process fragment
                         before_fragment = fragment
                         parsed_fragment = await _process_parsed_dict(parsed_fragment)
@@ -1636,29 +1592,21 @@ class ChatService:
                             else:
                                 metadata[location_name] = new_content
                                 message_dict['metadata'] = metadata
-                            logger.info(f"Phase 1: Embedded JSON fragment converted and replaced for {location_name} (delta={len(before_fragment)-len(after_fragment)} chars)")
+                            logger.debug(f"Converted embedded JSON fragment with imageData")
                             found_fragment = True
-                        else:
-                            logger.info("Phase 1: Embedded fragment contained imageData but produced no mutation (unexpected)")
-                        break  # stop after first successful fragment
-
-                    if not found_fragment:
-                        logger.info(f"Phase 1: No convertible embedded JSON fragment with imageData found for {location_name}")
-            
-            logger.info("Phase 1: Conversion completed, returning processed message")
+                        break
             return message_dict
             
         except Exception as e:
-            logger.error(f"Phase 1: ERROR converting image data to reference: {e}", exc_info=True)
+            logger.error(f"Error converting image data to reference: {e}")
             return message_dict
     
     async def _store_message(self, message: ChatMessage):
         """Store a message to JSONL per session."""
         try:
             session_id = message.session_id or "default"
-            logger.info(f"=== _store_message called for session {session_id} ===")
             
-            # Convert imageData to ImageReference before storage (Phase 1)
+            # Convert imageData to ImageReference before storage
             message_dict = await self._convert_image_data_to_reference(message.to_dict())
             
             if self.enable_buffered_store:

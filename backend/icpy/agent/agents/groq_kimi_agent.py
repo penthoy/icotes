@@ -109,12 +109,12 @@ def chat(message: str, history: List[Dict[str, str]]) -> Generator[str, None, No
     system_prompt = (
         f"You are {AGENT_NAME}, a helpful AI assistant with access to tools for generating/editing images, "
         "reading files, searching, and executing code.\n\n"
-        "CRITICAL - Image Editing:\n"
-        "- When user asks to modify/edit/change an existing image (e.g., 'make it 3D', 'change color', 'remove eyes'), "
-        "use generate_image with image_data parameter set to the file:// path from the previous generation.\n"
-        "- Look for imageUrl fields in previous assistant responses - they contain file:// paths you can use.\n"
-        "- Set mode='edit' when modifying existing images.\n"
-        "- For new images, omit image_data and use mode='generate'.\n\n"
+        "CRITICAL - Image Handling:\n"
+        "- User messages may include [Attached images: ...] sections listing file paths to images they've shared.\n"
+        "- When user asks to modify/edit/change an attached image (e.g., 'add a hat', 'make it 3D'), "
+        "use generate_image tool with image_data parameter set to the file path from the attachment.\n"
+        "- Set mode='edit' when modifying existing images, mode='generate' for new images.\n"
+        "- Look for imageUrl fields in previous assistant responses for file:// paths from prior generations.\n\n"
         "Keep responses clear and concise."
     )
 
@@ -141,41 +141,90 @@ def chat(message: str, history: List[Dict[str, str]]) -> Generator[str, None, No
         else:
             logger.info("GroqKimiAgent: Skipping trailing user message because it's empty (provided by caller as \"\")")
 
-        # Final safety filter before sending
+        # Convert multimodal content to plain text (Groq API requirement)
+        def _is_rich_parts(val: Any) -> bool:
+            return isinstance(val, list) and any(
+                isinstance(p, dict) and p.get("type") in ("text", "image_url") for p in val
+            )
+
+        def _extract_text_from_rich(parts: List[Dict[str, Any]]) -> str:
+            """Extract text and file paths from rich content array for Groq."""
+            text_parts = []
+            image_paths = []
+            
+            for part in parts:
+                if not isinstance(part, dict):
+                    continue
+                    
+                ptype = part.get("type")
+                if ptype == "text":
+                    text = part.get("text", "")
+                    if text:
+                        text_parts.append(text)
+                elif ptype == "image_url":
+                    # Extract file path from image_url for tool usage
+                    img = part.get("image_url")
+                    if isinstance(img, dict):
+                        url = img.get("url", "")
+                    elif isinstance(img, str):
+                        url = img
+                    else:
+                        url = ""
+                    
+                    # Extract actual file path from data URL or file:// URL
+                    if url.startswith("data:"):
+                        # Data URL - can't extract path, just note it
+                        image_paths.append("[embedded image data]")
+                    elif url.startswith("file://"):
+                        # File URL - extract path
+                        file_path = url[7:]  # Remove "file://" prefix
+                        image_paths.append(file_path)
+                    elif url.startswith("/"):
+                        # Absolute or API path
+                        image_paths.append(url)
+            
+            # Build final text with image context
+            result = " ".join(text_parts)
+            if image_paths:
+                paths_str = "\n".join([f"- {p}" for p in image_paths])
+                result += f"\n\n[Attached images:\n{paths_str}\n]"
+            
+            return result.strip()
+
         safe_messages: List[Dict[str, Any]] = []
         dropped = 0
         for i, m in enumerate(messages):
             c = m.get("content", "")
-            if m.get("role") == "user" and (not isinstance(c, str) or not c.strip()):
+            role = m.get("role")
+            
+            # Convert rich content to plain text (Groq requirement)
+            if role == "user" and _is_rich_parts(c):
+                text_content = _extract_text_from_rich(c)
+                if not text_content:
+                    dropped += 1
+                    logger.warning(f"GroqKimiAgent: Removing empty rich user message at position {i}")
+                    continue
+                safe_messages.append({**m, "content": text_content})
+                continue
+            
+            # For other cases, coerce to string (system/assistant/tool) or plain user text
+            if not isinstance(c, str):
+                m = {**m, "content": flatten_message_content(c)}
+            # Drop empty user strings
+            if role == "user" and (not m["content"] or not str(m["content"]).strip()):
                 dropped += 1
                 logger.warning(f"GroqKimiAgent: Removing empty user message at position {i}")
                 continue
-            if not isinstance(c, str):
-                m = {**m, "content": flatten_message_content(c)}
             safe_messages.append(m)
         if dropped:
             logger.info(f"GroqKimiAgent: Dropped {dropped} empty user message(s) before request")
 
-        # Debug preview: roles and content lengths
-        try:
-            preview = "\n".join([f"{i}: {m['role']} len={len(m.get('content','') or '')}" for i, m in enumerate(safe_messages)])
-            logger.debug("GroqKimiAgent: Outbound messages preview\n" + preview)
-        except Exception:
-            pass
+        # Log message count for debugging
+        logger.debug(f"GroqKimiAgent: Prepared {len(safe_messages)} messages for Groq API")
 
         # Use compact tools mode to save tokens while preserving full functionality
-        # IMPORTANT: We must NOT exclude tools, otherwise the model will output raw tool call syntax
-        # (like <|tool_calls_section_begin|>) instead of properly formatted OpenAI-compatible tool calls.
-        # To manage Groq's strict context limits, we:
-        # 1. Keep system prompt minimal (done above)
-        # 2. Trim history aggressively (done above to 6 messages)
-        # 3. Use compact tool schemas (strips verbose descriptions to save ~30-40% tokens)
-        # 4. Use AGENT_MAX_TOKENS from environment (handled by OpenAIStreamingHandler)
-        
         handler = OpenAIStreamingHandler(client, MODEL_NAME, use_compact_tools=True)
-        logger.info("GroqKimiAgent: Starting chat with tools enabled (compact mode)")
         yield from handler.stream_chat_with_tools(safe_messages, max_tokens=None, auto_continue=False)
-        logger.info("GroqKimiAgent: Chat completed successfully")
 
     except Exception as e:
         logger.error(f"Error in GroqKimiAgent streaming: {e}")
