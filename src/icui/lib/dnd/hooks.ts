@@ -48,7 +48,7 @@ export function useExplorerFileDrag(params: {
         
         if (import.meta.env.DEV) {
           console.log('[useExplorerFileDrag] Payload attached:', payload);
-          console.log('[useExplorerFileDrag] DataTransfer types after attach:', Array.from(dt.types));
+          console.log('[useExplorerFileDrag] DataTransfer types after attach:', Array.from(dt.types ?? []));
         }
         
         const detail: DragStartDetail = { ...payload, source: 'explorer' };

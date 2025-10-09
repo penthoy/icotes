@@ -46,10 +46,9 @@ def test_result_sanitization():
     print("=" * 60)
     
     from icpy.agent.helpers import OpenAIStreamingHandler
-    from icpy.agent.clients import get_groq_client
-    
-    client = get_groq_client()
-    handler = OpenAIStreamingHandler(client, 'moonshotai/kimi-k2-instruct-0905')
+
+    # Use a stubbed client for sanitization tests so we don't require Groq credentials
+    handler = OpenAIStreamingHandler(None, 'moonshotai/kimi-k2-instruct-0905')
     
     # Mock result with large image data
     mock_result = {

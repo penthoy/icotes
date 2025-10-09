@@ -36,15 +36,17 @@ class DebugLogger {
     }
     console.groupEnd();
 
-    // Try to send to backend for file logging
-    try {
-      await fetch('/api/debug-log', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(entry)
-      });
-    } catch (error) {
-      console.warn('Failed to send debug log to backend:', error);
+    // Try to send to backend for file logging when fetch is available
+    if (typeof fetch === 'function') {
+      try {
+        await fetch('/api/debug-log', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(entry)
+        });
+      } catch (error) {
+        console.warn('Failed to send debug log to backend:', error);
+      }
     }
   }
 

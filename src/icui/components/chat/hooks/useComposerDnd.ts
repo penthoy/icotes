@@ -26,7 +26,7 @@ export function useComposerDnd(
     if (!el) return;
     const handleDragOver = (e: DragEvent) => {
       if (!e.dataTransfer) return;
-      const types = Array.from(e.dataTransfer.types);
+  const types = Array.from(e.dataTransfer.types ?? []);
       const hasExplorerPayload = types.includes(ICUI_FILE_LIST_MIME);
       const hasFiles = types.includes('Files');
       if (!hasExplorerPayload && !hasFiles) return;
@@ -46,7 +46,7 @@ export function useComposerDnd(
       // Debug logging to diagnose drag-drop issues
       if (import.meta.env.DEV) {
         console.log('[useComposerDnd] Drop event:', {
-          types: Array.from(e.dataTransfer.types),
+          types: Array.from(e.dataTransfer.types ?? []),
           items: e.dataTransfer.items ? Array.from(e.dataTransfer.items).map(i => ({ kind: i.kind, type: i.type })) : [],
           filesLength: e.dataTransfer.files?.length || 0
         });

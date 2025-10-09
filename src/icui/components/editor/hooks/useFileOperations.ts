@@ -6,6 +6,7 @@
 
 import { useCallback } from 'react';
 import { backendService, ConnectionStatus } from '../../../services';
+import { confirmService } from '../../../services/confirmService';
 import { EditorFile } from '../types';
 import { EditorNotificationService } from '../utils/notifications';
 import { EditorView } from '@codemirror/view';
@@ -94,14 +95,12 @@ export function useFileOperations({
 
     if (file.modified) {
       // Use global confirm dialog
-      const { confirmService } = require('../../../services/confirmService');
-      const shouldSave = (confirmService as typeof import('../../../services/confirmService').confirmService)
-        .confirm({ 
-          title: 'Unsaved Changes', 
-          message: `${file.name} has unsaved changes. Save before closing?`, 
-          confirmText: 'Save', 
-          cancelText: 'Discard' 
-        });
+      const shouldSave = confirmService.confirm({ 
+        title: 'Unsaved Changes', 
+        message: `${file.name} has unsaved changes. Save before closing?`, 
+        confirmText: 'Save', 
+        cancelText: 'Discard' 
+      });
       
       // Handle save choice asynchronously
       (async () => {

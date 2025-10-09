@@ -9,7 +9,7 @@
  * - Expandable details
  */
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { Image, ChevronDown, ChevronRight, CheckCircle, XCircle, Clock, Download, Copy, Loader2 } from 'lucide-react';
 import { ToolCallData } from '../ToolCallWidget';
 import { getActiveModelHelper } from '../modelhelper';
@@ -96,7 +96,6 @@ const ImageGenerationWidget: React.FC<ImageGenerationWidgetProps> = ({
           // Use thumbnail_base64 for display instead of file:// paths
           if (ref.thumbnail_base64) {
             data.imageData = ref.thumbnail_base64;
-            console.log('Using thumbnail from imageReference');
           }
           // Store metadata for potential full image fetch
           data.timestamp = ref.timestamp ? ref.timestamp * 1000 : Date.now();
@@ -128,6 +127,15 @@ const ImageGenerationWidget: React.FC<ImageGenerationWidgetProps> = ({
 
     return data;
   }, [toolCall]);
+
+  useEffect(() => {
+    setImageLoaded(false);
+    setImageError(false);
+  }, [generationData.imageData, generationData.imageUrl, toolCall.id]);
+
+  useEffect(() => {
+    setCopied(false);
+  }, [toolCall.id, generationData.imageUrl, generationData.imageData]);
 
   // Get status icon and color
   const { icon: StatusIcon, color, bgColor } = useMemo(() => {

@@ -57,7 +57,7 @@ class DragDropManagerImpl {
           customMime: ICUI_FILE_LIST_MIME,
           payloadSize: JSON.stringify(payload).length,
           effectAllowed: dataTransfer.effectAllowed,
-          types: Array.from(dataTransfer.types)
+          types: Array.from(dataTransfer.types ?? [])
         });
       }
     } catch (e) {

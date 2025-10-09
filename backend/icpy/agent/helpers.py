@@ -16,6 +16,7 @@ import json
 import logging
 import asyncio
 import concurrent.futures
+import copy
 import os
 import platform
 from datetime import datetime, timezone
@@ -380,8 +381,8 @@ class ToolDefinitionLoader:
         try:
             for tool in self.registry.all():
                 if tool.name not in exclude_tools:
-                    # Get base tool definition
-                    func_def = tool.to_openai_function()
+                    # Get base tool definition without mutating registry's cached schema
+                    func_def = copy.deepcopy(tool.to_openai_function())
                     
                     # Compact the description (keep first sentence only)
                     if 'description' in func_def:
