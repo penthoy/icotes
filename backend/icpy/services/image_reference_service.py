@@ -2,10 +2,13 @@
 Image Reference Service
 Manages image references to avoid storing large base64 data in chat history.
 """
+import asyncio
+import json
+import os
 import uuid
 import time
-import base64
 import logging
+from contextlib import suppress
 from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Dict, Optional, Any
@@ -57,8 +60,18 @@ class ImageReferenceService:
         """
         self.workspace_path = str(workspace_path)  # Keep as string for consistency
         self._workspace_path_obj = Path(workspace_path)
+        self._workspace_path_obj.mkdir(parents=True, exist_ok=True)
+
+        # Internal directories
         self.thumbnails_dir = self._workspace_path_obj / ".icotes" / "thumbnails"
         self.thumbnails_dir.mkdir(parents=True, exist_ok=True)
+        self._index_path = self.thumbnails_dir.parent / "image_references.json"
+        self._index_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Concurrency control for async contexts
+        self._lock = asyncio.Lock()
+        self._references: Dict[str, Dict[str, Any]] = {}
+        self._load_index()
         
         logger.info(f"ImageReferenceService initialized: workspace={workspace_path}")
     
@@ -128,11 +141,74 @@ class ImageReferenceService:
             )
             
             logger.info(f"Created ImageReference: {image_id} for {filename}")
+
+            # Persist reference for future lookup (media endpoints, etc.)
+            await self._store_reference(ref)
             return ref
             
         except Exception as e:
             logger.error(f"Failed to create image reference: {e}")
             raise
+
+    async def get_reference(self, image_id: str) -> Optional[ImageReference]:
+        """Retrieve a stored image reference by ID."""
+        async with self._lock:
+            ref_dict = self._references.get(image_id)
+            if ref_dict is None:
+                # Reload index in case another process updated it
+                self._load_index()
+                ref_dict = self._references.get(image_id)
+        if ref_dict:
+            try:
+                return ImageReference.from_dict(ref_dict)
+            except Exception as exc:
+                logger.warning(f"Failed to deserialize image reference {image_id}: {exc}")
+        return None
+
+    async def list_references(self) -> Dict[str, ImageReference]:
+        """Return all known references keyed by image_id."""
+        async with self._lock:
+            # Provide shallow copy to avoid external mutation
+            current = {key: ImageReference.from_dict(value) for key, value in self._references.items()}
+        return current
+
+    def _load_index(self) -> None:
+        """Load reference index from disk into memory."""
+        if not self._index_path.exists():
+            self._references = {}
+            return
+        try:
+            with self._index_path.open("r", encoding="utf-8") as fh:
+                data = json.load(fh)
+            if isinstance(data, dict):
+                self._references = {key: value for key, value in data.items() if isinstance(value, dict)}
+            else:
+                logger.warning("Image reference index is not a dict; resetting")
+                self._references = {}
+        except json.JSONDecodeError as exc:
+            logger.error(f"Failed to parse image reference index; resetting ({exc})")
+            self._references = {}
+        except Exception as exc:
+            logger.warning(f"Could not load image reference index: {exc}")
+            self._references = {}
+
+    async def _store_reference(self, reference: ImageReference) -> None:
+        """Store or update a reference in the on-disk index."""
+        async with self._lock:
+            self._references[reference.image_id] = reference.to_dict()
+            self._write_index()
+
+    def _write_index(self) -> None:
+        """Persist the current reference map to disk atomically."""
+        tmp_path = self._index_path.with_suffix(".tmp")
+        try:
+            with tmp_path.open("w", encoding="utf-8") as fh:
+                json.dump(self._references, fh, indent=2)
+            tmp_path.replace(self._index_path)
+        except Exception as exc:
+            logger.error(f"Failed to write image reference index: {exc}")
+            with suppress(FileNotFoundError):
+                tmp_path.unlink()
 
 
 async def create_image_reference(
@@ -165,3 +241,39 @@ async def create_image_reference(
         model=model,
         mime_type=mime_type
     )
+
+
+_global_image_reference_service: Optional[ImageReferenceService] = None
+
+
+def _detect_workspace_root() -> str:
+    """Determine the default workspace root for image references."""
+    env_root = os.environ.get("WORKSPACE_ROOT")
+    if env_root:
+        return env_root
+    backend_root = Path(__file__).resolve().parents[2]
+    return str(backend_root.parent / "workspace")
+
+
+def get_image_reference_service(workspace_path: Optional[str] = None) -> ImageReferenceService:
+    """Return a global ImageReferenceService instance.
+    
+    Ensures that FastAPI endpoints and background services share a single cache of
+    references while still allowing tests to request isolated instances.
+    """
+    global _global_image_reference_service
+
+    if workspace_path:
+        resolved = str(Path(workspace_path).resolve())
+    else:
+        resolved = str(Path(_detect_workspace_root()).resolve())
+
+    if _global_image_reference_service is None:
+        _global_image_reference_service = ImageReferenceService(workspace_path=resolved)
+    else:
+        current = Path(_global_image_reference_service.workspace_path).resolve()
+        if current != Path(resolved):
+            # Recreate service if workspace changed (e.g., during tests)
+            _global_image_reference_service = ImageReferenceService(workspace_path=resolved)
+
+    return _global_image_reference_service
