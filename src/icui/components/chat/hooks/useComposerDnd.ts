@@ -42,12 +42,31 @@ export function useComposerDnd(
       if (!e.dataTransfer) return;
       e.preventDefault();
       opts.setActive(false);
+      
+      // Debug logging to diagnose drag-drop issues
+      if (import.meta.env.DEV) {
+        console.log('[useComposerDnd] Drop event:', {
+          types: Array.from(e.dataTransfer.types),
+          items: e.dataTransfer.items ? Array.from(e.dataTransfer.items).map(i => ({ kind: i.kind, type: i.type })) : [],
+          filesLength: e.dataTransfer.files?.length || 0
+        });
+      }
+      
       // Explorer internal drags (file references)
       const raw = e.dataTransfer.getData(ICUI_FILE_LIST_MIME);
+      if (import.meta.env.DEV) {
+        console.log('[useComposerDnd] ICUI_FILE_LIST_MIME data:', raw ? `Found (${raw.length} chars)` : 'Not found');
+      }
+      
       if (raw) {
         try {
           const payload = JSON.parse(raw);
-          if (!isExplorerPayload(payload)) return;
+          if (!isExplorerPayload(payload)) {
+            if (import.meta.env.DEV) {
+              console.log('[useComposerDnd] Invalid payload structure');
+            }
+            return;
+          }
           const refs: ExplorerRefItem[] = payload.items
             .filter((item: any) => item.type === 'file')
             .map((item: any) => ({
@@ -56,15 +75,23 @@ export function useComposerDnd(
               name: item.name,
               kind: 'file' as const,
             }));
+          if (import.meta.env.DEV) {
+            console.log('[useComposerDnd] Explorer refs extracted:', refs);
+          }
           if (refs.length > 0) opts.onRefs(refs);
           return;
-        } catch {
-          // swallow
+        } catch (err) {
+          if (import.meta.env.DEV) {
+            console.error('[useComposerDnd] Failed to parse explorer payload:', err);
+          }
         }
       }
       // External OS file drops (actual uploads)
       const files = Array.from(e.dataTransfer.files || []);
       if (files.length > 0) {
+        if (import.meta.env.DEV) {
+          console.log('[useComposerDnd] External files dropped:', files.map(f => f.name));
+        }
         opts.onFiles(files);
       }
     };

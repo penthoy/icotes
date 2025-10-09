@@ -45,13 +45,27 @@ class DragDropManagerImpl {
     };
 
     try {
+      // Set custom MIME type first
       dataTransfer.setData(ICUI_FILE_LIST_MIME, JSON.stringify(payload));
       // Provide human-readable fallback for environments inspecting dragged text
       dataTransfer.setData('text/plain', payload.paths.join('\n'));
+      // IMPORTANT: Set effectAllowed to allow both copy and move operations
       dataTransfer.effectAllowed = 'copyMove';
+      
+      if (import.meta.env.DEV) {
+        console.log('[DragDropManager] setData complete:', {
+          customMime: ICUI_FILE_LIST_MIME,
+          payloadSize: JSON.stringify(payload).length,
+          effectAllowed: dataTransfer.effectAllowed,
+          types: Array.from(dataTransfer.types)
+        });
+      }
     } catch (e) {
       // Non-fatal; log to console only (avoid polluting user UI)
       console.warn('[DragDropManager] Failed to set dataTransfer payload', e);
+      if (import.meta.env.DEV) {
+        console.error('[DragDropManager] setData error details:', e);
+      }
     }
     return payload;
   }
