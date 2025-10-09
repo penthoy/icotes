@@ -11,11 +11,12 @@ This test verifies that:
 
 import json
 import sys
-import os
+from pathlib import Path
 
-# Add backend to path
-backend_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-sys.path.insert(0, backend_path)
+# Ensure backend package root is on sys.path regardless of invocation location
+BACKEND_ROOT = Path(__file__).resolve().parents[2]
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
 
 def test_tool_availability():
     """Test that generate_image tool is available to GroqKimiAgent"""

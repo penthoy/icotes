@@ -128,9 +128,10 @@ class HttpClient:
             bool: True if backend is reachable, False otherwise
         """
         try:
-            response = self.session.get(
+            # Use a short, explicit timeout and disable retry backoff for this probe
+            response = requests.get(
                 f"{self.config.backend_url}/health",
-                timeout=5
+                timeout=min(self.config.timeout, 3)
             )
             return response.status_code == 200
         except Exception as e:

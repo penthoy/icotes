@@ -1026,10 +1026,17 @@ class LSPService:
             headers = {}
             while True:
                 line = await server.process.stdout.readline()
+                # Some mocks may yield a coroutine-like object again; unwrap if needed
+                if asyncio.iscoroutine(line):
+                    line = await line
                 if not line:
                     return None
-                
-                line = line.decode('utf-8').strip()
+                # Normalize to text
+                if isinstance(line, bytes):
+                    line = line.decode('utf-8')
+                else:
+                    line = str(line)
+                line = line.strip()
                 if not line:
                     break
                 
@@ -1060,7 +1067,10 @@ class LSPService:
             
             # Parse JSON
             # Content may include trailing newlines
-            decoded = content.decode('utf-8').strip()
+            if isinstance(content, bytes):
+                decoded = content.decode('utf-8').strip()
+            else:
+                decoded = str(content).strip()
             return json.loads(decoded)
         
         except Exception as e:
