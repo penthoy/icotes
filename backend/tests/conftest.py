@@ -10,6 +10,15 @@ from pathlib import Path
 
 
 @pytest.fixture(scope="session", autouse=True)
+def limit_message_broker_memory():
+    """Cap MessageBroker in-memory history to avoid test-time RAM spikes.
+    Uses environment variables consumed by MessageBroker.
+    """
+    os.environ.setdefault('MB_MAX_HISTORY', '200')
+    os.environ.setdefault('MB_MAX_PAYLOAD_HISTORY_BYTES', str(256 * 1024))  # 256KB per message payload in history
+    yield
+
+@pytest.fixture(scope="session", autouse=True)
 def cleanup_temp_workspaces():
     """Clean up any remaining temporary workspace directories after all tests"""
     # Setup (before tests)
@@ -68,3 +77,19 @@ async def cleanup_chat_service():
         await shutdown_chat_service()
     except Exception as e:
         print(f"Warning: Error during chat service cleanup: {e}")
+
+
+@pytest.fixture(autouse=True)
+async def cleanup_broker_and_connections():
+    """Aggressively tear down broker and connection manager after each test to free memory."""
+    yield
+    try:
+        from icpy.core.message_broker import shutdown_message_broker
+        await shutdown_message_broker()
+    except Exception as e:
+        print(f"Warning: Error during message broker cleanup: {e}")
+    try:
+        from icpy.core.connection_manager import shutdown_connection_manager
+        await shutdown_connection_manager()
+    except Exception as e:
+        print(f"Warning: Error during connection manager cleanup: {e}")

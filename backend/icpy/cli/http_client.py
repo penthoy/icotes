@@ -128,11 +128,20 @@ class HttpClient:
             bool: True if backend is reachable, False otherwise
         """
         try:
-            # Use a short, explicit timeout and disable retry backoff for this probe
-            response = requests.get(
-                f"{self.config.backend_url}/health",
-                timeout=min(self.config.timeout, 3)
-            )
+            # Use a temporary Session with retries disabled so we fail fast when backend is down.
+            # Tests patch requests.Session.get, so this remains interceptable.
+            temp_session = requests.Session()
+            no_retry = Retry(total=0, connect=0, read=0, redirect=0, backoff_factor=0)
+            adapter = HTTPAdapter(max_retries=no_retry)
+            temp_session.mount("http://", adapter)
+            temp_session.mount("https://", adapter)
+            try:
+                response = temp_session.get(
+                    f"{self.config.backend_url}/health",
+                    timeout=min(self.config.timeout, 2)
+                )
+            finally:
+                temp_session.close()
             return response.status_code == 200
         except Exception as e:
             if self.config.verbose:

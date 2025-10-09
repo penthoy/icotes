@@ -509,12 +509,13 @@ class LSPService:
         if not self.running:
             return False
         
-        # Ensure server is running for this language
-        server_id = await self._ensure_server_running(language, os.path.dirname(file_path))
-        if not server_id:
+        # Do NOT auto-start servers here to avoid spawning real LSPs during tests.
+        # Only proceed if a server for this language is already RUNNING.
+        server_id = self.language_servers.get(language)
+        server = self.servers.get(server_id) if server_id else None
+        if not server or server.state != LSPServerState.RUNNING:
+            logger.debug(f"open_document: no running server for language={language}; skipping notification")
             return False
-        
-        server = self.servers[server_id]
         
         # Convert to URI
         uri = f"file://{os.path.abspath(file_path)}"
@@ -602,7 +603,7 @@ class LSPService:
         doc_info = self.open_documents[uri]
         server = self.servers.get(doc_info['server_id'])
         
-        if not server:
+        if not server or server.state != LSPServerState.RUNNING:
             return False
         
         # Increment version

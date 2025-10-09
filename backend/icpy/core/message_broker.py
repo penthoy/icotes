@@ -16,6 +16,7 @@ import fnmatch
 import weakref
 import threading
 from collections import defaultdict
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -103,10 +104,14 @@ class MessageBroker:
     Supports request/response patterns and reactive programming patterns
     """
     
-    def __init__(self, max_history: int = 1000):
+    def __init__(self, max_history: int = None):
+        # Configure limits with safe defaults; allow env overrides for tests/CI
+        default_max_history = int(os.getenv("MB_MAX_HISTORY", "200"))
+        self.max_history = max_history if max_history is not None else default_max_history
+        self.max_payload_history_bytes = int(os.getenv("MB_MAX_PAYLOAD_HISTORY_BYTES", str(256 * 1024)))
+
         self.subscribers: Dict[str, List[Subscription]] = defaultdict(list)
         self.message_history: List[Message] = []
-        self.max_history = max_history
         self.pending_requests: Dict[str, asyncio.Future] = {}
         self.running = False
         self.cleanup_task: Optional[asyncio.Task] = None
@@ -117,7 +122,9 @@ class MessageBroker:
             'messages_published': 0,
             'messages_delivered': 0,
             'active_subscriptions': 0,
-            'request_response_pairs': 0
+            'request_response_pairs': 0,
+            'history_truncated': 0,
+            'history_bytes_stored': 0
         }
     
     async def start(self):
@@ -153,6 +160,11 @@ class MessageBroker:
                 future.cancel()
         
         self.pending_requests.clear()
+        # Aggressively free memory retained by history/subscribers between tests
+        async with self._lock:
+            self.message_history.clear()
+            self.subscribers.clear()
+            self.stats['active_subscriptions'] = 0
         logger.info("Message broker stopped")
     
     async def publish(self, topic: str, payload: Any, message_type: MessageType = MessageType.NOTIFICATION,
@@ -175,11 +187,43 @@ class MessageBroker:
             reply_to=reply_to
         )
         
-        # Store in history
+        # Store in history (with truncation for very large payloads)
         async with self._lock:
-            self.message_history.append(message)
-            if len(self.message_history) > self.max_history:
-                self.message_history.pop(0)
+            to_store = message
+            try:
+                # Estimate payload size
+                payload = message.payload
+                approx_bytes = 0
+                if isinstance(payload, (bytes, bytearray, memoryview)):
+                    approx_bytes = len(payload)
+                else:
+                    # Fallback to JSON size estimation
+                    approx_bytes = len(json.dumps(payload)) if payload is not None else 0
+                if approx_bytes > self.max_payload_history_bytes:
+                    # Create a shallow copy with truncated payload for history only
+                    thin = Message.from_dict(message.to_dict())
+                    keys_preview = list(payload.keys())[:10] if isinstance(payload, dict) else None
+                    thin.payload = {
+                        '_truncated': True,
+                        'approx_bytes': approx_bytes,
+                        'keys': keys_preview,
+                        'note': 'Payload omitted from history due to size'
+                    }
+                    to_store = thin
+                    self.stats['history_truncated'] += 1
+                self.message_history.append(to_store)
+                self.stats['history_bytes_stored'] += (
+                    len(json.dumps(to_store.payload)) if to_store.payload is not None else 0
+                )
+                if len(self.message_history) > self.max_history:
+                    self.message_history.pop(0)
+            except Exception as e:
+                # If sizing/truncation fails, store message metadata only
+                thin = Message.from_dict(message.to_dict())
+                thin.payload = {'_truncated': True, 'error': str(e)}
+                self.message_history.append(thin)
+                if len(self.message_history) > self.max_history:
+                    self.message_history.pop(0)
         
         # Deliver to subscribers
         delivered_count = await self._deliver_message(message)
