@@ -244,6 +244,46 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Debug logging middleware for tab switch bug investigation
+DEBUG_LOGGING_ENABLED = os.getenv("ICUI_DEBUG_LOGGING", "false").lower() == "true"
+
+if DEBUG_LOGGING_ENABLED:
+    @app.middleware("http")
+    async def debug_logging_middleware(request: Request, call_next):
+        """Log request/response timing and details for debugging tab switch issues"""
+        start_time = time.time()
+        request_id = str(uuid.uuid4())[:8]
+        
+        # Log incoming request
+        logger.debug(f"[{request_id}] {request.method} {request.url.path} - Start")
+        
+        # Process request
+        response = await call_next(request)
+        
+        # Calculate duration
+        duration_ms = (time.time() - start_time) * 1000
+        
+        # Log response
+        logger.debug(
+            f"[{request_id}] {request.method} {request.url.path} - "
+            f"Complete ({response.status_code}) in {duration_ms:.2f}ms"
+        )
+        
+        # Warn on slow requests (>500ms)
+        if duration_ms > 500:
+            logger.warning(
+                f"[{request_id}] SLOW REQUEST: {request.method} {request.url.path} "
+                f"took {duration_ms:.2f}ms"
+            )
+        
+        # Add request ID header for correlation
+        response.headers["X-Request-ID"] = request_id
+        response.headers["X-Response-Time"] = f"{duration_ms:.2f}ms"
+        
+        return response
+    
+    logger.info("Debug logging middleware enabled - set ICUI_DEBUG_LOGGING=false to disable")
+
 # Mount static files
 mount_static_files(app)
 

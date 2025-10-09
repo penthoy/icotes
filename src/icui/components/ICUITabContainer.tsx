@@ -6,6 +6,7 @@
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { ICUIPanelSelector, ICUIPanelType } from './ICUIPanelSelector';
+import { debugLogger } from '../utils/debugLogger';
 
 export interface ICUITab {
   id: string;
@@ -98,6 +99,12 @@ export const ICUITabContainer: React.FC<ICUITabContainerProps> = ({
 
     // Prevent tab activation during drag operations
     if (isDragging) {
+      debugLogger.tabOperation('activation-blocked-drag', { 
+        tabId: nextTabId, 
+        activeTabId,
+        areaId 
+      });
+      
       if (process.env.NODE_ENV !== 'production') {
         // eslint-disable-next-line no-console
         console.debug('[ICUITabContainer] Blocking tab activation during drag operation');
@@ -114,6 +121,14 @@ export const ICUITabContainer: React.FC<ICUITabContainerProps> = ({
     switchCountRef.current += 1;
     if (switchCountRef.current > 6) {
       // Soft-block: don't activate, just log in dev builds
+      debugLogger.tabOperation('activation-blocked-rapid-switching', { 
+        tabId: nextTabId, 
+        activeTabId,
+        areaId,
+        switchCount: switchCountRef.current,
+        windowStart: lastSwitchWindowStartRef.current
+      });
+      
       if (process.env.NODE_ENV !== 'production') {
         // eslint-disable-next-line no-console
         console.debug('[ICUITabContainer] Rapid tab switching detected - temporarily blocking');
@@ -128,6 +143,13 @@ export const ICUITabContainer: React.FC<ICUITabContainerProps> = ({
     }
 
     // Debounce actual activation to 100ms
+    debugLogger.tabOperation('activation-requested', { 
+      tabId: nextTabId, 
+      activeTabId,
+      areaId,
+      switchCount: switchCountRef.current 
+    });
+    
     lastRequestedTabRef.current = nextTabId;
     if (debounceTimerRef.current) {
       window.clearTimeout(debounceTimerRef.current);
@@ -136,11 +158,18 @@ export const ICUITabContainer: React.FC<ICUITabContainerProps> = ({
       const target = lastRequestedTabRef.current;
       // Use a ref for the latest activeTabId to avoid stale closure
       if (target && target !== activeTabIdRef.current) {
+        debugLogger.startPerformanceMark(`tab-activation-${target}`);
         onTabActivate(target);
+        debugLogger.endPerformanceMark(`tab-activation-${target}`, 'ICUITabContainer');
+        debugLogger.tabOperation('activation-completed', { 
+          tabId: target, 
+          previousTabId: activeTabIdRef.current,
+          areaId 
+        });
       }
       debounceTimerRef.current = null;
     }, 100);
-  }, [onTabActivate, isDragging]);
+  }, [onTabActivate, isDragging, activeTabId, areaId]);
 
   useEffect(() => () => {
     if (debounceTimerRef.current) {

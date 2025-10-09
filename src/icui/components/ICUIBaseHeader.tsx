@@ -222,6 +222,8 @@ export const ICUIBaseHeader: React.FC<ICUIBaseHeaderProps> = ({
         {/* Theme Selector */}
         {availableThemes.length > 0 && (
           <select
+            id="icui-header-theme-select"
+            name="theme"
             value={currentTheme}
             onChange={(e) => onThemeChange?.(e.target.value)}
             className="px-2 py-0 text-xs rounded border"

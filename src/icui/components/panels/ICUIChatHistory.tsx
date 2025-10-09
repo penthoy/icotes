@@ -7,6 +7,7 @@ import { createChatHistoryContextMenu, handleChatHistoryContextMenuClick, ChatHi
 import { registerChatHistoryCommands } from '../chat/ChatHistoryOperations';
 import { confirmService } from '../../services/confirmService';
 import { promptService } from '../../services/promptService';
+import { debugLogger } from '../../utils/debugLogger';
 
 interface ICUIChatHistoryProps {
   className?: string;
@@ -42,9 +43,28 @@ const ICUIChatHistory: React.FC<ICUIChatHistoryProps> = ({
   // Session synchronization
   const { emitSessionChange, onSessionChange } = useChatSessionSync('ICUIChatHistory');
 
+  // Debug: Track component lifecycle
+  useEffect(() => {
+    debugLogger.lifecycle('ICUIChatHistory', 'mount');
+    return () => {
+      debugLogger.lifecycle('ICUIChatHistory', 'unmount');
+    };
+  }, []);
+
+  // Debug: Track renders
+  useEffect(() => {
+    debugLogger.lifecycle('ICUIChatHistory', 'render', { 
+      sessionCount: sessions.length, 
+      activeSession: activeSessionId,
+      selectedCount: selectedSessions.size 
+    });
+  });
+
   // Register commands on mount (only once)
   useEffect(() => {
+    debugLogger.startPerformanceMark('chat-history-command-registration');
     registerChatHistoryCommands();
+    debugLogger.endPerformanceMark('chat-history-command-registration', 'ICUIChatHistory');
     
     return () => {
       delete (window as any).chatHistoryCallback;
@@ -455,6 +475,8 @@ const ICUIChatHistory: React.FC<ICUIChatHistoryProps> = ({
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4" style={{ color: 'var(--icui-text-secondary)' }} />
           <input
+            id="icui-chat-history-search"
+            name="chatHistorySearch"
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -533,6 +555,9 @@ const ICUIChatHistory: React.FC<ICUIChatHistoryProps> = ({
                     <div className="flex-1 min-w-0">
                       {isEditing ? (
                         <input
+                          id={`icui-chat-history-rename-${session.id}`}
+                          name="sessionRename"
+                          type="text"
                           value={tempName}
                           onChange={(e) => setTempName(e.target.value)}
                           onBlur={() => handleSaveRename(session.id)}

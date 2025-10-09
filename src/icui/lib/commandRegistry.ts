@@ -5,6 +5,8 @@
  * Provides command registration, execution, and keyboard shortcut handling.
  */
 
+import { debugLogger } from '../utils/debugLogger';
+
 export interface Command {
   id: string;
   label: string;
@@ -48,12 +50,25 @@ export class CommandRegistry {
     // Skip duplicate registration to prevent excessive re-registrations
     // This commonly happens during component re-mounts or drag operations
     if (existing) {
+      // Log duplicate attempt for debugging
+      debugLogger.commandRegistry('duplicate-attempt', command.id, { 
+        label: command.label,
+        shortcut: command.shortcut 
+      });
+      
       // Only log in development mode to avoid console spam
       if (process.env.NODE_ENV === 'development') {
         console.debug(`CommandRegistry: Skipping duplicate registration of command '${command.id}'`);
       }
       return;
     }
+
+    // Log successful registration
+    debugLogger.commandRegistry('register', command.id, { 
+      label: command.label,
+      category: command.category,
+      shortcut: command.shortcut 
+    });
 
     this.commands.set(command.id, { ...command });
     
@@ -109,6 +124,10 @@ export class CommandRegistry {
 
     const mergedContext = { ...this.context, ...context };
 
+    // Log command execution start
+    debugLogger.startPerformanceMark(`command-execute-${commandId}`);
+    debugLogger.commandRegistry('execute', commandId, { label: command.label });
+
     this.notifyListeners({
       type: 'command-executing',
       commandId,
@@ -119,6 +138,13 @@ export class CommandRegistry {
     try {
       await command.handler(mergedContext);
       
+      // Log command execution end
+      const duration = debugLogger.endPerformanceMark(`command-execute-${commandId}`, 'CommandRegistry');
+      debugLogger.commandRegistry('executed', commandId, { 
+        label: command.label,
+        duration: duration ? `${duration.toFixed(2)}ms` : 'unknown'
+      });
+      
       this.notifyListeners({
         type: 'command-executed',
         commandId,
@@ -126,6 +152,11 @@ export class CommandRegistry {
         context: mergedContext,
       });
     } catch (error) {
+      debugLogger.commandRegistry('error', commandId, { 
+        label: command.label,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      
       this.notifyListeners({
         type: 'command-error',
         commandId,
