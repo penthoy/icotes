@@ -40,26 +40,39 @@ def cleanup_temp_workspaces():
                 except Exception as e:
                     print(f"Warning: Failed to clean up {temp_dir}: {e}")
             
-            # Also clean up any session files in the main .icotes directory
+            # Also clean up any TEST-GENERATED session files in the main .icotes directory
             icotes_dir = workspace_root / '.icotes'
             if icotes_dir.exists():
                 chat_history_dir = icotes_dir / 'chat_history'
                 if chat_history_dir.exists():
-                    # Clean up session files that look like test artifacts
+                    # Only clean up session files that are clearly test artifacts
+                    # Look for recent files (created in last 5 minutes) or files with test markers
+                    import time
+                    current_time = time.time()
+                    
                     session_files = list(chat_history_dir.glob('session_*.meta.json'))
                     for session_file in session_files:
                         try:
-                            session_file.unlink()
-                            print(f"Cleaned up session file: {session_file}")
+                            # Only delete files modified in the last 5 minutes (likely test artifacts)
+                            file_mtime = session_file.stat().st_mtime
+                            age_seconds = current_time - file_mtime
+                            
+                            if age_seconds < 300:  # 5 minutes
+                                session_file.unlink()
+                                print(f"Cleaned up recent test session file: {session_file}")
                         except Exception as e:
                             print(f"Warning: Failed to clean up {session_file}: {e}")
                     
-                    # Clean up jsonl files that look like test artifacts
+                    # Clean up jsonl files that look like test artifacts (recent only)
                     jsonl_files = list(chat_history_dir.glob('*_session-*.jsonl'))
                     for jsonl_file in jsonl_files:
                         try:
-                            jsonl_file.unlink()
-                            print(f"Cleaned up jsonl file: {jsonl_file}")
+                            file_mtime = jsonl_file.stat().st_mtime
+                            age_seconds = current_time - file_mtime
+                            
+                            if age_seconds < 300:  # 5 minutes
+                                jsonl_file.unlink()
+                                print(f"Cleaned up recent test jsonl file: {jsonl_file}")
                         except Exception as e:
                             print(f"Warning: Failed to clean up {jsonl_file}: {e}")
                             

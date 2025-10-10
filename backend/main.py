@@ -416,20 +416,33 @@ async def execute_code(request: CodeExecutionRequest):
         )
 
 
-# Frontend logging endpoint
+# Frontend logging endpoint with rotation
+_frontend_log_rotator = None
+
+def get_frontend_log_rotator():
+    """Get or create the frontend log rotator singleton."""
+    global _frontend_log_rotator
+    if _frontend_log_rotator is None:
+        logs_dir = os.path.join(os.path.dirname(__file__), '..', 'logs')
+        log_file = os.path.join(logs_dir, 'frontend.log')
+        try:
+            from icpy.utils.log_rotation import FrontendLogRotator
+            _frontend_log_rotator = FrontendLogRotator(log_file)
+            logger.info("Frontend log rotator initialized")
+        except ImportError:
+            logger.warning("Log rotation utility not available, using standard file writing")
+            _frontend_log_rotator = None
+    return _frontend_log_rotator
+
 @app.post("/api/logs/frontend")
 async def receive_frontend_logs(request: FrontendLogsRequest):
-    """Receive and store frontend logs."""
+    """Receive and store frontend logs with automatic rotation."""
     try:
-        # Create logs directory if it doesn't exist
-        logs_dir = os.path.join(os.path.dirname(__file__), '..', 'logs')
-        os.makedirs(logs_dir, exist_ok=True)
+        # Get log rotator
+        log_rotator = get_frontend_log_rotator()
         
-        # Create frontend log file path
-        log_file = os.path.join(logs_dir, 'frontend.log')
-        
-        # Format and write logs
-        with open(log_file, 'a', encoding='utf-8') as f:
+        if log_rotator:
+            # Use rotating handler
             for log_entry in request.logs:
                 level_names = {0: 'DEBUG', 1: 'INFO', 2: 'WARN', 3: 'ERROR'}
                 level_name = level_names.get(log_entry.level, 'UNKNOWN')
@@ -449,7 +462,33 @@ async def receive_frontend_logs(request: FrontendLogsRequest):
                 if log_entry.connectionId:
                     log_line += f" | Connection: {log_entry.connectionId}"
                 
-                f.write(log_line + '\n')
+                log_rotator.write_log(log_line + '\n')
+        else:
+            # Fallback to standard file writing
+            logs_dir = os.path.join(os.path.dirname(__file__), '..', 'logs')
+            os.makedirs(logs_dir, exist_ok=True)
+            log_file = os.path.join(logs_dir, 'frontend.log')
+            
+            with open(log_file, 'a', encoding='utf-8') as f:
+                for log_entry in request.logs:
+                    level_names = {0: 'DEBUG', 1: 'INFO', 2: 'WARN', 3: 'ERROR'}
+                    level_name = level_names.get(log_entry.level, 'UNKNOWN')
+                    
+                    log_line = f"{log_entry.timestamp} - {level_name} - [{log_entry.component}] {log_entry.message}"
+                    
+                    if log_entry.data:
+                        log_line += f" | Data: {json.dumps(log_entry.data)}"
+                    
+                    if log_entry.error:
+                        log_line += f" | Error: {log_entry.error}"
+                    
+                    if log_entry.sessionId:
+                        log_line += f" | Session: {log_entry.sessionId}"
+                    
+                    if log_entry.connectionId:
+                        log_line += f" | Connection: {log_entry.connectionId}"
+                    
+                    f.write(log_line + '\n')
         
         return JSONResponse(content={"success": True, "message": f"Stored {len(request.logs)} log entries"})
         
