@@ -201,7 +201,7 @@ export class ICUIBackendService extends EventEmitter {
 
     // Enhanced service event handlers
     this.enhancedService.on('connection_opened', (data: any) => {
-      log.info('ICUIBackendService', 'Service connected', data);
+      log.debug('ICUIBackendService', 'Service connected', data);
       // Race fix: during first connect this.connectionId may not yet be assigned.
       if (!this.connectionId) {
         // Adopt the first opened connection while initializing.
@@ -210,6 +210,8 @@ export class ICUIBackendService extends EventEmitter {
       if (data.connectionId === this.connectionId) {
         if (!this._initialized) {
           this._initialized = true;
+          // Only log at INFO level on first successful connection
+          log.info('ICUIBackendService', 'Service initialized and connected');
           this.emit('connection_status_changed', { status: 'connected' });
         }
       } else {
@@ -222,7 +224,7 @@ export class ICUIBackendService extends EventEmitter {
     });
 
     this.enhancedService.on('connection_closed', (data: any) => {
-      log.info('ICUIBackendService', 'Service disconnected', data);
+      log.debug('ICUIBackendService', 'Service disconnected', data);
       // Fix: Only handle disconnect if this is OUR connection
       if (data.connectionId === this.connectionId) {
         this._initialized = false;
@@ -262,7 +264,7 @@ export class ICUIBackendService extends EventEmitter {
 
     this.enhancedService.on('message', (data: any) => {
       if (data.connectionId === this.connectionId) {
-  log.debug('ICUIBackendService', '[BE] message passthrough', { connectionId: data.connectionId });
+        // Message passthrough logging removed - creates excessive noise
         this.handleWebSocketMessage({ data: data.message });
       }
     });
@@ -315,7 +317,14 @@ export class ICUIBackendService extends EventEmitter {
     }
     this._initializing = true;
     const attempt = ++this._initAttempts;
-    log.info('ICUIBackendService', 'Auto-initializing service', { attempt });
+    
+    // Only log first attempt, then every 5th attempt, or if it's taking too long
+    if (attempt === 1 || attempt % 5 === 0 || attempt > 20) {
+      log.info('ICUIBackendService', 'Auto-initializing service', { attempt });
+    } else {
+      log.debug('ICUIBackendService', 'Auto-initializing service', { attempt });
+    }
+    
     try {
       // Add timeout to prevent blocking indefinitely
       const initPromise = this.performInitialization();

@@ -973,7 +973,7 @@ class WebSocketAPI:
                 'timestamp': time.time()
             })
             
-            logger.info(f"[WS] Filesystem event broadcasted: {message.topic}")
+            # Logging moved to _broadcast_to_subscribers for consolidated output
             
         except Exception as e:
             logger.error(f"[WS] Error handling filesystem event {message.topic}: {e}")
@@ -1038,7 +1038,7 @@ class WebSocketAPI:
 
     async def _broadcast_to_subscribers(self, topic_pattern: str, data: Dict[str, Any]):
         """Broadcast message to connections subscribed to a topic pattern."""
-        logger.info(f"[WS] Broadcasting to subscribers of pattern '{topic_pattern}': {data}")
+        logger.debug(f"[WS] Broadcasting to subscribers of pattern '{topic_pattern}': {data}")
         
         sent_count = 0
         for connection in self.connections.values():
@@ -1046,12 +1046,16 @@ class WebSocketAPI:
                 # Subscriptions are usually exact topics; allow wildcard match either way
                 matched = self._matches_pattern(subscription, topic_pattern) or self._matches_pattern(topic_pattern, subscription)
                 if matched:
-                    logger.info(f"[WS] Sending to connection {connection.id} (subscription: {subscription})")
+                    logger.debug(f"[WS] Sending to connection {connection.id} (subscription: {subscription})")
                     await self.send_message(connection.id, data)
                     sent_count += 1
                     break
         
-        logger.info(f"[WS] Broadcast sent to {sent_count} connections")
+        # Consolidated logging - only log summary at INFO level
+        if sent_count > 0:
+            logger.info(f"[WS] Broadcast {topic_pattern} to {sent_count} connection(s)")
+        else:
+            logger.debug(f"[WS] Broadcast {topic_pattern} to 0 connections")
 
     def _matches_pattern(self, subscription: str, pattern: str) -> bool:
         """Check if subscription matches pattern."""

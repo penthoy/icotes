@@ -312,8 +312,9 @@ class RestAPI:
                 else:
                     self.stats['failed_requests'] += 1
                 
-                # Log request
-                logger.info(f"{request.method} {request.url.path} - {response.status_code} - {response_time:.3f}s")
+                # Log request (exclude circular logging for frontend log endpoint)
+                if request.url.path != '/api/logs/frontend':
+                    logger.info(f"{request.method} {request.url.path} - {response.status_code} - {response_time:.3f}s")
                 
                 return response
                 

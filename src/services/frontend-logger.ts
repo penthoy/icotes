@@ -29,9 +29,25 @@ class FrontendLogger {
   private flushTimer?: NodeJS.Timeout;
   private isFlushingEnabled: boolean = true; // Re-enable backend logging with safety measures
   private isCurrentlyFlushing: boolean = false; // Add mutex flag to prevent concurrent flushes
+  private originalConsole: {
+    log: typeof console.log;
+    warn: typeof console.warn;
+    error: typeof console.error;
+  };
 
   constructor() {
     this.sessionId = this.generateSessionId();
+    
+    // Store original console methods before intercepting
+    this.originalConsole = {
+      log: console.log.bind(console),
+      warn: console.warn.bind(console),
+      error: console.error.bind(console)
+    };
+    
+    // Intercept console methods to capture all logs
+    this.interceptConsole();
+    
     this.startPeriodicFlush();
     
     // Capture unhandled errors
@@ -54,6 +70,99 @@ class FrontendLogger {
     });
   }
 
+  private interceptConsole(): void {
+    // Intercept console.log
+    console.log = (...args: any[]) => {
+      this.originalConsole.log(...args);
+      
+      // Extract component from call stack or use CONSOLE
+      const component = this.extractComponentFromStack() || 'CONSOLE';
+      const message = args.map(arg => this.stringifyArg(arg)).join(' ');
+      
+      const entry = this.createLogEntry(LogLevel.INFO, component, message);
+      this.logQueue.push(entry);
+      
+      // Prevent queue overflow
+      if (this.logQueue.length > this.maxQueueSize) {
+        this.logQueue = this.logQueue.slice(-this.maxQueueSize);
+      }
+    };
+
+    // Intercept console.warn
+    console.warn = (...args: any[]) => {
+      this.originalConsole.warn(...args);
+      
+      const component = this.extractComponentFromStack() || 'CONSOLE';
+      const message = args.map(arg => this.stringifyArg(arg)).join(' ');
+      
+      const entry = this.createLogEntry(LogLevel.WARN, component, message);
+      this.logQueue.push(entry);
+      
+      if (this.logQueue.length > this.maxQueueSize) {
+        this.logQueue = this.logQueue.slice(-this.maxQueueSize);
+      }
+    };
+
+    // Intercept console.error
+    console.error = (...args: any[]) => {
+      this.originalConsole.error(...args);
+      
+      const component = this.extractComponentFromStack() || 'CONSOLE';
+      const message = args.map(arg => this.stringifyArg(arg)).join(' ');
+      
+      // Extract error object if present
+      const errorObj = args.find(arg => arg instanceof Error) as Error | undefined;
+      
+      const entry = this.createLogEntry(LogLevel.ERROR, component, message, undefined, errorObj);
+      this.logQueue.push(entry);
+      
+      if (this.logQueue.length > this.maxQueueSize) {
+        this.logQueue = this.logQueue.slice(-this.maxQueueSize);
+      }
+      
+      // Flush immediately for errors
+      this.flushLogs();
+    };
+  }
+
+  private stringifyArg(arg: any): string {
+    if (arg === null) return 'null';
+    if (arg === undefined) return 'undefined';
+    if (typeof arg === 'string') return arg;
+    if (typeof arg === 'number' || typeof arg === 'boolean') return String(arg);
+    if (arg instanceof Error) return `${arg.name}: ${arg.message}`;
+    
+    try {
+      // Try to stringify objects, but limit size
+      const str = JSON.stringify(arg);
+      return str.length > 200 ? str.substring(0, 200) + '...' : str;
+    } catch {
+      return String(arg);
+    }
+  }
+
+  private extractComponentFromStack(): string | null {
+    try {
+      const stack = new Error().stack;
+      if (!stack) return null;
+      
+      // Parse stack trace to find the calling file/component
+      const lines = stack.split('\n');
+      // Skip first 4 lines (Error, interceptConsole, console method, actual caller)
+      for (let i = 4; i < Math.min(lines.length, 8); i++) {
+        const line = lines[i];
+        // Extract filename from stack trace
+        const match = line.match(/\/([^/]+)\.(tsx?|jsx?):/);
+        if (match) {
+          return match[1].toUpperCase().replace(/-/g, '_');
+        }
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
   private generateSessionId(): string {
     return `frontend-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   }
@@ -73,34 +182,26 @@ class FrontendLogger {
   debug(component: string, message: string, data?: any): void {
     const entry = this.createLogEntry(LogLevel.DEBUG, component, message, data);
     this.addToQueue(entry);
-    // Only log to console, don't use our logger to prevent recursion
-    if (typeof console !== 'undefined' && console.log) {
-      console.log(`[${component}] ${message}`, data || '');
-    }
+    // Use original console to prevent recursion
+    this.originalConsole.log(`[${component}] ${message}`, data || '');
   }
 
   info(component: string, message: string, data?: any): void {
     const entry = this.createLogEntry(LogLevel.INFO, component, message, data);
     this.addToQueue(entry);
-    if (typeof console !== 'undefined' && console.log) {
-      console.log(`[${component}] ${message}`, data || '');
-    }
+    this.originalConsole.log(`[${component}] ${message}`, data || '');
   }
 
   warn(component: string, message: string, data?: any): void {
     const entry = this.createLogEntry(LogLevel.WARN, component, message, data);
     this.addToQueue(entry);
-    if (typeof console !== 'undefined' && console.warn) {
-      console.warn(`[${component}] ${message}`, data || '');
-    }
+    this.originalConsole.warn(`[${component}] ${message}`, data || '');
   }
 
   error(component: string, message: string, data?: any, error?: Error): void {
     const entry = this.createLogEntry(LogLevel.ERROR, component, message, data, error);
     this.addToQueue(entry);
-    if (typeof console !== 'undefined' && console.error) {
-      console.error(`[${component}] ${message}`, data || '', error || '');
-    }
+    this.originalConsole.error(`[${component}] ${message}`, data || '', error || '');
   }
 
   private addToQueue(entry: LogEntry): void {
