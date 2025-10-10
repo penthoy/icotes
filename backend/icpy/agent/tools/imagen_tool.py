@@ -255,9 +255,18 @@ class ImagenTool(BaseTool):
             except Exception:
                 pass
 
+            # Always write a local binary copy to guarantee a non-empty file for references/preview
+            try:
+                with open(filepath, 'wb') as f:
+                    f.write(image_bytes)
+                logger.info(f"[ImagenTool] Wrote local copy: {filepath} ({len(image_bytes)} bytes)")
+            except Exception as e:
+                logger.error(f"[ImagenTool] Failed to write local copy {filepath}: {e}")
+
             if context_name == 'local':
                 # For local context, always write true binary PNG to disk
                 try:
+                    # Double-write is harmless; ensures correct bytes
                     with open(filepath, 'wb') as f:
                         f.write(image_bytes)
                     logger.info(f"Saved image to {filepath} ({len(image_bytes)} bytes) on local context")
@@ -285,48 +294,53 @@ class ImagenTool(BaseTool):
                     pass
 
             else:
-                # Remote context: prefer binary-capable paths, fallback to base64 text if needed
+                # Remote context: Use filesystem service write methods
+                # The local copy is already written above for references/preview
                 wrote = False
-                # Try remote SFTP through context router if available
-                try:
-                    from icpy.services.context_router import get_context_router
-                    router = await get_context_router()
-                    fs = await router.get_filesystem()
-                    if hasattr(fs, '_sftp'):
-                        sftp = fs._sftp()
-                        if sftp:
-                            import posixpath
-                            # Map local workspace path to remote workspace path conservatively
-                            remote_workspace = posixpath.join('/home', os.getenv('USER', 'user'), 'icotes', 'workspace')
-                            remote_path = posixpath.join(remote_workspace, filename)
-                            async with sftp.open(remote_path, 'wb') as f:
-                                await f.write(image_bytes)
-                            logger.info(f"Saved image to remote {remote_path} ({len(image_bytes)} bytes) on context: {context_name}")
-                            wrote = True
-                            # Align returned relative path to filename
-                except Exception as e:
-                    logger.debug(f"Remote SFTP path unavailable: {e}")
-
-                if not wrote and hasattr(filesystem_service, 'write_file_binary'):
+                
+                # Try write_file_binary first (proper binary write)
+                if hasattr(filesystem_service, 'write_file_binary'):
                     try:
-                        await filesystem_service.write_file_binary(filepath, image_bytes)
-                        logger.info(f"Saved image via write_file_binary to {filepath} on context: {context_name}")
+                        # Build remote path properly
+                        import posixpath
+                        remote_ctx = await get_current_context()
+                        remote_user = remote_ctx.get('username') or os.getenv('USER', 'user')
+                        remote_workspace = (
+                            os.environ.get('HOP_REMOTE_WORKSPACE_ROOT')
+                            or posixpath.join('/home', remote_user, 'icotes', 'workspace')
+                        )
+                        remote_path = posixpath.join(remote_workspace, filename)
+                        
+                        await filesystem_service.write_file_binary(remote_path, image_bytes)
+                        logger.info(f"Saved image via write_file_binary to {remote_path} ({len(image_bytes)} bytes) on context: {context_name}")
                         wrote = True
                     except Exception as e:
-                        logger.debug(f"write_file_binary failed: {e}")
+                        logger.warning(f"write_file_binary failed: {e}")
 
+                # Fallback to write_file with base64 encoding
                 if not wrote and hasattr(filesystem_service, 'write_file'):
                     try:
-                        # Last resort: write base64 string; Phase 1 conversion will still re-save correctly
+                        import posixpath
+                        remote_ctx = await get_current_context()
+                        remote_user = remote_ctx.get('username') or os.getenv('USER', 'user')
+                        remote_workspace = (
+                            os.environ.get('HOP_REMOTE_WORKSPACE_ROOT')
+                            or posixpath.join('/home', remote_user, 'icotes', 'workspace')
+                        )
+                        remote_path = posixpath.join(remote_workspace, filename)
+                        
+                        # Write as base64 string
                         base64_content = base64.b64encode(image_bytes).decode('utf-8')
-                        await filesystem_service.write_file(filepath, base64_content)
-                        logger.info(f"Saved image (base64 text) to {filepath} on context: {context_name}")
+                        await filesystem_service.write_file(remote_path, base64_content)
+                        logger.info(f"Saved image (base64 text) to remote {remote_path} on context: {context_name}")
                         wrote = True
                     except Exception as e:
                         logger.error(f"Remote write_file fallback failed: {e}")
 
+                # If all remote writes failed, that's okay - we have the local copy for serving
                 if not wrote:
-                    return None
+                    logger.warning(f"Remote write failed, but local copy exists at {filepath}")
+                    # Don't return None - the local file is enough for the backend to serve
             
             # Return relative path for display
             return filename
@@ -359,18 +373,33 @@ class ImagenTool(BaseTool):
                 file_path = image_data.replace("file://", "")
                 logger.info(f"_decode_image_input: Resolved to {file_path}")
                 
-                # Use contextual filesystem to load file (works for both local and remote)
+                # Try multiple methods to load the file
+                load_success = False
+                
+                # Method 1: Try contextual filesystem (remote-aware)
                 try:
                     filesystem_service = await get_contextual_filesystem()
+                    logger.debug(f"Attempting to load via contextual filesystem: {file_path}")
                     
                     # Try to read as binary first (proper way for images)
                     if hasattr(filesystem_service, 'read_file_binary'):
                         image_bytes = await filesystem_service.read_file_binary(file_path)
-                        if image_bytes is None:
-                            logger.error(f"Failed to read binary file: {file_path}")
-                            return None
-                    else:
-                        # Fallback to text read with base64 conversion (for older FS implementations)
+                        if image_bytes is not None:
+                            # Some remote adapters may return str from read_file_binary; normalize
+                            if isinstance(image_bytes, str):
+                                if image_bytes.startswith('data:image/') and ',' in image_bytes:
+                                    _, b64_data = image_bytes.split(',', 1)
+                                    image_bytes = base64.b64decode(b64_data)
+                                else:
+                                    try:
+                                        image_bytes = base64.b64decode(image_bytes)
+                                    except Exception:
+                                        image_bytes = image_bytes.encode('utf-8')
+                            load_success = True
+                            logger.debug(f"Successfully loaded via read_file_binary: {len(image_bytes)} bytes")
+                    
+                    # Fallback to text read with base64 conversion (for older FS implementations)
+                    if not load_success and hasattr(filesystem_service, 'read_file'):
                         image_bytes = await filesystem_service.read_file(file_path)
                         
                         # Convert string to bytes if needed (some FS services return str)
@@ -383,12 +412,28 @@ class ImagenTool(BaseTool):
                             else:
                                 # Assume it's raw base64
                                 image_bytes = base64.b64decode(image_bytes)
-                        elif image_bytes is None:
-                            logger.error(f"Failed to read file: {file_path}")
-                            return None
+                            load_success = True
+                            logger.debug(f"Successfully loaded via read_file (base64): {len(image_bytes)} bytes")
+                        elif image_bytes is not None:
+                            load_success = True
+                            logger.debug(f"Successfully loaded via read_file: {len(image_bytes)} bytes")
                             
-                except FileNotFoundError:
-                    logger.error(f"File does not exist: {file_path}")
+                except Exception as fs_error:
+                    logger.warning(f"Contextual filesystem load failed: {fs_error}")
+                
+                # Method 2: Fallback to direct local file access if contextual filesystem failed
+                if not load_success and os.path.exists(file_path):
+                    try:
+                        logger.debug(f"Falling back to direct file read: {file_path}")
+                        with open(file_path, 'rb') as f:
+                            image_bytes = f.read()
+                        load_success = True
+                        logger.info(f"Successfully loaded via direct file access: {len(image_bytes)} bytes")
+                    except Exception as file_error:
+                        logger.error(f"Direct file read failed: {file_error}")
+                
+                if not load_success or image_bytes is None:
+                    logger.error(f"Failed to load image from any source: {file_path}")
                     return None
                     
                 # Infer mime type from file extension using small helper
@@ -669,10 +714,29 @@ class ImagenTool(BaseTool):
             
             # Return result with reference AND small thumbnail for preview/editing
             # The thumbnail allows instant preview without fetching, and agents can use it for editing
+            # Build a hop-aware file URL: if context is remote, compute a reasonable remote path
+            image_url = f"file://{ref.absolute_path}"
+            context_name = context.get('contextId', 'local')
+            if context_name != 'local':
+                try:
+                    import posixpath
+                    # Prefer explicit context/workspace settings if available
+                    remote_workspace = (
+                        context.get('workspaceRoot')
+                        or os.environ.get('HOP_REMOTE_WORKSPACE_ROOT')
+                        or posixpath.join('/home', os.getenv('USER', 'user'), 'icotes', 'workspace')
+                    )
+                    # If we saved a relative path, join to remote workspace
+                    remote_rel = saved_path or os.path.basename(ref.absolute_path)
+                    image_url = f"file://{posixpath.join(remote_workspace, remote_rel)}"
+                except Exception:
+                    # Fallback to local absolute path
+                    image_url = f"file://{ref.absolute_path}"
+
             result_data = {
                 "imageReference": ref.to_dict(),  # Lightweight reference with thumbnail
                 "imageData": ref.thumbnail_base64,  # Include thumbnail for preview AND agent editing
-                "imageUrl": f"file://{ref.absolute_path}",  # file:// URL for agent editing (loads full image)
+                "imageUrl": image_url,  # file:// URL for agent editing (hop-aware)
                 "thumbnailUrl": f"/api/media/image/{ref.image_id}?thumbnail=true",  # Thumbnail endpoint for UI
                 "fullImageUrl": f"/api/media/image/{ref.image_id}",  # Full image endpoint for downloads
                 "mimeType": mime_type,
@@ -681,7 +745,7 @@ class ImagenTool(BaseTool):
                 "timestamp": datetime.now().isoformat(),
                 "mode": effective_mode,
                 "attemptedModels": attempted,
-                "context": context.get('contextId', 'local'),
+                "context": context_name,
                 "contextHost": context.get('host')
             }
             
@@ -699,7 +763,6 @@ class ImagenTool(BaseTool):
             
             if saved_path:
                 result_data["filePath"] = saved_path
-                context_name = context.get('contextId', 'local')
                 if context_name != 'local':
                     result_data["message"] = f"Image generated and saved to workspace/{saved_path} on {context_name}"
                 else:

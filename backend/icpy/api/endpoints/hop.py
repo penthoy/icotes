@@ -311,6 +311,19 @@ async def send_files(payload: SendFilesRequest):
     async def copy_file(src_path: str, rel_path: str):
         try:
             dest_path = posixpath.normpath(f"{dest_base}/{rel_path}")
+            
+            # Skip if destination already exists with non-zero size
+            # This prevents overwriting good local files when remote is unavailable
+            if dst_ctx == 'local' and os.path.exists(dest_path):
+                try:
+                    size = os.path.getsize(dest_path)
+                    if size > 0:
+                        logger.debug(f"[/api/hop/send-files] Skipping {dest_path} - already exists with size {size}")
+                        created.append(dest_path)  # Count as successful (no-op)
+                        return
+                except Exception:
+                    pass  # If we can't check size, proceed with transfer
+            
             # Read bytes
             if sftp_src:
                 async with sftp_src.open(src_path, 'rb') as f:  # type: ignore

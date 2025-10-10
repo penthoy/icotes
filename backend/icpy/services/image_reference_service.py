@@ -104,17 +104,30 @@ class ImageReferenceService:
             relative_path = filename
             absolute_path = self._workspace_path_obj / filename
             
-            # Check if file exists
+            # Ensure file exists locally; if missing but image_data provided, write it now.
             if not absolute_path.exists():
-                # File might have been saved with different name
-                # Try to find it or use provided path
-                logger.warning(f"Image file not found at {absolute_path}")
+                try:
+                    import base64 as _b64
+                    absolute_path.parent.mkdir(parents=True, exist_ok=True)
+                    with open(absolute_path, "wb") as fh:
+                        fh.write(_b64.b64decode(image_data))
+                    logger.info(f"Wrote local image copy for reference: {absolute_path}")
+                except Exception as write_e:
+                    # If we fail to materialize, keep going; downstream will raise a clearer error.
+                    logger.warning(f"Unable to materialize local image copy at {absolute_path}: {write_e}")
             
             # Calculate file size
             size_bytes = absolute_path.stat().st_size if absolute_path.exists() else 0
             
-            # Generate checksum
-            checksum = calculate_checksum(str(absolute_path)) if absolute_path.exists() else ""
+            # Generate checksum (fallback to bytes-based if file still missing)
+            if absolute_path.exists():
+                checksum = calculate_checksum(str(absolute_path))
+            else:
+                try:
+                    import hashlib, base64 as _b64
+                    checksum = hashlib.sha256(_b64.b64decode(image_data)).hexdigest()
+                except Exception:
+                    checksum = ""
             
             # Generate thumbnail
             thumbnail_result = generate_thumbnail(
