@@ -112,9 +112,11 @@ def chat(message: str, history: List[Dict[str, str]]) -> Generator[str, None, No
         "CRITICAL - Image Handling:\n"
         "- User messages may include [Attached images: ...] sections listing file paths to images they've shared.\n"
         "- When user asks to modify/edit/change an attached image (e.g., 'add a hat', 'make it 3D'), "
-        "use generate_image tool with image_data parameter set to the file path from the attachment.\n"
+        "use generate_image tool with image_data parameter set to the imageUrl (file:// path) from previous responses.\n"
         "- Set mode='edit' when modifying existing images, mode='generate' for new images.\n"
-        "- Look for imageUrl fields in previous assistant responses for file:// paths from prior generations.\n\n"
+        "- Look for imageUrl fields in previous assistant responses for file:// paths from prior generations.\n"
+        "- For image generation: default to aspect_ratio='1:1' (square) unless user explicitly requests a different format "
+        "or content clearly requires specific orientation (e.g., wide landscape, tall portrait).\n\n"
         "Keep responses clear and concise."
     )
 
@@ -221,6 +223,11 @@ def chat(message: str, history: List[Dict[str, str]]) -> Generator[str, None, No
 
         # Log message count for debugging
         logger.debug(f"GroqKimiAgent: Prepared {len(safe_messages)} messages for Groq API")
+        
+        # Log the system prompt to verify aspect ratio instruction is present
+        system_msg = next((m for m in safe_messages if m.get('role') == 'system'), None)
+        if system_msg:
+            logger.info(f"GroqKimiAgent: System prompt includes: {system_msg['content'][:500]}")
 
         # Use compact tools mode to save tokens while preserving full functionality
         handler = OpenAIStreamingHandler(client, MODEL_NAME, use_compact_tools=True)

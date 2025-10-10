@@ -27,7 +27,8 @@ interface GenerationData {
   size?: string;
   style?: string;
   imageUrl?: string;
-  imageData?: string; // base64 encoded image data
+  imageData?: string; // base64 encoded image data (legacy or thumbnail)
+  fullImageUrl?: string; // Streaming-optimized: URL for full-resolution image
   error?: string;
   timestamp?: number;
   status?: 'pending' | 'generating' | 'success' | 'error';
@@ -81,30 +82,69 @@ const ImageGenerationWidget: React.FC<ImageGenerationWidgetProps> = ({
     // Parse output (image URL or data)
     if (toolCall.output && toolCall.status === 'success') {
       try {
-        const output = typeof toolCall.output === 'string' 
-          ? JSON.parse(toolCall.output) 
-          : toolCall.output;
+        let output;
+        
+        if (typeof toolCall.output === 'string') {
+          // Try to extract JSON from formatted output like "✅ **Success**: {...}"
+          const jsonMatch = toolCall.output.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            console.log('[ImageWidget] Extracting JSON from formatted output');
+            output = JSON.parse(jsonMatch[0]);
+          } else {
+            console.warn('[ImageWidget] No JSON found in output:', toolCall.output.substring(0, 100));
+            output = {};
+          }
+        } else {
+          output = toolCall.output;
+        }
+        
+        console.log('[ImageWidget] Parsed output:', {
+          hasImageReference: !!output.imageReference,
+          hasImageData: !!output.imageData,
+          hasImageUrl: !!output.imageUrl,
+          hasFullImageUrl: !!output.fullImageUrl,
+          size: output.size
+        });
         
         // Override size from output if available (actual dimensions)
         if (output.size) {
           data.size = output.size;
         }
         
-        // Check if output has imageReference (Phase 1 storage optimization)
+        // Performance optimized: Use streaming-optimized image endpoints
         if (output.imageReference) {
           const ref = output.imageReference;
-          // Use thumbnail_base64 for display instead of file:// paths
-          if (ref.thumbnail_base64) {
+          
+          // Priority 1: Use embedded imageData (thumbnail) for instant preview
+          if (output.imageData) {
+            data.imageData = output.imageData;
+          } else if (ref.thumbnail_base64) {
             data.imageData = ref.thumbnail_base64;
           }
-          // Store metadata for potential full image fetch
+          
+          // Store URLs for agent editing and downloads
+          data.imageUrl = output.imageUrl;  // file:// URL for agent editing
+          data.fullImageUrl = output.fullImageUrl;  // API endpoint for downloads
+          
+          console.log('[ImageWidget] Using streaming-optimized format:', {
+            imageUrl: data.imageUrl,
+            fullImageUrl: data.fullImageUrl,
+            hasThumbnail: !!data.imageData
+          });
+          
+          // Store metadata
           data.timestamp = ref.timestamp ? ref.timestamp * 1000 : Date.now();
           if (ref.prompt) data.prompt = ref.prompt;
         } else {
-          // Legacy format: direct imageUrl/imageData
+          // Legacy format: direct imageUrl/imageData (pre-optimization)
           data.imageUrl = output.url || output.imageUrl || output.image_url;
           data.imageData = output.data || output.imageData || output.image_data;
           data.timestamp = output.timestamp || Date.now();
+          
+          console.log('[ImageWidget] Using legacy format:', {
+            imageUrl: data.imageUrl,
+            hasImageData: !!data.imageData
+          });
         }
         
         data.status = 'success';
@@ -113,7 +153,8 @@ const ImageGenerationWidget: React.FC<ImageGenerationWidgetProps> = ({
             data.prompt = output.prompt || output.description;
           }
       } catch (e) {
-        console.warn('Failed to parse image generation output:', e);
+        console.error('[ImageWidget] Failed to parse image generation output:', e);
+        console.error('[ImageWidget] Raw output:', typeof toolCall.output === 'string' ? toolCall.output.substring(0, 200) : toolCall.output);
       }
     }
 
@@ -169,14 +210,17 @@ const ImageGenerationWidget: React.FC<ImageGenerationWidgetProps> = ({
 
   // Handle image download
   const handleDownload = useCallback(() => {
-    if (generationData.imageUrl) {
+    // Use fullImageUrl for download to get high-quality version
+    const downloadUrl = (generationData as any).fullImageUrl || generationData.imageUrl;
+    
+    if (downloadUrl) {
       const link = document.createElement('a');
       // Convert file:// URLs to API endpoints
-      if (generationData.imageUrl.startsWith('file://')) {
-        const filePath = generationData.imageUrl.replace('file://', '');
+      if (downloadUrl.startsWith('file://')) {
+        const filePath = downloadUrl.replace('file://', '');
         link.href = `/api/files/raw?path=${encodeURIComponent(filePath)}`;
       } else {
-        link.href = generationData.imageUrl;
+        link.href = downloadUrl;
       }
       link.download = `generated-image-${Date.now()}.png`;
       document.body.appendChild(link);
@@ -207,9 +251,9 @@ const ImageGenerationWidget: React.FC<ImageGenerationWidgetProps> = ({
 
   // Get display image source
   const imageSrc = useMemo(() => {
-    // Priority 1: Use thumbnail from imageData (small, fast)
-    if (generationData.imageData) {
-      return `data:image/png;base64,${generationData.imageData}`;
+    // Priority 1: Use fullImageUrl for high-quality display (streaming-optimized format)
+    if ((generationData as any).fullImageUrl) {
+      return (generationData as any).fullImageUrl;
     }
     
     // Priority 2: Convert file:// URLs to API endpoints for full image
@@ -219,6 +263,11 @@ const ImageGenerationWidget: React.FC<ImageGenerationWidgetProps> = ({
         return `/api/files/raw?path=${encodeURIComponent(filePath)}`;
       }
       return generationData.imageUrl;
+    }
+    
+    // Priority 3: Fallback to embedded thumbnail (fast but low quality)
+    if (generationData.imageData) {
+      return `data:image/png;base64,${generationData.imageData}`;
     }
     
     return null;

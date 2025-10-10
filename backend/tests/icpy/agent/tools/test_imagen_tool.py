@@ -115,6 +115,9 @@ class TestImagenToolHopSupport:
             'host': '192.168.1.100'
         }
         
+        # Mock write_file_binary to succeed (preferred path for remote binary writes)
+        mock_filesystem.write_file_binary = AsyncMock()
+        
         with patch('icpy.agent.tools.imagen_tool.get_contextual_filesystem', return_value=mock_filesystem), \
              patch('icpy.agent.tools.imagen_tool.get_current_context', return_value=remote_context):
             
@@ -124,14 +127,15 @@ class TestImagenToolHopSupport:
                 None
             )
             
-            # Should have called write_file on remote filesystem
-            assert mock_filesystem.write_file.called
+            # Should have called write_file_binary for remote binary data
+            assert mock_filesystem.write_file_binary.called
             assert result is not None
 
     @pytest.mark.asyncio
     async def test_load_image_from_hop(self, imagen_tool, mock_filesystem, sample_image_bytes):
         """Test loading image from remote hop using file:// path"""
-        mock_filesystem.read_file.return_value = sample_image_bytes
+        # Mock read_file_binary to return image bytes (preferred path for binary reads)
+        mock_filesystem.read_file_binary = AsyncMock(return_value=sample_image_bytes)
         
         with patch('icpy.agent.tools.imagen_tool.get_contextual_filesystem', return_value=mock_filesystem):
             result = await imagen_tool._decode_image_input(
@@ -139,8 +143,8 @@ class TestImagenToolHopSupport:
                 None
             )
             
-            # Should have called read_file
-            assert mock_filesystem.read_file.called
+            # Should have called read_file_binary for binary image data
+            assert mock_filesystem.read_file_binary.called
             # Should return valid image part
             assert result is not None
             assert result['mime_type'] == 'image/png'

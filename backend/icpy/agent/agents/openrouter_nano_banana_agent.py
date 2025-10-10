@@ -347,7 +347,8 @@ You can generate high-quality images directly. When the user asks for (or implie
             }
             yield "\n\n🔧 **Executing tools...**\n\n"
             yield f"📋 **generate_image**: {json.dumps({'prompt': message[:200]})}\n"
-            yield f"✅ **Success**: {json.dumps(tool_call_output)}\n"
+            # Output just JSON without decoration for frontend parsing
+            yield json.dumps(tool_call_output) + "\n"
             yield "\n🔧 **Tool execution complete. Continuing...**\n\n"
             logger.info("OpenRouterNanoBananaAgent: Emitted image tool block")
         else:

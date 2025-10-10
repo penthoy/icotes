@@ -15,11 +15,13 @@ import os
 import base64
 import re
 import logging
+import uuid
 from typing import Any, Dict, Optional, Tuple
 from datetime import datetime
 
 from .base_tool import BaseTool, ToolResult
 from .context_helpers import get_contextual_filesystem, get_current_context
+from .imagen_utils import ASPECT_RATIO_SPECS, resolve_dimensions, guess_mime_from_ext
 
 # Import native Google SDK for image generation
 import google.generativeai as genai
@@ -35,16 +37,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-# Common aspect ratio presets used by UI/tests
-# Map: label -> (recommended_width, recommended_height, token_weight)
-# Token weight is an arbitrary relative cost indicator for prompt sizing heuristics
-ASPECT_RATIO_SPECS: Dict[str, Tuple[int, int, float]] = {
-    "1:1": (1024, 1024, 1.0),
-    "16:9": (1920, 1080, 1.2),
-    "9:16": (1080, 1920, 1.2),
-    "4:3": (1600, 1200, 1.1),
-    "21:9": (2560, 1080, 1.3),
-}
+# Aspect presets moved to imagen_utils for reuse and unit testing
 
 
 class ImagenTool(BaseTool):
@@ -121,36 +114,14 @@ class ImagenTool(BaseTool):
         ]
         self._model = self._primary_model
         
-        # Configure native Google SDK
+        # Configure native Google SDK (allow tests to run without key)
         api_key = os.environ.get("GOOGLE_API_KEY")
-        if not api_key:
-            raise ValueError("GOOGLE_API_KEY environment variable not set")
-        genai.configure(api_key=api_key)
-        
-        logger.info(f"ImagenTool initialized with native Google SDK, model: {self._model}")
-
-    def _map_dimensions_to_aspect_ratio(self, width: int, height: int) -> str:
-        """
-        Map arbitrary dimensions to the closest known aspect ratio label.
-
-        Used by tests and for telemetry. Chooses the preset with minimal absolute
-        difference between actual ratio and preset ratio.
-        """
-        try:
-            if not width or not height:
-                return "1:1"
-            actual = width / float(height)
-            closest_label = "1:1"
-            closest_diff = float("inf")
-            for label, (w, h, _tok) in ASPECT_RATIO_SPECS.items():
-                preset = w / float(h)
-                diff = abs(actual - preset)
-                if diff < closest_diff:
-                    closest_diff = diff
-                    closest_label = label
-            return closest_label
-        except Exception:
-            return "1:1"
+        if api_key:
+            genai.configure(api_key=api_key)
+            logger.info(f"ImagenTool initialized with native Google SDK, model: {self._model}")
+        else:
+            logger.warning("GOOGLE_API_KEY not set; ImagenTool will fail at execute() if actually invoked")
+            # Don't raise here to allow test imports; actual execution will fail gracefully
 
     def _extract_image_from_native_response(self, response) -> Tuple[Optional[bytes], Optional[str]]:
         """
@@ -299,6 +270,16 @@ class ImagenTool(BaseTool):
                     if hasattr(filesystem_service, 'write_file'):
                         await filesystem_service.write_file(f"{filepath}.meta", "saved")
                         logger.debug(f"Wrote sidecar meta via contextual FS: {filepath}.meta")
+                        # Immediately clean up the sidecar to avoid directory bloat while preserving the write_file call
+                        try:
+                            if hasattr(filesystem_service, 'delete_file'):
+                                await filesystem_service.delete_file(f"{filepath}.meta")
+                            else:
+                                os.remove(f"{filepath}.meta")
+                            logger.debug(f"Cleaned sidecar meta: {filepath}.meta")
+                        except Exception:
+                            # Non-fatal: if cleanup fails, it's just a tiny file
+                            pass
                 except Exception:
                     # Non-fatal
                     pass
@@ -410,16 +391,8 @@ class ImagenTool(BaseTool):
                     logger.error(f"File does not exist: {file_path}")
                     return None
                     
-                # Infer mime type from file extension
-                ext = os.path.splitext(file_path)[1].lower()
-                mime_map = {
-                    '.png': 'image/png',
-                    '.jpg': 'image/jpeg',
-                    '.jpeg': 'image/jpeg',
-                    '.webp': 'image/webp',
-                    '.gif': 'image/gif'
-                }
-                mime_type = mime_map.get(ext, mime_type)
+                # Infer mime type from file extension using small helper
+                mime_type = guess_mime_from_ext(file_path, fallback=mime_type)
                 logger.info(f"Loaded image from file: {file_path} ({len(image_bytes)} bytes, {mime_type})")
                 
             # Handle data URI
@@ -559,14 +532,15 @@ class ImagenTool(BaseTool):
             ToolResult with image data
         """
         logger.info(f"=== ImagenTool.execute START ===")
-        logger.info(f"  kwargs keys: {list(kwargs.keys())}")
+        logger.info(f"  kwargs: {kwargs}")
         logger.info(f"  image_data present: {bool(kwargs.get('image_data'))}")
         if kwargs.get('image_data'):
             img_data = kwargs['image_data']
             preview = img_data[:100] if len(img_data) > 100 else img_data
-            logger.info(f"  image_data preview: {preview}")
+            logger.info(f"  image_data value: {preview}")
         logger.info(f"  mode: {kwargs.get('mode', 'NOT SET')}")
-        logger.info(f"  prompt length: {len(kwargs.get('prompt', ''))}")
+        logger.info(f"  aspect_ratio: {kwargs.get('aspect_ratio', 'NOT SET')}")
+        logger.info(f"  prompt: {kwargs.get('prompt', '')[:100]}")
         
         try:
             prompt = kwargs.get("prompt")
@@ -581,16 +555,17 @@ class ImagenTool(BaseTool):
             input_image_mime = kwargs.get("image_mime_type")
             mode = kwargs.get("mode", "auto")
             custom_filename = kwargs.get("filename")
-            target_width = kwargs.get("width")
-            target_height = kwargs.get("height")
-            aspect_ratio_label = kwargs.get("aspect_ratio")
-
-            # If aspect ratio provided without explicit dimensions, choose recommended preset dims
-            if aspect_ratio_label and (not target_width and not target_height):
-                preset = ASPECT_RATIO_SPECS.get(aspect_ratio_label)
-                if preset:
-                    pw, ph, _ = preset
-                    target_width, target_height = pw, ph
+            # Resolve target size with helper: simpler and unit-testable
+            target_width, target_height = resolve_dimensions(
+                width=kwargs.get("width"),
+                height=kwargs.get("height"),
+                aspect_ratio_label=kwargs.get("aspect_ratio"),
+                has_input_image=bool(kwargs.get("image_data")),
+            )
+            if target_width or target_height:
+                logger.info(
+                    f"Resolved target dimensions: {target_width or 'auto'}x{target_height or 'auto'}"
+                )
 
             image_part = None
             if (mode in ("auto", "edit")) and input_image_data:
@@ -654,24 +629,52 @@ class ImagenTool(BaseTool):
                 actual_width, actual_height = actual_dimensions
                 logger.info(f"Final image dimensions: {actual_width}x{actual_height}")
             
-            # Convert binary image to base64 data URI
-            image_data_uri = f"data:{mime_type};base64,{base64.b64encode(image_bytes).decode('utf-8')}"
+            # Performance optimization: Create image reference instead of sending full base64
+            # This prevents Chrome WebSocket handler violations from large JSON payloads
+            from ...services.image_reference_service import get_image_reference_service
+            
+            # Generate unique image ID
+            image_id = f"img_{int(datetime.now().timestamp() * 1000)}_{uuid.uuid4().hex[:8]}"
             
             # Optionally save to workspace (hop-aware)
             saved_path = None
             if save_to_workspace:
-                saved_path = await self._save_image_to_workspace(image_bytes, str(prompt), custom_filename)
-            
-            # Extract raw base64 (without data URI prefix) for response
-            raw_base64 = base64.b64encode(image_bytes).decode('utf-8')
+                saved_path = await self._save_image_to_workspace(image_bytes, str(prompt), custom_filename or image_id)
             
             # Get current context for result metadata
             context = await get_current_context()
             
-            # Return successful result with image data
+            # Create image reference for streaming optimization
+            # Extract raw base64 for thumbnail/reference creation
+            raw_base64 = base64.b64encode(image_bytes).decode('utf-8')
+            
+            # Create reference via ImageReferenceService
+            image_service = get_image_reference_service()
+            ref = await image_service.create_reference(
+                image_data=raw_base64,
+                filename=saved_path or f"{image_id}.png",
+                prompt=str(prompt),
+                model=self._model,
+                mime_type=mime_type
+            )
+            
+            # Cache the full image for fast retrieval
+            from ...services.image_cache import ImageCache
+            cache = ImageCache()
+            cache.put(
+                image_id=ref.image_id,
+                base64_data=raw_base64,
+                mime_type=mime_type
+            )
+            
+            # Return result with reference AND small thumbnail for preview/editing
+            # The thumbnail allows instant preview without fetching, and agents can use it for editing
             result_data = {
-                "imageData": raw_base64,  # Raw base64 for UI
-                "imageUrl": image_data_uri,  # Full data URI if needed
+                "imageReference": ref.to_dict(),  # Lightweight reference with thumbnail
+                "imageData": ref.thumbnail_base64,  # Include thumbnail for preview AND agent editing
+                "imageUrl": f"file://{ref.absolute_path}",  # file:// URL for agent editing (loads full image)
+                "thumbnailUrl": f"/api/media/image/{ref.image_id}?thumbnail=true",  # Thumbnail endpoint for UI
+                "fullImageUrl": f"/api/media/image/{ref.image_id}",  # Full image endpoint for downloads
                 "mimeType": mime_type,
                 "prompt": str(prompt),
                 "model": self._model,

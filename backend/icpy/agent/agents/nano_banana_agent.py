@@ -424,7 +424,8 @@ Please create an image that exactly matches what the user described. Be precise 
                 
                 yield "\n\n🔧 **Executing tools...**\n\n"
                 yield f"📋 **generate_image**: {json.dumps(tool_input)}\n"
-                yield f"✅ **Success**: {json.dumps(tool_call_output)}\n"
+                # Output just JSON without decoration for frontend parsing
+                yield json.dumps(tool_call_output) + "\n"
                 yield "\n🔧 **Tool execution complete. Continuing...**\n\n"
                 
                 logger.info("NanoBananaAgent: Yielded image tool call with input")

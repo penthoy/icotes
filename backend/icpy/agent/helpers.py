@@ -114,6 +114,7 @@ BASE_SYSTEM_PROMPT_TEMPLATE = """You are {AGENT_NAME}, a helpful and versatile A
 - Use run_in_terminal for executing commands and scripts
 - Use semantic_search to find relevant information in the workspace
 - Use web_search to find current information from the web
+- Use generate_image for image generation. default to 1:1 (square) aspect ratio unless the user explicitly requests a different format or the content clearly requires a specific orientation (e.g., wide landscape, tall portrait)
 - Always explain briefly what you're doing before using a tool
 
 **Response Style:**
@@ -470,10 +471,11 @@ class ToolResultFormatter:
                 return f"✅ **Success**: Command executed\nOutput: {output}\n"
             
             elif tool_name == 'generate_image' and isinstance(data, dict):
-                # For image generation, return full result as JSON
+                # Always return the JSON data structure for widget compatibility
+                # The widget expects structured data in toolCall.output field
                 # Phase 1 conversion in chat_service will convert imageData to ImageReference during storage
                 json_str = json.dumps(data)
-                logger.info(f"ToolResultFormatter: Generating image result JSON ({len(json_str)} chars, will be converted to ImageReference during storage)")
+                logger.info(f"ToolResultFormatter: Generating image result JSON ({len(json_str)} chars)")
                 return f"✅ **Success**: {json_str}\n"
             
             else:
@@ -782,19 +784,49 @@ class OpenAIStreamingHandler:
         Returns:
             Sanitized result safe for LLM consumption
         """
-        # For image generation, strip out the base64 image data
+        # For image generation, keep lightweight reference data (already optimized)
+        # New streaming-optimized format already excludes large imageData
         if tool_name == 'generate_image' and result.get('success'):
-            sanitized = {
-                "success": True,
-                "data": {
-                    "message": result.get('data', {}).get('message', 'Image generated successfully'),
-                    "prompt": result.get('data', {}).get('prompt', ''),
-                    "filePath": result.get('data', {}).get('filePath', ''),
-                    "model": result.get('data', {}).get('model', ''),
-                    "timestamp": result.get('data', {}).get('timestamp', '')
-                    # Intentionally omit imageData, imageUrl to keep response small
+            data = result.get('data', {})
+            
+            # Check if it's the new streaming-optimized format (has imageReference)
+            if 'imageReference' in data:
+                # Keep lightweight reference for LLM context
+                # IMPORTANT: Do NOT include imageData here - LLM should use imageUrl (file://) for editing
+                # imageData (thumbnail) is only for frontend widget display
+                sanitized = {
+                    "success": True,
+                    "data": {
+                        "imageReference": data.get('imageReference'),  # Lightweight reference metadata
+                        "imageUrl": data.get('imageUrl'),  # file:// URL for agent editing (REQUIRED for edit mode)
+                        "filePath": data.get('filePath'),  # Relative path for display
+                        "message": data.get('message', 'Image generated successfully'),
+                        "prompt": data.get('prompt', ''),
+                        "model": data.get('model', ''),
+                        "timestamp": data.get('timestamp', ''),
+                        "mode": data.get('mode'),
+                        "size": data.get('size'),
+                        "width": data.get('width'),
+                        "height": data.get('height'),
+                        "context": data.get('context'),
+                        "contextHost": data.get('contextHost')
+                        # Intentionally omit imageData, thumbnailUrl, fullImageUrl - not needed by LLM
+                        # These URLs are in the unsanitized version sent to frontend widget
+                    }
                 }
-            }
+            else:
+                # Legacy format - strip out large base64 data
+                sanitized = {
+                    "success": True,
+                    "data": {
+                        "message": data.get('message', 'Image generated successfully'),
+                        "prompt": data.get('prompt', ''),
+                        "filePath": data.get('filePath', ''),
+                        "model": data.get('model', ''),
+                        "timestamp": data.get('timestamp', '')
+                        # Intentionally omit imageData, imageUrl to keep response small
+                    }
+                }
             return sanitized
         
         # For other tools, return as-is
@@ -833,6 +865,11 @@ class OpenAIStreamingHandler:
                     yield f"❌ **Error**: Invalid JSON arguments for {tool_name}: {str(e)}\n"
                     continue
                 
+                # Debug logging for image generation tool calls
+                if tool_name == 'generate_image':
+                    logger.info(f"🎨 Image generation tool call - aspect_ratio: {arguments.get('aspect_ratio', 'NOT SET')}, "
+                              f"mode: {arguments.get('mode', 'NOT SET')}, image_data: {bool(arguments.get('image_data'))}")
+                
                 # Show tool call start
                 yield self.formatter.format_tool_call_start(tool_name, arguments)
                 
@@ -859,10 +896,15 @@ class OpenAIStreamingHandler:
                 sanitized_result = self._sanitize_tool_result_for_llm(tool_name, result)
                 
                 # Add tool result to conversation
+                # OpenAI expects the tool content to be the data payload, not the wrapper object
+                tool_content = sanitized_result.get('data') if sanitized_result.get('success') else {
+                    "error": sanitized_result.get('error', 'Unknown error')
+                }
+                
                 tool_message = {
                     "role": "tool",
                     "tool_call_id": tc['id'],
-                    "content": json.dumps(sanitized_result)
+                    "content": json.dumps(tool_content)
                 }
                 messages.append(tool_message)
                 
