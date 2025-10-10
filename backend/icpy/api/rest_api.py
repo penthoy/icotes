@@ -288,6 +288,14 @@ class RestAPI:
     def _register_middleware(self):
         """Register middleware for the REST API."""
         
+        # Endpoints to exclude from INFO level logging (frequent polling/status checks)
+        EXCLUDED_PATHS = {
+            '/api/logs/frontend',  # Circular logging
+            '/api/scm/status',     # Frequent polling
+            '/api/health',         # Health checks
+            '/health',             # Health checks
+        }
+        
         @self.app.middleware("http")
         async def request_logging_middleware(request: Request, call_next):
             """Middleware for request logging and statistics."""
@@ -312,9 +320,14 @@ class RestAPI:
                 else:
                     self.stats['failed_requests'] += 1
                 
-                # Log request (exclude circular logging for frontend log endpoint)
-                if request.url.path != '/api/logs/frontend':
+                # Log request (exclude noisy endpoints from INFO logging)
+                should_log = request.url.path not in EXCLUDED_PATHS
+                
+                if should_log:
                     logger.info(f"{request.method} {request.url.path} - {response.status_code} - {response_time:.3f}s")
+                else:
+                    # Still log at DEBUG level for troubleshooting
+                    logger.debug(f"{request.method} {request.url.path} - {response.status_code} - {response_time:.3f}s")
                 
                 return response
                 

@@ -170,6 +170,16 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting icotes backend server...")
     
+    # Apply log filter to reduce noise from frequent polling endpoints
+    try:
+        from icpy.utils.log_filters import ExcludeNoisyEndpointsFilter
+        uvicorn_access_logger = logging.getLogger("uvicorn.access")
+        for handler in uvicorn_access_logger.handlers:
+            handler.addFilter(ExcludeNoisyEndpointsFilter())
+        logger.info("Applied log filters to reduce polling endpoint noise")
+    except Exception as e:
+        logger.warning(f"Could not apply log filters: {e}")
+    
     # Initialize icpy services if available
     if ICPY_AVAILABLE:
         try:
