@@ -40,7 +40,7 @@ def test_media_endpoint_serves_full_and_thumbnail(app, tmp_path):
     with open(img_path, 'rb') as f:
         b64 = base64.b64encode(f.read()).decode('utf-8')
 
-    ref = asyncio.get_event_loop().run_until_complete(
+    ref = asyncio.run(
         svc.create_reference(image_data=b64, filename=filename, prompt='t', model='m', mime_type='image/png')
     )
 

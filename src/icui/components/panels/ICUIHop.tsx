@@ -17,8 +17,12 @@ interface Credential {
 // Set to false to silence hop debug logs
 const DEBUG_HOP = true;
 
-const logHop = (...args: any[]) => { if (DEBUG_HOP) { // eslint-disable-next-line no-console
-  console.debug('[HopUI]', ...args); } };
+const logHop = (...args: any[]) => {
+  if (DEBUG_HOP) {
+    // eslint-disable-next-line no-console
+    console.debug('[HopUI]', ...args);
+  }
+};
 
 const ICUIHop: React.FC<{ className?: string }> = ({ className = '' }) => {
   const [credentials, setCredentials] = useState<Credential[]>([]);

@@ -267,10 +267,11 @@ async def get_image_by_id(image_id: str, thumbnail: bool = False):
     try:
         # Try cache first for performance (only for full image)
         cache = ImageCache()
-        cached = cache.get(image_id)
-        if cached and not thumbnail:
-            image_bytes = base64.b64decode(cached['base64_data'])
-            mime_type = cached.get('mime_type', 'image/png')
+        cached_base64 = cache.get(image_id)
+        if cached_base64 and not thumbnail:
+            image_bytes = base64.b64decode(cached_base64)
+            # Cache doesn't store mime_type; infer from reference or default
+            mime_type = 'image/png'
             logger.info(f"[Media API] Serving cached image: {image_id} ({mime_type})")
             return StreamingResponse(
                 io.BytesIO(image_bytes),

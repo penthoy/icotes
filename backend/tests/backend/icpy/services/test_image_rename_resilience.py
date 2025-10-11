@@ -206,7 +206,7 @@ class TestImageRenameResilience:
     async def test_resolve_strategy_order(self, workspace_dir, create_test_image_file):
         """Test that resolution tries strategies in correct order"""
         # Create image
-        image_path, base64_data = create_test_image_file('test.png')
+        _image_path, base64_data = create_test_image_file('test.png')
         
         # Create reference
         ref = await create_image_reference(
@@ -234,7 +234,7 @@ class TestImageRenameResilience:
     async def test_resolver_caches_results(self, workspace_dir, create_test_image_file):
         """Test that resolver caches successful resolutions for performance"""
         # Create image
-        image_path, base64_data = create_test_image_file('cached.png')
+        _image_path, base64_data = create_test_image_file('cached.png')
         
         # Create reference
         ref = await create_image_reference(
@@ -279,13 +279,13 @@ class TestImageRenameResilience:
         
         # Resolve
         resolver = ImageResolver(workspace_path=str(workspace_dir))
-        resolved_path = await resolver.resolve_image_path(ref, update_reference=True)
+        await resolver.resolve_image_path(ref, update_reference=True)
         
         # Current filename should be updated
         assert ref.current_filename == 'renamed.png'
     
     @pytest.mark.asyncio
-    async def test_resolve_with_subdirectories(self, workspace_dir, create_test_image_file):
+    async def test_resolve_with_subdirectories(self, workspace_dir):
         """Test resolution works with images in subdirectories"""
         # Create subdirectory
         subdir = workspace_dir / 'images'

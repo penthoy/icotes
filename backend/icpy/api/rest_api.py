@@ -856,8 +856,31 @@ class RestAPI:
 
                 if abs_path is not None:
                     # Security: ensure selected path is inside either fs_root or workspace_root
-                    if not (abs_path.startswith(fs_root) or abs_path.startswith(workspace_root)):
-                        raise HTTPException(status_code=400, detail="Path outside workspace root")
+                    # Use Path.resolve() for proper path validation against traversal attacks
+                    from pathlib import Path
+                    try:
+                        abs_path_obj = Path(abs_path).resolve()
+                        fs_root_obj = Path(fs_root).resolve()
+                        workspace_root_obj = Path(workspace_root).resolve()
+                        
+                        # Check if the resolved path is under allowed roots
+                        is_valid = False
+                        try:
+                            abs_path_obj.relative_to(fs_root_obj)
+                            is_valid = True
+                        except ValueError:
+                            try:
+                                abs_path_obj.relative_to(workspace_root_obj)
+                                is_valid = True
+                            except ValueError:
+                                pass
+                        
+                        if not is_valid:
+                            raise HTTPException(status_code=400, detail="Path outside workspace root")
+                    except Exception as e:
+                        logger.error(f"Path validation error: {e}")
+                        raise HTTPException(status_code=400, detail="Invalid path")
+                    
                     filename = os.path.basename(abs_path)
                     mime, _ = mimetypes.guess_type(filename)
                     if not mime:

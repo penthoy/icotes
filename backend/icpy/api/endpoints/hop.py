@@ -301,15 +301,23 @@ async def send_files(payload: SendFilesRequest):
         return {"success": False, "created": [], "errors": [msg]}
 
     def _rel_for(path: str) -> str:
+        """Compute relative path while filtering out . and .. for security"""
         if common_prefix and path.startswith(common_prefix + '/'):
             rel = path[len(common_prefix)+1:]
         else:
             rel = posixpath.basename(path)
+        # Security: remove any . or .. components to prevent path traversal
         parts = [p for p in rel.split('/') if p and p not in ('.', '..')]
         return '/'.join(parts)
 
     async def copy_file(src_path: str, rel_path: str):
         try:
+            # Security: validate rel_path doesn't contain path traversal
+            if '..' in rel_path or rel_path.startswith('/'):
+                logger.warning(f"[/api/hop/send-files] Rejecting suspicious rel_path: {rel_path}")
+                errors.append(f"{src_path}: Invalid relative path")
+                return
+            
             dest_path = posixpath.normpath(f"{dest_base}/{rel_path}")
             
             # Skip if destination already exists with non-zero size

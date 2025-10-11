@@ -26,8 +26,8 @@ except ImportError as e:
 # Fallback: Import available agent chat functions (backward compatibility)
 try:
     from .personal_agent import chat as personal_agent_chat
-    from .openai_agent import chat as openai_agent_chat
-    from .openrouter_agent import chat as openrouter_agent_chat
+    from .agents.openai_agent import chat as openai_agent_chat
+    from .agents.openrouter_agent import chat as openrouter_agent_chat
     FALLBACK_AGENTS_AVAILABLE = True
 except ImportError as e:
     logger.warning(f"Some fallback agents not available: {e}")

@@ -317,25 +317,9 @@ class ImagenTool(BaseTool):
                     except Exception as e:
                         logger.warning(f"write_file_binary failed: {e}")
 
-                # Fallback to write_file with base64 encoding
-                if not wrote and hasattr(filesystem_service, 'write_file'):
-                    try:
-                        import posixpath
-                        remote_ctx = await get_current_context()
-                        remote_user = remote_ctx.get('username') or os.getenv('USER', 'user')
-                        remote_workspace = (
-                            os.environ.get('HOP_REMOTE_WORKSPACE_ROOT')
-                            or posixpath.join('/home', remote_user, 'icotes', 'workspace')
-                        )
-                        remote_path = posixpath.join(remote_workspace, filename)
-                        
-                        # Write as base64 string
-                        base64_content = base64.b64encode(image_bytes).decode('utf-8')
-                        await filesystem_service.write_file(remote_path, base64_content)
-                        logger.info(f"Saved image (base64 text) to remote {remote_path} on context: {context_name}")
-                        wrote = True
-                    except Exception as e:
-                        logger.error(f"Remote write_file fallback failed: {e}")
+                # Note: Do NOT use write_file as fallback - it writes text, not binary
+                # Remote adapters must expose write_file_binary API for image support
+                # If write_file_binary is not available, the remote system cannot properly save images
 
                 # If all remote writes failed, that's okay - we have the local copy for serving
                 if not wrote:

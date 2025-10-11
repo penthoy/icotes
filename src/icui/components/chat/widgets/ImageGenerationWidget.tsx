@@ -148,10 +148,11 @@ const ImageGenerationWidget: React.FC<ImageGenerationWidgetProps> = ({
         }
         
         data.status = 'success';
-          // Fallback: if prompt not set from input, try output
-          if (!data.prompt && (output.prompt || output.description)) {
-            data.prompt = output.prompt || output.description;
-          }
+        
+        // Fallback: if prompt not set from input, try output
+        if (!data.prompt && (output.prompt || output.description)) {
+          data.prompt = output.prompt || output.description;
+        }
       } catch (e) {
         console.error('[ImageWidget] Failed to parse image generation output:', e);
         console.error('[ImageWidget] Raw output:', typeof toolCall.output === 'string' ? toolCall.output.substring(0, 200) : toolCall.output);

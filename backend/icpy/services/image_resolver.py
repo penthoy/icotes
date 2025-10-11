@@ -37,7 +37,7 @@ class ImageResolver:
         
         logger.info(f"ImageResolver initialized: workspace={workspace_path}")
     
-    async def resolve_image_path(
+    def resolve_image_path(
         self,
         reference: ImageReference,
         update_reference: bool = False
@@ -187,7 +187,7 @@ class ImageResolver:
         self._resolution_cache.clear()
 
 
-async def resolve_image_path(
+def resolve_image_path(
     reference: ImageReference,
     workspace_path: str,
     update_reference: bool = False
@@ -204,4 +204,4 @@ async def resolve_image_path(
         Resolved path or None
     """
     resolver = ImageResolver(workspace_path)
-    return await resolver.resolve_image_path(reference, update_reference)
+    return resolver.resolve_image_path(reference, update_reference)

@@ -52,8 +52,8 @@ try:
     
     sys.path.append(backend_path)
 
-    # Import native Google SDK for image generation
-    import google.generativeai as genai
+    # Import native Google SDK for image generation (Google Gen AI SDK)
+    import google.genai as genai
     from icpy.agent.helpers import (
         create_standard_agent_metadata,
         create_environment_reload_function,

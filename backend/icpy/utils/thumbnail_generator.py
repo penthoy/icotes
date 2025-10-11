@@ -7,7 +7,7 @@ import hashlib
 import io
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 from PIL import Image
 import logging
 
@@ -31,7 +31,7 @@ def generate_thumbnail(
     scale_factor: float = 0.1,
     quality: int = 80,
     image_id: Optional[str] = None
-) -> Dict[str, any]:
+) -> Dict[str, Any]:
     """
     Generate an optimized thumbnail from an image.
     

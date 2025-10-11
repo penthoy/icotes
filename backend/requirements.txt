@@ -1,6 +1,6 @@
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
-websockets==12.0
+websockets>=13.0
 # IMPORTANT: Match pyproject.toml spec; previous pin (==2.5.0) caused resolver conflict
 pydantic>=2.10.0
 python-multipart==0.0.6
@@ -21,7 +21,7 @@ setuptools>=80.9.0
 # Keep this list aligned until Docker is refactored to install from pyproject.
 python-dotenv>=0.21.0
 asyncssh>=2.14.2
-google-generativeai>=0.8.0
+google-genai>=0.1.0
 openai-agents>=0.0.6
 # ---------------------------------------------------------------------------
 
