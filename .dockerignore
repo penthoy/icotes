@@ -83,17 +83,26 @@ docs/
 # Development scripts
 *.sh
 
-# Workspace sample files should be included for new user experience
-# workspace/ - COMMENTED OUT to include sample files
+# ----------------------------------------------------------------------------
+# Workspace rules: ignore everything in workspace except README and .icotes
+# Place at end so these rules take precedence over earlier patterns.
+# ----------------------------------------------------------------------------
+# Don't keep anything under workspace:
+workspace/**
+# Except for these:
+!workspace/README.md
+!workspace/.icotes/
+!workspace/.icotes/**
 
-# Backend chat database
-backend/chat.db
-
-# Chat history files (exclude from Docker builds)
-workspace/.icotes/chat_history/
+# exclude (Don't keep) specific subdirectories and files within .icotes
+workspace/.icotes/chat_history/**
+workspace/.icotes/ssh/**
+workspace/.icotes/media/**
+workspace/.icotes/thumbnails/**
+workspace/.icotes//image_references.json
 **/chat_history/
-*.chat
-*.jsonl
+**/ssh/keys/**
+**/ssh/credentials.json
 
 # Temporary files
 *.tmp

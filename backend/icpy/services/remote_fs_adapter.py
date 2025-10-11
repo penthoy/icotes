@@ -86,7 +86,8 @@ class RemoteFileSystemAdapter:
         if not self._hop:
             return None
         # Access the live SFTP client; HopService ensures lifecycle
-        return getattr(self._hop, "_sftp", None)
+        # Use method call instead of getattr to ensure it works correctly in Docker
+        return self._hop.get_active_sftp()
 
     async def _publish(self, topic: str, payload: Dict[str, Any]):
         try:
@@ -240,6 +241,25 @@ class RemoteFileSystemAdapter:
             return None
         except Exception as e:
             logger.error(f"[RemoteFS] read_file error {path}: {e}")
+            return None
+
+    async def read_file_binary(self, file_path: str) -> Optional[bytes]:
+        """Read file as binary data."""
+        sftp = self._sftp()
+        logger.info("[RemoteFS] read_file_binary path=%s sftp_available=%s", file_path, bool(sftp))
+        if not sftp:
+            return None
+        path = self._resolve(file_path)
+        try:
+            async with sftp.open(path, 'rb') as f:
+                data = await _with_timeout(f.read(), operation=f"read binary file {path}")
+            await self._publish('fs.file_read', {'file_path': path, 'size': len(data), 'encoding': 'binary', 'timestamp': time.time()})
+            return data
+        except TimeoutError as e:
+            logger.error(f"[RemoteFS] read_file_binary timeout {path}: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"[RemoteFS] read_file_binary error {path}: {e}")
             return None
 
     async def write_file(self, file_path: str, content: str, encoding: str = 'utf-8', create_dirs: bool = True) -> bool:

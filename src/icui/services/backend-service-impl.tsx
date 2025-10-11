@@ -64,6 +64,7 @@ export class ICUIBackendService extends EventEmitter {
   private connectionStats: any = null;
   // Hop (SSH) context
   private hopSession: any = null;
+  private hopSessionsCache: any[] = [];
   
   // Configuration
   private config: EnhancedBackendConfig = {
@@ -200,7 +201,7 @@ export class ICUIBackendService extends EventEmitter {
 
     // Enhanced service event handlers
     this.enhancedService.on('connection_opened', (data: any) => {
-      log.info('ICUIBackendService', 'Service connected', data);
+      log.debug('ICUIBackendService', 'Service connected', data);
       // Race fix: during first connect this.connectionId may not yet be assigned.
       if (!this.connectionId) {
         // Adopt the first opened connection while initializing.
@@ -209,6 +210,8 @@ export class ICUIBackendService extends EventEmitter {
       if (data.connectionId === this.connectionId) {
         if (!this._initialized) {
           this._initialized = true;
+          // Only log at INFO level on first successful connection
+          log.info('ICUIBackendService', 'Service initialized and connected');
           this.emit('connection_status_changed', { status: 'connected' });
         }
       } else {
@@ -221,7 +224,7 @@ export class ICUIBackendService extends EventEmitter {
     });
 
     this.enhancedService.on('connection_closed', (data: any) => {
-      log.info('ICUIBackendService', 'Service disconnected', data);
+      log.debug('ICUIBackendService', 'Service disconnected', data);
       // Fix: Only handle disconnect if this is OUR connection
       if (data.connectionId === this.connectionId) {
         this._initialized = false;
@@ -261,7 +264,7 @@ export class ICUIBackendService extends EventEmitter {
 
     this.enhancedService.on('message', (data: any) => {
       if (data.connectionId === this.connectionId) {
-  log.debug('ICUIBackendService', '[BE] message passthrough', { connectionId: data.connectionId });
+        // Message passthrough logging removed - creates excessive noise
         this.handleWebSocketMessage({ data: data.message });
       }
     });
@@ -314,7 +317,14 @@ export class ICUIBackendService extends EventEmitter {
     }
     this._initializing = true;
     const attempt = ++this._initAttempts;
-    log.info('ICUIBackendService', 'Auto-initializing service', { attempt });
+    
+    // Only log first attempt, then every 5th attempt, or if it's taking too long
+    if (attempt === 1 || attempt % 5 === 0 || attempt > 20) {
+      log.info('ICUIBackendService', 'Auto-initializing service', { attempt });
+    } else {
+      log.debug('ICUIBackendService', 'Auto-initializing service', { attempt });
+    }
+    
     try {
       // Add timeout to prevent blocking indefinitely
       const initPromise = this.performInitialization();
@@ -884,6 +894,9 @@ export class ICUIBackendService extends EventEmitter {
             this.hopSession = this.normalizeHopSession(message.data);
             this.emit('hop_status', this.hopSession);
           }
+          if (message.event === 'hop.sessions' && message.data?.sessions) {
+            this.hopSessionsCache = message.data.sessions;
+          }
           this.emit('hop_event', { event: message.event, data: message.data });
         } catch (e) {
           console.warn('[ICUIBackendService] Failed to process hop_event:', e);
@@ -1005,15 +1018,76 @@ export class ICUIBackendService extends EventEmitter {
     return session;
   }
 
-  /** Disconnect current hop */
-  async disconnectHop(): Promise<any> {
+  /** Disconnect current hop or a specific context */
+  async disconnectHop(contextId?: string): Promise<any> {
     await this.ensureInitialized();
-    const resp = await fetch(`${this.baseUrl}/api/hop/disconnect`, { method: 'POST' });
+    const body = contextId ? JSON.stringify({ context_id: contextId }) : undefined;
+    const resp = await fetch(`${this.baseUrl}/api/hop/disconnect`, { 
+      method: 'POST',
+      headers: body ? { 'Content-Type': 'application/json' } : undefined,
+      body,
+    });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const session = await resp.json();
     this.hopSession = this.normalizeHopSession(session);
     this.emit('hop_status', this.hopSession);
     return session;
+  }
+
+  /** List all active hop sessions */
+  async listHopSessions(): Promise<any[]> {
+    await this.ensureInitialized();
+    const resp = await fetch(`${this.baseUrl}/api/hop/sessions`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+    if (Array.isArray(data.sessions)) {
+      this.hopSessionsCache = data.sessions;
+    }
+    return this.hopSessionsCache;
+  }
+
+  /** Return cached hop sessions (populated via events or explicit listHopSessions). */
+  listHopSessionsCached(): any[] { return this.hopSessionsCache; }
+
+  /** Hop to a different context */
+  async hopTo(contextId: string): Promise<any> {
+    await this.ensureInitialized();
+    const resp = await fetch(`${this.baseUrl}/api/hop/hop`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contextId }),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const session = await resp.json();
+    this.hopSession = this.normalizeHopSession(session);
+    this.emit('hop_status', this.hopSession);
+    return session;
+  }
+
+  /** Send (copy) a set of files/folders from current (or specified) context to target context default path */
+  async sendFilesToContext(targetContextId: string, paths: string[], opts?: { sourceContextId?: string; commonPrefix?: string }): Promise<any> {
+    await this.ensureInitialized();
+    if (!paths || paths.length === 0) return { success: true, created: [] };
+    const payload: any = {
+      target_context_id: targetContextId,
+      paths,
+    };
+    if (opts?.sourceContextId) payload.source_context_id = opts.sourceContextId;
+    if (opts?.commonPrefix) payload.common_prefix = opts.commonPrefix;
+    log.info('BackendService', 'sendFilesToContext request', { targetContextId, count: paths.length, payload });
+    const resp = await fetch(`${this.baseUrl}/api/hop/send-files`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!resp.ok) {
+      const detail = await resp.json().catch(() => ({}));
+      log.error('BackendService', 'sendFilesToContext failed', { status: resp.status, detail });
+      throw new Error(detail?.detail || `Failed to send files: HTTP ${resp.status}`);
+    }
+    const data = await resp.json();
+    log.info('BackendService', 'sendFilesToContext response', { created: data?.created?.length, errors: data?.errors?.length });
+    return data;
   }
 
   private normalizeHopSession(raw: any) {

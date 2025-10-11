@@ -288,6 +288,14 @@ class RestAPI:
     def _register_middleware(self):
         """Register middleware for the REST API."""
         
+        # Endpoints to exclude from INFO level logging (frequent polling/status checks)
+        EXCLUDED_PATHS = {
+            '/api/logs/frontend',  # Circular logging
+            '/api/scm/status',     # Frequent polling
+            '/api/health',         # Health checks
+            '/health',             # Health checks
+        }
+        
         @self.app.middleware("http")
         async def request_logging_middleware(request: Request, call_next):
             """Middleware for request logging and statistics."""
@@ -312,8 +320,14 @@ class RestAPI:
                 else:
                     self.stats['failed_requests'] += 1
                 
-                # Log request
-                logger.info(f"{request.method} {request.url.path} - {response.status_code} - {response_time:.3f}s")
+                # Log request (exclude noisy endpoints from INFO logging)
+                should_log = request.url.path not in EXCLUDED_PATHS
+                
+                if should_log:
+                    logger.info(f"{request.method} {request.url.path} - {response.status_code} - {response_time:.3f}s")
+                else:
+                    # Still log at DEBUG level for troubleshooting
+                    logger.debug(f"{request.method} {request.url.path} - {response.status_code} - {response_time:.3f}s")
                 
                 return response
                 
@@ -503,11 +517,10 @@ class RestAPI:
                         fs_rt = await self.context_router.get_filesystem()
                         if getattr(fs_rt, 'is_remote', False):
                             fs = fs_rt
-                    except Exception:
+                    except Exception as e:
+                        logger.warning(f"[REST] FS routing error, falling back local: {e}")
                         pass
-                logger.info("[REST] list_files path=%s use_remote=%s", path, getattr(fs, 'is_remote', False))
                 files = await fs.list_directory(path, include_hidden=include_hidden)
-                logger.info("[REST] list_files result_count=%s", len(files) if isinstance(files, list) else 'n/a')
                 return SuccessResponse(data=files)
             except Exception as e:
                 logger.error(f"Error listing files: {e}")
@@ -551,7 +564,7 @@ class RestAPI:
                 if not path:
                     raise HTTPException(status_code=400, detail="path query parameter required")
 
-                # Resolve active filesystem (may be remote)
+                # Resolve active filesystem and roots
                 current_dir = os.getcwd()
                 if os.path.basename(current_dir) == "backend":
                     workspace_root = os.path.abspath(os.path.join(current_dir, os.pardir))
@@ -563,11 +576,48 @@ class RestAPI:
                         fs_service = await self.context_router.get_filesystem()
                     except Exception:
                         fs_service = self.filesystem_service
-                # If remote FS, stream via adapter instead of local filesystem
+
+                fs_root = getattr(fs_service, 'root_path', workspace_root) if fs_service else workspace_root
+
+                # Prefer serving from local disk if the path resolves within workspace/fs roots AND has non-zero size
+                candidates: list[str] = []
+                if os.path.isabs(path):
+                    candidates.append(os.path.abspath(path))
+                else:
+                    # Relative to fs_root and workspace_root
+                    candidates.append(os.path.abspath(os.path.join(fs_root, path.lstrip('/'))))
+                    if fs_root != workspace_root:
+                        candidates.append(os.path.abspath(os.path.join(workspace_root, path.lstrip('/'))))
+
+                abs_path = None
+                for cand in candidates:
+                    if os.path.exists(cand) and not os.path.isdir(cand) and os.path.getsize(cand) > 0:
+                        abs_path = cand
+                        break
+
+                if abs_path is not None:
+                    # Security: ensure selected path is inside either fs_root or workspace_root
+                    if not (abs_path.startswith(fs_root) or abs_path.startswith(workspace_root)):
+                        raise HTTPException(status_code=400, detail="Path outside workspace root")
+
+                    # Best-effort mime detection
+                    mime, _ = mimetypes.guess_type(abs_path)
+                    if mime is None:
+                        mime = "application/octet-stream"
+
+                    async def iter_file() -> AsyncIterator[bytes]:
+                        async with aiofiles.open(abs_path, 'rb') as f:
+                            while True:
+                                chunk = await f.read(1024 * 1024)  # 1MB chunks
+                                if not chunk:
+                                    break
+                                yield chunk
+
+                    return StreamingResponse(iter_file(), media_type=mime)
+
+                # If no local candidate found (or file is 0-byte) and remote FS is active, stream via adapter
                 if getattr(fs_service, 'is_remote', False):
-                    from fastapi.responses import StreamingResponse
                     # Keep original path semantics (absolute or relative to remote root)
-                    # Best-effort mime detection from filename extension
                     mime, _ = mimetypes.guess_type(path)
                     if mime is None:
                         mime = "application/octet-stream"
@@ -576,45 +626,10 @@ class RestAPI:
                         return StreamingResponse(streamer, media_type=mime)
                     except Exception as e:
                         logger.error(f"[REST] remote raw stream error for {path}: {e}")
-                        raise HTTPException(status_code=500, detail="Remote stream failed")
+                        raise HTTPException(status_code=404, detail="File not found on remote")
 
-                fs_root = getattr(fs_service, 'root_path', workspace_root) if fs_service else workspace_root
-
-                candidates: list[str] = []
-                if os.path.isabs(path):
-                    candidates.append(os.path.abspath(path))
-                else:
-                    candidates.append(os.path.abspath(os.path.join(fs_root, path.lstrip('/'))))
-                    if fs_root != workspace_root:
-                        candidates.append(os.path.abspath(os.path.join(workspace_root, path.lstrip('/'))))
-
-                abs_path = None
-                for cand in candidates:
-                    if os.path.exists(cand):
-                        abs_path = cand
-                        break
-
-                if abs_path is None or os.path.isdir(abs_path):
-                    raise HTTPException(status_code=404, detail="File not found")
-
-                # Security: ensure selected path is inside either fs_root or workspace_root
-                if not (abs_path.startswith(fs_root) or abs_path.startswith(workspace_root)):
-                    raise HTTPException(status_code=400, detail="Path outside workspace root")
-
-                # Best-effort mime detection
-                mime, _ = mimetypes.guess_type(abs_path)
-                if mime is None:
-                    mime = "application/octet-stream"
-
-                async def iter_file() -> AsyncIterator[bytes]:
-                    async with aiofiles.open(abs_path, 'rb') as f:
-                        while True:
-                            chunk = await f.read(1024 * 1024)  # 1MB chunks
-                            if not chunk:
-                                break
-                            yield chunk
-
-                return StreamingResponse(iter_file(), media_type=mime)
+                # Nothing found
+                raise HTTPException(status_code=404, detail="File not found")
             except HTTPException:
                 raise
             except Exception as e:
@@ -818,27 +833,10 @@ class RestAPI:
                         fs_service = await self.context_router.get_filesystem()
                     except Exception:
                         fs_service = self.filesystem_service
-                # Remote: stream bytes via adapter
-                if getattr(fs_service, 'is_remote', False):
-                    from fastapi.responses import StreamingResponse
-                    # For downloads, include a Content-Disposition filename
-                    filename = os.path.basename(path) or 'download'
-                    mime, _ = mimetypes.guess_type(filename)
-                    if not mime:
-                        mime = 'application/octet-stream'
-                    headers = {
-                        'Content-Disposition': f'attachment; filename="{filename}"'
-                    }
-                    try:
-                        streamer = fs_service.stream_file(path)  # type: ignore[attr-defined]
-                        return StreamingResponse(streamer, media_type=mime, headers=headers)
-                    except Exception as e:
-                        logger.error(f"[REST] remote download stream error for {path}: {e}")
-                        raise HTTPException(status_code=500, detail="Remote download failed")
 
                 fs_root = getattr(fs_service, 'root_path', workspace_root)
 
-                candidates = []  # possible absolute paths to try
+                candidates = []  # possible absolute paths to try (local-first)
 
                 # If user supplied absolute path, use it directly first
                 if os.path.isabs(path):
@@ -852,25 +850,62 @@ class RestAPI:
 
                 abs_path = None
                 for cand in candidates:
-                    if os.path.exists(cand):
+                    if os.path.exists(cand) and not os.path.isdir(cand) and os.path.getsize(cand) > 0:
                         abs_path = cand
                         break
 
-                if abs_path is None:
-                    raise HTTPException(status_code=404, detail="File not found")
+                if abs_path is not None:
+                    # Security: ensure selected path is inside either fs_root or workspace_root
+                    # Use Path.resolve() for proper path validation against traversal attacks
+                    from pathlib import Path
+                    try:
+                        abs_path_obj = Path(abs_path).resolve()
+                        fs_root_obj = Path(fs_root).resolve()
+                        workspace_root_obj = Path(workspace_root).resolve()
+                        
+                        # Check if the resolved path is under allowed roots
+                        is_valid = False
+                        try:
+                            abs_path_obj.relative_to(fs_root_obj)
+                            is_valid = True
+                        except ValueError:
+                            try:
+                                abs_path_obj.relative_to(workspace_root_obj)
+                                is_valid = True
+                            except ValueError:
+                                pass
+                        
+                        if not is_valid:
+                            raise HTTPException(status_code=400, detail="Path outside workspace root")
+                    except Exception as e:
+                        logger.error(f"Path validation error: {e}")
+                        raise HTTPException(status_code=400, detail="Invalid path")
+                    
+                    filename = os.path.basename(abs_path)
+                    mime, _ = mimetypes.guess_type(filename)
+                    if not mime:
+                        mime = 'application/octet-stream'
+                    return FileResponse(abs_path, filename=filename, media_type=mime)
 
-                # Security: ensure selected path is inside either fs_root or workspace_root
-                if not (abs_path.startswith(fs_root) or abs_path.startswith(workspace_root)):
-                    raise HTTPException(status_code=400, detail="Path outside workspace root")
-                if os.path.isdir(abs_path):
-                    raise HTTPException(status_code=400, detail="Cannot download a directory (use zip endpoint)")
+                # No local candidate or file is 0-byte; if remote FS is active, stream bytes via adapter
+                if getattr(fs_service, 'is_remote', False):
+                    from fastapi.responses import StreamingResponse
+                    filename = os.path.basename(path) or 'download'
+                    mime, _ = mimetypes.guess_type(filename)
+                    if not mime:
+                        mime = 'application/octet-stream'
+                    headers = {
+                        'Content-Disposition': f'attachment; filename="{filename}"'
+                    }
+                    try:
+                        streamer = fs_service.stream_file(path)  # type: ignore[attr-defined]
+                        return StreamingResponse(streamer, media_type=mime, headers=headers)
+                    except Exception as e:
+                        logger.error(f"[REST] remote download stream error for {path}: {e}")
+                        raise HTTPException(status_code=404, detail="File not found on remote")
 
-                filename = os.path.basename(abs_path)
-                # mimetypes already imported at module level
-                mime, _ = mimetypes.guess_type(filename)
-                if not mime:
-                    mime = 'application/octet-stream'
-                return FileResponse(abs_path, filename=filename, media_type=mime)
+                # Nothing found anywhere
+                raise HTTPException(status_code=404, detail="File not found")
             except HTTPException:
                 raise
             except Exception as e:

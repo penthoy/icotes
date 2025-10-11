@@ -1,12 +1,11 @@
 {
-  "$schema": "https://icotes.com/schemas/agents.json",
   "version": "1.0",
   "agents": {
     "AgentCreator": {
       "enabled": true,
       "displayName": "Agent Creator",
       "description": "An AI agent that helps you create other custom agents",
-      "category": "Custom Agents",
+      "category": "Built-in",
       "order": 2,
       "icon": "\ud83e\udde0"
     },
@@ -38,7 +37,7 @@
       "enabled": true,
       "displayName": "Claude Agent Creator",
       "description": "An AI agent (Claude) that helps you create other custom agents",
-      "category": "Custom Agents",
+      "category": "Built-in",
       "order": 3,
       "icon": "\ud83e\udde0"
     },
@@ -46,7 +45,7 @@
       "enabled": true,
       "displayName": "OpenRouter Agent Creator",
       "description": "An AI agent (OpenRouter) that helps you create other custom agents",
-      "category": "Custom Agents",
+      "category": "Built-in",
       "order": 4,
       "icon": "\ud83c\udf10"
     },
@@ -54,7 +53,7 @@
       "enabled": true,
       "displayName": "Kimi K2 Assistant",
       "description": "General-purpose AI assistant powered by Moonshot's Kimi models",
-      "category": "AI Models",
+      "category": "Built-in",
       "order": 1,
       "icon": "\ud83c\udf19"
     },
@@ -62,7 +61,7 @@
       "enabled": true,
       "displayName": "Ollama Assistant",
       "description": "Privacy-focused AI assistant using local Ollama models",
-      "category": "AI Models",
+      "category": "Built-in",
       "order": 2,
       "icon": "\ud83c\udfe0"
     },
@@ -86,16 +85,27 @@
       "description": "Ultra fast coding agent",
       "category": "Built-in",
       "order": 999
+    },
+    "NanoBananaAgent": {
+      "enabled": true,
+      "displayName": "Nano Banana",
+      "description": "AI image generation powered by Google's Gemini 2.5 Flash Image Preview (Nano Banana)",
+      "category": "Built-in",
+      "order": 1,
+      "icon": "\ud83c\udf4c"
+    },
+    "OpenRouterNanoBananaAgent": {
+      "enabled": true,
+      "displayName": "OpenRouterNanoBanana",
+      "description": "Auto-discovered agent: OpenRouterNanoBanana",
+      "category": "Built-in",
+      "order": 999
     }
   },
   "categories": {
     "Custom Agents": {
       "icon": "\ud83d\udee0\ufe0f",
       "order": 2
-    },
-    "AI Models": {
-      "icon": "\ud83e\udd16",
-      "order": 1
     },
     "Built-in": {
       "icon": "\ud83e\udde0",

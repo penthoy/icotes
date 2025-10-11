@@ -170,6 +170,16 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting icotes backend server...")
     
+    # Apply log filter to reduce noise from frequent polling endpoints
+    try:
+        from icpy.utils.log_filters import ExcludeNoisyEndpointsFilter
+        uvicorn_access_logger = logging.getLogger("uvicorn.access")
+        for handler in uvicorn_access_logger.handlers:
+            handler.addFilter(ExcludeNoisyEndpointsFilter())
+        logger.info("Applied log filters to reduce polling endpoint noise")
+    except Exception as e:
+        logger.warning(f"Could not apply log filters: {e}")
+    
     # Initialize icpy services if available
     if ICPY_AVAILABLE:
         try:
@@ -243,6 +253,46 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Debug logging middleware for tab switch bug investigation
+DEBUG_LOGGING_ENABLED = os.getenv("ICUI_DEBUG_LOGGING", "false").lower() == "true"
+
+if DEBUG_LOGGING_ENABLED:
+    @app.middleware("http")
+    async def debug_logging_middleware(request: Request, call_next):
+        """Log request/response timing and details for debugging tab switch issues"""
+        start_time = time.time()
+        request_id = str(uuid.uuid4())[:8]
+        
+        # Log incoming request
+        logger.debug(f"[{request_id}] {request.method} {request.url.path} - Start")
+        
+        # Process request
+        response = await call_next(request)
+        
+        # Calculate duration
+        duration_ms = (time.time() - start_time) * 1000
+        
+        # Log response
+        logger.debug(
+            f"[{request_id}] {request.method} {request.url.path} - "
+            f"Complete ({response.status_code}) in {duration_ms:.2f}ms"
+        )
+        
+        # Warn on slow requests (>500ms)
+        if duration_ms > 500:
+            logger.warning(
+                f"[{request_id}] SLOW REQUEST: {request.method} {request.url.path} "
+                f"took {duration_ms:.2f}ms"
+            )
+        
+        # Add request ID header for correlation
+        response.headers["X-Request-ID"] = request_id
+        response.headers["X-Response-Time"] = f"{duration_ms:.2f}ms"
+        
+        return response
+    
+    logger.info("Debug logging middleware enabled - set ICUI_DEBUG_LOGGING=false to disable")
 
 # Mount static files
 mount_static_files(app)
@@ -376,20 +426,33 @@ async def execute_code(request: CodeExecutionRequest):
         )
 
 
-# Frontend logging endpoint
+# Frontend logging endpoint with rotation
+_frontend_log_rotator = None
+
+def get_frontend_log_rotator():
+    """Get or create the frontend log rotator singleton."""
+    global _frontend_log_rotator
+    if _frontend_log_rotator is None:
+        logs_dir = os.path.join(os.path.dirname(__file__), '..', 'logs')
+        log_file = os.path.join(logs_dir, 'frontend.log')
+        try:
+            from icpy.utils.log_rotation import FrontendLogRotator
+            _frontend_log_rotator = FrontendLogRotator(log_file)
+            logger.info("Frontend log rotator initialized")
+        except ImportError:
+            logger.warning("Log rotation utility not available, using standard file writing")
+            _frontend_log_rotator = None
+    return _frontend_log_rotator
+
 @app.post("/api/logs/frontend")
 async def receive_frontend_logs(request: FrontendLogsRequest):
-    """Receive and store frontend logs."""
+    """Receive and store frontend logs with automatic rotation."""
     try:
-        # Create logs directory if it doesn't exist
-        logs_dir = os.path.join(os.path.dirname(__file__), '..', 'logs')
-        os.makedirs(logs_dir, exist_ok=True)
+        # Get log rotator
+        log_rotator = get_frontend_log_rotator()
         
-        # Create frontend log file path
-        log_file = os.path.join(logs_dir, 'frontend.log')
-        
-        # Format and write logs
-        with open(log_file, 'a', encoding='utf-8') as f:
+        if log_rotator:
+            # Use rotating handler
             for log_entry in request.logs:
                 level_names = {0: 'DEBUG', 1: 'INFO', 2: 'WARN', 3: 'ERROR'}
                 level_name = level_names.get(log_entry.level, 'UNKNOWN')
@@ -409,7 +472,33 @@ async def receive_frontend_logs(request: FrontendLogsRequest):
                 if log_entry.connectionId:
                     log_line += f" | Connection: {log_entry.connectionId}"
                 
-                f.write(log_line + '\n')
+                log_rotator.write_log(log_line + '\n')
+        else:
+            # Fallback to standard file writing
+            logs_dir = os.path.join(os.path.dirname(__file__), '..', 'logs')
+            os.makedirs(logs_dir, exist_ok=True)
+            log_file = os.path.join(logs_dir, 'frontend.log')
+            
+            with open(log_file, 'a', encoding='utf-8') as f:
+                for log_entry in request.logs:
+                    level_names = {0: 'DEBUG', 1: 'INFO', 2: 'WARN', 3: 'ERROR'}
+                    level_name = level_names.get(log_entry.level, 'UNKNOWN')
+                    
+                    log_line = f"{log_entry.timestamp} - {level_name} - [{log_entry.component}] {log_entry.message}"
+                    
+                    if log_entry.data:
+                        log_line += f" | Data: {json.dumps(log_entry.data)}"
+                    
+                    if log_entry.error:
+                        log_line += f" | Error: {log_entry.error}"
+                    
+                    if log_entry.sessionId:
+                        log_line += f" | Session: {log_entry.sessionId}"
+                    
+                    if log_entry.connectionId:
+                        log_line += f" | Connection: {log_entry.connectionId}"
+                    
+                    f.write(log_line + '\n')
         
         return JSONResponse(content={"success": True, "message": f"Stored {len(request.logs)} log entries"})
         

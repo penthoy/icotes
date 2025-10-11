@@ -26,6 +26,16 @@ export function useExplorerFileDrag(params: {
         const selection = isItemSelected(node.id) ? getSelection() : [baseDescriptor];
         const traceId = `dnd-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,8)}`;
         (dt as any)._icuiTraceId = traceId; // attach for later debugging
+        
+        if (import.meta.env.DEV) {
+          console.log('[useExplorerFileDrag] Drag start:', {
+            traceId,
+            origin: baseDescriptor.path,
+            count: selection.length,
+            selection: selection.map(s => s.path),
+          });
+        }
+        
         try {
           log.info('ExplorerDnD', '[DND][start] selection prepared', {
             traceId,
@@ -35,6 +45,12 @@ export function useExplorerFileDrag(params: {
           });
         } catch {}
         const payload = DragDropManager.attachExplorerSelection(dt, selection);
+        
+        if (import.meta.env.DEV) {
+          console.log('[useExplorerFileDrag] Payload attached:', payload);
+          console.log('[useExplorerFileDrag] DataTransfer types after attach:', Array.from(dt.types ?? []));
+        }
+        
         const detail: DragStartDetail = { ...payload, source: 'explorer' };
         DragDropManager.dispatchStart(detail);
       },

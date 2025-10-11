@@ -56,7 +56,7 @@ const defaultLayout: ICUILayoutConfig = {
   layoutMode: 'h-layout',
   areas: {
     left: { id: 'left', name: 'Explorer', panelIds: ['explorer', 'git'], activePanelId: 'explorer', size: 20, visible: true },
-    center: { id: 'center', name: 'Editor', panelIds: ['editor', 'preview'], activePanelId: 'editor', size: 50 },
+    center: { id: 'center', name: 'Editor', panelIds: ['editor', 'preview', 'hop'], activePanelId: 'editor', size: 50 },
     right: { id: 'right', name: 'Assistant', panelIds: ['chat', 'chat-history'], activePanelId: 'chat', size: 30, visible: true },
     bottom: { id: 'bottom', name: 'Terminal', panelIds: ['terminal'], activePanelId: 'terminal', size: 40 },
   },
@@ -544,7 +544,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
       {
         id: 'editor',
         type: 'editor',
-        title: 'Code Editor',
+        title: 'Editor',
         icon: '📝',
         closable: true,
         content: createEditorContent()
@@ -556,6 +556,14 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
         icon: '🖥️',
         closable: true,
         content: createPreviewContent()
+      },
+      {
+        id: 'hop',
+        type: 'hop',
+        title: 'Hop',
+        icon: '📡',
+        closable: true,
+        content: hopInstance
       },
       {
         id: 'terminal',
@@ -606,7 +614,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
       layoutMode: 'h-layout',
       areas: {
         left: { id: 'left', name: 'Explorer', panelIds: ['explorer', 'git'], activePanelId: 'explorer', size: 25, visible: true },
-        center: { id: 'center', name: 'Editor', panelIds: ['editor', 'preview'], activePanelId: 'editor', size: 50 },
+        center: { id: 'center', name: 'Editor', panelIds: ['editor', 'preview', 'hop'], activePanelId: 'editor', size: 50 },
         right: { id: 'right', name: 'Assistant', panelIds: ['chat', 'chat-history'], activePanelId: 'chat', size: 25, visible: true },
         bottom: { id: 'bottom', name: 'Terminal', panelIds: ['terminal'], activePanelId: 'terminal', size: 40 },
       },

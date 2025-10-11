@@ -170,6 +170,17 @@ export class ExplorerFileOperations {
           description: 'Download the selected files or folders'
         }
       ),
+      // Cross-context send (copy) operation
+      CommandUtils.create(
+        'explorer.sendTo',
+        'Send To (Context)',
+        this.sendToContext.bind(this),
+        {
+          category: 'integration',
+          icon: '📨',
+          description: 'Send selected files/folders to another hop context default workspace path'
+        }
+      ),
     ];
 
     commands.forEach(command => {
@@ -199,6 +210,7 @@ export class ExplorerFileOperations {
       // selection actions are not registered via command registry here
       'explorer.refresh',
       'explorer.download',
+      'explorer.sendTo',
     ];
 
     commandIds.forEach(commandId => {
@@ -534,6 +546,105 @@ export class ExplorerFileOperations {
       });
       throw error;
     }
+  }
+
+  /**
+   * Send selected files/folders to a target hop context (copy semantics)
+   * Triggered via context menu submenu items with args.targetContextId
+   */
+  private async sendToContext(context?: FileOperationContext & { args?: any }): Promise<void> {
+    if (!context) {
+      log.warn('ExplorerFileOperations', 'sendToContext called without context');
+      return;
+    }
+    const targetContextId = (context as any).args?.targetContextId;
+    if (!targetContextId) {
+      log.warn('ExplorerFileOperations', 'sendToContext missing targetContextId');
+      await confirmService.confirm({
+        title: 'Send Failed',
+        message: 'Target context not specified',
+        confirmText: 'OK'
+      });
+      return;
+    }
+    if (!context.selectedFiles || context.selectedFiles.length === 0) {
+      log.warn('ExplorerFileOperations', 'sendToContext no selected files');
+      return;
+    }
+    try {
+      const itemCount = context.selectedFiles.length;
+      const itemLabel = itemCount === 1 ? context.selectedFiles[0].name : `${itemCount} items`;
+      
+      // Show sending notification
+      log.info('ExplorerFileOperations', `Sending ${itemLabel} to ${targetContextId}...`);
+      
+      // Derive a common prefix so relative structure is preserved
+      const paths = context.selectedFiles.map(f => f.path);
+      const commonPrefix = this.computeCommonPrefix(paths);
+      
+      // @ts-ignore dynamic method exists on enhanced backendService
+      const result = await (backendService as any).sendFilesToContext(targetContextId, paths, { commonPrefix });
+      
+      const createdCount = result?.created?.length || 0;
+      const errorCount = result?.errors?.length || 0;
+      
+      if (errorCount > 0) {
+        const errorDetails = result?.errors?.slice(0, 3).join('\n') || 'Unknown errors';
+        const moreErrors = errorCount > 3 ? `\n... and ${errorCount - 3} more` : '';
+        await confirmService.confirm({
+          title: 'Send Completed with Errors',
+          message: `Sent ${createdCount} items to ${targetContextId}, but ${errorCount} failed:\n\n${errorDetails}${moreErrors}`,
+          confirmText: 'OK'
+        });
+      } else {
+        await confirmService.confirm({
+          title: 'Send Complete',
+          message: `Successfully sent ${itemLabel} to ${targetContextId}`,
+          confirmText: 'OK'
+        });
+      }
+      
+      log.info('ExplorerFileOperations', 'sendToContext result', { targetContextId, created: createdCount, errors: errorCount });
+      
+      // Optionally refresh the current directory to reflect any changes
+      if (context.refreshDirectory) {
+        await context.refreshDirectory();
+      }
+    } catch (error: any) {
+      log.error('ExplorerFileOperations', 'Failed to send files to context', { error });
+      await confirmService.confirm({
+        title: 'Send Failed',
+        message: error?.message || 'Failed to send files to target context',
+        confirmText: 'OK'
+      });
+    }
+  }
+
+  private computeCommonPrefix(paths: string[]): string | null {
+    if (paths.length === 0) return null;
+    
+    // For a single file, return its parent directory
+    if (paths.length === 1) {
+      const path = paths[0];
+      const lastSlash = path.lastIndexOf('/');
+      if (lastSlash <= 0) return null; // Root or no slash
+      return path.substring(0, lastSlash);
+    }
+    
+    // For multiple files, find common prefix
+    const splitPaths = paths.map(p => p.split('/').filter(Boolean));
+    const first = splitPaths[0];
+    let prefix: string[] = [];
+    for (let i = 0; i < first.length; i++) {
+      const segment = first[i];
+      if (splitPaths.every(parts => parts[i] === segment)) {
+        prefix.push(segment);
+      } else {
+        break;
+      }
+    }
+    if (prefix.length === 0) return null;
+    return '/' + prefix.join('/');
   }
 
   /**

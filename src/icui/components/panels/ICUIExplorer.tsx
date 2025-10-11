@@ -88,6 +88,8 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
   const lastLoadTimeRef = useRef(0);
   const loadDirectoryRef = useRef<(path: string, opts?: { force?: boolean }) => Promise<void>>();
   const expandedPathsRef = useRef<Set<string>>(new Set());
+  // Track last hop signature (context + cwd) so we refresh when either changes
+  const lastHopContextIdRef = useRef<string | null>(null);
   // local drag ref no longer used; managed inside useExplorerDropMove
 
   // ---------- derived ----------
@@ -110,6 +112,17 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
     explorerFileOperations.registerCommands();
     return () => explorerFileOperations.unregisterCommands();
   }, []);
+
+  // Initial hop sessions fetch so context menu has data on first open
+  useEffect(() => {
+    if (!backendService) return;
+    try {
+      // Fire and forget. Cache used by context menu builder.
+      (backendService as any).listHopSessions?.().catch(() => {});
+    } catch (_) {
+      /* ignore */
+    }
+  }, [backendService]);
 
   // Update command context when selection or path changes
   useEffect(() => {
@@ -294,6 +307,41 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
   useExplorerConnection({ currentPath, loadDirectory, loadDirectoryRef, checkConnection, setIsConnected });
 
   useExplorerFsWatcher({ currentPath, onRefresh: () => {}, loadDirectoryRef });
+
+  // Listen for hop context switches (remote/local) and refresh explorer root accordingly
+  useEffect(() => {
+    const handleHopStatus = (session: any) => {
+      try {
+        const contextId = session?.context_id || session?.contextId || 'local';
+        const cwd = session?.cwd || '';
+        const signature = `${contextId}:${cwd}`;
+        if (lastHopContextIdRef.current === signature) return; // nothing new
+        lastHopContextIdRef.current = signature;
+
+        let targetPath: string;
+        if (contextId === 'local') {
+          // Always reset to workspace root when returning to local per requirement
+            targetPath = getWorkspaceRoot();
+        } else {
+          // Remote: use reported cwd; fallback to '/'
+          let remotePath = cwd && typeof cwd === 'string' ? cwd.trim() : '';
+          if (!remotePath) remotePath = '/';
+          // NOTE: If user entered '~' or '~/': backend does not expand; potential improvement.
+          targetPath = remotePath;
+        }
+
+        if (loadDirectoryRef.current) {
+          loadDirectoryRef.current(targetPath, { force: true });
+        } else {
+          loadDirectory(targetPath, { force: true });
+        }
+      } catch (e) {
+        if (DEBUG_EXPLORER) console.warn('[ICUIExplorer] Failed to handle hop_status', e);
+      }
+    };
+    (backendService as any).on?.('hop_status', handleHopStatus);
+    return () => { (backendService as any).off?.('hop_status', handleHopStatus); };
+  }, [loadDirectory]);
 
   // Toggle folder expansion (VS Code-like behavior)
   const toggleFolderExpansion = useCallback(async (folder: ICUIFileNode) => {

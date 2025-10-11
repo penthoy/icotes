@@ -1,7 +1,8 @@
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
-websockets==12.0
-pydantic==2.5.0
+websockets>=13.0
+# IMPORTANT: Match pyproject.toml spec; previous pin (==2.5.0) caused resolver conflict
+pydantic>=2.10.0
 python-multipart==0.0.6
 python-jose[cryptography]==3.3.0
 pytest==7.4.3
@@ -10,6 +11,19 @@ aiofiles==24.1.0
 watchdog==6.0.0
 requests==2.31.0
 aiohttp==3.10.11
+httpx==0.27.2
+Pillow>=10.0.0
+setuptools>=80.9.0
+
+# ---------------------------------------------------------------------------
+# Added to sync with pyproject.toml (Docker previously missed these)
+# Root cause: Dockerfile installs ONLY this file; dev uses pyproject via uv.
+# Keep this list aligned until Docker is refactored to install from pyproject.
+python-dotenv>=0.21.0
+asyncssh>=2.14.2
+google-genai>=0.1.0
+openai-agents>=0.0.6
+# ---------------------------------------------------------------------------
 
 # Agentic Framework Dependencies (compatible versions)
 openai>=1.60.0

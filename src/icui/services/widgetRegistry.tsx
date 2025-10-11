@@ -5,6 +5,7 @@ import CodeExecutionWidget from '../components/chat/widgets/CodeExecutionWidget'
 import SemanticSearchWidget from '../components/chat/widgets/SemanticSearchWidget';
 import ProgressWidget from '../components/chat/widgets/ProgressWidget';
 import WebSearchWidget from '../components/chat/widgets/WebSearchWidget';
+import ImageGenerationWidget from '../components/chat/widgets/ImageGenerationWidget';
 
 // Minimal widget registry for tool call visualization
 export interface ToolCallWidgetComponentProps {
@@ -91,6 +92,12 @@ const builtInWidgets: WidgetConfig[] = [
 		toolName: 'web_search',
 		component: WebSearchWidget as any,
 		category: 'network',
+		priority: 1
+	},
+	{
+		toolName: 'generate_image',
+		component: ImageGenerationWidget as any,
+		category: 'custom',
 		priority: 1
 	}
 ];

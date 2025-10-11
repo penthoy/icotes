@@ -16,6 +16,7 @@ import json
 import logging
 import asyncio
 import concurrent.futures
+import copy
 import os
 import platform
 from datetime import datetime, timezone
@@ -95,6 +96,12 @@ BASE_SYSTEM_PROMPT_TEMPLATE = """You are {AGENT_NAME}, a helpful and versatile A
 - create it under workspace which is your work root unless specified otherwise.
 - Create it using html/css/js by default unless the user specifies otherwise.
 
+**File Operations Best Practices:**
+- Always save generated files (images, documents, code) to the workspace directory
+- Use the `get_workspace_path()` helper function from `icpy.agent.helpers` to get the correct workspace path
+- Never hardcode workspace paths - use the helper function for proper path detection
+- The workspace directory is automatically detected and is the proper location for all user-facing files
+
 **Core Behavior:**
 - Be helpful, accurate, and informative in your responses
 - Use tools when appropriate to provide better assistance
@@ -107,6 +114,7 @@ BASE_SYSTEM_PROMPT_TEMPLATE = """You are {AGENT_NAME}, a helpful and versatile A
 - Use run_in_terminal for executing commands and scripts
 - Use semantic_search to find relevant information in the workspace
 - Use web_search to find current information from the web
+- Use generate_image for image generation. default to 1:1 (square) aspect ratio unless the user explicitly requests a different format or the content clearly requires a specific orientation (e.g., wide landscape, tall portrait)
 - Always explain briefly what you're doing before using a tool
 
 **Response Style:**
@@ -326,22 +334,27 @@ class ToolDefinitionLoader:
     def __init__(self):
         self.registry = get_tool_registry()
     
-    def get_openai_tools(self) -> List[Dict[str, Any]]:
+    def get_openai_tools(self, exclude_tools: List[str] = None) -> List[Dict[str, Any]]:
         """
         Get all available tools in OpenAI function calling format.
+        
+        Args:
+            exclude_tools: Optional list of tool names to exclude
         
         Returns:
             List of tool definitions compatible with OpenAI function calling
         """
         tools = []
+        exclude_tools = exclude_tools or []
         
         try:
             for tool in self.registry.all():
-                tools.append({
-                    "type": "function", 
-                    "function": tool.to_openai_function()
-                })
-            logger.info(f"Loaded {len(tools)} tools from registry")
+                if tool.name not in exclude_tools:
+                    tools.append({
+                        "type": "function", 
+                        "function": tool.to_openai_function()
+                    })
+            logger.info(f"Loaded {len(tools)} tools from registry (excluded: {exclude_tools})")
             return tools
         except Exception as e:
             logger.warning(f"Failed to load tools from registry: {e}")
@@ -350,6 +363,54 @@ class ToolDefinitionLoader:
     def get_tool_names(self) -> List[str]:
         """Get list of all available tool names."""
         return [tool.name for tool in self.registry.all()]
+    
+    def get_openai_tools_compact(self, exclude_tools: List[str] = None) -> List[Dict[str, Any]]:
+        """Get tools with minimal descriptions for context-limited providers.
+        
+        This version strips verbose descriptions and examples from parameter docs
+        to save tokens while preserving full functionality.
+        
+        Args:
+            exclude_tools: Optional list of tool names to exclude
+        
+        Returns:
+            List of compact tool definitions
+        """
+        tools = []
+        exclude_tools = exclude_tools or []
+        
+        try:
+            for tool in self.registry.all():
+                if tool.name not in exclude_tools:
+                    # Get base tool definition without mutating registry's cached schema
+                    func_def = copy.deepcopy(tool.to_openai_function())
+                    
+                    # Compact the description (keep first sentence only)
+                    if 'description' in func_def:
+                        desc = func_def['description']
+                        first_sentence = desc.split('.')[0] + '.' if '.' in desc else desc
+                        func_def['description'] = first_sentence[:100]  # Cap at 100 chars
+                    
+                    # Compact parameter descriptions
+                    if 'parameters' in func_def and 'properties' in func_def['parameters']:
+                        for param_name, param_def in func_def['parameters']['properties'].items():
+                            if isinstance(param_def, dict) and 'description' in param_def:
+                                desc = param_def['description']
+                                # Keep first sentence only, max 80 chars
+                                first_sentence = desc.split('.')[0] + '.' if '.' in desc else desc
+                                param_def['description'] = first_sentence[:80]
+                    
+                    tools.append({
+                        "type": "function",
+                        "function": func_def
+                    })
+            
+            logger.info(f"Loaded {len(tools)} compact tools (excluded: {exclude_tools})")
+            return tools
+        except Exception as e:
+            logger.warning(f"Failed to load compact tools: {e}")
+            # Fallback to regular tools
+            return self.get_openai_tools(exclude_tools)
 
 
 class ToolResultFormatter:
@@ -409,6 +470,14 @@ class ToolResultFormatter:
                     output = output[:200] + "... (truncated)"
                 return f"✅ **Success**: Command executed\nOutput: {output}\n"
             
+            elif tool_name == 'generate_image' and isinstance(data, dict):
+                # Always return the JSON data structure for widget compatibility
+                # The widget expects structured data in toolCall.output field
+                # Phase 1 conversion in chat_service will convert imageData to ImageReference during storage
+                json_str = json.dumps(data)
+                logger.info(f"ToolResultFormatter: Generating image result JSON ({len(json_str)} chars)")
+                return f"✅ **Success**: {json_str}\n"
+            
             else:
                 # For other tools, show data as-is but truncate if too long
                 data_str = str(data)
@@ -427,16 +496,20 @@ class OpenAIStreamingHandler:
     tool call accumulation, execution, and conversation continuation.
     """
     
-    def __init__(self, client, model_name: str):
+    def __init__(self, client, model_name: str, exclude_tools: List[str] = None, use_compact_tools: bool = False):
         """
         Initialize the streaming handler.
         
         Args:
             client: OpenAI client instance
             model_name: Model name to use for completions
+            exclude_tools: Optional list of tool names to exclude (e.g., for API compatibility)
+            use_compact_tools: If True, use compact tool schemas to save tokens (for context-limited providers)
         """
         self.client = client
         self.model_name = model_name
+        self.exclude_tools = exclude_tools or []
+        self.use_compact_tools = use_compact_tools
         self.tool_executor = ToolExecutor()
         self.tool_loader = ToolDefinitionLoader()
         self.formatter = ToolResultFormatter()
@@ -556,8 +629,11 @@ class OpenAIStreamingHandler:
             except Exception as ex:
                 logger.debug("OpenAIStreamingHandler: preview generation failed: %s", ex)
 
-            # Get available tools
-            tools = self.tool_loader.get_openai_tools()
+            # Get available tools (excluding incompatible ones)
+            if self.use_compact_tools:
+                tools = self.tool_loader.get_openai_tools_compact(exclude_tools=self.exclude_tools)
+            else:
+                tools = self.tool_loader.get_openai_tools(exclude_tools=self.exclude_tools)
             
             # Start the conversation loop for tool calls
             continue_round = 0
@@ -693,6 +769,69 @@ class OpenAIStreamingHandler:
         
         return collected_chunks, tool_calls_list, finish_reason
     
+    def _sanitize_tool_result_for_llm(self, tool_name: str, result: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Sanitize tool results before sending to LLM.
+        
+        Removes large binary data (like base64 images) that would:
+        1. Waste tokens
+        2. Cause API errors with providers that don't support binary data
+        
+        Args:
+            tool_name: Name of the tool that was executed
+            result: Raw tool result
+            
+        Returns:
+            Sanitized result safe for LLM consumption
+        """
+        # For image generation, keep lightweight reference data (already optimized)
+        # New streaming-optimized format already excludes large imageData
+        if tool_name == 'generate_image' and result.get('success'):
+            data = result.get('data', {})
+            
+            # Check if it's the new streaming-optimized format (has imageReference)
+            if 'imageReference' in data:
+                # Keep lightweight reference for LLM context
+                # IMPORTANT: Do NOT include imageData here - LLM should use imageUrl (file://) for editing
+                # imageData (thumbnail) is only for frontend widget display
+                sanitized = {
+                    "success": True,
+                    "data": {
+                        "imageReference": data.get('imageReference'),  # Lightweight reference metadata
+                        "imageUrl": data.get('imageUrl'),  # file:// URL for agent editing (REQUIRED for edit mode)
+                        "filePath": data.get('filePath'),  # Relative path for display
+                        "message": data.get('message', 'Image generated successfully'),
+                        "prompt": data.get('prompt', ''),
+                        "model": data.get('model', ''),
+                        "timestamp": data.get('timestamp', ''),
+                        "mode": data.get('mode'),
+                        "size": data.get('size'),
+                        "width": data.get('width'),
+                        "height": data.get('height'),
+                        "context": data.get('context'),
+                        "contextHost": data.get('contextHost')
+                        # Intentionally omit imageData, thumbnailUrl, fullImageUrl - not needed by LLM
+                        # These URLs are in the unsanitized version sent to frontend widget
+                    }
+                }
+            else:
+                # Legacy format - strip out large base64 data
+                sanitized = {
+                    "success": True,
+                    "data": {
+                        "message": data.get('message', 'Image generated successfully'),
+                        "prompt": data.get('prompt', ''),
+                        "filePath": data.get('filePath', ''),
+                        "model": data.get('model', ''),
+                        "timestamp": data.get('timestamp', '')
+                        # Intentionally omit imageData, imageUrl to keep response small
+                    }
+                }
+            return sanitized
+        
+        # For other tools, return as-is
+        return result
+    
     def _handle_tool_calls(self, messages: List[Dict], collected_chunks: List[str], 
                           tool_calls_list: List[Dict]) -> AsyncGenerator[str, None]:
         """
@@ -726,20 +865,46 @@ class OpenAIStreamingHandler:
                     yield f"❌ **Error**: Invalid JSON arguments for {tool_name}: {str(e)}\n"
                     continue
                 
+                # Debug logging for image generation tool calls
+                if tool_name == 'generate_image':
+                    logger.info(f"🎨 Image generation tool call - aspect_ratio: {arguments.get('aspect_ratio', 'NOT SET')}, "
+                              f"mode: {arguments.get('mode', 'NOT SET')}, image_data: {bool(arguments.get('image_data'))}")
+                
                 # Show tool call start
                 yield self.formatter.format_tool_call_start(tool_name, arguments)
                 
                 # Execute the tool
                 result = self.tool_executor.execute_tool_call_sync(tool_name, arguments)
                 
-                # Format and display result
-                yield self.formatter.format_tool_result(tool_name, result)
+                # Format and display result - yield in smaller chunks for large responses
+                formatted_result = self.formatter.format_tool_result(tool_name, result)
+                
+                # For large responses (>1KB), stream in chunks to avoid WebSocket/buffer truncation
+                if len(formatted_result) > 1024:
+                    chunk_size = 1024  # 1KB chunks
+                    total_chunks = (len(formatted_result) + chunk_size - 1) // chunk_size
+                    logger.info(f"Streaming large tool result in {total_chunks} chunks ({len(formatted_result)} chars total)")
+                    for i in range(0, len(formatted_result), chunk_size):
+                        chunk = formatted_result[i:i+chunk_size]
+                        logger.debug(f"Yielding chunk {i//chunk_size + 1}/{total_chunks}: {len(chunk)} chars")
+                        yield chunk
+                    logger.info(f"Finished streaming {total_chunks} chunks for {tool_name}")
+                else:
+                    yield formatted_result
+                
+                # Sanitize result for LLM (remove large binary data like images)
+                sanitized_result = self._sanitize_tool_result_for_llm(tool_name, result)
                 
                 # Add tool result to conversation
+                # OpenAI expects the tool content to be the data payload, not the wrapper object
+                tool_content = sanitized_result.get('data') if sanitized_result.get('success') else {
+                    "error": sanitized_result.get('error', 'Unknown error')
+                }
+                
                 tool_message = {
                     "role": "tool",
                     "tool_call_id": tc['id'],
-                    "content": json.dumps(result)
+                    "content": json.dumps(tool_content)
                 }
                 messages.append(tool_message)
                 
@@ -1179,6 +1344,24 @@ def _detect_workspace_root() -> Optional[str]:
     
     # Default fallback
     return current_dir
+
+
+def get_workspace_path() -> str:
+    """
+    Get the workspace directory path for saving files.
+    
+    This is the recommended way for agents to get the workspace path for saving
+    generated files (images, documents, etc.).
+    
+    Returns:
+        Absolute path to the workspace directory
+    """
+    workspace_root = _detect_workspace_root()
+    if workspace_root:
+        return os.path.abspath(workspace_root)
+    
+    # Fallback: use current directory if detection fails
+    return os.getcwd()
 
 
 def _get_directory_size(directory: str) -> int:

@@ -237,3 +237,118 @@ async def create_zip(body: Dict = Body(...)):
     return StreamingResponse(io.BytesIO(data), media_type='application/zip', headers={
         'Content-Disposition': 'attachment; filename="media_bundle.zip"'
     })
+
+
+# ============================================================================
+# Phase 3: Image Reference System Endpoints
+# Streaming-optimized: Serve images separately from WebSocket messages
+# ============================================================================
+
+@router.get("/image/{image_id}")
+async def get_image_by_id(image_id: str, thumbnail: bool = False):
+    """
+    Serve image by ID with path resolution using ImageReferenceService.
+
+    This endpoint fetches the image metadata from the global ImageReferenceService
+    and serves either the full image from disk (or cache) or the generated
+    thumbnail.
+
+    Args:
+        image_id: Unique image identifier
+        thumbnail: If True, return thumbnail version (default: False)
+
+    Returns:
+        Binary image data with appropriate MIME type
+    """
+    from ..services.image_reference_service import get_image_reference_service
+    from ..services.image_cache import ImageCache
+    import base64
+
+    try:
+        # Try cache first for performance (only for full image)
+        cache = ImageCache()
+        cached_base64 = cache.get(image_id)
+        if cached_base64 and not thumbnail:
+            image_bytes = base64.b64decode(cached_base64)
+            # Cache doesn't store mime_type; infer from reference or default
+            mime_type = 'image/png'
+            logger.info(f"[Media API] Serving cached image: {image_id} ({mime_type})")
+            return StreamingResponse(
+                io.BytesIO(image_bytes),
+                media_type=mime_type,
+                headers={
+                    "Cache-Control": "public, max-age=31536000",
+                    "X-Image-Source": "cache"
+                }
+            )
+
+        # Resolve via ImageReferenceService
+        ref_service = get_image_reference_service()
+        ref = await ref_service.get_reference(image_id)
+        if not ref:
+            logger.warning(f"[Media API] Image reference not found: {image_id}")
+            raise HTTPException(status_code=404, detail=f"Image not found: {image_id}")
+
+        # Thumbnail branch
+        if thumbnail:
+            if ref.thumbnail_path:
+                thumb_path = Path(ref.thumbnail_path)
+                if thumb_path.exists():
+                    # Infer mime type from file extension
+                    ext = thumb_path.suffix.lower()
+                    if ext == '.webp':
+                        thumb_mime = 'image/webp'
+                    elif ext in ('.jpg', '.jpeg'):
+                        thumb_mime = 'image/jpeg'
+                    else:
+                        thumb_mime = 'image/jpeg'
+                    logger.info(f"[Media API] Serving thumbnail file: {thumb_path}")
+                    return FileResponse(
+                        path=thumb_path,
+                        media_type=thumb_mime,
+                        headers={
+                            "Cache-Control": "public, max-age=31536000",
+                            "X-Image-Source": "thumbnail-file"
+                        }
+                    )
+            # Fallback to embedded base64 thumbnail
+            if ref.thumbnail_base64:
+                logger.info(f"[Media API] Serving thumbnail from base64 for {image_id}")
+                try:
+                    import base64 as _b64
+                    thumb_bytes = _b64.b64decode(ref.thumbnail_base64)
+                except Exception:
+                    raise HTTPException(status_code=500, detail="Invalid thumbnail base64")
+                return StreamingResponse(
+                    io.BytesIO(thumb_bytes),
+                    media_type="image/jpeg",
+                    headers={
+                        "Cache-Control": "public, max-age=31536000",
+                        "X-Image-Source": "thumbnail-base64"
+                    }
+                )
+            # No thumbnail available
+            raise HTTPException(status_code=404, detail=f"Thumbnail not available: {image_id}")
+
+        # Full image branch
+        image_path = Path(ref.absolute_path)
+        if not image_path.exists():
+            logger.error(f"[Media API] Image file missing on disk: {image_path}")
+            raise HTTPException(status_code=404, detail=f"Image file not found: {image_path}")
+
+        mime_type = ref.mime_type or 'image/png'
+        logger.info(f"[Media API] Serving full image file: {image_path} ({mime_type})")
+        return FileResponse(
+            path=image_path,
+            media_type=mime_type,
+            headers={
+                "Cache-Control": "public, max-age=31536000",
+                "X-Image-Source": "file"
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error serving image {image_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to serve image")

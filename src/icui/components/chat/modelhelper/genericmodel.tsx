@@ -926,9 +926,52 @@ export class GenericModelHelper implements ModelHelper {
    * Clean up leaked code blocks that appear outside tool execution blocks
    */
   private cleanupLeakedCode(text: string): string {
-    return text
-      // Remove large success blocks that contain structured data (like file content)
-      .replace(/✅\s*\*\*Success\*\*:\s*\{[\s\S]*?\}\s*\n/g, '')
+    // First pass: Remove large Success blocks with potentially huge data
+    // Use a safer approach that doesn't cause catastrophic backtracking
+    let cleaned = text;
+    
+    // Remove Success blocks line by line to avoid regex catastrophic backtracking
+    const lines = cleaned.split('\n');
+    const filtered: string[] = [];
+    let inSuccessBlock = false;
+    let braceDepth = 0;
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      
+      // Detect start of Success block
+      if (/✅\s*\*\*Success\*\*:\s*\{/.test(line)) {
+        inSuccessBlock = true;
+        braceDepth = 1;
+        // Count braces in the same line
+        for (const char of line.slice(line.indexOf('{') + 1)) {
+          if (char === '{') braceDepth++;
+          if (char === '}') braceDepth--;
+        }
+        if (braceDepth === 0) inSuccessBlock = false;
+        continue; // Skip this line
+      }
+      
+      // If in Success block, track braces
+      if (inSuccessBlock) {
+        for (const char of line) {
+          if (char === '{') braceDepth++;
+          if (char === '}') braceDepth--;
+        }
+        if (braceDepth === 0) {
+          inSuccessBlock = false;
+        }
+        continue; // Skip this line
+      }
+      
+      // Keep non-Success-block lines
+      filtered.push(line);
+    }
+    
+    cleaned = filtered.join('\n');
+    
+    // Continue with other cleanup patterns (use safer regexes)
+    return cleaned
       // Remove large blocks of code that contain Python-specific patterns
       .replace(/\n[^\n]*(?:logger\.|import |def |class |try:|except |if __name__|yield |from )[^\n]*(?:\n[^\n]*(?:logger\.|import |def |class |try:|except |if __name__|yield |from |    |        )[^\n]*){5,}/g, '\n')
       // Remove blocks that look like stack traces or error output
@@ -937,8 +980,8 @@ export class GenericModelHelper implements ModelHelper {
       .replace(/\n[^\n]*logger\.[a-z]+\([^)]*\)[^\n]*(?:\n[^\n]*(?:    |        )[^\n]*){0,3}/g, '\n')
       // Remove lines that look like escaped Python strings with code
       .replace(/\n[^\n]*\\n[^\n]*(?:def |class |import |from |logger\.|try:|except )[^\n]*\n/g, '\n')
-      // Remove very long lines (>300 chars) that likely contain raw data
-      .replace(/\n[^\n]{300,}\n/g, '\n')
+      // Remove very long lines (>500 chars) that likely contain raw data (like base64)
+      .replace(/\n[^\n]{500,}\n/g, '\n')
       // Remove blocks that contain multiple consecutive technical lines (imports, functions etc)
       .replace(/\n(?:[^\n]*(?:import|from|def|class|logger\.|yield|except)[^\n]*\n){3,}/g, '\n')
       // Clean up multiple newlines

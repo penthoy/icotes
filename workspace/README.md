@@ -10,7 +10,7 @@ This software is provided "as is," without warranties or support.
 That said, feel free to try it out and share feedback—would love to hear your thoughts. 
 
 # Quick change log
-## [1.12.0] - Add hop panel
+## [2.0.5] - Add hop panel, image generation, sending files between servers
 
 # Features at a glance #
 

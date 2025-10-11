@@ -71,8 +71,9 @@ export function useExplorerContextMenu(params: {
     }
 
     if (item.commandId) {
-      globalCommandRegistry.execute(item.commandId, menuContext).catch(error => {
-        console.error('Failed to execute command:', error);
+      const enrichedContext = { ...menuContext, args: item.args } as any;
+      globalCommandRegistry.execute(item.commandId, enrichedContext).catch(error => {
+        console.error('[useExplorerContextMenu] Failed to execute command:', error);
         setError(error.message);
       });
     }

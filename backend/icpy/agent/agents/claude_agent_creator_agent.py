@@ -175,17 +175,17 @@ Agent behavior:
 2. If you are cut off due to token limits or streaming stops early, explicitly continue from the last sentence without repeating earlier content until the task is fully complete. Use concise chunking to finish.
 
 Agent structure:
-1. All custom agents should be created under workspace/.icotes/plugins/ where workspace is your workspace root directory.
-2. all your code is under workspace/.icotes/plugins/claude_agent_creator_agent.py you can use this as implementation reference. when I refer to you or your code, this is the file I am refering to.
+1. All custom agents should be created under backend/icpy/agent/ directory.
+2. all your code is under backend/icpy/agent/claude_agent_creator_agent.py you can use this as implementation reference. when I refer to you or your code, this is the file I am refering to.
 3. agents should use this convention: <AGENT_NAME>_agent.py
 4. after a new agent is created, you also need to add a config update to workspace/.icotes/agents.json for this agent to be properly registered with the hot reload system.
 5. before you modify the agent.json, make sure you read it and understand its structure before updating it, always update with the same structure as the original.
 
-IMPORTANT WORKSPACE STRUCTURE:
+IMPORTANT AGENT STRUCTURE:
 - Your workspace root is: <workspace_root>
-- Agent files go in: <workspace_root>/.icotes/plugins/<AGENT_NAME>_agent.py
-- Configuration goes in: <workspace_root>/.icotes/agents.json
-- The .icotes/plugins/ directory already exists and is the correct location for all agent files
+- Agent files go in: <workspace_root>/backend/icpy/agent/<AGENT_NAME>_agent.py
+- Configuration goes in: <workspace_root>/workspace/.icotes/agents.json
+- The backend/icpy/agent/ directory is the correct location for all built-in agent files
 
 Always provide practical, working examples and use tools when appropriate. Focus on:
 - Clean, readable code with proper documentation

@@ -56,7 +56,7 @@ export function useExplorerFsWatcher({ currentPath, onRefresh, loadDirectoryRef 
       try {
         const status = await backendService.getConnectionStatus();
         if (!status.connected) return;
-        log.info('ICUIExplorer', '[EXPL] Subscribing to fs topics');
+        log.debug('ICUIExplorer', '[EXPL] Subscribing to fs topics');
         await backendService.notify('subscribe', { topics });
       } catch (error) {
         log.warn('ICUIExplorer', 'Failed to subscribe to filesystem events', { error });
@@ -67,12 +67,12 @@ export function useExplorerFsWatcher({ currentPath, onRefresh, loadDirectoryRef 
       try {
         const status = await backendService.getConnectionStatus();
         if (status.connected) {
-          log.info('ICUIExplorer', '[EXPL] Initializing subscription on connected');
+          log.debug('ICUIExplorer', '[EXPL] Initializing subscription on connected');
           await subscribeToEvents();
         } else {
           statusHandlerRef.current = async (payload: any) => {
             if (payload?.status === 'connected') {
-              log.info('ICUIExplorer', '[EXPL] Connected, subscribing + refreshing');
+              log.debug('ICUIExplorer', '[EXPL] Connected, subscribing + refreshing');
               await subscribeToEvents();
               if (loadDirectoryRef.current) loadDirectoryRef.current(currentPath);
               if (statusHandlerRef.current) {
@@ -104,7 +104,7 @@ export function useExplorerFsWatcher({ currentPath, onRefresh, loadDirectoryRef 
         try {
           const status = await backendService.getConnectionStatus();
           if (status.connected) {
-            log.info('ICUIExplorer', '[EXPL] Unsubscribing from fs topics');
+            log.debug('ICUIExplorer', '[EXPL] Unsubscribing from fs topics');
             await backendService.notify('unsubscribe', { topics });
           }
         } catch (error) {
