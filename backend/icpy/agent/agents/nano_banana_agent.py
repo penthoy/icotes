@@ -380,7 +380,16 @@ Please create an image that exactly matches what the user described. Be precise 
                         safe_prompt = re.sub(r'[^\w\s-]', '', prompt_for_filename[:30]).strip().replace(' ', '_')
                         if not safe_prompt:
                             safe_prompt = "image"
-                        filename = f"nano_banana_{safe_prompt}_{timestamp}.png"
+                        
+                        # Determine file extension from MIME type
+                        extension_map = {
+                            "image/png": ".png",
+                            "image/jpeg": ".jpg",
+                            "image/webp": ".webp",
+                            "image/gif": ".gif"
+                        }
+                        extension = extension_map.get(mime_type, ".png")
+                        filename = f"nano_banana_{safe_prompt}_{timestamp}{extension}"
                         
                         # Save to workspace folder using helper function
                         workspace_dir = get_workspace_path()
@@ -408,7 +417,7 @@ Please create an image that exactly matches what the user described. Be precise 
                 tool_call_output = {
                     "success": True,
                     "imageData": raw_b64,  # raw base64 ONLY
-                    "mimeType": "image/png",
+                    "mimeType": mime_type,  # Use actual MIME type from response
                     "prompt": text_prompt[:200],  # Use text_prompt string
                     "filePath": saved_file_path,
                     "note": "imageData truncated from history in future turns to control context size"

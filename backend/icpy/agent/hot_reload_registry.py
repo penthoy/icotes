@@ -157,11 +157,16 @@ class AgentRegistry:
     async def _load_agent_module(self, agent_path: str, module_name: str) -> Optional[str]:
         """Load a single agent module"""
         try:
+            # Build module path using Path for cross-platform compatibility
+            agent_path_obj = Path(agent_path).resolve()
+            builtin_base = Path(__file__).parent.resolve()
+            agents_subfolder = builtin_base / "agents"
+            
             # Build module path
-            if agent_path.endswith('icpy/agent'):
+            if agent_path_obj == builtin_base:
                 # Built-in agents in main folder
                 full_module_name = f"icpy.agent.{module_name}"
-            elif agent_path.endswith('icpy/agent/agents'):
+            elif agent_path_obj == agents_subfolder:
                 # Built-in agents in agents subfolder
                 full_module_name = f"icpy.agent.agents.{module_name}"
             else:

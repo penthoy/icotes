@@ -110,7 +110,7 @@ def generate_thumbnail(
         # Ensure thumbnails directory exists
         Path(thumbnails_dir).mkdir(parents=True, exist_ok=True)
         
-        # Save as WebP
+        # Save as WebP with method=6 (best compression, slower but acceptable for thumbnails)
         img.save(thumbnail_path, format='WEBP', quality=quality, method=6)
         
         # Get file size

@@ -177,9 +177,9 @@ class ImageResolver:
         """Cache a successful resolution"""
         self._resolution_cache[image_id] = path
         
-        # Limit cache size
+        # Limit cache size (FIFO eviction - Python 3.7+ dicts maintain insertion order)
         if len(self._resolution_cache) > 100:
-            # Remove oldest entry (simple FIFO)
+            # Remove oldest entry by insertion order
             self._resolution_cache.pop(next(iter(self._resolution_cache)))
     
     def clear_cache(self):
