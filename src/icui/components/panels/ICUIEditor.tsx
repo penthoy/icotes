@@ -143,28 +143,40 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
       // For image files, we don't need to load the text content
       if (detectedLanguage === 'image') {
         const fileName = filePath.split('/').pop() || 'image';
-        const fileData = {
-          id: `file-${Date.now()}-${Math.random()}`,
-          name: fileName,
-          path: filePath,
-          content: '', // No content needed for images
-          language: 'image',
-          modified: false
-        };
         
         // Check if this image is already open
         const existingFileIndex = files.findIndex(f => f.path === filePath && !(f as any).isDiff);
         if (existingFileIndex >= 0) {
-          // File is already open, just activate it
+          // File is already open - force refresh by creating a new file ID
+          // This ensures React re-renders the ImageViewerPanel with fresh state
+          const fileData = {
+            id: `file-${Date.now()}-${Math.random()}`, // New ID to force refresh
+            name: fileName,
+            path: filePath,
+            content: '', // No content needed for images
+            language: 'image',
+            modified: false,
+            isTemporary: false
+          };
+          
+          // Replace the existing file with the new one to force refresh
           setFiles(prev => prev.map((f, index) => 
-            index === existingFileIndex ? { ...f, isTemporary: false } : f
+            index === existingFileIndex ? fileData : f
           ));
-          setActiveFileId(files[existingFileIndex].id);
+          setActiveFileId(fileData.id);
         } else {
           // Add new image file
-          const permanentFile = { ...fileData, isTemporary: false };
-          setFiles(prev => [...prev, permanentFile]);
-          setActiveFileId(permanentFile.id);
+          const fileData = {
+            id: `file-${Date.now()}-${Math.random()}`,
+            name: fileName,
+            path: filePath,
+            content: '', // No content needed for images
+            language: 'image',
+            modified: false,
+            isTemporary: false
+          };
+          setFiles(prev => [...prev, fileData]);
+          setActiveFileId(fileData.id);
         }
         
         EditorNotificationService.show(`Opened ${fileName}`, 'success');
@@ -188,9 +200,16 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
       // Check if a NON-diff version of the file is already open (ignore diff tabs sharing path)
       const existingFileIndex = files.findIndex(f => f.path === filePath && !(f as any).isDiff);
       if (existingFileIndex >= 0) {
-        // File is already open, just activate it and mark as permanent
+        // File is already open - reload content from disk to ensure it's fresh
+        // This fixes the issue where clicking on a file doesn't show updated content
         setFiles(prev => prev.map((f, index) => 
-          index === existingFileIndex ? { ...f, isTemporary: false, language: detectedLanguage } : f
+          index === existingFileIndex ? { 
+            ...f, 
+            content: fileWithLanguage.content,
+            isTemporary: false, 
+            language: detectedLanguage,
+            modified: false // Reset modified flag since we're loading fresh content
+          } : f
         ));
         setActiveFileId(files[existingFileIndex].id);
       } else {
@@ -213,6 +232,9 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
     try {
       setIsLoading(true);
       
+      // Auto-detect language from file extension first
+      const detectedLanguage = detectLanguageFromExtension(filePath);
+      
       // Check if file is already open
       const existingFileIndex = files.findIndex(f => f.path === filePath);
       if (existingFileIndex >= 0) {
@@ -230,9 +252,6 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
         setFiles(prev => prev.filter(f => !f.isTemporary));
       }
 
-      // Auto-detect language from file extension first
-      const detectedLanguage = detectLanguageFromExtension(filePath);
-      
       // For image files, we don't need to load the text content
       if (detectedLanguage === 'image') {
         const fileName = filePath.split('/').pop() || 'image';
@@ -277,7 +296,7 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
     } finally {
       setIsLoading(false);
     }
-  }, [files]);
+  }, [files, detectLanguageFromExtension]);
 
   const openFilePermanent = useCallback(async (filePath: string) => {
     await openFile(filePath);
@@ -973,7 +992,9 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
         {activeFile && files.find(f => f.id === activeFileId) ? (
           activeFile.language === 'image' ? (
             // Image Viewer - Display images like VS Code with enhanced features
+            // Key prop ensures React creates a new instance for each different image file
             <ImageViewerPanel 
+              key={activeFile.path || activeFile.id}
               filePath={activeFile.path || ''}
               fileName={activeFile.name}
             />
