@@ -181,7 +181,7 @@ export class ChatBackendClient {
         chat: { sessionId: this.generateSessionId() }
       });
       
-      notificationService.success('Connected to enhanced agentic chat service');
+      notificationService.success('Connected to enhanced agentic chat service', { key: 'chat:connected' });
     });
 
     // Also listen for legacy events for compatibility
@@ -196,7 +196,7 @@ export class ChatBackendClient {
         chat: { sessionId: this.generateSessionId() }
       });
       
-      notificationService.success('Connected to enhanced agentic chat service');
+      notificationService.success('Connected to enhanced agentic chat service', { key: 'chat:connected' });
     });
 
     this.enhancedService.on('connection_closed', (data: any) => {

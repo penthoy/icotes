@@ -18,6 +18,7 @@ import React, { useRef, useEffect, useState, useCallback, useImperativeHandle, f
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
+import { notificationService } from '../../services/notificationService';
 import { configService } from '../../../services/config-service';
 
 // Enhanced clipboard functionality
@@ -117,22 +118,15 @@ class EnhancedClipboard {
   }
 
   private showClipboardNotification(message: string, type: 'success' | 'warning'): void {
-    const notification = document.createElement('div');
-    notification.className = `fixed top-4 right-4 px-4 py-2 rounded shadow-lg z-50 transition-opacity ${
-      type === 'success' ? 'bg-green-500 text-white' : 'bg-yellow-500 text-black'
-    }`;
-    notification.textContent = message;
-    
-    document.body.appendChild(notification);
-    
-    setTimeout(() => {
-      notification.style.opacity = '0';
-      setTimeout(() => {
-        if (notification.parentNode) {
-          notification.parentNode.removeChild(notification);
-        }
-      }, 300);
-    }, 3000);
+    // Use unified notification service to avoid overlapping toasts
+    // Lazy import to avoid heavy imports at module load
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    notificationService.show(message, type === 'success' ? 'success' : 'warning', {
+      position: 'top-right',
+      duration: 3000,
+      dismissible: true,
+      key: `terminal:clipboard:${type}`,
+    });
   }
 }
 

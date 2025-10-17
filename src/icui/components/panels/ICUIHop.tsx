@@ -105,21 +105,21 @@ const ICUIHop: React.FC<{ className?: string }> = ({ className = '' }) => {
         if (pw === null) { setLoading(false); return; }
         opts.password = pw || undefined;
       }
-      notificationService.info(`Connecting to ${cred.username ? cred.username + '@' : ''}${cred.host}...`);
+      notificationService.info(`Connecting to ${cred.username ? cred.username + '@' : ''}${cred.host}...`, { key: 'hop:connecting' });
       const session = await (backendService as any).connectHop?.(cred.id, opts);
       logHop('handleConnect result', { credId: cred.id, session });
       if (session?.status === 'connected' || session?.connected) {
-        notificationService.success(`Connected to ${cred.username ? cred.username + '@' : ''}${cred.host}`);
+        notificationService.success(`Connected to ${cred.username ? cred.username + '@' : ''}${cred.host}` , { key: 'hop:status' });
         // Reload to update sessions list
         await load();
       } else if (session?.status === 'error') {
-        notificationService.error(`Connection failed: ${session?.lastError || 'Unknown error'}`);
+        notificationService.error(`Connection failed: ${session?.lastError || 'Unknown error'}`, { key: 'hop:status' });
       } else {
-        notificationService.info(`Connection status: ${session?.status || 'unknown'}`);
+        notificationService.info(`Connection status: ${session?.status || 'unknown'}`, { key: 'hop:status' });
       }
     } catch (e: any) {
       setError(e?.message || 'Connect failed');
-      notificationService.error(e?.message || 'Connect failed');
+      notificationService.error(e?.message || 'Connect failed', { key: 'hop:status' });
     } finally {
       setLoading(false);
     }
@@ -130,12 +130,12 @@ const ICUIHop: React.FC<{ className?: string }> = ({ className = '' }) => {
       setLoading(true);
       logHop('disconnect requested', { contextId });
       await (backendService as any).disconnectHop?.(contextId);
-      notificationService.success(contextId ? `Disconnected from ${contextId}` : 'Disconnected');
+      notificationService.success(contextId ? `Disconnected from ${contextId}` : 'Disconnected', { key: 'hop:status' });
       // Reload to update sessions list
       await load();
     } catch (e: any) {
       setError(e?.message || 'Disconnect failed');
-      notificationService.error(e?.message || 'Disconnect failed');
+      notificationService.error(e?.message || 'Disconnect failed', { key: 'hop:status' });
     } finally {
       setLoading(false);
     }
@@ -148,12 +148,12 @@ const ICUIHop: React.FC<{ className?: string }> = ({ className = '' }) => {
       await (backendService as any).hopTo?.(contextId);
       const ses = sessions.find(s => s.contextId === contextId);
       const label = ses?.host ? `${ses.username || ''}@${ses.host}` : contextId;
-      notificationService.success(`Switched to ${label}`);
+      notificationService.success(`Switched to ${label}`, { key: 'hop:switch' });
       // Reload to update active session
       await load();
     } catch (e: any) {
       setError(e?.message || 'Hop failed');
-      notificationService.error(e?.message || 'Hop failed');
+      notificationService.error(e?.message || 'Hop failed', { key: 'hop:switch' });
     } finally {
       setLoading(false);
     }

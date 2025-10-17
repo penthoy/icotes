@@ -7,28 +7,19 @@
 
 export type NotificationType = 'success' | 'error' | 'warning' | 'info';
 
+// Unified editor notifications: delegate to global notificationService
+// This avoids overlapping fixed-position toasts and ensures consistent stacking,
+// hover-to-pause behavior, and selectable text.
+import { notificationService } from '../../../services/notificationService';
+
 export class EditorNotificationService {
   static show(message: string, type: NotificationType = 'info'): void {
-    const notification = document.createElement('div');
-    const colors = {
-      success: 'bg-green-500 text-white',
-      error: 'bg-red-500 text-white',
-      warning: 'bg-yellow-500 text-black',
-      info: 'bg-blue-500 text-white'
-    };
-    
-    notification.className = `fixed top-4 right-4 px-4 py-2 rounded shadow-lg z-50 transition-opacity ${colors[type]}`;
-    notification.textContent = message;
-    
-    document.body.appendChild(notification);
-    
-    setTimeout(() => {
-      notification.style.opacity = '0';
-      setTimeout(() => {
-        if (notification.parentNode) {
-          notification.parentNode.removeChild(notification);
-        }
-      }, 300);
-    }, 3000);
+    notificationService.show(message, type, {
+      position: 'top-right',
+      duration: 3000,
+      dismissible: true,
+      // key helps dedupe frequent editor messages
+      key: `editor:${type}:${message}`,
+    });
   }
 }
