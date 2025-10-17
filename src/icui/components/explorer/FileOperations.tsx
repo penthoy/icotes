@@ -3,6 +3,8 @@ import { backendService, ICUIFileNode } from '../../services';
 import { log } from '../../../services/frontend-logger';
 import { confirmService } from '../../services/confirmService';
 import { promptService } from '../../services/promptService';
+import { getRelativeWorkspacePath } from '../../lib/workspaceUtils';
+import { copyToClipboard } from '../../utils/clipboardUtils';
 
 export interface FileOperationContext {
   selectedFiles: ICUIFileNode[];
@@ -181,6 +183,31 @@ export class ExplorerFileOperations {
           description: 'Send selected files/folders to another hop context default workspace path'
         }
       ),
+
+      // Copy path operations
+      CommandUtils.createWithShortcut(
+        'explorer.copyPath',
+        'Copy Path',
+        'Ctrl+Shift+C',
+        this.copyPath.bind(this),
+        {
+          category: 'edit',
+          icon: '📋',
+          description: 'Copy the absolute path of the selected file'
+        }
+      ),
+
+      CommandUtils.createWithShortcut(
+        'explorer.copyRelativePath',
+        'Copy Relative Path',
+        'Ctrl+Shift+Alt+C',
+        this.copyRelativePath.bind(this),
+        {
+          category: 'edit',
+          icon: '📋',
+          description: 'Copy the relative path of the selected file'
+        }
+      ),
     ];
 
     commands.forEach(command => {
@@ -211,6 +238,8 @@ export class ExplorerFileOperations {
       'explorer.refresh',
       'explorer.download',
       'explorer.sendTo',
+      'explorer.copyPath',
+      'explorer.copyRelativePath',
     ];
 
     commandIds.forEach(commandId => {
@@ -658,6 +687,60 @@ export class ExplorerFileOperations {
 
     await context.refreshDirectory();
     log.info('ExplorerFileOperations', 'Refreshed directory', { path: context.currentPath });
+  }
+
+  /**
+   * Copy absolute path to clipboard
+   */
+  private async copyPath(context?: FileOperationContext): Promise<void> {
+    if (!context || context.selectedFiles.length !== 1) {
+      log.warn('ExplorerFileOperations', 'copyPath requires exactly one selected file');
+      return;
+    }
+
+    const file = context.selectedFiles[0];
+    try {
+      await copyToClipboard(file.path);
+      log.info('ExplorerFileOperations', 'Copied absolute path to clipboard', { path: file.path });
+    } catch (error) {
+      log.error('ExplorerFileOperations', 'Failed to copy path to clipboard', { path: file.path, error });
+      await confirmService.confirm({
+        title: 'Copy Failed',
+        message: `Failed to copy path to clipboard: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        confirmText: 'OK'
+      });
+    }
+  }
+
+  /**
+   * Copy relative path to clipboard
+   */
+  private async copyRelativePath(context?: FileOperationContext): Promise<void> {
+    if (!context || context.selectedFiles.length !== 1) {
+      log.warn('ExplorerFileOperations', 'copyRelativePath requires exactly one selected file');
+      return;
+    }
+
+    const file = context.selectedFiles[0];
+    const relativePath = getRelativeWorkspacePath(file.path);
+
+    try {
+      await copyToClipboard(relativePath);
+      log.info('ExplorerFileOperations', 'Copied relative path to clipboard', { 
+        absolutePath: file.path,
+        relativePath 
+      });
+    } catch (error) {
+      log.error('ExplorerFileOperations', 'Failed to copy relative path to clipboard', { 
+        path: file.path, 
+        error 
+      });
+      await confirmService.confirm({
+        title: 'Copy Failed',
+        message: `Failed to copy relative path to clipboard: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        confirmText: 'OK'
+      });
+    }
   }
 
 
