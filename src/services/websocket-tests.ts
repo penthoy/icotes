@@ -5,7 +5,7 @@
  * before integrating with the existing system.
  */
 
-import { EnhancedWebSocketService } from './websocket-service-impl';
+import { WebSocketService } from './websocket-service-impl';
 import { WebSocketErrorHandler } from './websocket-errors';
 import { webSocketMigration } from './websocket-migration';
 
@@ -34,11 +34,11 @@ export interface ExportedTestResults {
 }
 
 export class WebSocketTestSuite {
-  private enhancedService: EnhancedWebSocketService | null = null;
+  private wsService: WebSocketService | null = null;
   private testResults: TestResult[] = [];
 
   constructor() {
-    this.enhancedService = new EnhancedWebSocketService({
+    this.wsService = new WebSocketService({
       enableMessageQueue: true,
       enableHealthMonitoring: true,
       enableAutoRecovery: true,
@@ -93,12 +93,12 @@ export class WebSocketTestSuite {
     
     try {
       // Test service creation
-      if (!this.enhancedService) {
+      if (!this.wsService) {
         throw new Error('Enhanced service not initialized');
       }
 
       // Test configuration
-      const healthInfo = this.enhancedService.getHealthInfo();
+      const healthInfo = this.wsService.getHealthInfo();
       if (!healthInfo) {
         throw new Error('Health info not available');
       }
@@ -128,12 +128,12 @@ export class WebSocketTestSuite {
     const startTime = Date.now();
     
     try {
-      if (!this.enhancedService) {
+      if (!this.wsService) {
         throw new Error('Enhanced service not available');
       }
 
       // Test connection limits
-      const stats = this.enhancedService.getHealthInfo();
+      const stats = this.wsService.getHealthInfo();
       if (!('connections' in stats)) {
         throw new Error('Connection statistics not available');
       }
@@ -261,18 +261,18 @@ export class WebSocketTestSuite {
     const startTime = Date.now();
     
     try {
-      if (!this.enhancedService) {
+      if (!this.wsService) {
         throw new Error('Enhanced service not available');
       }
 
       // Test health info retrieval
-      const healthInfo = this.enhancedService.getHealthInfo();
+      const healthInfo = this.wsService.getHealthInfo();
       if (!healthInfo) {
         throw new Error('Health info not available');
       }
 
       // Test recommendations (should work even without connections)
-      const recommendations = this.enhancedService.getRecommendations('test-connection');
+      const recommendations = this.wsService.getRecommendations('test-connection');
       if (!Array.isArray(recommendations)) {
         throw new Error('Recommendations not properly formatted');
       }
@@ -307,7 +307,7 @@ export class WebSocketTestSuite {
     try {
       // Test migration status
       const status = webSocketMigration.getMigrationStatus();
-      if (!status || typeof status.enhancedServiceAvailable !== 'boolean') {
+      if (!status || typeof status.wsServiceAvailable !== 'boolean') {
         throw new Error('Migration status not available');
       }
 
@@ -415,8 +415,8 @@ export class WebSocketTestSuite {
    * Cleanup
    */
   destroy(): void {
-    if (this.enhancedService) {
-      this.enhancedService.destroy();
+    if (this.wsService) {
+      this.wsService.destroy();
     }
     webSocketMigration.destroy();
   }

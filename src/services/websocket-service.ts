@@ -5,17 +5,17 @@
  * with connection management, error handling, message queuing, and health monitoring.
  */
 
-import { EnhancedWebSocketService } from './websocket-service-impl';
+import { WebSocketService } from './websocket-service-impl';
 
 export * from './websocket-service-impl';
-export { EnhancedWebSocketService as WebSocketService } from './websocket-service-impl';
+export { WebSocketService as WebSocketService } from './websocket-service-impl';
 
 // Singleton instance for backward compatibility
 let websocketServiceInstance: any = null;
 
 export function getWebSocketService(config?: any): any {
   if (!websocketServiceInstance) {
-    websocketServiceInstance = new EnhancedWebSocketService(config);
+    websocketServiceInstance = new WebSocketService(config);
   }
   return websocketServiceInstance;
 }

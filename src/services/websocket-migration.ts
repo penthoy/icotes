@@ -5,12 +5,12 @@
  * to the enhanced WebSocket service with backward compatibility.
  */
 
-import { EnhancedWebSocketService } from './websocket-service-impl';
+import { WebSocketService } from './websocket-service-impl';
 import { ServiceType } from './connection-manager';
 import { ChatBackendClient } from '../icui/services/chatBackendClient';
 
 export interface MigrationConfig {
-  enableEnhancedService: boolean;
+  enableWebSocketService: boolean;
   migrateChat: boolean;
   migrateTerminal: boolean;
   migrateMain: boolean;
@@ -19,12 +19,12 @@ export interface MigrationConfig {
 }
 
 export class WebSocketMigrationHelper {
-  private enhancedService: EnhancedWebSocketService | null = null;
+  private wsService: WebSocketService | null = null;
   private legacyServices = new Map<string, any>();
   private config: MigrationConfig;
 
   private readonly DEFAULT_MIGRATION_CONFIG: MigrationConfig = {
-    enableEnhancedService: true,
+    enableWebSocketService: true,
     migrateChat: true,
     migrateTerminal: false, // Start with false to test chat first
     migrateMain: false,
@@ -35,8 +35,8 @@ export class WebSocketMigrationHelper {
   constructor(config?: Partial<MigrationConfig>) {
     this.config = { ...this.DEFAULT_MIGRATION_CONFIG, ...config };
     
-    if (this.config.enableEnhancedService) {
-      this.initializeEnhancedService();
+    if (this.config.enableWebSocketService) {
+      this.initializeWebSocketService();
     }
   }
 
@@ -44,10 +44,10 @@ export class WebSocketMigrationHelper {
    * Get service for a specific type (enhanced or legacy)
    */
   getService(serviceType: ServiceType): any {
-    const shouldUseEnhanced = this.shouldUseEnhancedService(serviceType);
+    const shouldUseWebSocket = this.shouldUseWebSocketService(serviceType);
     
-    if (shouldUseEnhanced && this.enhancedService) {
-      return new EnhancedServiceAdapter(this.enhancedService, serviceType);
+    if (shouldUseWebSocket && this.wsService) {
+      return new WebSocketServiceAdapter(this.wsService, serviceType);
     }
     
     return this.getLegacyService(serviceType);
@@ -57,14 +57,14 @@ export class WebSocketMigrationHelper {
    * Test enhanced service with a connection
    */
   async testEnhancedService(serviceType: ServiceType): Promise<boolean> {
-    if (!this.enhancedService) {
+    if (!this.wsService) {
       return false;
     }
 
     try {
       console.log(`Testing enhanced service for ${serviceType}...`);
       
-      const connectionId = await this.enhancedService.connect({
+      const connectionId = await this.wsService.connect({
         serviceType,
         timeout: 5000
       });
@@ -72,11 +72,11 @@ export class WebSocketMigrationHelper {
       // Test basic connectivity
       await new Promise(resolve => setTimeout(resolve, 1000));
       
-      const status = this.enhancedService.getConnectionStatus(connectionId);
+      const status = this.wsService.getConnectionStatus(connectionId);
       const isHealthy = status?.status === 'connected';
       
       // Cleanup test connection
-      await this.enhancedService.disconnect(connectionId);
+      await this.wsService.disconnect(connectionId);
       
       console.log(`Enhanced service test for ${serviceType}: ${isHealthy ? 'PASSED' : 'FAILED'}`);
       return isHealthy;
@@ -90,7 +90,7 @@ export class WebSocketMigrationHelper {
   /**
    * Enable enhanced service for a specific type
    */
-  async enableEnhancedService(serviceType: ServiceType): Promise<boolean> {
+  async enableWebSocketService(serviceType: ServiceType): Promise<boolean> {
     const testPassed = await this.testEnhancedService(serviceType);
     
     if (testPassed) {
@@ -139,7 +139,7 @@ export class WebSocketMigrationHelper {
    * Get migration status
    */
   getMigrationStatus(): {
-    enhancedServiceAvailable: boolean;
+    wsServiceAvailable: boolean;
     servicesUsingEnhanced: ServiceType[];
     servicesUsingLegacy: ServiceType[];
     testMode: boolean;
@@ -149,7 +149,7 @@ export class WebSocketMigrationHelper {
     const servicesUsingLegacy: ServiceType[] = [];
     
     allServices.forEach(service => {
-      if (this.shouldUseEnhancedService(service)) {
+      if (this.shouldUseWebSocketService(service)) {
         servicesUsingEnhanced.push(service);
       } else {
         servicesUsingLegacy.push(service);
@@ -157,7 +157,7 @@ export class WebSocketMigrationHelper {
     });
 
     return {
-      enhancedServiceAvailable: this.enhancedService !== null,
+      wsServiceAvailable: this.wsService !== null,
       servicesUsingEnhanced,
       servicesUsingLegacy,
       testMode: this.config.testMode
@@ -168,12 +168,12 @@ export class WebSocketMigrationHelper {
    * Get performance comparison
    */
   getPerformanceMetrics(): any {
-    if (!this.enhancedService) {
+    if (!this.wsService) {
       return { error: 'Enhanced service not available' };
     }
 
     return {
-      enhanced: this.enhancedService.getHealthInfo(),
+      enhanced: this.wsService.getHealthInfo(),
       legacy: this.getLegacyMetrics(),
       migration: this.getMigrationStatus()
     };
@@ -183,8 +183,8 @@ export class WebSocketMigrationHelper {
    * Cleanup and destroy services
    */
   destroy(): void {
-    if (this.enhancedService) {
-      this.enhancedService.destroy();
+    if (this.wsService) {
+      this.wsService.destroy();
     }
     
     for (const service of this.legacyServices.values()) {
@@ -200,13 +200,13 @@ export class WebSocketMigrationHelper {
 
   // Private helper methods
 
-  private initializeEnhancedService(): void {
+  private initializeWebSocketService(): void {
     try {
       // Prevent double initialization
-      if (this.enhancedService) {
+      if (this.wsService) {
         return; // Already initialized
       }
-      this.enhancedService = new EnhancedWebSocketService({
+      this.wsService = new WebSocketService({
         enableMessageQueue: true,
         enableHealthMonitoring: true,
         enableAutoRecovery: true,
@@ -224,12 +224,12 @@ export class WebSocketMigrationHelper {
       console.log('WebSocket service initialized');
     } catch (error) {
       console.error('Failed to initialize enhanced WebSocket service:', error);
-      this.enhancedService = null;
+      this.wsService = null;
     }
   }
 
-  private shouldUseEnhancedService(serviceType: ServiceType): boolean {
-    if (!this.config.enableEnhancedService || !this.enhancedService) {
+  private shouldUseWebSocketService(serviceType: ServiceType): boolean {
+    if (!this.config.enableWebSocketService || !this.wsService) {
       return false;
     }
 
@@ -287,13 +287,13 @@ export class WebSocketMigrationHelper {
 /**
  * Adapter to make enhanced service compatible with existing interfaces
  */
-class EnhancedServiceAdapter {
-  private enhancedService: EnhancedWebSocketService;
+class WebSocketServiceAdapter {
+  private wsService: WebSocketService;
   private serviceType: ServiceType;
   private connectionId: string | null = null;
 
-  constructor(enhancedService: EnhancedWebSocketService, serviceType: ServiceType) {
-    this.enhancedService = enhancedService;
+  constructor(wsService: WebSocketService, serviceType: ServiceType) {
+    this.wsService = wsService;
     this.serviceType = serviceType;
   }
 
@@ -302,7 +302,7 @@ class EnhancedServiceAdapter {
    */
   async connectWebSocket(options?: any): Promise<boolean> {
     try {
-      this.connectionId = await this.enhancedService.connect({
+      this.connectionId = await this.wsService.connect({
         serviceType: this.serviceType,
         ...options
       });
@@ -321,7 +321,7 @@ class EnhancedServiceAdapter {
       throw new Error('Not connected');
     }
 
-    await this.enhancedService.sendMessage(
+    await this.wsService.sendMessage(
       this.connectionId,
       { type: 'message', content, ...options },
       { priority: options.priority || 'normal' }
@@ -333,7 +333,7 @@ class EnhancedServiceAdapter {
    */
   async disconnect(): Promise<void> {
     if (this.connectionId) {
-      await this.enhancedService.disconnect(this.connectionId);
+      await this.wsService.disconnect(this.connectionId);
       this.connectionId = null;
     }
   }
@@ -342,7 +342,7 @@ class EnhancedServiceAdapter {
    * Event subscription (compatible with existing interfaces)
    */
   onMessage(callback: Function): void {
-    this.enhancedService.on('message', (data) => {
+    this.wsService.on('message', (data) => {
       if (data.connectionId === this.connectionId) {
         callback(data.message);
       }
@@ -350,13 +350,13 @@ class EnhancedServiceAdapter {
   }
 
   onStatus(callback: Function): void {
-    this.enhancedService.on('connection_opened', (data) => {
+    this.wsService.on('connection_opened', (data) => {
       if (data.connectionId === this.connectionId) {
         callback({ connected: true });
       }
     });
 
-    this.enhancedService.on('connection_closed', (data) => {
+    this.wsService.on('connection_closed', (data) => {
       if (data.connectionId === this.connectionId) {
         callback({ connected: false });
       }
@@ -371,7 +371,7 @@ class EnhancedServiceAdapter {
       return null;
     }
     
-    return this.enhancedService.getHealthInfo(this.connectionId);
+    return this.wsService.getHealthInfo(this.connectionId);
   }
 
   /**
@@ -382,7 +382,7 @@ class EnhancedServiceAdapter {
       return ['Not connected'];
     }
     
-    return this.enhancedService.getRecommendations(this.connectionId);
+    return this.wsService.getRecommendations(this.connectionId);
   }
 
   /**
@@ -393,13 +393,13 @@ class EnhancedServiceAdapter {
       return null;
     }
     
-    return await this.enhancedService.runDiagnostics(this.connectionId);
+    return await this.wsService.runDiagnostics(this.connectionId);
   }
 }
 
 // Export singleton instance for easy use
 export const webSocketMigration = new WebSocketMigrationHelper({
-  enableEnhancedService: true,
+  enableWebSocketService: true,
   migrateChat: false, // Start with false, enable after testing
   migrateTerminal: false,
   migrateMain: false,

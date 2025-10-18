@@ -73,7 +73,12 @@ class ImageReferenceService:
         self._references: Dict[str, Dict[str, Any]] = {}
         self._load_index()
         
-        logger.info(f"ImageReferenceService initialized: workspace={workspace_path}")
+        # Only log initialization on first creation (reduce log spam from re-initialization)
+        global _already_logged_init
+        if not _already_logged_init:
+            logger.info(f"ImageReferenceService initialized: workspace={workspace_path}")
+        else:
+            logger.debug(f"ImageReferenceService reused/recreated: workspace={workspace_path}")
     
     async def create_reference(
         self,
@@ -257,6 +262,7 @@ async def create_image_reference(
 
 
 _global_image_reference_service: Optional[ImageReferenceService] = None
+_already_logged_init = False  # Track if we've logged initialization already
 
 
 def _detect_workspace_root() -> str:
@@ -274,7 +280,7 @@ def get_image_reference_service(workspace_path: Optional[str] = None) -> ImageRe
     Ensures that FastAPI endpoints and background services share a single cache of
     references while still allowing tests to request isolated instances.
     """
-    global _global_image_reference_service
+    global _global_image_reference_service, _already_logged_init
 
     if workspace_path:
         resolved = str(Path(workspace_path).resolve())
@@ -283,10 +289,12 @@ def get_image_reference_service(workspace_path: Optional[str] = None) -> ImageRe
 
     if _global_image_reference_service is None:
         _global_image_reference_service = ImageReferenceService(workspace_path=resolved)
+        _already_logged_init = True  # Only log first init
     else:
         current = Path(_global_image_reference_service.workspace_path).resolve()
         if current != Path(resolved):
             # Recreate service if workspace changed (e.g., during tests)
             _global_image_reference_service = ImageReferenceService(workspace_path=resolved)
+            # Don't set flag - workspace change is noteworthy
 
     return _global_image_reference_service

@@ -6,7 +6,7 @@
  */
 
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
-import { EnhancedWebSocketService } from '../../services/websocket-service-impl';
+import { WebSocketService } from '../../services/websocket-service-impl';
 import { log } from '../../services/frontend-logger';
 import { configService } from '../../services/config-service';
 import type { ConnectionOptions, MessageOptions } from '../../services/websocket-service-impl';
@@ -57,7 +57,7 @@ export interface ChatMessage {
     context?: any;
     isStreaming?: boolean;
     streamComplete?: boolean;
-    // Enhanced fields for backward compatibility
+    // For backward compatibility
     model?: string;
     agent?: string;
     streaming?: boolean;
@@ -102,7 +102,7 @@ export interface AgentConfig {
 }
 
 export class ChatBackendClient {
-  private enhancedService: EnhancedWebSocketService | null = null;
+  private wsService: WebSocketService | null = null;
   private connectionId: string | null = null;
   
   // Event handlers
@@ -134,7 +134,7 @@ export class ChatBackendClient {
   private connectionStats: any = null;
 
   constructor() {
-    this.initializeEnhancedService();
+    this.initializeWebSocketService();
     
     // Clean up old message IDs periodically to prevent memory leaks
     setInterval(() => {
@@ -149,11 +149,11 @@ export class ChatBackendClient {
   }
 
   /**
-   * Initialize enhanced WebSocket service
+   * Initialize WebSocket service
    */
-  private initializeEnhancedService(): void {
-    // Configure enhanced service for chat with minimal features to avoid disconnects
-    this.enhancedService = new EnhancedWebSocketService({
+  private initializeWebSocketService(): void {
+    // Configure service for chat with minimal features to avoid disconnects
+    this.wsService = new WebSocketService({
       enableMessageQueue: false, // Disable queuing
       enableHealthMonitoring: false, // Disable health monitoring
       enableAutoRecovery: false, // Disable auto recovery
@@ -166,9 +166,9 @@ export class ChatBackendClient {
       }
     });
 
-    // Enhanced service event handlers
-    this.enhancedService.on('connection_opened', (data: any) => {
-      log.info('ChatBackendClient', 'Enhanced service connected', data);
+    // Service event handlers
+    this.wsService.on('connection_opened', (data: any) => {
+      log.debug('ChatBackendClient', 'Service connected', data);
       if (process.env.NODE_ENV === 'development') {
         console.log('[ChatBackendClient] Connection opened:', data);
       }
@@ -180,13 +180,13 @@ export class ChatBackendClient {
         timestamp: new Date(),
         chat: { sessionId: this.generateSessionId() }
       });
-      
-      notificationService.success('Connected to enhanced agentic chat service', { key: 'chat:connected' });
+
+      notificationService.success('Connected to chat service', { key: 'chat:connected' });
     });
 
     // Also listen for legacy events for compatibility
-    this.enhancedService.on('connected', (data: any) => {
-      log.info('ChatBackendClient', 'Enhanced service connected (legacy event)', data);
+    this.wsService.on('connected', (data: any) => {
+      log.debug('ChatBackendClient', 'Service connected (legacy event)', data);
       this.reconnectAttempts = 0;
       this.isDisconnecting = false;
       
@@ -195,12 +195,12 @@ export class ChatBackendClient {
         timestamp: new Date(),
         chat: { sessionId: this.generateSessionId() }
       });
-      
-      notificationService.success('Connected to enhanced agentic chat service', { key: 'chat:connected' });
+
+      notificationService.success('Connected to agentic chat service', { key: 'chat:connected' });
     });
 
-    this.enhancedService.on('connection_closed', (data: any) => {
-      log.info('ChatBackendClient', 'Enhanced service disconnected', data);
+    this.wsService.on('connection_closed', (data: any) => {
+      log.debug('ChatBackendClient', 'Service disconnected', data);
       if (process.env.NODE_ENV === 'development') {
         console.log('[ChatBackendClient] Connection closed:', data);
       }
@@ -213,8 +213,8 @@ export class ChatBackendClient {
       });
     });
 
-    this.enhancedService.on('disconnected', (data: any) => {
-      log.info('ChatBackendClient', 'Enhanced service disconnected (legacy event)', data);
+    this.wsService.on('disconnected', (data: any) => {
+      log.debug('ChatBackendClient', 'Service disconnected (legacy event)', data);
       
       this.notifyStatus({
         connected: false,
@@ -224,7 +224,7 @@ export class ChatBackendClient {
       });
     });
 
-    this.enhancedService.on('message', (data: any) => {
+    this.wsService.on('message', (data: any) => {
       // console.log('[ChatBackendClient] Raw message received:', data);
       if (data.connectionId === this.connectionId) {
         // Use rawData if available (original JSON string), otherwise stringify the parsed message
@@ -236,12 +236,12 @@ export class ChatBackendClient {
       }
     });
 
-    this.enhancedService.on('error', (error: any) => {
-      log.error('ChatBackendClient', 'Enhanced service error', { error });
-      this.handleError(error.message || 'Unknown enhanced service error');
+    this.wsService.on('error', (error: any) => {
+      log.error('ChatBackendClient', 'Service error', { error });
+      this.handleError(error.message || 'Unknown service error');
     });
 
-    this.enhancedService.on('healthUpdate', (health: any) => {
+    this.wsService.on('healthUpdate', (health: any) => {
       this.healthStatus = health;
       // Reduced debug: Only log health issues, not routine updates
       if (health.status === 'unhealthy') {
@@ -249,7 +249,7 @@ export class ChatBackendClient {
       }
     });
 
-    this.enhancedService.on('connectionClosed', (data: any) => {
+    this.wsService.on('connectionClosed', (data: any) => {
       if (data.connectionId === this.connectionId) {
         // Reduced debug: Only log unexpected connection closures
         if (data.reason && data.reason !== 'normal closure') {
@@ -268,18 +268,18 @@ export class ChatBackendClient {
   }
 
   /**
-   * Connect to enhanced chat service
+   * Connect to chat service
    */
   async connectWebSocket(): Promise<boolean> {
     try {
       // Prevent multiple connection attempts
-      if (this.connectionId && this.enhancedService) {
-        log.warn('ChatBackendClient', 'Enhanced service already connected');
+      if (this.connectionId && this.wsService) {
+        log.warn('ChatBackendClient', 'Service already connected');
         return true;
       }
 
-      if (!this.enhancedService) {
-        throw new Error('Enhanced service not initialized');
+      if (!this.wsService) {
+        throw new Error('Service not initialized');
       }
 
       const options: ConnectionOptions = {
@@ -292,12 +292,12 @@ export class ChatBackendClient {
       };
 
       log.info('ChatBackendClient', 'Connecting with options', options);
-      this.connectionId = await this.enhancedService.connect(options);
+      this.connectionId = await this.wsService.connect(options);
       log.info('ChatBackendClient', 'Connected with ID', { connectionId: this.connectionId });
       
       return true;
     } catch (error) {
-      log.error('ChatBackendClient', 'Enhanced connection failed', { error });
+      log.error('ChatBackendClient', 'Service connection failed', { error });
       
       this.notifyStatus({
         connected: false,
@@ -311,7 +311,7 @@ export class ChatBackendClient {
   }
 
   /**
-   * Send message with enhanced features
+   * Send message with features
    */
   async sendMessage(
     content: string, 
@@ -326,8 +326,8 @@ export class ChatBackendClient {
       attachments?: any[];
     }
   ): Promise<void> {
-    if (!this.connectionId || !this.enhancedService) {
-      throw new Error('Enhanced chat service not connected');
+    if (!this.connectionId || !this.wsService) {
+      throw new Error('Chat service not connected');
     }
 
     const sessionId = options?.sessionId || this.currentSessionId || this.generateSessionId();
@@ -356,9 +356,9 @@ export class ChatBackendClient {
     };
 
     try {
-      // console.log('[ChatBackendClient] Sending enhanced message:', message);
+      // console.log('[ChatBackendClient] Sending message:', message);
       
-      await this.enhancedService.sendMessage(
+      await this.wsService.sendMessage(
         this.connectionId,
         JSON.stringify(message),
         messageOptions
@@ -381,8 +381,8 @@ export class ChatBackendClient {
    * Stop/interrupt current streaming response
    */
   async stopStreaming(): Promise<void> {
-    if (!this.connectionId || !this.enhancedService) {
-      throw new Error('Enhanced chat service not connected');
+    if (!this.connectionId || !this.wsService) {
+      throw new Error('Chat service not connected');
     }
 
     // Set client-side interrupt so UI stops immediately even if backend delays
@@ -406,7 +406,7 @@ export class ChatBackendClient {
     };
 
     try {
-      await this.enhancedService.sendMessage(
+      await this.wsService.sendMessage(
         this.connectionId,
         JSON.stringify(stopMessage),
         messageOptions
@@ -419,11 +419,11 @@ export class ChatBackendClient {
   }
 
   /**
-   * Get available agents with enhanced caching
+   * Get available agents with caching
    */
   async getAgents(): Promise<AgentConfig[]> {
-    if (!this.connectionId || !this.enhancedService) {
-      throw new Error('Enhanced chat service not connected');
+    if (!this.connectionId || !this.wsService) {
+      throw new Error('Chat service not connected');
     }
 
     try {
@@ -432,7 +432,7 @@ export class ChatBackendClient {
         timestamp: new Date()
       };
 
-      await this.enhancedService.sendMessage(
+      await this.wsService.sendMessage(
         this.connectionId,
         JSON.stringify(message),
         {
@@ -446,7 +446,7 @@ export class ChatBackendClient {
       // For now, return empty array as placeholder
       return [];
     } catch (error) {
-      console.error('[EnhancedChatBackendClient] Get agents failed:', error);
+      console.error('[ChatBackendClient] Get agents failed:', error);
       throw error;
     }
   }
@@ -476,7 +476,7 @@ export class ChatBackendClient {
         const config = await configService.getConfig();
         baseUrl = config.api_url || config.base_url;
       } catch (error) {
-        console.warn('[EnhancedChatBackendClient] Failed to get config, using fallbacks:', error);
+        console.warn('[ChatBackendClient] Failed to get config, using fallbacks:', error);
         // Fallback to environment variables
         baseUrl = (window as any).__ICUI_API_URL__ || 
                   (import.meta as any).env?.VITE_API_URL || 
@@ -497,7 +497,7 @@ export class ChatBackendClient {
       const response = await fetch(url);
       
       if (!response.ok) {
-        console.warn('[EnhancedChatBackendClient] Failed to fetch message history:', response.status);
+        console.warn('[ChatBackendClient] Failed to fetch message history:', response.status);
         return [];
       }
       
@@ -539,7 +539,7 @@ export class ChatBackendClient {
         }
       }));
     } catch (error) {
-      console.error('[EnhancedChatBackendClient] Failed to load message history:', error);
+      console.error('[ChatBackendClient] Failed to load message history:', error);
       return [];
     }
   }
@@ -568,7 +568,7 @@ export class ChatBackendClient {
         const config = await configService.getConfig();
         baseUrl = config.api_url || config.base_url;
       } catch (error) {
-        console.warn('[EnhancedChatBackendClient] Failed to get config, using fallbacks:', error);
+        console.warn('[ChatBackendClient] Failed to get config, using fallbacks:', error);
         // Fallback to environment variables
         baseUrl = (window as any).__ICUI_API_URL__ || 
                   (import.meta as any).env?.VITE_API_URL || 
@@ -586,7 +586,7 @@ export class ChatBackendClient {
         params.set('session_id', this.currentSessionId);
       }
       const url = `${baseUrl}/api/chat/clear?${params.toString()}`;
-      // console.log('[EnhancedChatBackendClient] Clearing messages at:', url);
+      // console.log('[ChatBackendClient] Clearing messages at:', url);
       
       const response = await fetch(url, {
         method: 'POST',
@@ -597,9 +597,9 @@ export class ChatBackendClient {
         throw new Error(`Failed to clear messages: ${response.status} ${response.statusText}`);
       }
       
-      // console.log('[EnhancedChatBackendClient] Messages cleared successfully');
+      // console.log('[ChatBackendClient] Messages cleared successfully');
     } catch (error) {
-      console.error('[EnhancedChatBackendClient] Failed to clear messages:', error);
+      console.error('[ChatBackendClient] Failed to clear messages:', error);
       throw error;
     }
   }
@@ -617,8 +617,8 @@ export class ChatBackendClient {
    * Create agent (legacy compatibility)
    */
   async createAgent(template: any, agentConfig: any): Promise<any> {
-    if (!this.connectionId || !this.enhancedService) {
-      throw new Error('Enhanced chat service not connected');
+    if (!this.connectionId || !this.wsService) {
+      throw new Error('Chat service not connected');
     }
 
     try {
@@ -629,7 +629,7 @@ export class ChatBackendClient {
         timestamp: new Date()
       };
 
-      await this.enhancedService.sendMessage(
+      await this.wsService.sendMessage(
         this.connectionId,
         JSON.stringify(message),
         {
@@ -641,7 +641,7 @@ export class ChatBackendClient {
 
       return { success: true, agentId: `agent_${Date.now()}` };
     } catch (error) {
-      console.error('[EnhancedChatBackendClient] Create agent failed:', error);
+      console.error('[ChatBackendClient] Create agent failed:', error);
       throw error;
     }
   }
@@ -650,8 +650,8 @@ export class ChatBackendClient {
    * Execute agent task (legacy compatibility)
    */
   async executeAgentTask(agentId: string, task: any): Promise<void> {
-    if (!this.connectionId || !this.enhancedService) {
-      throw new Error('Enhanced chat service not connected');
+    if (!this.connectionId || !this.wsService) {
+      throw new Error('Chat service not connected');
     }
 
     try {
@@ -662,7 +662,7 @@ export class ChatBackendClient {
         timestamp: new Date()
       };
 
-      await this.enhancedService.sendMessage(
+      await this.wsService.sendMessage(
         this.connectionId,
         JSON.stringify(message),
         {
@@ -672,7 +672,7 @@ export class ChatBackendClient {
         }
       );
     } catch (error) {
-      console.error('[EnhancedChatBackendClient] Execute agent task failed:', error);
+      console.error('[ChatBackendClient] Execute agent task failed:', error);
       throw error;
     }
   }
@@ -682,34 +682,34 @@ export class ChatBackendClient {
    */
   private handleWebSocketMessage(event: { data: string }): void {
     try {
-      // console.log('[EnhancedChatBackendClient] handleWebSocketMessage called with:', event.data);
+      // console.log('[ChatBackendClient] handleWebSocketMessage called with:', event.data);
       
       // Check if event.data is valid before parsing
       if (!event.data || event.data === 'undefined' || typeof event.data !== 'string') {
-        console.warn('[EnhancedChatBackendClient] Invalid message data received:', event.data);
+        console.warn('[ChatBackendClient] Invalid message data received:', event.data);
         return;
       }
 
       const data = JSON.parse(event.data);
-      // console.log('[EnhancedChatBackendClient] Message parsed:', data);
+      // console.log('[ChatBackendClient] Message parsed:', data);
       
       if (data.type === 'message') {
-        // console.log('[EnhancedChatBackendClient] Handling complete message');
+        // console.log('[ChatBackendClient] Handling complete message');
         this.handleCompleteMessage(data);
       } else if (data.type === 'message_stream') {
-        // console.log('[EnhancedChatBackendClient] Handling streaming message');
+        // console.log('[ChatBackendClient] Handling streaming message');
         this.handleStreamingMessage(data);
       } else if (data.type === 'stream_stopped') {
-        // console.log('[EnhancedChatBackendClient] Handling stream stopped');
+        // console.log('[ChatBackendClient] Handling stream stopped');
         this.handleStreamStopped(data);
       } else if (data.type === 'typing') {
-        // console.log('[EnhancedChatBackendClient] Handling typing indicator');
+        // console.log('[ChatBackendClient] Handling typing indicator');
         this.handleTypingIndicator(data);
       } else if (data.type === 'agent_status') {
-        // console.log('[EnhancedChatBackendClient] Handling agent status');
+        // console.log('[ChatBackendClient] Handling agent status');
         this.handleAgentStatus(data);
       } else if (data.type === 'error') {
-        // console.log('[EnhancedChatBackendClient] Handling error message');
+        // console.log('[ChatBackendClient] Handling error message');
         this.handleErrorMessage(data);
       } else if (data.type === 'connected' && (data.session_id || data.sessionId)) {
         // Capture session id on handshake
@@ -735,10 +735,10 @@ export class ChatBackendClient {
       ) {
         this.handleToolCallEvent(data);
       } else {
-        // console.log('[EnhancedChatBackendClient] Unknown message type:', data.type, 'full data:', data);
+        // console.log('[ChatBackendClient] Unknown message type:', data.type, 'full data:', data);
       }
     } catch (error) {
-      console.error('[EnhancedChatBackendClient] Error parsing message:', error, 'raw data:', event.data);
+      console.error('[ChatBackendClient] Error parsing message:', error, 'raw data:', event.data);
     }
   }
 
@@ -747,7 +747,7 @@ export class ChatBackendClient {
     
     // Skip if we've already processed this message ID via streaming
     if (this.processedMessageIds.has(messageId)) {
-      // console.log('[EnhancedChatBackendClient] Skipping duplicate complete message:', messageId);
+      // console.log('[ChatBackendClient] Skipping duplicate complete message:', messageId);
       return;
     }
     
@@ -778,7 +778,7 @@ export class ChatBackendClient {
     // Don't notify callbacks for user messages (they're echoed back from backend)
     // The UI already shows user messages when they're sent
     if (message.sender === 'user') {
-      // console.log('[EnhancedChatBackendClient] Ignoring user message echo:', messageId);
+      // console.log('[ChatBackendClient] Ignoring user message echo:', messageId);
       return;
     }
     
@@ -787,7 +787,7 @@ export class ChatBackendClient {
   }
 
   private handleStreamingMessage(data: any): void {
-    // console.log('[EnhancedChatBackendClient] Streaming message data:', data);
+    // console.log('[ChatBackendClient] Streaming message data:', data);
     // If we've been interrupted or not streaming anymore, ignore further chunks/ends
     if ((!this.isStreaming || this.stopRequested) && (data.stream_chunk || data.stream_end)) {
       // Silently ignore to prevent UI flicker
@@ -799,7 +799,7 @@ export class ChatBackendClient {
   this.stopRequested = false;
       // Start new streaming message
       const messageId = data.id || Date.now().toString();
-      // console.log('[EnhancedChatBackendClient] Starting streaming message:', messageId);
+      // console.log('[ChatBackendClient] Starting streaming message:', messageId);
       
       // Mark this message ID as processed to prevent duplicate complete messages
       this.processedMessageIds.add(messageId);
@@ -830,7 +830,7 @@ export class ChatBackendClient {
         return;
       }
       // Append chunk to streaming message
-      // console.log('[EnhancedChatBackendClient] Appending chunk:', data.chunk);
+      // console.log('[ChatBackendClient] Appending chunk:', data.chunk);
       this.streamingMessage.content += data.chunk;
       this.messageCallbacks.forEach(callback => callback({ 
         ...this.streamingMessage!,
@@ -850,7 +850,7 @@ export class ChatBackendClient {
       
     } else if (data.stream_end && this.streamingMessage) {
       // Complete streaming message
-      // console.log('[EnhancedChatBackendClient] Ending streaming message:', this.streamingMessage.id);
+      // console.log('[ChatBackendClient] Ending streaming message:', this.streamingMessage.id);
       this.streamingMessage.metadata!.streamComplete = true;
       this.streamingMessage.metadata!.isStreaming = false;
       this.messageCallbacks.forEach(callback => callback({ 
@@ -874,7 +874,7 @@ export class ChatBackendClient {
       this.isStreaming = false;
       this.stopRequested = false;
     } else {
-      console.warn('[EnhancedChatBackendClient] ⚠️ Unhandled streaming message:', data);
+      console.warn('[ChatBackendClient] ⚠️ Unhandled streaming message:', data);
       
       // Fallback to old streaming format for compatibility
       this.streamCallbacks.forEach(callback => 
@@ -908,7 +908,7 @@ export class ChatBackendClient {
     );
     
     // Log the stop event
-    console.log('[EnhancedChatBackendClient] Stream stopped:', data.message || 'Streaming interrupted');
+    console.log('[ChatBackendClient] Stream stopped:', data.message || 'Streaming interrupted');
   }
 
   private handleTypingIndicator(data: any): void {
@@ -916,12 +916,12 @@ export class ChatBackendClient {
   }
 
   private handleAgentStatus(data: any): void {
-    console.log('[EnhancedChatBackendClient] Agent status:', data);
+    console.log('[ChatBackendClient] Agent status:', data);
   }
 
   private handleErrorMessage(data: any): void {
     const error = data.error || 'Unknown chat error';
-      log.error('EnhancedChatBackendClient', 'Chat error', { error });
+      log.error('ChatBackendClient', 'Chat error', { error });
     this.handleError(error);
   }
 
@@ -1152,11 +1152,11 @@ export class ChatBackendClient {
   async disconnect(): Promise<void> {
     this.isDisconnecting = true;
     
-    if (this.connectionId && this.enhancedService) {
+    if (this.connectionId && this.wsService) {
       try {
-        await this.enhancedService.disconnect(this.connectionId);
+        await this.wsService.disconnect(this.connectionId);
       } catch (error) {
-        console.warn('[EnhancedChatBackendClient] Disconnect error:', error);
+        console.warn('[ChatBackendClient] Disconnect error:', error);
       }
     }
     
@@ -1176,11 +1176,11 @@ export class ChatBackendClient {
   destroy(): void {
     this.disconnect();
     
-    if (this.enhancedService) {
+    if (this.wsService) {
       try {
-        this.enhancedService.destroy();
+        this.wsService.destroy();
       } catch (error) {
-        console.warn('[EnhancedChatBackendClient] Service destruction error:', error);
+        console.warn('[ChatBackendClient] Service destruction error:', error);
       }
     }
     
@@ -1195,6 +1195,3 @@ export class ChatBackendClient {
 
 // Create singleton instance
 export const chatBackendClient = new ChatBackendClient();
-
-// Legacy compatibility export
-export const enhancedChatBackendClient = chatBackendClient;

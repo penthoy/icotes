@@ -80,12 +80,7 @@ class FrontendLogger {
       const message = args.map(arg => this.stringifyArg(arg)).join(' ');
       
       const entry = this.createLogEntry(LogLevel.INFO, component, message);
-      this.logQueue.push(entry);
-      
-      // Prevent queue overflow
-      if (this.logQueue.length > this.maxQueueSize) {
-        this.logQueue = this.logQueue.slice(-this.maxQueueSize);
-      }
+      this.addToQueue(entry);
     };
 
     // Intercept console.warn
@@ -96,11 +91,7 @@ class FrontendLogger {
       const message = args.map(arg => this.stringifyArg(arg)).join(' ');
       
       const entry = this.createLogEntry(LogLevel.WARN, component, message);
-      this.logQueue.push(entry);
-      
-      if (this.logQueue.length > this.maxQueueSize) {
-        this.logQueue = this.logQueue.slice(-this.maxQueueSize);
-      }
+      this.addToQueue(entry);
     };
 
     // Intercept console.error
@@ -114,14 +105,7 @@ class FrontendLogger {
       const errorObj = args.find(arg => arg instanceof Error) as Error | undefined;
       
       const entry = this.createLogEntry(LogLevel.ERROR, component, message, undefined, errorObj);
-      this.logQueue.push(entry);
-      
-      if (this.logQueue.length > this.maxQueueSize) {
-        this.logQueue = this.logQueue.slice(-this.maxQueueSize);
-      }
-      
-      // Flush immediately for errors
-      this.flushLogs();
+      this.addToQueue(entry);
     };
   }
 
@@ -205,6 +189,11 @@ class FrontendLogger {
   }
 
   private addToQueue(entry: LogEntry): void {
+    // Drop known noisy logs that don't aid debugging (INFO/DEBUG only)
+    if (this.shouldDrop(entry)) {
+      return;
+    }
+
     this.logQueue.push(entry);
     
     // Prevent queue from growing too large
@@ -216,6 +205,20 @@ class FrontendLogger {
     if (entry.level === LogLevel.ERROR) {
       this.flushLogs();
     }
+  }
+
+  // Heuristic filter to reduce log noise sent to backend
+  private shouldDrop(entry: LogEntry): boolean {
+    // Never drop warnings or errors
+    if (entry.level === LogLevel.ERROR || entry.level === LogLevel.WARN) return false;
+
+    const msg = entry.message || '';
+    // SCM polling messages can be very frequent; suppress at INFO/DEBUG
+    if (/Getting SCM (status|repo info|diff) from:/i.test(msg)) return true;
+    if (/\/api\/scm\/(status|repo|diff)/.test(msg)) return true;
+
+    // Allow everything else
+    return false;
   }
 
   private startPeriodicFlush(): void {

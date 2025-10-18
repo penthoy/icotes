@@ -98,13 +98,16 @@ const ImageGenerationWidget: React.FC<ImageGenerationWidgetProps> = ({
           output = toolCall.output;
         }
         
-        console.log('[ImageWidget] Parsed output:', {
-          hasImageReference: !!output.imageReference,
-          hasImageData: !!output.imageData,
-          hasImageUrl: !!output.imageUrl,
-          hasFullImageUrl: !!output.fullImageUrl,
-          size: output.size
-        });
+        // Image output parsing (logged 16+ times on re-renders, now guarded)
+        if ((import.meta as any).env?.VITE_DEBUG_IMAGES === 'true') {
+          console.log('[ImageWidget] Parsed output:', {
+            hasImageReference: !!output.imageReference,
+            hasImageData: !!output.imageData,
+            hasImageUrl: !!output.imageUrl,
+            hasFullImageUrl: !!output.fullImageUrl,
+            size: output.size
+          });
+        }
         
         // Override size from output if available (actual dimensions)
         if (output.size) {

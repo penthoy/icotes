@@ -23,8 +23,25 @@ from .base_tool import BaseTool, ToolResult
 from .context_helpers import get_contextual_filesystem, get_current_context
 from .imagen_utils import ASPECT_RATIO_SPECS, resolve_dimensions, guess_mime_from_ext
 
-# Import native Google SDK for image generation
-import google.generativeai as genai
+# Import native Google SDK for image generation (robust import)
+# Prefer legacy google-generativeai for Gemini image preview flow; fallback to google-genai if needed
+GENAI_AVAILABLE = False
+GENAI_PROVIDER = None
+genai = None  # type: ignore
+try:  # Prefer legacy package that supports GenerativeModel.generate_content image parts
+    import google.generativeai as genai  # type: ignore
+    GENAI_AVAILABLE = True
+    GENAI_PROVIDER = 'google-generativeai'
+except Exception as _e1:
+    try:
+        import google.genai as genai  # type: ignore
+        GENAI_AVAILABLE = True
+        GENAI_PROVIDER = 'google-genai'
+    except Exception as _e2:
+        # Keep tool importable; we'll error at execute() with a clear message
+        GENAI_AVAILABLE = False
+        GENAI_PROVIDER = None
+        _GENAI_IMPORT_ERROR = _e2
 
 # Import PIL for image resizing
 try:
@@ -116,12 +133,36 @@ class ImagenTool(BaseTool):
         
         # Configure native Google SDK (allow tests to run without key)
         api_key = os.environ.get("GOOGLE_API_KEY")
-        if api_key:
-            genai.configure(api_key=api_key)
-            logger.info(f"ImagenTool initialized with native Google SDK, model: {self._model}")
+        self._genai_client = None
+        if not GENAI_AVAILABLE:
+            logger.warning(
+                "Google SDK not available (install 'google-genai' or 'google-generativeai'). "
+                "ImagenTool will return a clear error at execute() if invoked."
+            )
+        elif not api_key:
+            logger.warning(
+                "GOOGLE_API_KEY not set; ImagenTool will return a clear error at execute() if invoked"
+            )
         else:
-            logger.warning("GOOGLE_API_KEY not set; ImagenTool will fail at execute() if actually invoked")
-            # Don't raise here to allow test imports; actual execution will fail gracefully
+            try:
+                if GENAI_PROVIDER == 'google-genai':
+                    # New SDK detected, but this tool currently targets the legacy Gemini content API for image parts.
+                    # We'll initialize a client for feature detection, but generation path is not enabled.
+                    try:
+                        from google import genai as _genai  # type: ignore
+                        self._genai_client = _genai.Client(api_key=api_key)  # type: ignore[attr-defined]
+                        logger.info("ImagenTool detected google-genai; client initialized (image generation via this SDK not enabled)")
+                    except Exception as ce:
+                        logger.warning(f"google-genai client init failed: {ce}")
+                else:
+                    # Legacy SDK uses module-level configure + GenerativeModel
+                    genai.configure(api_key=api_key)  # type: ignore[attr-defined]
+                    logger.info("ImagenTool initialized with google-generativeai module")
+                logger.info(
+                    f"ImagenTool ready; provider={GENAI_PROVIDER}, model={self._model}"
+                )
+            except Exception as cfg_e:
+                logger.warning(f"Failed to initialize Google SDK: {cfg_e}")
 
     def _extract_image_from_native_response(self, response) -> Tuple[Optional[bytes], Optional[str]]:
         """
@@ -317,9 +358,25 @@ class ImagenTool(BaseTool):
                     except Exception as e:
                         logger.warning(f"write_file_binary failed: {e}")
 
-                # Note: Do NOT use write_file as fallback - it writes text, not binary
-                # Remote adapters must expose write_file_binary API for image support
-                # If write_file_binary is not available, the remote system cannot properly save images
+                # Fallback: Some remote adapters only support text writes. Encode as data URI and use write_file.
+                if not wrote and hasattr(filesystem_service, 'write_file'):
+                    try:
+                        b64 = base64.b64encode(image_bytes).decode('utf-8')
+                        data_uri = f"data:image/png;base64,{b64}"
+                        # Build remote path similar to binary path
+                        import posixpath
+                        remote_ctx = await get_current_context()
+                        remote_user = remote_ctx.get('username') or os.getenv('USER', 'user')
+                        remote_workspace = (
+                            os.environ.get('HOP_REMOTE_WORKSPACE_ROOT')
+                            or posixpath.join('/home', remote_user, 'icotes', 'workspace')
+                        )
+                        remote_path = posixpath.join(remote_workspace, filename)
+                        await filesystem_service.write_file(remote_path, data_uri)
+                        logger.info(f"Saved image via write_file (data URI) to {remote_path} on context: {context_name}")
+                        wrote = True
+                    except Exception as e:
+                        logger.warning(f"write_file (data URI) fallback failed: {e}")
 
                 # If all remote writes failed, that's okay - we have the local copy for serving
                 if not wrote:
@@ -539,8 +596,15 @@ class ImagenTool(BaseTool):
 
     def _attempt(self, content: Any, model_name: str):
         try:
-            model = genai.GenerativeModel(model_name)
-            return model.generate_content(content), None
+            if GENAI_PROVIDER == 'google-genai':
+                return None, (
+                    "google-genai SDK detected, but ImagenTool currently requires 'google-generativeai' for the"
+                    " Gemini image preview flow. Please install 'google-generativeai' in the backend environment."
+                )
+            else:
+                # Legacy SDK path (preferred)
+                model = genai.GenerativeModel(model_name)  # type: ignore[attr-defined]
+                return model.generate_content(content), None
         except Exception as e:
             return None, str(e)
 
@@ -577,6 +641,22 @@ class ImagenTool(BaseTool):
                 return ToolResult(
                     success=False,
                     error="prompt is required and cannot be empty"
+                )
+            # Validate SDK/key availability early to avoid cryptic import errors
+            if not GENAI_AVAILABLE:
+                return ToolResult(
+                    success=False,
+                    error=(
+                        "Google image SDK not installed. Install 'google-genai' (preferred) or 'google-generativeai' "
+                        "in backend, then restart the server."
+                    )
+                )
+            if not os.environ.get("GOOGLE_API_KEY"):
+                return ToolResult(
+                    success=False,
+                    error=(
+                        "GOOGLE_API_KEY is not set. Set it in the environment for the backend container/process and retry."
+                    )
                 )
             
             save_to_workspace = kwargs.get("save_to_workspace", True)

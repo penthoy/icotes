@@ -130,6 +130,9 @@ class WebSocketAPI:
             'startup_time': 0.0
         }
         
+        # Broadcast logging throttle - track last logged connection count per topic
+        self._last_broadcast_log: Dict[str, tuple[int, float]] = {}  # topic -> (count, timestamp)
+        
         # Configuration
         self.max_connections = 1000
         self.message_timeout = 30.0
@@ -1051,11 +1054,24 @@ class WebSocketAPI:
                     sent_count += 1
                     break
         
-        # Consolidated logging - only log summary at INFO level
-        if sent_count > 0:
-            logger.info(f"[WS] Broadcast {topic_pattern} to {sent_count} connection(s)")
+        # Throttled logging - only log at INFO when count changes or every 5 seconds
+        current_time = time.time()
+        should_log = False
+        
+        if topic_pattern in self._last_broadcast_log:
+            last_count, last_time = self._last_broadcast_log[topic_pattern]
+            # Log if count changed or 5+ seconds passed
+            if last_count != sent_count or (current_time - last_time) > 5.0:
+                should_log = True
         else:
-            logger.debug(f"[WS] Broadcast {topic_pattern} to 0 connections")
+            # First broadcast for this topic
+            should_log = True
+        
+        if should_log and sent_count > 0:
+            logger.info(f"[WS] Broadcast {topic_pattern} to {sent_count} connection(s)")
+            self._last_broadcast_log[topic_pattern] = (sent_count, current_time)
+        else:
+            logger.debug(f"[WS] Broadcast {topic_pattern} to {sent_count} connection(s)")
 
     def _matches_pattern(self, subscription: str, pattern: str) -> bool:
         """Check if subscription matches pattern."""
