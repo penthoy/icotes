@@ -65,6 +65,13 @@ export class ICUIBackendService extends EventEmitter {
   // Hop (SSH) context
   private hopSession: any = null;
   private hopSessionsCache: any[] = [];
+  private get activeNamespace(): string {
+    const ctx = this.hopSession?.context_id || this.hopSession?.contextId;
+    const friendly = this.hopSession?.credentialName || this.hopSession?.credential_name;
+    if (!ctx || ctx === 'local') return 'local';
+    // Prefer friendly credential name (e.g., hop1) when available
+    return String(friendly || ctx);
+  }
   
   // Configuration
   private config: BackendConfig = {
@@ -624,7 +631,13 @@ export class ICUIBackendService extends EventEmitter {
     
     try {
       // Use REST API for file listing with include_hidden parameter
-      const url = `${this.baseUrl}/api/files?path=${encodeURIComponent(path)}&include_hidden=${includeHidden}`;
+      // If caller passed a namespaced path already, forward as-is.
+      // Otherwise, include 'namespace' for backend routing and leave path as-is.
+      const isNamespaced = /.+:\//.test(path);
+      const ns = this.activeNamespace;
+      const url = isNamespaced
+        ? `${this.baseUrl}/api/files?path=${encodeURIComponent(path)}&include_hidden=${includeHidden}`
+        : `${this.baseUrl}/api/files?path=${encodeURIComponent(path)}&include_hidden=${includeHidden}&namespace=${encodeURIComponent(ns)}`;
       if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
         console.log('[ICUIBackendService] Fetching directory contents from:', url);
       }
@@ -647,11 +660,13 @@ export class ICUIBackendService extends EventEmitter {
       const fileList = result.data || result.files || [];
       
       // Convert backend format to FileNode format
+  const nsPrefix = this.activeNamespace + ':/';
       const nodes: ICUIFileNode[] = fileList.map((file: any) => ({
-        id: file.path || file.id,
+        id: (file.path || file.id),
         name: file.name,
         type: (file.is_directory || file.isDirectory) ? 'folder' : 'file',
-        path: file.path,
+        // Render namespaced absolute path for Explorer to show active context
+  path: `${nsPrefix}${String(file.path || '')}`.replace(/:\/\//, ':/'),
         size: file.size,
         modified: file.modified_at || file.modified
       }));

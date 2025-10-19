@@ -112,11 +112,13 @@ class TestImagenToolHopSupport:
         remote_context = {
             'contextId': 'remote-server',
             'status': 'connected',
-            'host': '192.168.1.100'
+            'host': '192.168.1.100',
+            'username': 'testuser',
+            'workspaceRoot': '/home/testuser/icotes/workspace'
         }
         
         # Mock write_file_binary to succeed (preferred path for remote binary writes)
-        mock_filesystem.write_file_binary = AsyncMock()
+        mock_filesystem.write_file_binary = AsyncMock(return_value=True)
         
         with patch('icpy.agent.tools.imagen_tool.get_contextual_filesystem', return_value=mock_filesystem), \
              patch('icpy.agent.tools.imagen_tool.get_current_context', return_value=remote_context):
@@ -133,16 +135,17 @@ class TestImagenToolHopSupport:
 
     @pytest.mark.asyncio
     async def test_remote_write_fallback_to_write_file(self, imagen_tool, mock_filesystem, sample_image_bytes):
-        """Test fallback to write_file when write_file_binary fails"""
+        """Test that write_file_binary is the only method used for remote writes"""
         remote_context = {
             'contextId': 'remote-server',
             'status': 'connected',
-            'host': '192.168.1.100'
+            'host': '192.168.1.100',
+            'username': 'testuser',
+            'workspaceRoot': '/home/testuser/icotes/workspace'
         }
         
-        # Mock write_file_binary to fail, write_file to succeed
-        mock_filesystem.write_file_binary = AsyncMock(side_effect=Exception("Binary write failed"))
-        mock_filesystem.write_file = AsyncMock()
+        # Mock write_file_binary to succeed
+        mock_filesystem.write_file_binary = AsyncMock(return_value=True)
         
         with patch('icpy.agent.tools.imagen_tool.get_contextual_filesystem', return_value=mock_filesystem), \
              patch('icpy.agent.tools.imagen_tool.get_current_context', return_value=remote_context):
@@ -153,24 +156,23 @@ class TestImagenToolHopSupport:
                 None
             )
             
-            # Should have tried write_file_binary first
+            # Should have called write_file_binary
             assert mock_filesystem.write_file_binary.called
-            # Should have fallen back to write_file with base64
-            assert mock_filesystem.write_file.called
             assert result is not None
 
     @pytest.mark.asyncio
     async def test_remote_write_graceful_failure(self, imagen_tool, mock_filesystem, sample_image_bytes):
-        """Test that remote write failures don't break generation (local copy exists)"""
+        """Test that remote write failures return None"""
         remote_context = {
             'contextId': 'remote-server',
             'status': 'connected',
-            'host': '192.168.1.100'
+            'host': '192.168.1.100',
+            'username': 'testuser',
+            'workspaceRoot': '/home/testuser/icotes/workspace'
         }
         
-        # Mock all remote write methods to fail
-        mock_filesystem.write_file_binary = AsyncMock(side_effect=Exception("Binary write failed"))
-        mock_filesystem.write_file = AsyncMock(side_effect=Exception("Text write failed"))
+        # Mock write_file_binary to fail
+        mock_filesystem.write_file_binary = AsyncMock(return_value=False)
         
         with patch('icpy.agent.tools.imagen_tool.get_contextual_filesystem', return_value=mock_filesystem), \
              patch('icpy.agent.tools.imagen_tool.get_current_context', return_value=remote_context):
@@ -181,9 +183,8 @@ class TestImagenToolHopSupport:
                 None
             )
             
-            # Should still succeed because local file is written first
-            assert result is not None
-            assert result.endswith('.png')
+            # Should return None on remote write failure
+            assert result is None
 
     @pytest.mark.asyncio
     async def test_load_image_from_hop_via_read_file_binary(self, imagen_tool, mock_filesystem, sample_image_bytes):
@@ -587,12 +588,13 @@ class TestImagenToolIntegration:
             'contextId': 'remote-server',
             'status': 'connected',
             'host': '192.168.1.100',
-            'username': 'testuser'
+            'username': 'testuser',
+            'workspaceRoot': '/home/testuser/icotes/workspace'
         }
         
         # Mock filesystem
         mock_filesystem = AsyncMock()
-        mock_filesystem.write_file_binary = AsyncMock()
+        mock_filesystem.write_file_binary = AsyncMock(return_value=True)
         mock_filesystem.write_file = AsyncMock()
         
         # Mock the Gemini model response

@@ -13,7 +13,7 @@ from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Dict, Optional, Any
 
-from ..utils.thumbnail_generator import generate_thumbnail, calculate_checksum
+from ..utils.thumbnail_generator import generate_thumbnail, generate_thumbnail_from_bytes, calculate_checksum
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +86,9 @@ class ImageReferenceService:
         filename: str,
         prompt: str,
         model: str,
-        mime_type: str = "image/png"
+        mime_type: str = "image/png",
+        *,
+        only_thumbnail_if_missing: bool = True,
     ) -> ImageReference:
         """
         Create an ImageReference from image data.
@@ -109,17 +111,22 @@ class ImageReferenceService:
             relative_path = filename
             absolute_path = self._workspace_path_obj / filename
             
-            # Ensure file exists locally; if missing but image_data provided, write it now.
+            # If file is missing locally (e.g., image lives on remote host),
+            # avoid materializing the full image locally unless explicitly needed.
             if not absolute_path.exists():
-                try:
-                    import base64 as _b64
-                    absolute_path.parent.mkdir(parents=True, exist_ok=True)
-                    with open(absolute_path, "wb") as fh:
-                        fh.write(_b64.b64decode(image_data))
-                    logger.info(f"Wrote local image copy for reference: {absolute_path}")
-                except Exception as write_e:
-                    # If we fail to materialize, keep going; downstream will raise a clearer error.
-                    logger.warning(f"Unable to materialize local image copy at {absolute_path}: {write_e}")
+                if only_thumbnail_if_missing:
+                    logger.debug(
+                        "Image file missing locally; will compute checksum and thumbnail from provided base64 without writing full file"
+                    )
+                else:
+                    try:
+                        import base64 as _b64
+                        absolute_path.parent.mkdir(parents=True, exist_ok=True)
+                        with open(absolute_path, "wb") as fh:
+                            fh.write(_b64.b64decode(image_data))
+                        logger.info(f"Wrote local image copy for reference: {absolute_path}")
+                    except Exception as write_e:
+                        logger.warning(f"Unable to materialize local image copy at {absolute_path}: {write_e}")
             
             # Calculate file size
             size_bytes = absolute_path.stat().st_size if absolute_path.exists() else 0
@@ -135,11 +142,24 @@ class ImageReferenceService:
                     checksum = ""
             
             # Generate thumbnail
-            thumbnail_result = generate_thumbnail(
-                str(absolute_path),
-                str(self.thumbnails_dir),
-                image_id=image_id
-            )
+            try:
+                if absolute_path.exists():
+                    thumbnail_result = generate_thumbnail(
+                        str(absolute_path),
+                        str(self.thumbnails_dir),
+                        image_id=image_id
+                    )
+                else:
+                    import base64 as _b64
+                    thumbnail_result = generate_thumbnail_from_bytes(
+                        _b64.b64decode(image_data),
+                        str(self.thumbnails_dir),
+                        image_id=image_id
+                    )
+            except Exception as thumb_e:
+                logger.error(f"Failed to generate thumbnail for reference {filename}: {thumb_e}")
+                # Best effort: empty thumbnail
+                thumbnail_result = {'path': '', 'base64': '', 'size_bytes': 0, 'width': 0, 'height': 0}
             
             # Create reference
             ref = ImageReference(

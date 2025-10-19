@@ -67,6 +67,7 @@ export function detectLanguageFromExtension(filePath: string): string | null {
     'env': 'shell', // .env files use shell-like syntax
     'gitignore': 'shell', // .gitignore can use shell highlighting
     'txt': 'text', // Plain text files
+    'log': 'text', // Log files as plain text
     // Image extensions
     'png': 'image',
     'jpg': 'image',

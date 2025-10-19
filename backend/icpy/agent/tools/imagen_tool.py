@@ -274,45 +274,52 @@ class ImagenTool(BaseTool):
                 safe_prompt = re.sub(r'[^\w\s-]', '', prompt[:30]).strip().replace(' ', '_')
                 filename = f"generated_image_{safe_prompt}_{timestamp}.png"
             
-            # Determine workspace root
-            workspace_root = os.environ.get('WORKSPACE_ROOT')
-            if not workspace_root:
-                # Default to workspace directory relative to backend
-                current_file = os.path.abspath(__file__)
-                # Go up: tools -> agent -> icpy -> backend -> icotes root
-                icotes_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(current_file)))))
-                workspace_root = os.path.join(icotes_root, "workspace")
-            
-            filepath = os.path.join(workspace_root, filename)
-            
             # Decide save strategy based on context to avoid truncation regression
             context = await get_current_context()
             context_name = context.get('contextId', 'local')
             filesystem_service = await get_contextual_filesystem()
-
-            # Ensure directory exists for local filesystem paths
-            try:
-                os.makedirs(workspace_root, exist_ok=True)
-            except Exception:
-                pass
-
-            # Always write a local binary copy to guarantee a non-empty file for references/preview
-            try:
-                with open(filepath, 'wb') as f:
-                    f.write(image_bytes)
-                logger.info(f"[ImagenTool] Wrote local copy: {filepath} ({len(image_bytes)} bytes)")
-            except Exception as e:
-                logger.error(f"[ImagenTool] Failed to write local copy {filepath}: {e}")
+            
+            # Determine workspace root based on context (local or remote)
+            if context_name == 'local':
+                # For local context, use local workspace root
+                workspace_root = os.environ.get('WORKSPACE_ROOT')
+                if not workspace_root:
+                    # Default to workspace directory relative to backend
+                    current_file = os.path.abspath(__file__)
+                    # Go up: tools -> agent -> icpy -> backend -> icotes root
+                    icotes_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(current_file)))))
+                    workspace_root = os.path.join(icotes_root, "workspace")
+                filepath = os.path.join(workspace_root, filename)
+            else:
+                # For remote context, use remote workspace path
+                import posixpath
+                remote_user = context.get('username') or os.getenv('USER', 'user')
+                workspace_root = (
+                    context.get('workspaceRoot')
+                    or os.environ.get('HOP_REMOTE_WORKSPACE_ROOT')
+                    or posixpath.join('/home', remote_user, 'icotes', 'workspace')
+                )
+                filepath = posixpath.join(workspace_root, filename)
+                
+            logger.info(
+                f"[ImagenTool] Target context: {context_name}, workspace_root: {workspace_root}, filepath: {filepath}, "
+                f"username={context.get('username')}, host={context.get('host')}, cwd={context.get('cwd')}"
+            )
+            
+            logger.info(f"[ImagenTool] Target context: {context_name}, workspace_root: {workspace_root}, filepath: {filepath}")
 
             if context_name == 'local':
-                # For local context, always write true binary PNG to disk
+                # For local context, write directly to local filesystem
                 try:
-                    # Double-write is harmless; ensures correct bytes
+                    # Ensure directory exists
+                    os.makedirs(workspace_root, exist_ok=True)
+                    
+                    # Write binary PNG to disk
                     with open(filepath, 'wb') as f:
                         f.write(image_bytes)
-                    logger.info(f"Saved image to {filepath} ({len(image_bytes)} bytes) on local context")
+                    logger.info(f"[ImagenTool] Saved image to {filepath} ({len(image_bytes)} bytes) on local context")
                 except Exception as e:
-                    logger.error(f"Local binary write failed: {e}")
+                    logger.error(f"[ImagenTool] Local binary write failed: {e}")
                     return None
 
                 # Tests expect write_file to be called; write a harmless sidecar so we don't overwrite the PNG
@@ -335,55 +342,26 @@ class ImagenTool(BaseTool):
                     pass
 
             else:
-                # Remote context: Use filesystem service write methods
-                # The local copy is already written above for references/preview
-                wrote = False
-                
-                # Try write_file_binary first (proper binary write)
-                if hasattr(filesystem_service, 'write_file_binary'):
-                    try:
-                        # Build remote path properly
-                        import posixpath
-                        remote_ctx = await get_current_context()
-                        remote_user = remote_ctx.get('username') or os.getenv('USER', 'user')
-                        remote_workspace = (
-                            os.environ.get('HOP_REMOTE_WORKSPACE_ROOT')
-                            or posixpath.join('/home', remote_user, 'icotes', 'workspace')
-                        )
-                        remote_path = posixpath.join(remote_workspace, filename)
-                        
-                        await filesystem_service.write_file_binary(remote_path, image_bytes)
-                        logger.info(f"Saved image via write_file_binary to {remote_path} ({len(image_bytes)} bytes) on context: {context_name}")
-                        wrote = True
-                    except Exception as e:
-                        logger.warning(f"write_file_binary failed: {e}")
-
-                # Fallback: Some remote adapters only support text writes. Encode as data URI and use write_file.
-                if not wrote and hasattr(filesystem_service, 'write_file'):
-                    try:
-                        b64 = base64.b64encode(image_bytes).decode('utf-8')
-                        data_uri = f"data:image/png;base64,{b64}"
-                        # Build remote path similar to binary path
-                        import posixpath
-                        remote_ctx = await get_current_context()
-                        remote_user = remote_ctx.get('username') or os.getenv('USER', 'user')
-                        remote_workspace = (
-                            os.environ.get('HOP_REMOTE_WORKSPACE_ROOT')
-                            or posixpath.join('/home', remote_user, 'icotes', 'workspace')
-                        )
-                        remote_path = posixpath.join(remote_workspace, filename)
-                        await filesystem_service.write_file(remote_path, data_uri)
-                        logger.info(f"Saved image via write_file (data URI) to {remote_path} on context: {context_name}")
-                        wrote = True
-                    except Exception as e:
-                        logger.warning(f"write_file (data URI) fallback failed: {e}")
-
-                # If all remote writes failed, that's okay - we have the local copy for serving
-                if not wrote:
-                    logger.warning(f"Remote write failed, but local copy exists at {filepath}")
-                    # Don't return None - the local file is enough for the backend to serve
+                # Remote context: Write to remote server via SFTP using write_file_binary
+                try:
+                    if hasattr(filesystem_service, 'write_file_binary'):
+                        success = await filesystem_service.write_file_binary(filepath, image_bytes)
+                        if success:
+                            logger.info(f"[ImagenTool] Saved image via write_file_binary to {filepath} ({len(image_bytes)} bytes) on context: {context_name}")
+                        else:
+                            logger.error(f"[ImagenTool] write_file_binary returned False for {filepath}")
+                            return None
+                    else:
+                        logger.error(f"[ImagenTool] write_file_binary method not available on filesystem service")
+                        return None
+                except Exception as e:
+                    logger.error(f"[ImagenTool] Failed to write image to remote context: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    return None
+                # Do NOT write a full local copy to avoid duplicates; reference service can create thumbnail from bytes
             
-            # Return relative path for display
+            # Return relative path for display (just the filename)
             return filename
             
         except Exception as e:
@@ -757,19 +735,21 @@ class ImagenTool(BaseTool):
             # Extract raw base64 for thumbnail/reference creation
             raw_base64 = base64.b64encode(image_bytes).decode('utf-8')
             
-            # Create reference via ImageReferenceService
+            # Create reference via ImageReferenceService (avoid writing full local copy if remote)
             image_service = get_image_reference_service()
             ref = await image_service.create_reference(
                 image_data=raw_base64,
                 filename=saved_path or f"{image_id}.png",
                 prompt=str(prompt),
                 model=self._model,
-                mime_type=mime_type
+                mime_type=mime_type,
+                only_thumbnail_if_missing=True,
             )
             
             # Cache the full image for fast retrieval
-            from ...services.image_cache import ImageCache
-            cache = ImageCache()
+            # Put full image into the shared in-memory cache for fast serving via media API
+            from ...services.image_cache import get_image_cache
+            cache = get_image_cache()
             cache.put(
                 image_id=ref.image_id,
                 base64_data=raw_base64,
@@ -778,29 +758,29 @@ class ImagenTool(BaseTool):
             
             # Return result with reference AND small thumbnail for preview/editing
             # The thumbnail allows instant preview without fetching, and agents can use it for editing
-            # Build a hop-aware file URL: if context is remote, compute a reasonable remote path
-            image_url = f"file://{ref.absolute_path}"
+            # Build a hop-aware file URL ONLY if the file was actually saved
+            image_url = None
             context_name = context.get('contextId', 'local')
-            if context_name != 'local':
-                try:
-                    import posixpath
-                    # Prefer explicit context/workspace settings if available
-                    remote_workspace = (
-                        context.get('workspaceRoot')
-                        or os.environ.get('HOP_REMOTE_WORKSPACE_ROOT')
-                        or posixpath.join('/home', os.getenv('USER', 'user'), 'icotes', 'workspace')
-                    )
-                    # If we saved a relative path, join to remote workspace
-                    remote_rel = saved_path or os.path.basename(ref.absolute_path)
-                    image_url = f"file://{posixpath.join(remote_workspace, remote_rel)}"
-                except Exception:
-                    # Fallback to local absolute path
-                    image_url = f"file://{ref.absolute_path}"
+            if saved_path:
+                image_url = f"file://{ref.absolute_path}"
+                if context_name != 'local':
+                    try:
+                        import posixpath
+                        remote_workspace = (
+                            context.get('workspaceRoot')
+                            or os.environ.get('HOP_REMOTE_WORKSPACE_ROOT')
+                            or posixpath.join('/home', (context.get('username') or os.getenv('USER', 'user')), 'icotes', 'workspace')
+                        )
+                        image_url = f"file://{posixpath.join(remote_workspace, saved_path)}"
+                    except Exception:
+                        # Keep local absolute fallback
+                        image_url = f"file://{ref.absolute_path}"
 
             result_data = {
                 "imageReference": ref.to_dict(),  # Lightweight reference with thumbnail
                 "imageData": ref.thumbnail_base64,  # Include thumbnail for preview AND agent editing
-                "imageUrl": image_url,  # file:// URL for agent editing (hop-aware)
+                # Prefer API fullImageUrl unless we truly saved to a file (imageUrl is optional)
+                **({"imageUrl": image_url} if image_url else {}),
                 "thumbnailUrl": f"/api/media/image/{ref.image_id}?thumbnail=true",  # Thumbnail endpoint for UI
                 "fullImageUrl": f"/api/media/image/{ref.image_id}",  # Full image endpoint for downloads
                 "mimeType": mime_type,
@@ -827,12 +807,14 @@ class ImagenTool(BaseTool):
             
             if saved_path:
                 result_data["filePath"] = saved_path
+                result_data["savedToWorkspace"] = True
                 if context_name != 'local':
                     result_data["message"] = f"Image generated and saved to workspace/{saved_path} on {context_name}"
                 else:
                     result_data["message"] = f"Image generated successfully and saved to workspace/{saved_path}"
             else:
-                result_data["message"] = "Image generated successfully"
+                result_data["savedToWorkspace"] = False
+                result_data["message"] = "Image generated successfully (available via fullImageUrl)"
             
             return ToolResult(success=True, data=result_data)
             

@@ -112,7 +112,11 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
       }
 
       // Read the file content
-      const response = await fetch(`/api/files/content?path=${encodeURIComponent(filePath)}`);
+  // If the filePath is namespaced, pass namespace for backend routing
+  const nsMatch = filePath.match(/^([^:]+):\/(.*)$/);
+  const nsParam = nsMatch ? `&namespace=${encodeURIComponent(nsMatch[1])}` : '';
+  const rawPath = nsMatch ? `/${nsMatch[2]}` : filePath;
+  const response = await fetch(`/api/files/content?path=${encodeURIComponent(rawPath)}${nsParam}`);
       if (!response.ok) {
         throw new Error(`Failed to read file: ${response.statusText}`);
       }
@@ -158,7 +162,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
               const abs = toAbs(rel);
               if (!abs) return;
               try {
-                const resp = await fetch(`/api/files/content?path=${encodeURIComponent(abs)}`);
+                const resp = await fetch(`/api/files/content?path=${encodeURIComponent(abs)}${nsParam}`);
                 if (!resp.ok) return;
                 const data = await resp.json();
                 // Normalize leading './'

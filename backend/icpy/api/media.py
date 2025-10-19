@@ -261,12 +261,12 @@ async def get_image_by_id(image_id: str, thumbnail: bool = False):
         Binary image data with appropriate MIME type
     """
     from ..services.image_reference_service import get_image_reference_service
-    from ..services.image_cache import ImageCache
+    from ..services.image_cache import get_image_cache
     import base64
 
     try:
         # Try cache first for performance (only for full image)
-        cache = ImageCache()
+        cache = get_image_cache()
         cached_base64 = cache.get(image_id)
         if cached_base64 and not thumbnail:
             image_bytes = base64.b64decode(cached_base64)

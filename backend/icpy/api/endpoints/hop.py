@@ -160,16 +160,26 @@ async def connect(payload: HopConnectRequest):
         logger.info(f"[HopAPI] Connect requested for credential={payload.credentialId} (asyncssh_available={ASYNCSSH_AVAILABLE})")
         session = await service.connect(payload.credentialId, password=payload.password, passphrase=payload.passphrase)
         logger.info(f"[HopAPI] Connect result: status={session.status} host={session.host} user={session.username} error={session.lastError}")
+        # Enrich payload with credentialName for friendly display on initial connect
+        payload_with_name = session.__dict__.copy()
+        try:
+            if getattr(session, 'credentialId', None):
+                cred = service.get_credential(session.credentialId)  # type: ignore[attr-defined]
+                if cred:
+                    payload_with_name['credentialName'] = cred.get('name')
+        except Exception:
+            pass
+
         # Broadcast status change and session list update
         try:
             broker = await get_message_broker()
-            await broker.publish('hop.status', session.__dict__)
+            await broker.publish('hop.status', payload_with_name)
             # Publish updated session list
             sessions = service.list_sessions()
             await broker.publish('hop.sessions', {"sessions": sessions})
         except Exception:
             pass
-        return session.__dict__
+        return payload_with_name
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
@@ -204,12 +214,21 @@ async def status():
     service = await get_hop_service()
     session = service.status()
     logger.info(f"[HopAPI] Status requested: status={session.status} contextId={session.contextId} host={session.host}")
+    # Enrich with credentialName for friendly display in UI
+    payload = session.__dict__.copy()
     try:
-        broker = await get_message_broker()
-        await broker.publish('hop.status', session.__dict__)
+        if getattr(session, 'credentialId', None):
+            cred = service.get_credential(session.credentialId)  # type: ignore[attr-defined]
+            if cred:
+                payload['credentialName'] = cred.get('name')
     except Exception:
         pass
-    return session.__dict__
+    try:
+        broker = await get_message_broker()
+        await broker.publish('hop.status', payload)
+    except Exception:
+        pass
+    return payload
 
 
 @router.get("/health")
@@ -441,16 +460,25 @@ async def hop_to(payload: HopToRequest):
         logger.info(f"[HopAPI] Hop requested to context={payload.contextId}")
         session = await service.hop_to(payload.contextId)
         logger.info(f"[HopAPI] Hopped to {payload.contextId}, status={session.status}")
+        # Enrich with credentialName for friendly display in UI
+        session_payload = session.__dict__.copy()
+        try:
+            if getattr(session, 'credentialId', None):
+                cred = service.get_credential(session.credentialId)  # type: ignore[attr-defined]
+                if cred:
+                    session_payload['credentialName'] = cred.get('name')
+        except Exception:
+            pass
         # Broadcast status change
         try:
             broker = await get_message_broker()
-            await broker.publish('hop.status', session.__dict__)
+            await broker.publish('hop.status', session_payload)
             # Also publish updated session list
             sessions = service.list_sessions()
             await broker.publish('hop.sessions', {"sessions": sessions})
         except Exception:
             pass
-        return session.__dict__
+        return session_payload
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
