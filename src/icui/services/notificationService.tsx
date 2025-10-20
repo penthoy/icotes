@@ -29,7 +29,7 @@ export interface Notification {
 class NotificationService {
   private notifications: Map<string, Notification> = new Map();
   private notificationCallbacks: Set<(notifications: Notification[]) => void> = new Set();
-  private hoverTimeouts: Map<string, NodeJS.Timeout> = new Map(); // Track auto-dismiss timeouts
+  private hoverTimeouts: Map<string, ReturnType<typeof setTimeout>> = new Map(); // Track auto-dismiss timeouts
   private notificationElements: Map<string, HTMLElement> = new Map(); // Track DOM elements
   private keyIndex: Map<string, string> = new Map(); // key -> notification id
   private recentMessages: Map<string, number> = new Map(); // message -> last timestamp
@@ -38,9 +38,9 @@ class NotificationService {
     duration: 3000,
     position: 'top-right',
     dismissible: true,
-    key: undefined,
+    key: '',
     replace: true,
-  } as Required<NotificationOptions>;
+  };
 
   /**
    * Show a notification with specified message, type, and options

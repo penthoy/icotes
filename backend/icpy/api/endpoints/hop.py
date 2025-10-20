@@ -167,8 +167,8 @@ async def connect(payload: HopConnectRequest):
                 cred = service.get_credential(session.credentialId)  # type: ignore[attr-defined]
                 if cred:
                     payload_with_name['credentialName'] = cred.get('name')
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"[HopAPI] credential enrichment failed on connect: {e}")
 
         # Broadcast status change and session list update
         try:
@@ -177,8 +177,8 @@ async def connect(payload: HopConnectRequest):
             # Publish updated session list
             sessions = service.list_sessions()
             await broker.publish('hop.sessions', {"sessions": sessions})
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"[HopAPI] broker publish failed on status: {e}")
         return payload_with_name
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))

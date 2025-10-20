@@ -79,6 +79,7 @@ class ImageReferenceService:
         global _already_logged_init
         if not _already_logged_init:
             logger.info(f"ImageReferenceService initialized: workspace={workspace_path}")
+            _already_logged_init = True
         else:
             logger.debug(f"ImageReferenceService reused/recreated: workspace={workspace_path}")
     

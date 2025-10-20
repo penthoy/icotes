@@ -60,6 +60,7 @@ class ImageCache:
                 f"ImageCache initialized: max_images={max_images}, "
                 f"max_size={max_size_mb}MB, ttl={ttl_seconds}s"
             )
+            _cache_already_logged_init = True
         else:
             logger.debug(
                 f"ImageCache created: max_images={max_images}, "

@@ -443,7 +443,7 @@ class RemoteFileSystemAdapter:
             tmp_path = f"{path}.tmp.{secrets.token_hex(4)}"
             try:
                 if use_ephemeral:
-                    async with hop.ephemeral_sftp() as esftp:
+                    async with hop.ephemeral_sftp(self._context_id) as esftp:
                         if not esftp:
                             raise RuntimeError("ephemeral SFTP unavailable")
                         if create_dirs:
@@ -470,7 +470,12 @@ class RemoteFileSystemAdapter:
                     )
                     # Clean up temp before fallback
                     try:
-                        await sftp.remove(tmp_path)
+                        if use_ephemeral:
+                            async with hop.ephemeral_sftp(self._context_id) as es:
+                                if es:
+                                    await es.remove(tmp_path)
+                        else:
+                            await sftp.remove(tmp_path)
                     except Exception:
                         pass
                 else:
@@ -478,7 +483,7 @@ class RemoteFileSystemAdapter:
                     try:
                         # Remove destination if it exists
                         if use_ephemeral:
-                            async with hop.ephemeral_sftp() as esftp2:
+                            async with hop.ephemeral_sftp(self._context_id) as esftp2:
                                 if not esftp2:
                                     raise RuntimeError("ephemeral SFTP unavailable")
                                 try:
@@ -497,7 +502,7 @@ class RemoteFileSystemAdapter:
                         try:
                             # As a last resort, copy bytes by reopening dest
                             if use_ephemeral:
-                                async with hop.ephemeral_sftp() as esftp3:
+                                async with hop.ephemeral_sftp(self._context_id) as esftp3:
                                     if not esftp3:
                                         raise RuntimeError("ephemeral SFTP unavailable")
                                     async with esftp3.open(path, 'wb') as f2:
@@ -509,7 +514,7 @@ class RemoteFileSystemAdapter:
                             logger.error(f"[RemoteFS] Fallback direct write failed for {path}: {wf_e}")
                             try:
                                 if use_ephemeral:
-                                    async with hop.ephemeral_sftp() as esftp4:
+                                    async with hop.ephemeral_sftp(self._context_id) as esftp4:
                                         if esftp4:
                                             await esftp4.remove(tmp_path)
                                 else:
@@ -520,7 +525,7 @@ class RemoteFileSystemAdapter:
                     # Final verification on destination
                     try:
                         if use_ephemeral:
-                            async with hop.ephemeral_sftp() as esftp5:
+                            async with hop.ephemeral_sftp(self._context_id) as esftp5:
                                 if not esftp5:
                                     raise RuntimeError("ephemeral SFTP unavailable")
                                 st2 = await esftp5.stat(path)
@@ -541,7 +546,7 @@ class RemoteFileSystemAdapter:
                 logger.error(f"[RemoteFS] Temp write path failed for {path}: {e1}")
                 try:
                     if use_ephemeral:
-                        async with hop.ephemeral_sftp() as esftp6:
+                        async with hop.ephemeral_sftp(self._context_id) as esftp6:
                             if esftp6:
                                 await esftp6.remove(tmp_path)
                     else:
@@ -554,7 +559,7 @@ class RemoteFileSystemAdapter:
                 bio = io.BytesIO(content)
                 # Open and copy in chunks via file object
                 if use_ephemeral:
-                    async with hop.ephemeral_sftp() as esftp7:
+                    async with hop.ephemeral_sftp(self._context_id) as esftp7:
                         if not esftp7:
                             raise RuntimeError("ephemeral SFTP unavailable")
                         async with esftp7.open(path, 'wb') as f:

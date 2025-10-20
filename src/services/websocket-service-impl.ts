@@ -49,7 +49,7 @@ export class WebSocketService extends EventEmitter {
   private config: WebSocketConfig;
   
   private messageIdCounter = 0;
-  private pendingMessages = new Map<string, { resolve: Function; reject: Function; timeout: NodeJS.Timeout }>();
+  private pendingMessages = new Map<string, { resolve: Function; reject: Function; timeout: ReturnType<typeof setTimeout> }>();
   
   private readonly DEFAULT_CONFIG: WebSocketConfig = {
     websocket_url: '',

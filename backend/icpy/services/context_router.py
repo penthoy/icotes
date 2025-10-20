@@ -136,7 +136,8 @@ class ContextRouter:
                         active_cid = cid
                         break
             return active_cid or connected_cid or any_cid or 'local'
-        except Exception:
+        except Exception as e:
+            logger.debug(f"[ContextRouter] resolve_namespace_id fallback to local for ns={ns}: {e}")
             return 'local'
 
     async def parse_namespaced_path(self, raw: str) -> tuple[str, str]:
@@ -148,12 +149,16 @@ class ContextRouter:
         await self._ensure_dependencies()
         if not raw:
             return (self._hop_service.status().contextId if self._hop_service else 'local', '/')
-        # Detect pattern like 'ns:/path'
-        if ':/'+'' in raw:
-            pass  # placeholder to avoid formatting tools altering string
+        # Detect pattern like 'ns:/path' but exclude Windows drive letters
         idx = raw.find(':/')
         if idx > 0:
             ns = raw[:idx]
+            # Skip if this looks like a Windows drive letter (single char)
+            if idx == 1 and ns.isalpha():
+                # This is a Windows path like C:/, not a namespace
+                ctx = self._hop_service.status().contextId if self._hop_service else 'local'
+                return (ctx, raw)
+            
             path = raw[idx+2:] or '/'
             # Normalize multiple slashes
             if not path.startswith('/'):

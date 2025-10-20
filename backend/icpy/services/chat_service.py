@@ -639,7 +639,7 @@ class ChatService:
             await self._send_typing_indicator(user_message.session_id, False)
             
         except Exception as e:
-            logger.error(f"� Error processing message with agent: {e}")
+            logger.error(f"Error processing message with agent: {e}")
             logger.exception("Full traceback:")
             await self._send_ai_response(
                 user_message.session_id,
@@ -2180,7 +2180,7 @@ class ChatService:
             
             # Flush any remaining buffered messages
             if self._persist_buffer:
-                await self._flush_persist_buffer()
+                await self._flush_now()
             
             # Clean up temporary workspace if we created one
             if hasattr(self, '_temp_workspace') and self._temp_workspace and Path(self._temp_workspace).exists():
