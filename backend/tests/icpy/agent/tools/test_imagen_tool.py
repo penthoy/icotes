@@ -102,9 +102,13 @@ class TestImagenToolHopSupport:
             
             # Should have called write_file
             assert mock_filesystem.write_file.called
-            # Should return a filename
+            # Should return tuple of (filename, absolute_path)
             assert result is not None
-            assert result.endswith('.png')
+            assert isinstance(result, tuple)
+            assert len(result) == 2
+            filename, absolute_path = result
+            assert filename.endswith('.png')
+            assert absolute_path is not None
 
     @pytest.mark.asyncio
     async def test_save_to_remote_context(self, imagen_tool, mock_filesystem, sample_image_bytes):
@@ -397,8 +401,10 @@ class TestImagenToolCustomFilename:
                 custom_filename="my_custom_image"
             )
             
-            # Should use custom filename
-            assert result == "my_custom_image.png"
+            # Should return tuple and use custom filename
+            assert isinstance(result, tuple)
+            filename, absolute_path = result
+            assert filename == "my_custom_image.png"
 
     @pytest.mark.asyncio
     async def test_auto_generated_filename(self, imagen_tool, mock_filesystem, mock_context, sample_image_bytes):
@@ -412,10 +418,12 @@ class TestImagenToolCustomFilename:
                 custom_filename=None
             )
             
-            # Should contain sanitized prompt in filename
-            assert "generated_image" in result
-            assert "blue_circle" in result or "a_blue_circle" in result
-            assert result.endswith('.png')
+            # Should return tuple with generated filename containing sanitized prompt
+            assert isinstance(result, tuple)
+            filename, absolute_path = result
+            assert "generated_image" in filename
+            assert "blue_circle" in filename or "a_blue_circle" in filename
+            assert filename.endswith('.png')
 
     @pytest.mark.asyncio
     async def test_filename_sanitization(self, imagen_tool, mock_filesystem, mock_context, sample_image_bytes):
@@ -429,11 +437,14 @@ class TestImagenToolCustomFilename:
                 custom_filename="my/file\\with:bad<chars>"
             )
             
+            # Should return tuple with sanitized filename
+            assert isinstance(result, tuple)
+            filename, absolute_path = result
             # Should not contain special characters
-            assert '/' not in result
-            assert '\\' not in result
-            assert ':' not in result
-            assert '<' not in result
+            assert '/' not in filename
+            assert '\\' not in filename
+            assert ':' not in filename
+            assert '<' not in filename
             assert '>' not in result
 
 

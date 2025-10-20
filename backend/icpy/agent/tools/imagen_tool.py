@@ -248,7 +248,7 @@ class ImagenTool(BaseTool):
         image_bytes: bytes, 
         prompt: str, 
         custom_filename: Optional[str] = None
-    ) -> Optional[str]:
+    ) -> Optional[Tuple[str, str]]:
         """
         Save image bytes to workspace folder (hop-aware).
         
@@ -260,7 +260,7 @@ class ImagenTool(BaseTool):
             custom_filename: Optional custom filename (without extension)
             
         Returns:
-            Relative file path if successful, None otherwise.
+            Tuple of (relative_path, absolute_path) if successful, None otherwise.
         """
         try:
             # Generate filename
@@ -281,23 +281,22 @@ class ImagenTool(BaseTool):
             
             # Determine workspace root based on context (local or remote)
             if context_name == 'local':
-                # For local context, use local workspace root
-                workspace_root = os.environ.get('WORKSPACE_ROOT')
+                # For local context, use the configured filesystem service root
+                workspace_root = getattr(filesystem_service, 'root_path', None)
                 if not workspace_root:
-                    # Default to workspace directory relative to backend
-                    current_file = os.path.abspath(__file__)
-                    # Go up: tools -> agent -> icpy -> backend -> icotes root
-                    icotes_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(current_file)))))
-                    workspace_root = os.path.join(icotes_root, "workspace")
+                    # Fallback to explicit env or current working directory
+                    workspace_root = os.environ.get('WORKSPACE_ROOT') or os.getcwd()
                 filepath = os.path.join(workspace_root, filename)
             else:
-                # For remote context, use remote workspace path
+                # For remote context, use remote workspace path that respects current session cwd
                 import posixpath
                 remote_user = context.get('username') or os.getenv('USER', 'user')
                 workspace_root = (
                     context.get('workspaceRoot')
+                    or context.get('cwd')
                     or os.environ.get('HOP_REMOTE_WORKSPACE_ROOT')
-                    or posixpath.join('/home', remote_user, 'icotes', 'workspace')
+                    # Default to the icotes project root on remote host (no trailing 'workspace')
+                    or posixpath.join('/home', remote_user, 'icotes')
                 )
                 filepath = posixpath.join(workspace_root, filename)
                 
@@ -361,8 +360,8 @@ class ImagenTool(BaseTool):
                     return None
                 # Do NOT write a full local copy to avoid duplicates; reference service can create thumbnail from bytes
             
-            # Return relative path for display (just the filename)
-            return filename
+            # Return tuple of (relative_path, absolute_path) for accurate path tracking
+            return (filename, filepath)
             
         except Exception as e:
             logger.error(f"Error saving image to workspace: {e}")
@@ -725,11 +724,18 @@ class ImagenTool(BaseTool):
             
             # Optionally save to workspace (hop-aware)
             saved_path = None
+            saved_absolute_path = None
             if save_to_workspace:
-                saved_path = await self._save_image_to_workspace(image_bytes, str(prompt), custom_filename or image_id)
+                save_result = await self._save_image_to_workspace(image_bytes, str(prompt), custom_filename or image_id)
+                if save_result:
+                    saved_path, saved_absolute_path = save_result
+                    logger.info(f"[ImagenTool] _save_image_to_workspace returned: saved_path={saved_path}, saved_absolute_path={saved_absolute_path}")
+                else:
+                    logger.warning(f"[ImagenTool] _save_image_to_workspace returned None")
             
             # Get current context for result metadata
             context = await get_current_context()
+            logger.info(f"[ImagenTool] Current context: {context}")
             
             # Create image reference for streaming optimization
             # Extract raw base64 for thumbnail/reference creation
@@ -744,7 +750,10 @@ class ImagenTool(BaseTool):
                 model=self._model,
                 mime_type=mime_type,
                 only_thumbnail_if_missing=True,
+                context_id=context.get('contextId'),
+                context_host=context.get('host'),
             )
+            logger.info(f"[ImagenTool] ImageReference created: image_id={ref.image_id}, absolute_path={ref.absolute_path}, relative_path={ref.relative_path}")
             
             # Cache the full image for fast retrieval
             # Put full image into the shared in-memory cache for fast serving via media API
@@ -756,28 +765,31 @@ class ImagenTool(BaseTool):
                 mime_type=mime_type
             )
             
+            # CRITICAL FIX: Override the imageReference's absolute_path with the actual save location
+            # The ImageReferenceService constructs paths using its own workspace root which may not
+            # match where we actually saved the file (especially for remote hop contexts)
+            ref_dict = ref.to_dict()
+            if saved_path and saved_absolute_path:
+                logger.info(
+                    f"[ImagenTool] Correcting imageReference absolute_path from {ref_dict.get('absolute_path')} "
+                    f"to actual save location {saved_absolute_path}"
+                )
+                ref_dict['absolute_path'] = saved_absolute_path
+            
             # Return result with reference AND small thumbnail for preview/editing
             # The thumbnail allows instant preview without fetching, and agents can use it for editing
-            # Build a hop-aware file URL ONLY if the file was actually saved
+            # Build a hop-aware file URL using the absolute path from save operation
             image_url = None
             context_name = context.get('contextId', 'local')
             if saved_path:
-                image_url = f"file://{ref.absolute_path}"
-                if context_name != 'local':
-                    try:
-                        import posixpath
-                        remote_workspace = (
-                            context.get('workspaceRoot')
-                            or os.environ.get('HOP_REMOTE_WORKSPACE_ROOT')
-                            or posixpath.join('/home', (context.get('username') or os.getenv('USER', 'user')), 'icotes', 'workspace')
-                        )
-                        image_url = f"file://{posixpath.join(remote_workspace, saved_path)}"
-                    except Exception:
-                        # Keep local absolute fallback
-                        image_url = f"file://{ref.absolute_path}"
+                # CRITICAL: Use saved_absolute_path directly, not ref.absolute_path
+                # The ImageReferenceService constructs paths using its own workspace root
+                # which doesn't match where we actually saved the file (especially for remote hops)
+                image_url = f"file://{saved_absolute_path}"
+                logger.info(f"[ImagenTool] Building result with saved_absolute_path: {saved_absolute_path}, context={context_name}")
 
             result_data = {
-                "imageReference": ref.to_dict(),  # Lightweight reference with thumbnail
+                "imageReference": ref_dict,  # Use corrected reference dict with proper absolute_path
                 "imageData": ref.thumbnail_base64,  # Include thumbnail for preview AND agent editing
                 # Prefer API fullImageUrl unless we truly saved to a file (imageUrl is optional)
                 **({"imageUrl": image_url} if image_url else {}),
@@ -807,15 +819,32 @@ class ImagenTool(BaseTool):
             
             if saved_path:
                 result_data["filePath"] = saved_path
+                # CRITICAL: Use saved_absolute_path from save operation, NOT ref.absolute_path
+                # ref.absolute_path is constructed by ImageReferenceService using its workspace root
+                # which may not match the actual save location (especially for remote hops)
+                result_data["absolutePath"] = saved_absolute_path
                 result_data["savedToWorkspace"] = True
-                if context_name != 'local':
-                    result_data["message"] = f"Image generated and saved to workspace/{saved_path} on {context_name}"
-                else:
-                    result_data["message"] = f"Image generated successfully and saved to workspace/{saved_path}"
+                # Provide a clear, absolute save path without assuming a 'workspace' suffix
+                result_data["message"] = f"Image generated successfully and saved to {saved_absolute_path}"
+                logger.info(f"[ImagenTool] Final result_data absolute_path: {saved_absolute_path} (ignoring ref.absolute_path={ref.absolute_path})")
             else:
                 result_data["savedToWorkspace"] = False
                 result_data["message"] = "Image generated successfully (available via fullImageUrl)"
             
+            # Emit a concise diagnostic to help track any path mismatches across agents/tools
+            try:
+                logger.info(
+                    "[ImagenTool] emit result | ctx=%s host=%s saved=%s abs=%s file=%s model=%s",
+                    context_name,
+                    context.get('host'),
+                    result_data.get('savedToWorkspace'),
+                    result_data.get('absolutePath'),
+                    result_data.get('filePath'),
+                    self._model,
+                )
+            except Exception:
+                pass
+
             return ToolResult(success=True, data=result_data)
             
         except Exception as e:

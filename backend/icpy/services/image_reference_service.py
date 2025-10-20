@@ -37,6 +37,8 @@ class ImageReference:
     model: str  # Model used to generate
     timestamp: float  # Creation timestamp
     checksum: str  # SHA256 checksum for integrity/search
+    context_id: Optional[str] = None  # Context ID where image was created (for hop support)
+    context_host: Optional[str] = None  # Host address if created on remote hop
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization"""
@@ -89,6 +91,8 @@ class ImageReferenceService:
         mime_type: str = "image/png",
         *,
         only_thumbnail_if_missing: bool = True,
+        context_id: Optional[str] = None,
+        context_host: Optional[str] = None,
     ) -> ImageReference:
         """
         Create an ImageReference from image data.
@@ -175,7 +179,9 @@ class ImageReferenceService:
                 prompt=prompt,
                 model=model,
                 timestamp=time.time(),
-                checksum=checksum
+                checksum=checksum,
+                context_id=context_id,
+                context_host=context_host
             )
             
             logger.info(f"Created ImageReference: {image_id} for {filename}")

@@ -1508,8 +1508,8 @@ async def get_filesystem_service() -> FileSystemService:
             if Path('/app/workspace').exists():
                 workspace_root = '/app/workspace'
             else:
-                # Last resort: project cwd workspace
-                workspace_root = str(Path.cwd() / 'workspace')
+                # Last resort: use current working directory as workspace root
+                workspace_root = str(Path.cwd())
 
         # Ensure the directory exists to allow watchdog to attach
         try:

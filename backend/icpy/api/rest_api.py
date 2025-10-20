@@ -643,6 +643,7 @@ class RestAPI:
                         break
 
                 if abs_path is not None:
+                    logger.info(f"[REST][raw] Using local streaming path abs={abs_path}")
                     # Security: ensure selected path is inside either fs_root or workspace_root
                     if not (abs_path.startswith(fs_root) or abs_path.startswith(workspace_root)):
                         raise HTTPException(status_code=400, detail="Path outside workspace root")
@@ -664,6 +665,7 @@ class RestAPI:
 
                 # If no local candidate found (or file is 0-byte) and remote FS is active, stream via adapter
                 if getattr(fs_service, 'is_remote', False):
+                    logger.info(f"[REST][raw] Using REMOTE streaming for path={path} ns={namespace}")
                     # Keep original path semantics (absolute or relative to remote root)
                     mime, _ = mimetypes.guess_type(path)
                     if mime is None:

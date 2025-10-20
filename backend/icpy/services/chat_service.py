@@ -25,6 +25,7 @@ from ..services.agent_service import AgentService, get_agent_service, AgentSessi
 from ..services.media_service import get_media_service
 from ..services.image_reference_service import ImageReferenceService, ImageReference
 from ..services.image_cache import get_image_cache
+from ..services.context_router import get_context_router
 
 # Custom agent imports
 try:
@@ -193,8 +194,8 @@ class ChatService:
         
         # JSONL history root (workspace/.icotes/chat_history)
         try:
-            # Base workspace root
-            base_workspace_root = os.environ.get('WORKSPACE_ROOT')
+            # Base workspace root - align with FileSystemService detection
+            base_workspace_root = os.environ.get('WORKSPACE_ROOT') or os.environ.get('ICOTES_WORKSPACE_PATH')
             
             # Always isolate per ChatService instance when running under pytest
             # This prevents cross-test contamination when WORKSPACE_ROOT is set globally.
@@ -202,9 +203,9 @@ class ChatService:
             needs_isolation = os.environ.get('PYTEST_CURRENT_TEST') is not None
 
             if not base_workspace_root:
-                # Default to workspace directory relative to backend
-                backend_dir = os.path.dirname(os.path.abspath(__file__))
-                base_workspace_root = os.path.join(os.path.dirname(os.path.dirname(backend_dir)), 'workspace')
+                # Use same fallback as FileSystemService: cwd if no env set
+                # This ensures ChatService and FileSystemService use the same root
+                base_workspace_root = str(Path.cwd())
 
             # Apply per-instance isolation suffix when needed
             if needs_isolation:
@@ -361,7 +362,14 @@ class ChatService:
                 try:
                     if isinstance(orig_path, str) and orig_path:
                         from pathlib import Path as _P
-                        if _P(orig_path).is_absolute():
+                        # If path is namespaced (e.g., hop1:/abs/path), don't treat as local absolute here
+                        is_namespaced = False
+                        try:
+                            idx = orig_path.find(':/')
+                            is_namespaced = idx > 0 and orig_path[:idx].strip() != ''
+                        except Exception:
+                            is_namespaced = False
+                        if _P(orig_path).is_absolute() and not is_namespaced:
                             abs_path = orig_path
                         else:
                             if not rel_path:
@@ -416,6 +424,20 @@ class ChatService:
                     # Use media file endpoint; UI will call getAttachmentUrl too
                     url = f"/api/media/file/{quote(att_id)}"
 
+                # Preserve namespaced path and namespace hint (for hop-aware embedding downstream)
+                hop_namespace = None
+                namespaced_path = None
+                try:
+                    if isinstance(orig_path, str) and ':/'+'' in orig_path:
+                        idx = orig_path.find(':/')
+                        if idx > 0:
+                            hop_namespace = orig_path[:idx]
+                            # Store full namespaced string as-is for later parsing
+                            namespaced_path = orig_path
+                except Exception:
+                    hop_namespace = None
+                    namespaced_path = None
+
                 normalized.append({
                     'id': att_id or None,
                     'filename': filename,
@@ -427,7 +449,10 @@ class ChatService:
                     # Provide original path as generic field for raw endpoint fallbacks
                     'path': orig_path or abs_path or rel_path,
                     'kind': kind,
-                    'url': url
+                    'url': url,
+                    # Hop-aware hints
+                    **({'hop_namespace': hop_namespace} if hop_namespace else {}),
+                    **({'namespaced_path': namespaced_path} if namespaced_path else {})
                 })
         except Exception as e:
             logger.warning(f"Attachment normalization error: {e}")
@@ -496,9 +521,10 @@ class ChatService:
             if metadata and isinstance(metadata, dict):
                 raw_attachments = metadata.get('attachments') or []
             if isinstance(raw_attachments, list):
+                logger.info(f"[ATTACH-DEBUG] Raw attachments before normalization: {raw_attachments}")
                 attachments = self._normalize_attachments(raw_attachments)
                 if attachments:
-                    logger.debug(f"Normalized {len(attachments)} attachments for message")
+                    logger.info(f"[ATTACH-DEBUG] Normalized {len(attachments)} attachments: {attachments}")
         except Exception as e:
             logger.error(f"Failed to normalize attachments: {e}")
             attachments = []
@@ -845,11 +871,18 @@ class ChatService:
                         rel_path = att.get('relative_path') or att.get('rel_path') or att.get('path') or ''
                         abs_path = att.get('absolute_path') or ''
                         url_hint = att.get('url') or ''
+                        namespaced_path = att.get('namespaced_path') or ''
 
                         # Determine the path to show to the agent
+                        # IMPORTANT: For namespaced (hop) paths, we should NOT show file:// paths
+                        # because the image will be embedded as a data URL image_url part.
+                        # Text hints confuse the agent into using the wrong path.
                         display_path = ''
-                        if abs_path:
-                            # Prefer file:// for absolute workspace paths to help tools consume it
+                        if namespaced_path:
+                            # For hop paths, just show a friendly reference - the actual image is embedded
+                            display_path = f"{namespaced_path} (embedded in message)"
+                        elif abs_path:
+                            # For local absolute paths, file:// is ok since tools can read it
                             display_path = f"file://{abs_path}"
                         elif rel_path:
                             display_path = rel_path
@@ -866,7 +899,23 @@ class ChatService:
                             'size': att.get('size_bytes') or att.get('size') or 0
                         }
                         if is_image:
-                            image_attachments_for_text.append(info)
+                            # Add path hint for images so tools can reference them
+                            # For namespaced paths (e.g., "hop1:/path"), extract just the path part
+                            # Tools use get_contextual_filesystem() which respects active context
+                            tool_path = namespaced_path or abs_path or rel_path
+                            if tool_path and ':/' in tool_path:
+                                # Extract path after "namespace:/" prefix
+                                _, path_only = tool_path.split(':/', 1)
+                                tool_path = f"file:///{path_only}"
+                            elif tool_path and not tool_path.startswith('file://'):
+                                tool_path = f"file://{tool_path}"
+                            
+                            if tool_path:
+                                image_attachments_for_text.append({
+                                    'filename': filename,
+                                    'path': tool_path,
+                                    'mime_type': mime
+                                })
                         else:
                             non_image_attachments.append(info)
 
@@ -879,14 +928,16 @@ class ChatService:
                         attachment_info += "]"
                         message_text += attachment_info
 
-                    # Append image files block (textual hint) to assist non-vision agents/tools
+                    # Append image path hints for tool usage
+                    # Images are ALSO embedded as image_url parts below for vision
+                    # The path hints allow tools like generate_image to reference the source file
                     if image_attachments_for_text:
-                        images_info = "\n\n[Attached images:"
-                        for att_info in image_attachments_for_text:
-                            size_str = f" ({att_info['size']} bytes)" if att_info['size'] else ""
-                            images_info += f"\n- {att_info['filename']} (path: {att_info['path']}){size_str}"
-                        images_info += "]"
-                        message_text += images_info
+                        image_hint = "\n\n[Image attached:"
+                        for img_info in image_attachments_for_text:
+                            # Show the path that tools should use (preserves hop prefix)
+                            image_hint += f"\n- {img_info['filename']} (path: {img_info['path']})"
+                        image_hint += "]"
+                        message_text += image_hint
                 
                 content_parts: List[Dict[str, Any]] = [{"type": "text", "text": message_text}]
                 if user_message.attachments:
@@ -907,6 +958,7 @@ class ChatService:
                         try:
                             kind = att.get('kind')
                             mime = att.get('mime_type') or att.get('mime') or ''
+                            logger.info(f"[EMBED-DEBUG] Processing attachment: kind={kind}, mime={mime}, att={att}")
                             # Fast reject for non-image
                             if not ((isinstance(mime, str) and mime.startswith('image/')) or kind in ('image', 'images')):
                                 continue
@@ -916,6 +968,8 @@ class ChatService:
                             # Prefer embedding as data URL from media service or workspace path
                             rel = att.get('relative_path') or att.get('rel_path') or att.get('path')
                             absolute_field = att.get('absolute_path')
+                            namespaced = att.get('namespaced_path') or None
+                            hop_ns = att.get('hop_namespace') or None
                             data_url = None
                             
                             # Try media service first (for uploaded files)
@@ -967,6 +1021,57 @@ class ChatService:
                                         logger.debug(f"Embedded explorer image as data URL")
                                 except Exception as e:
                                     logger.warning(f"Failed to embed explorer image: {e}")
+                                    data_url = None
+
+                            # Try hop-aware namespaced path via ContextRouter (e.g., 'hop1:/abs/path')
+                            if not data_url and isinstance(namespaced, str) and ':/'+'' in namespaced:
+                                logger.info(f"[EMBED-DEBUG] Attempting hop-aware embed for namespaced={namespaced}, hop_ns={hop_ns}")
+                                try:
+                                    router = await get_context_router()
+                                    ctx_id, abs_remote = await router.parse_namespaced_path(namespaced)
+                                    logger.info(f"[EMBED-DEBUG] Parsed: ctx_id={ctx_id}, abs_remote={abs_remote}")
+                                    fs = await router.get_filesystem_for_namespace(ctx_id)
+                                    logger.info(f"[EMBED-DEBUG] Got filesystem: {type(fs).__name__}")
+                                    # Prefer binary read
+                                    content = None
+                                    if hasattr(fs, 'read_file_binary'):
+                                        logger.info(f"[EMBED-DEBUG] Calling read_file_binary({abs_remote})")
+                                        content = await fs.read_file_binary(abs_remote)
+                                        logger.info(f"[EMBED-DEBUG] read_file_binary returned: {type(content).__name__ if content else None}, len={len(content) if content else 0}")
+                                    if content is None and hasattr(fs, 'read_file'):
+                                        content = await fs.read_file(abs_remote)
+                                        if isinstance(content, str):
+                                            # Might be base64 string or data URI
+                                            import base64 as _b64
+                                            if content.startswith('data:image/') and ',' in content:
+                                                content = _b64.b64decode(content.split(',', 1)[1])
+                                            else:
+                                                try:
+                                                    content = _b64.b64decode(content)
+                                                except Exception:
+                                                    content = content.encode('utf-8')
+                                    if content is not None:
+                                        # Size guard for remote
+                                        try:
+                                            if isinstance(content, (bytes, bytearray)):
+                                                size_b = len(content)
+                                            else:
+                                                size_b = len(content.encode('utf-8'))
+                                            if size_b > int(max_img_mb * 1024 * 1024):
+                                                raise ValueError('image_too_large')
+                                        except Exception:
+                                            pass
+                                        import base64 as _b64
+                                        if isinstance(content, bytes):
+                                            b64 = _b64.b64encode(content).decode('ascii')
+                                        else:
+                                            b64 = _b64.b64encode(content.encode('utf-8')).decode('ascii')
+                                        data_url = f"data:{mime};base64,{b64}"
+                                        logger.info(f"[EMBED-DEBUG] Successfully embedded namespaced image: {hop_ns} {abs_remote}, data_url_len={len(data_url)}")
+                                except Exception as e:
+                                    logger.error(f"[EMBED-DEBUG] Failed hop-aware embed for namespaced path {namespaced}: {e}")
+                                    import traceback
+                                    traceback.print_exc()
                                     data_url = None
                             if not data_url:
                                 # Prefer explicit URL field if provided by normalization
@@ -1374,9 +1479,19 @@ class ChatService:
                         location_data['imageReference'] = ref.to_dict()
                         del location_data['imageData']
                         
-                        # Replace imageUrl with file path if present
-                        if 'imageUrl' in location_data:
-                            location_data['imageUrl'] = f"file://{ref.absolute_path}"
+                        # Preserve tool-provided imageUrl/absolutePath if present; only set if missing
+                        try:
+                            existing_url = location_data.get('imageUrl')
+                            abs_hint = location_data.get('absolutePath')
+                            if not existing_url:
+                                # Prefer absolutePath hint from the tool if available; else fall back to reference path
+                                if isinstance(abs_hint, str) and abs_hint:
+                                    location_data['imageUrl'] = f"file://{abs_hint}"
+                                else:
+                                    location_data['imageUrl'] = f"file://{ref.absolute_path}"
+                        except Exception:
+                            # Non-fatal – keep existing fields untouched
+                            pass
                         
                         logger.debug(f"Converted imageData to reference: {ref.image_id}")
                         
@@ -1406,8 +1521,16 @@ class ChatService:
                             del parsed['imageData']
                             
                             # Replace imageUrl with file path if present
-                            if 'imageUrl' in parsed:
-                                parsed['imageUrl'] = f"file://{ref_dict['absolute_path']}"
+                            try:
+                                existing_url = parsed.get('imageUrl')
+                                abs_hint = parsed.get('absolutePath')
+                                if not existing_url:
+                                    if isinstance(abs_hint, str) and abs_hint:
+                                        parsed['imageUrl'] = f"file://{abs_hint}"
+                                    else:
+                                        parsed['imageUrl'] = f"file://{ref_dict['absolute_path']}"
+                            except Exception:
+                                pass
                             
                             parsed['note'] = "imageData converted to reference for storage"
                             logger.debug(f"Converted imageData to reference: {ref_dict.get('image_id')}")

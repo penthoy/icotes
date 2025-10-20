@@ -240,15 +240,54 @@ class RemoteFileSystemAdapter:
             return []
 
     async def read_file(self, file_path: str, encoding: str = 'utf-8') -> Optional[str]:
+        """Read file as text with loop-safe SFTP access.
+
+        Uses an ephemeral SFTP client when the current asyncio loop differs from the
+        hop service's active loop to avoid cross-loop Future errors.
+        """
+        path = self._resolve(file_path)
         sftp = self._sftp()
         logger.info("[RemoteFS] read_file path=%s sftp_available=%s", file_path, bool(sftp))
-        if not sftp:
-            return None
-        path = self._resolve(file_path)
+
+        # Determine if we should use an ephemeral SFTP (different event loop)
+        use_ephemeral = False
+        hop = await get_hop_service()
+        try:
+            import asyncio as _asyncio
+            cur_loop = _asyncio.get_running_loop()
+            hop_loop = getattr(hop, 'get_active_loop', lambda: None)()
+            logger.info(
+                "[RemoteFS] read_file loop diag path=%s current_loop=%s hop_loop=%s",
+                path,
+                hex(id(cur_loop)) if cur_loop else None,
+                hex(id(hop_loop)) if hop_loop else None,
+            )
+            if hop_loop is not None and hop_loop is not cur_loop:
+                use_ephemeral = True
+        except Exception:
+            # If loop inspection fails, fall back to default SFTP
+            pass
+
         try:
             # Phase 8: Add timeout protection
-            async with sftp.open(path, 'rb') as f:
-                data = await _with_timeout(f.read(), operation=f"read file {path}")
+            if use_ephemeral:
+                logger.info("[RemoteFS] read_file using ephemeral SFTP due to loop mismatch")
+                async with hop.ephemeral_sftp(self._context_id) as esftp:
+                    if not esftp:
+                        logger.warning("[RemoteFS] ephemeral SFTP unavailable; falling back to active SFTP")
+                        if not sftp:
+                            return None
+                        async with sftp.open(path, 'rb') as f:
+                            data = await _with_timeout(f.read(), operation=f"read file {path}")
+                    else:
+                        async with esftp.open(path, 'rb') as f:
+                            data = await _with_timeout(f.read(), operation=f"read file {path}")
+            else:
+                if not sftp:
+                    return None
+                async with sftp.open(path, 'rb') as f:
+                    data = await _with_timeout(f.read(), operation=f"read file {path}")
+
             try:
                 text = data.decode(encoding)
             except Exception:
@@ -263,15 +302,53 @@ class RemoteFileSystemAdapter:
             return None
 
     async def read_file_binary(self, file_path: str) -> Optional[bytes]:
-        """Read file as binary data."""
+        """Read file as binary data with loop-safe SFTP access.
+
+        Uses an ephemeral SFTP client when the current asyncio loop differs from the
+        hop service's active loop to avoid cross-loop Future errors.
+        """
+        path = self._resolve(file_path)
         sftp = self._sftp()
         logger.info("[RemoteFS] read_file_binary path=%s sftp_available=%s", file_path, bool(sftp))
-        if not sftp:
-            return None
-        path = self._resolve(file_path)
+
+        # Determine if we should use an ephemeral SFTP (different event loop)
+        use_ephemeral = False
+        hop = await get_hop_service()
         try:
-            async with sftp.open(path, 'rb') as f:
-                data = await _with_timeout(f.read(), operation=f"read binary file {path}")
+            import asyncio as _asyncio
+            cur_loop = _asyncio.get_running_loop()
+            hop_loop = getattr(hop, 'get_active_loop', lambda: None)()
+            logger.info(
+                "[RemoteFS] read_file_binary loop diag path=%s current_loop=%s hop_loop=%s",
+                path,
+                hex(id(cur_loop)) if cur_loop else None,
+                hex(id(hop_loop)) if hop_loop else None,
+            )
+            if hop_loop is not None and hop_loop is not cur_loop:
+                use_ephemeral = True
+        except Exception:
+            # If loop inspection fails, fall back to default SFTP
+            pass
+
+        try:
+            if use_ephemeral:
+                logger.info("[RemoteFS] read_file_binary using ephemeral SFTP due to loop mismatch")
+                async with hop.ephemeral_sftp(self._context_id) as esftp:
+                    if not esftp:
+                        logger.warning("[RemoteFS] ephemeral SFTP unavailable; falling back to active SFTP")
+                        if not sftp:
+                            return None
+                        async with sftp.open(path, 'rb') as f:
+                            data = await _with_timeout(f.read(), operation=f"read binary file {path}")
+                    else:
+                        async with esftp.open(path, 'rb') as f:
+                            data = await _with_timeout(f.read(), operation=f"read binary file {path}")
+            else:
+                if not sftp:
+                    return None
+                async with sftp.open(path, 'rb') as f:
+                    data = await _with_timeout(f.read(), operation=f"read binary file {path}")
+
             await self._publish('fs.file_read', {'file_path': path, 'size': len(data), 'encoding': 'binary', 'timestamp': time.time()})
             return data
         except TimeoutError as e:
