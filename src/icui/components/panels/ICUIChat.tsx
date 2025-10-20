@@ -97,6 +97,8 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
   const [selectedAgent, setSelectedAgent] = useState(''); // Default agent will be set by CustomAgentDropdown
   // Theme-dependent colors are provided via CSS variables; explicit theme state not required here
   const [isComposing, setIsComposing] = useState(false);
+  // Local working state to show immediate feedback before streaming/typing events arrive
+  const [isWorkingLocal, setIsWorkingLocal] = useState(false);
   // NEW: smart auto-scroll state with user intent tracking
   const [isAutoScrollEnabled, setIsAutoScrollEnabled] = useState(true);
   const [hasNewMessages, setHasNewMessages] = useState(false);
@@ -330,6 +332,18 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
   // Handle sending a message
   const handleSendMessage = useCallback(async (content?: string, options?: MessageOptions) => {
     const messageContent = (content ?? inputValue).trim();
+    // Determine early if we intend to send (text, referenced files, or any uploads in chat context)
+    const intendsToSend =
+      messageContent.length > 0 ||
+      referenced.length > 0 ||
+      uploadApi.uploads.some(u => u.context === 'chat');
+
+    if (!intendsToSend) {
+      return;
+    }
+
+    // Flip local working indicator immediately to avoid UX delay while uploads settle
+    setIsWorkingLocal(true);
     // If there are pending uploads in chat context, start them
     const hasPending = uploadApi.uploads.some(u => u.context === 'chat' && u.status === 'pending');
     if (hasPending) {
@@ -348,6 +362,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
     const hasText = messageContent.length > 0;
     const hasAttachments = attachments.length > 0;
     if (!hasText && !hasAttachments) {
+      setIsWorkingLocal(false);
       return;
     }
 
@@ -380,6 +395,9 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
         
         await sendMessage(messageContent || '(attachment)', messageOptions);
       }
+
+      // Hand off to hook-managed typing state; clear local indicator now that send started
+      setIsWorkingLocal(false);
       
       // Clear input only if using the input field
       if (!content) {
@@ -416,8 +434,10 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
     } catch (error) {
       console.error('Failed to send message:', error);
       notificationService.error('Failed to send message');
+      // Ensure local indicator is cleared on error
+      setIsWorkingLocal(false);
     }
-  }, [inputValue, selectedAgent, sendMessage, sendCustomAgentMessage, onMessageSent, customAgents]);
+  }, [inputValue, selectedAgent, sendMessage, sendCustomAgentMessage, onMessageSent, customAgents, referenced.length, uploadApi.uploads]);
 
   // Handle stopping streaming
   const handleStopStreaming = useCallback(async () => {
@@ -730,7 +750,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
               </div>
             ))}
             <div ref={messagesEndRef} data-icui-chat-end />
-            {isConnected && isTyping && (
+            {isConnected && (isTyping || isWorkingLocal) && (
               <div className="flex items-center gap-2 text-xs opacity-70 mt-1" style={{ color: 'var(--icui-text-secondary)' }}>
                 <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
                 <span>Assistant is working…</span>
