@@ -111,20 +111,21 @@ async def get_image(
                             media_type=image_ref.mime_type or "image/png",
                             headers={"Content-Disposition": f"inline; filename={image_ref.current_filename}"}
                         )
-                    else:
-                        logger.error(f"[Media API] Remote file read returned None: {image_ref.absolute_path}")
+                    logger.error(f"[Media API] Remote file read returned None: {image_ref.absolute_path}")
                 else:
-                    logger.warning("[Media API] Remote FS does not support read_file_binary; falling back")
+                    logger.warning("[Media API] Remote FS does not support read_file_binary")
             except Exception as remote_err:
                 logger.error(f"[Media API] Failed to fetch remote image: {remote_err}", exc_info=True)
-                # Fall through to try local file or thumbnail
+
+            # Fail fast for remote images: do not fall back to local/thumbnail
+            raise HTTPException(status_code=503, detail="Remote image unavailable")
         
         # Check if file exists locally
         if not file_path.exists():
             logger.error(f"[Media API] File not found on disk: {file_path}")
             
-            # Fallback to thumbnail if full image missing
-            if not thumbnail and image_ref.thumbnail_path:
+            # Fallback to thumbnail if full image missing (only for local images)
+            if not is_remote and not thumbnail and image_ref.thumbnail_path:
                 fallback_path = Path(image_ref.thumbnail_path)
                 if fallback_path.exists():
                     logger.warning(f"[Media API] Falling back to thumbnail: {fallback_path}")

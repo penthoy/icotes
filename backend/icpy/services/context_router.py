@@ -175,8 +175,14 @@ class ContextRouter:
         """Return filesystem bound to a specific context id.
 
         - 'local' returns the local FileSystemService
-        - any other returns a RemoteFileSystemAdapter bound to that context if available
-        Fallback to local if remote not connected.
+        - Any other context returns a RemoteFileSystemAdapter bound to that context
+
+        Notes:
+            Previously this method silently fell back to the local filesystem when
+            the remote context was not connected. This masking behaviour is now
+            removed to enforce a fail-fast contract: if a non-local context is
+            requested but unavailable, an exception is raised so callers can surface
+            a clear error to the user instead of accidentally operating on local files.
         """
         await self._ensure_dependencies()
         if not context_id or context_id == 'local':
@@ -188,8 +194,11 @@ class ContextRouter:
             if session and session.status == 'connected' and sftp is not None:
                 return await get_remote_filesystem_adapter(context_id)
         except Exception as e:
-            logger.debug(f"[ContextRouter] get_filesystem_for_namespace fallback to local for {context_id}: {e}")
-        return self._local_fs  # type: ignore[return-value]
+            logger.debug(f"[ContextRouter] get_filesystem_for_namespace error for {context_id}: {e}")
+
+        # Fail fast: remote context requested but not available
+        logger.warning(f"[ContextRouter] Remote context unavailable: {context_id}")
+        raise RuntimeError(f"Remote context unavailable: {context_id}")
 
     async def get_terminal_service(self):
         """Return a terminal service for the active context.

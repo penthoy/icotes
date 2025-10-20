@@ -10,6 +10,8 @@ import time
 import logging
 from contextlib import suppress
 from dataclasses import dataclass, asdict
+import re
+import unicodedata
 from pathlib import Path
 from typing import Dict, Optional, Any
 
@@ -111,10 +113,14 @@ class ImageReferenceService:
         try:
             # Generate unique image ID
             image_id = str(uuid.uuid4())
-            
-            # Determine paths
-            relative_path = filename
-            absolute_path = self._workspace_path_obj / filename
+
+            # Preserve original, then sanitize the filename used on disk
+            original_filename = filename
+            safe_filename = self._sanitize_filename(filename, preferred_ext=self._ext_for_mime(mime_type), fallback_name=f"image_{image_id}")
+
+            # Determine paths (force workspace-relative safe name)
+            relative_path = safe_filename
+            absolute_path = self._workspace_path_obj / safe_filename
             
             # If file is missing locally (e.g., image lives on remote host),
             # avoid materializing the full image locally unless explicitly needed.
@@ -169,8 +175,8 @@ class ImageReferenceService:
             # Create reference
             ref = ImageReference(
                 image_id=image_id,
-                original_filename=filename,
-                current_filename=filename,
+                original_filename=original_filename,
+                current_filename=safe_filename,
                 relative_path=relative_path,
                 absolute_path=str(absolute_path),
                 mime_type=mime_type,
@@ -254,6 +260,112 @@ class ImageReferenceService:
             logger.error(f"Failed to write image reference index: {exc}")
             with suppress(FileNotFoundError):
                 tmp_path.unlink()
+
+    # ---------------------------
+    # Sanitization helpers
+    # ---------------------------
+    @staticmethod
+    def _ext_for_mime(mime: Optional[str]) -> Optional[str]:
+        """
+        Map common image MIME types to preferred file extensions.
+        Returns a lowercase extension string including the leading dot, or None.
+        """
+        if not mime:
+            return None
+        mt = mime.lower()
+        mapping = {
+            "image/png": ".png",
+            "image/jpeg": ".jpg",
+            "image/jpg": ".jpg",
+            "image/webp": ".webp",
+            "image/gif": ".gif",
+            "image/bmp": ".bmp",
+            "image/tiff": ".tiff",
+        }
+        return mapping.get(mt)
+
+    @staticmethod
+    def _sanitize_filename(name: str, *, preferred_ext: Optional[str] = None, fallback_name: str = "image") -> str:
+        """
+        Sanitize a potentially unsafe filename for storage within the workspace.
+
+        Rules:
+        - Strip any directory components (use basename only)
+        - Normalize unicode (NFKC)
+        - Remove control chars and reserved characters <>:"/\\|?*
+        - Collapse whitespace to single underscores
+        - Trim leading/trailing dots/spaces/underscores
+        - Preserve/ensure a safe image extension when known; otherwise keep existing if safe
+        - Enforce a max length of ~120 chars
+
+        Returns a filename without path separators.
+        """
+        try:
+            # 1) Drop any directory traversal/absolute paths
+            base = Path(name).name
+
+            # 2) Unicode normalize
+            base = unicodedata.normalize("NFKC", base)
+
+            # 3) Remove control characters
+            base = "".join(ch for ch in base if ch.isprintable())
+
+            # 4) Remove reserved characters
+            base = re.sub(r"[<>:\"/\\|?*]", "", base)
+
+            # 5) Collapse whitespace to underscores
+            base = re.sub(r"\s+", "_", base)
+
+            # 6) Prevent hidden/dotted corner cases; collapse leading dots/underscores/spaces
+            base = base.strip(" ._-")
+
+            # If empty after sanitization, fallback to generated name
+            if not base:
+                base = fallback_name
+
+            # 7) Manage extension
+            stem, ext = os.path.splitext(base)
+            ext = ext.lower()
+
+            # Allowlist of safe image extensions
+            allowed_exts = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff"}
+
+            if preferred_ext:
+                # If provided mime suggests an ext, apply it (avoid duplicate ext)
+                if ext and ext not in allowed_exts:
+                    # drop unsafe ext
+                    ext = ""
+                if not ext:
+                    ext = preferred_ext
+                # If ext exists but doesn't match preferred, keep existing allowed ext
+            else:
+                # No preferred ext; if no ext or unsafe, default to .png
+                if not ext or ext not in allowed_exts:
+                    ext = ".png"
+
+            # Ensure stem is not empty
+            if not stem:
+                stem = fallback_name
+
+            # Reassemble and length-limit
+            safe = f"{stem}{ext}"
+            if len(safe) > 120:
+                # keep ext, trim stem
+                keep = 120 - len(ext)
+                safe = f"{stem[:max(1, keep)]}{ext}"
+
+            # Final guard: no separators
+            safe = safe.replace("/", "_").replace("\\", "_")
+
+            # If changed, log a warning once per call
+            if safe != name:
+                logger.warning(f"Sanitized filename '{name}' -> '{safe}'")
+
+            return safe
+        except Exception as exc:
+            logger.debug(f"Filename sanitization failed for '{name}': {exc}")
+            # Conservative fallback
+            return f"{fallback_name}.png"
 
 
 async def create_image_reference(
