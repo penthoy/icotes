@@ -164,24 +164,17 @@ const ICUIPreview = forwardRef<ICUIPreviewRef, ICUIPreviewProps>(({
     };
   }, []);
 
-  // Notification service
+  // Notification service (unified)
   const showNotification = useCallback((message: string, type: 'success' | 'error' | 'warning' | 'info' = 'info') => {
-    const notification = document.createElement('div');
-    const colors = {
-      success: 'bg-green-500 text-white',
-      error: 'bg-red-500 text-white',
-      warning: 'bg-yellow-500 text-black',
-      info: 'bg-blue-500 text-white'
-    };
-
-    notification.className = `fixed top-4 right-4 p-4 rounded-lg shadow-lg z-50 ${colors[type]}`;
-    notification.textContent = message;
-    notification.style.zIndex = '99999';
-    document.body.appendChild(notification);
-
-    setTimeout(() => {
-      notification.remove();
-    }, 3000);
+    // Unified service
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { notificationService } = require('../../services/notificationService');
+    notificationService.show(message, type, {
+      position: 'top-right',
+      duration: 3000,
+      dismissible: true,
+      key: `preview:${type}:${message}`,
+    });
   }, []);
 
   // Safe clipboard function that handles different environments

@@ -10,10 +10,12 @@ import time
 import logging
 from contextlib import suppress
 from dataclasses import dataclass, asdict
+import re
+import unicodedata
 from pathlib import Path
 from typing import Dict, Optional, Any
 
-from ..utils.thumbnail_generator import generate_thumbnail, calculate_checksum
+from ..utils.thumbnail_generator import generate_thumbnail, generate_thumbnail_from_bytes, calculate_checksum
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +39,8 @@ class ImageReference:
     model: str  # Model used to generate
     timestamp: float  # Creation timestamp
     checksum: str  # SHA256 checksum for integrity/search
+    context_id: Optional[str] = None  # Context ID where image was created (for hop support)
+    context_host: Optional[str] = None  # Host address if created on remote hop
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization"""
@@ -73,7 +77,13 @@ class ImageReferenceService:
         self._references: Dict[str, Dict[str, Any]] = {}
         self._load_index()
         
-        logger.info(f"ImageReferenceService initialized: workspace={workspace_path}")
+        # Only log initialization on first creation (reduce log spam from re-initialization)
+        global _already_logged_init
+        if not _already_logged_init:
+            logger.info(f"ImageReferenceService initialized: workspace={workspace_path}")
+            _already_logged_init = True
+        else:
+            logger.debug(f"ImageReferenceService reused/recreated: workspace={workspace_path}")
     
     async def create_reference(
         self,
@@ -81,7 +91,11 @@ class ImageReferenceService:
         filename: str,
         prompt: str,
         model: str,
-        mime_type: str = "image/png"
+        mime_type: str = "image/png",
+        *,
+        only_thumbnail_if_missing: bool = True,
+        context_id: Optional[str] = None,
+        context_host: Optional[str] = None,
     ) -> ImageReference:
         """
         Create an ImageReference from image data.
@@ -99,22 +113,31 @@ class ImageReferenceService:
         try:
             # Generate unique image ID
             image_id = str(uuid.uuid4())
+
+            # Preserve original, then sanitize the filename used on disk
+            original_filename = filename
+            safe_filename = self._sanitize_filename(filename, preferred_ext=self._ext_for_mime(mime_type), fallback_name=f"image_{image_id}")
+
+            # Determine paths (force workspace-relative safe name)
+            relative_path = safe_filename
+            absolute_path = self._workspace_path_obj / safe_filename
             
-            # Determine paths
-            relative_path = filename
-            absolute_path = self._workspace_path_obj / filename
-            
-            # Ensure file exists locally; if missing but image_data provided, write it now.
+            # If file is missing locally (e.g., image lives on remote host),
+            # avoid materializing the full image locally unless explicitly needed.
             if not absolute_path.exists():
-                try:
-                    import base64 as _b64
-                    absolute_path.parent.mkdir(parents=True, exist_ok=True)
-                    with open(absolute_path, "wb") as fh:
-                        fh.write(_b64.b64decode(image_data))
-                    logger.info(f"Wrote local image copy for reference: {absolute_path}")
-                except Exception as write_e:
-                    # If we fail to materialize, keep going; downstream will raise a clearer error.
-                    logger.warning(f"Unable to materialize local image copy at {absolute_path}: {write_e}")
+                if only_thumbnail_if_missing:
+                    logger.debug(
+                        "Image file missing locally; will compute checksum and thumbnail from provided base64 without writing full file"
+                    )
+                else:
+                    try:
+                        import base64 as _b64
+                        absolute_path.parent.mkdir(parents=True, exist_ok=True)
+                        with open(absolute_path, "wb") as fh:
+                            fh.write(_b64.b64decode(image_data))
+                        logger.info(f"Wrote local image copy for reference: {absolute_path}")
+                    except Exception as write_e:
+                        logger.warning(f"Unable to materialize local image copy at {absolute_path}: {write_e}")
             
             # Calculate file size
             size_bytes = absolute_path.stat().st_size if absolute_path.exists() else 0
@@ -130,17 +153,30 @@ class ImageReferenceService:
                     checksum = ""
             
             # Generate thumbnail
-            thumbnail_result = generate_thumbnail(
-                str(absolute_path),
-                str(self.thumbnails_dir),
-                image_id=image_id
-            )
+            try:
+                if absolute_path.exists():
+                    thumbnail_result = generate_thumbnail(
+                        str(absolute_path),
+                        str(self.thumbnails_dir),
+                        image_id=image_id
+                    )
+                else:
+                    import base64 as _b64
+                    thumbnail_result = generate_thumbnail_from_bytes(
+                        _b64.b64decode(image_data),
+                        str(self.thumbnails_dir),
+                        image_id=image_id
+                    )
+            except Exception as thumb_e:
+                logger.error(f"Failed to generate thumbnail for reference {filename}: {thumb_e}")
+                # Best effort: empty thumbnail
+                thumbnail_result = {'path': '', 'base64': '', 'size_bytes': 0, 'width': 0, 'height': 0}
             
             # Create reference
             ref = ImageReference(
                 image_id=image_id,
-                original_filename=filename,
-                current_filename=filename,
+                original_filename=original_filename,
+                current_filename=safe_filename,
                 relative_path=relative_path,
                 absolute_path=str(absolute_path),
                 mime_type=mime_type,
@@ -150,7 +186,9 @@ class ImageReferenceService:
                 prompt=prompt,
                 model=model,
                 timestamp=time.time(),
-                checksum=checksum
+                checksum=checksum,
+                context_id=context_id,
+                context_host=context_host
             )
             
             logger.info(f"Created ImageReference: {image_id} for {filename}")
@@ -223,6 +261,112 @@ class ImageReferenceService:
             with suppress(FileNotFoundError):
                 tmp_path.unlink()
 
+    # ---------------------------
+    # Sanitization helpers
+    # ---------------------------
+    @staticmethod
+    def _ext_for_mime(mime: Optional[str]) -> Optional[str]:
+        """
+        Map common image MIME types to preferred file extensions.
+        Returns a lowercase extension string including the leading dot, or None.
+        """
+        if not mime:
+            return None
+        mt = mime.lower()
+        mapping = {
+            "image/png": ".png",
+            "image/jpeg": ".jpg",
+            "image/jpg": ".jpg",
+            "image/webp": ".webp",
+            "image/gif": ".gif",
+            "image/bmp": ".bmp",
+            "image/tiff": ".tiff",
+        }
+        return mapping.get(mt)
+
+    @staticmethod
+    def _sanitize_filename(name: str, *, preferred_ext: Optional[str] = None, fallback_name: str = "image") -> str:
+        """
+        Sanitize a potentially unsafe filename for storage within the workspace.
+
+        Rules:
+        - Strip any directory components (use basename only)
+        - Normalize unicode (NFKC)
+        - Remove control chars and reserved characters <>:"/\\|?*
+        - Collapse whitespace to single underscores
+        - Trim leading/trailing dots/spaces/underscores
+        - Preserve/ensure a safe image extension when known; otherwise keep existing if safe
+        - Enforce a max length of ~120 chars
+
+        Returns a filename without path separators.
+        """
+        try:
+            # 1) Drop any directory traversal/absolute paths
+            base = Path(name).name
+
+            # 2) Unicode normalize
+            base = unicodedata.normalize("NFKC", base)
+
+            # 3) Remove control characters
+            base = "".join(ch for ch in base if ch.isprintable())
+
+            # 4) Remove reserved characters
+            base = re.sub(r"[<>:\"/\\|?*]", "", base)
+
+            # 5) Collapse whitespace to underscores
+            base = re.sub(r"\s+", "_", base)
+
+            # 6) Prevent hidden/dotted corner cases; collapse leading dots/underscores/spaces
+            base = base.strip(" ._-")
+
+            # If empty after sanitization, fallback to generated name
+            if not base:
+                base = fallback_name
+
+            # 7) Manage extension
+            stem, ext = os.path.splitext(base)
+            ext = ext.lower()
+
+            # Allowlist of safe image extensions
+            allowed_exts = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff"}
+
+            if preferred_ext:
+                # If provided mime suggests an ext, apply it (avoid duplicate ext)
+                if ext and ext not in allowed_exts:
+                    # drop unsafe ext
+                    ext = ""
+                if not ext:
+                    ext = preferred_ext
+                # If ext exists but doesn't match preferred, keep existing allowed ext
+            else:
+                # No preferred ext; if no ext or unsafe, default to .png
+                if not ext or ext not in allowed_exts:
+                    ext = ".png"
+
+            # Ensure stem is not empty
+            if not stem:
+                stem = fallback_name
+
+            # Reassemble and length-limit
+            safe = f"{stem}{ext}"
+            if len(safe) > 120:
+                # keep ext, trim stem
+                keep = 120 - len(ext)
+                safe = f"{stem[:max(1, keep)]}{ext}"
+
+            # Final guard: no separators
+            safe = safe.replace("/", "_").replace("\\", "_")
+
+            # If changed, log a warning once per call
+            if safe != name:
+                logger.warning(f"Sanitized filename '{name}' -> '{safe}'")
+
+            return safe
+        except Exception as exc:
+            logger.debug(f"Filename sanitization failed for '{name}': {exc}")
+            # Conservative fallback
+            return f"{fallback_name}.png"
+
 
 async def create_image_reference(
     image_data: str,
@@ -257,6 +401,7 @@ async def create_image_reference(
 
 
 _global_image_reference_service: Optional[ImageReferenceService] = None
+_already_logged_init = False  # Track if we've logged initialization already
 
 
 def _detect_workspace_root() -> str:
@@ -274,7 +419,7 @@ def get_image_reference_service(workspace_path: Optional[str] = None) -> ImageRe
     Ensures that FastAPI endpoints and background services share a single cache of
     references while still allowing tests to request isolated instances.
     """
-    global _global_image_reference_service
+    global _global_image_reference_service, _already_logged_init
 
     if workspace_path:
         resolved = str(Path(workspace_path).resolve())
@@ -283,10 +428,12 @@ def get_image_reference_service(workspace_path: Optional[str] = None) -> ImageRe
 
     if _global_image_reference_service is None:
         _global_image_reference_service = ImageReferenceService(workspace_path=resolved)
+        _already_logged_init = True  # Only log first init
     else:
         current = Path(_global_image_reference_service.workspace_path).resolve()
         if current != Path(resolved):
             # Recreate service if workspace changed (e.g., during tests)
             _global_image_reference_service = ImageReferenceService(workspace_path=resolved)
+            # Don't set flag - workspace change is noteworthy
 
     return _global_image_reference_service

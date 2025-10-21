@@ -98,13 +98,16 @@ const ImageGenerationWidget: React.FC<ImageGenerationWidgetProps> = ({
           output = toolCall.output;
         }
         
-        console.log('[ImageWidget] Parsed output:', {
-          hasImageReference: !!output.imageReference,
-          hasImageData: !!output.imageData,
-          hasImageUrl: !!output.imageUrl,
-          hasFullImageUrl: !!output.fullImageUrl,
-          size: output.size
-        });
+        // Image output parsing (logged 16+ times on re-renders, now guarded)
+        if ((import.meta as any).env?.VITE_DEBUG_IMAGES === 'true') {
+          console.log('[ImageWidget] Parsed output:', {
+            hasImageReference: !!output.imageReference,
+            hasImageData: !!output.imageData,
+            hasImageUrl: !!output.imageUrl,
+            hasFullImageUrl: !!output.fullImageUrl,
+            size: output.size
+          });
+        }
         
         // Override size from output if available (actual dimensions)
         if (output.size) {
@@ -252,27 +255,60 @@ const ImageGenerationWidget: React.FC<ImageGenerationWidgetProps> = ({
 
   // Get display image source
   const imageSrc = useMemo(() => {
-    // Priority 1: Use fullImageUrl for high-quality display (streaming-optimized format)
-    if ((generationData as any).fullImageUrl) {
-      return (generationData as any).fullImageUrl;
-    }
-    
-    // Priority 2: Convert file:// URLs to API endpoints for full image
-    if (generationData.imageUrl) {
-      if (generationData.imageUrl.startsWith('file://')) {
-        const filePath = generationData.imageUrl.replace('file://', '');
+    // Hard-prefer the raw file streaming endpoint when a concrete file path is available.
+    // Media endpoints are ONLY used when we do not have a file path reference.
+    const full = (generationData as any).fullImageUrl as string | undefined;
+    const fileUrl = generationData.imageUrl as string | undefined;
+
+    // Helper to construct raw URL from a file:// URL
+    const toRaw = (url: string) => {
+      const filePath = url.replace('file://', '');
+      // Optionally, if context/namespace is present in output, append as a hint. This is safe and ignored if not needed.
+      // We read from the raw output if available (duck-typed on toolCall.output shape)
+      try {
+        const raw = typeof toolCall.output === 'string' ? (JSON.parse((toolCall.output.match(/\{[\s\S]*\}/)?.[0] || '{}')) as any) : (toolCall.output as any);
+        const ns = raw?.context || raw?.contextId || undefined;
+        return `/api/files/raw?path=${encodeURIComponent(filePath)}${ns ? `&namespace=${encodeURIComponent(ns)}` : ''}`;
+      } catch {
         return `/api/files/raw?path=${encodeURIComponent(filePath)}`;
       }
-      return generationData.imageUrl;
+    };
+
+    // 1) If imageUrl is a local file reference, use raw endpoint (fast path)
+    if (fileUrl && fileUrl.startsWith('file://')) {
+      return toRaw(fileUrl);
     }
-    
-    // Priority 3: Fallback to embedded thumbnail (fast but low quality)
+
+    // 2) If fullImageUrl is a file:// reference, also map to raw (some tool variants set this)
+    if (full && full.startsWith('file://')) {
+      return toRaw(full);
+    }
+
+    // 3) If we have a non-file imageUrl but also a thumbnail, still try the imageUrl first (legacy)
+    // Note: We intentionally DO NOT prefer media fullImageUrl when fileUrl exists to avoid slow path.
+    if (fileUrl) {
+      return fileUrl;
+    }
+
+    // 4) As a last resort, use fullImageUrl (likely /api/media/image/<id>) if there is no file path at all
+    if (full) {
+      return full;
+    }
+
+    // 5) Finally, embed thumbnail/base64 if present
     if (generationData.imageData) {
       return `data:image/png;base64,${generationData.imageData}`;
     }
-    
     return null;
-  }, [generationData]);
+  }, [generationData, toolCall.output]);
+
+  // Debug: log chosen image src once per message
+  useEffect(() => {
+    const debug = (import.meta as any).env?.VITE_DEBUG_IMAGES === 'true';
+    if (debug && imageSrc) {
+      console.log('[ImageWidget/Resolve] Final <img src> =', imageSrc);
+    }
+  }, [imageSrc]);
 
   return (
     <div className={`icui-widget border rounded-lg overflow-hidden ${className}`} 
@@ -364,8 +400,16 @@ const ImageGenerationWidget: React.FC<ImageGenerationWidgetProps> = ({
                     src={imageSrc}
                     alt={generationData.prompt || 'Generated image'}
                     className="w-full h-auto"
-                    onLoad={() => setImageLoaded(true)}
-                    onError={() => setImageError(true)}
+                    onLoad={() => {
+                      const debug = (import.meta as any).env?.VITE_DEBUG_IMAGES === 'true';
+                      if (debug) console.log('[ImageWidget/Load] Image loaded OK for src=', imageSrc);
+                      setImageLoaded(true);
+                    }}
+                    onError={(ev) => {
+                      const debug = (import.meta as any).env?.VITE_DEBUG_IMAGES === 'true';
+                      if (debug) console.warn('[ImageWidget/Load] Image failed for src=', imageSrc, ev);
+                      setImageError(true);
+                    }}
                   />
                 )}
                 

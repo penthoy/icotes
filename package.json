@@ -1,7 +1,7 @@
 {
   "name": "icotes",
   "private": true,
-  "version": "2.0.5",
+  "version": "2.1.1",
   "type": "module",
   "scripts": {
     "dev": "npm run build && cd backend && uv run python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload --log-config logging.conf",
@@ -12,7 +12,10 @@
     "preview": "vite preview",
     "test": "vitest",
     "test:ui": "vitest --ui",
-    "test:run": "vitest run",
+  "test:run": "vitest run",
+  "e2e": "playwright test",
+  "e2e:ui": "playwright test --ui",
+  "e2e:report": "playwright show-report",
     "types:supabase": "npx supabase gen types typescript --project-id $SUPABASE_PROJECT_ID > src/types/supabase.ts",
     "start": "./start.sh",
     "dev-backend": "cd backend && uv run python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload --log-config logging.conf",
@@ -101,6 +104,7 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@playwright/mcp": "^0.0.42",
     "@playwright/test": "^1.55.1",
     "@testing-library/jest-dom": "^6.8.0",
     "@testing-library/react": "^16.3.0",

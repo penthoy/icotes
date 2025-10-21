@@ -74,7 +74,8 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
   const [isConnected, setIsConnected] = useState(false);
 
   const initialWorkspaceRoot = getWorkspaceRoot();
-  const [currentPath, setCurrentPath] = useState<string>(initialWorkspaceRoot);
+  // Start with local namespace for initial path
+  const [currentPath, setCurrentPath] = useState<string>(`local:${initialWorkspaceRoot.startsWith('/') ? '' : '/'}${initialWorkspaceRoot}`.replace('local://', 'local:/'));
   const [isPathLocked, setIsPathLocked] = useState(true);
   const [editablePath, setEditablePath] = useState<string>('');
   const [showHiddenFiles, setShowHiddenFiles] = useState(explorerPreferences.getShowHiddenFiles());
@@ -225,7 +226,7 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
         return; // connection watcher will retry
       }
 
-      const directoryContents = await backendService.getDirectoryContents(path, showHiddenFiles);
+  const directoryContents = await backendService.getDirectoryContents(path, showHiddenFiles);
 
       setFiles(prevFiles => {
         const prevMap = buildMap(prevFiles);
@@ -312,7 +313,8 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
   useEffect(() => {
     const handleHopStatus = (session: any) => {
       try {
-        const contextId = session?.context_id || session?.contextId || 'local';
+  const contextId = session?.context_id || session?.contextId || 'local';
+  const friendly = session?.credentialName || session?.credential_name;
         const cwd = session?.cwd || '';
         const signature = `${contextId}:${cwd}`;
         if (lastHopContextIdRef.current === signature) return; // nothing new
@@ -321,13 +323,15 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
         let targetPath: string;
         if (contextId === 'local') {
           // Always reset to workspace root when returning to local per requirement
-            targetPath = getWorkspaceRoot();
+            targetPath = `local:${getWorkspaceRoot()}`;
         } else {
           // Remote: use reported cwd; fallback to '/'
           let remotePath = cwd && typeof cwd === 'string' ? cwd.trim() : '';
           if (!remotePath) remotePath = '/';
           // NOTE: If user entered '~' or '~/': backend does not expand; potential improvement.
-          targetPath = remotePath;
+          // Prefer friendly namespace label (credentialName) if present
+          const nsLabel = (friendly && typeof friendly === 'string') ? friendly : contextId;
+          targetPath = `${nsLabel}:${remotePath}`;
         }
 
         if (loadDirectoryRef.current) {

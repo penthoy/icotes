@@ -53,10 +53,19 @@ class ImageCache:
         self._cache: OrderedDict[str, CachedImage] = OrderedDict()
         self._total_size = 0
         
-        logger.info(
-            f"ImageCache initialized: max_images={max_images}, "
-            f"max_size={max_size_mb}MB, ttl={ttl_seconds}s"
-        )
+        # Only log on first initialization (reduce log spam)
+        global _cache_already_logged_init
+        if not _cache_already_logged_init:
+            logger.info(
+                f"ImageCache initialized: max_images={max_images}, "
+                f"max_size={max_size_mb}MB, ttl={ttl_seconds}s"
+            )
+            _cache_already_logged_init = True
+        else:
+            logger.debug(
+                f"ImageCache created: max_images={max_images}, "
+                f"max_size={max_size_mb}MB, ttl={ttl_seconds}s"
+            )
     
     def put(
         self,
@@ -224,11 +233,13 @@ class ImageCache:
 
 # Global cache instance
 _global_cache: Optional[ImageCache] = None
+_cache_already_logged_init = False
 
 
 def get_image_cache() -> ImageCache:
     """Get global image cache instance"""
-    global _global_cache
+    global _global_cache, _cache_already_logged_init
     if _global_cache is None:
         _global_cache = ImageCache()
+        _cache_already_logged_init = True
     return _global_cache

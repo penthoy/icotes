@@ -96,6 +96,12 @@ BASE_SYSTEM_PROMPT_TEMPLATE = """You are {AGENT_NAME}, a helpful and versatile A
 - create it under workspace which is your work root unless specified otherwise.
 - Create it using html/css/js by default unless the user specifies otherwise.
 
+**When asked to create or edit images:**
+- Don't ask for clarifying questions unless you absolutely not sure what to do.
+- When the user attaches an image with a file path hint (shown in brackets like "[Image attached: filename (path: ...)]"), use that EXACT path in the generate_image tool's image_data parameter
+- The file paths may include hop contexts (e.g., "hop1:/path/to/file.png") which the tool handles automatically
+- When editing attached images, combine the user's edit instructions with a reference to the source image: pass the file path to image_data parameter and describe the edits in the prompt parameter
+
 **File Operations Best Practices:**
 - Always save generated files (images, documents, code) to the workspace directory
 - Use the `get_workspace_path()` helper function from `icpy.agent.helpers` to get the correct workspace path
@@ -106,8 +112,6 @@ BASE_SYSTEM_PROMPT_TEMPLATE = """You are {AGENT_NAME}, a helpful and versatile A
 - Be helpful, accurate, and informative in your responses
 - Use tools when appropriate to provide better assistance
 - Explain your reasoning and approach clearly
-- Ask for clarification when requests are ambiguous
-- Provide practical, actionable advice
 
 **Tool Usage:**
 - Use file tools (read_file, create_file, replace_string_in_file) for file operations
@@ -475,7 +479,20 @@ class ToolResultFormatter:
                 # The widget expects structured data in toolCall.output field
                 # Phase 1 conversion in chat_service will convert imageData to ImageReference during storage
                 json_str = json.dumps(data)
-                logger.info(f"ToolResultFormatter: Generating image result JSON ({len(json_str)} chars)")
+                try:
+                    abs_path = data.get('absolutePath') or (
+                        (data.get('imageReference') or {}).get('absolute_path') if isinstance(data.get('imageReference'), dict) else None
+                    )
+                    logger.info(
+                        "ToolResultFormatter: image result emit | savedToWorkspace=%s | absolutePath=%s | filePath=%s | context=%s",
+                        data.get('savedToWorkspace'),
+                        abs_path,
+                        data.get('filePath'),
+                        data.get('context')
+                    )
+                except Exception:
+                    # Non-fatal logging failure
+                    pass
                 return f"✅ **Success**: {json_str}\n"
             
             else:
@@ -794,11 +811,23 @@ class OpenAIStreamingHandler:
                 # Keep lightweight reference for LLM context
                 # IMPORTANT: Do NOT include imageData here - LLM should use imageUrl (file://) for editing
                 # imageData (thumbnail) is only for frontend widget display
+                
+                # Log to track path discrepancies
+                ref_abs_path = (data.get('imageReference') or {}).get('absolute_path') if isinstance(data.get('imageReference'), dict) else None
+                tool_abs_path = data.get('absolutePath')
+                if ref_abs_path != tool_abs_path:
+                    logger.info(
+                        f"[ToolResultFormatter] Path mismatch detected: "
+                        f"imageReference.absolute_path={ref_abs_path}, "
+                        f"tool absolutePath={tool_abs_path}"
+                    )
+                
                 sanitized = {
                     "success": True,
                     "data": {
                         "imageReference": data.get('imageReference'),  # Lightweight reference metadata
                         "imageUrl": data.get('imageUrl'),  # file:// URL for agent editing (REQUIRED for edit mode)
+                        "absolutePath": data.get('absolutePath'),  # CRITICAL: Actual save path (may differ from imageReference path)
                         "filePath": data.get('filePath'),  # Relative path for display
                         "message": data.get('message', 'Image generated successfully'),
                         "prompt": data.get('prompt', ''),
@@ -814,6 +843,10 @@ class OpenAIStreamingHandler:
                         # These URLs are in the unsanitized version sent to frontend widget
                     }
                 }
+                
+                logger.info(f"[ToolResultFormatter] Sanitized image result: absolutePath={sanitized['data'].get('absolutePath')}")
+                
+                return sanitized
             else:
                 # Legacy format - strip out large base64 data
                 sanitized = {
@@ -1302,47 +1335,59 @@ def create_agent_context(workspace_root: Optional[str] = None) -> Dict[str, Any]
 def _detect_workspace_root() -> Optional[str]:
     """
     Attempt to automatically detect the workspace root directory.
-    
+
+    Resolution order (to align with FileSystemService and deployment envs):
+    1) WORKSPACE_ROOT env (authoritative, set by FileSystemService/init)
+    2) ICOTES_WORKSPACE_PATH env (legacy)
+    3) A nearby 'workspace' directory under current or ancestor folder
+    4) A detected project root (contains .git/package.json/pyproject.toml)
+    5) Current working directory as last resort
+
     Returns:
         Detected workspace root path or None if not found
     """
-    # First try environment variables
-    if os.environ.get("ICOTES_WORKSPACE_PATH"):
-        return os.environ.get("ICOTES_WORKSPACE_PATH")
-    
-    # Try to find workspace by looking for common indicators
+    # 1) Prefer explicit WORKSPACE_ROOT set by backend initialization
+    ws_env = os.environ.get("WORKSPACE_ROOT")
+    if ws_env:
+        return ws_env
+
+    # 2) Legacy env var support
+    legacy_env = os.environ.get("ICOTES_WORKSPACE_PATH")
+    if legacy_env:
+        return legacy_env
+
+    # 3) Try to find a nearby 'workspace' directory
     current_dir = os.getcwd()
-    
-    # Check if we're already in a workspace (look for workspace/ directory)
+
+    # If we're already in a directory named 'workspace'
     if os.path.basename(current_dir) == "workspace":
         return current_dir
-    
-    # Look up the directory tree for workspace indicators
+
+    # Look up the directory tree for a 'workspace' subdirectory
     check_dir = current_dir
     for _ in range(5):  # Limit search depth
-        # First priority: Look for icotes project structure with workspace/ subdirectory
         workspace_path = os.path.join(check_dir, "workspace")
-        if os.path.exists(workspace_path):
+        if os.path.isdir(workspace_path):
             return workspace_path
-        
+
         # Check parent directory for workspace/ too
         parent = os.path.dirname(check_dir)
-        if parent != check_dir:  # Not at root yet
+        if parent != check_dir:  # Not at filesystem root yet
             parent_workspace = os.path.join(parent, "workspace")
-            if os.path.exists(parent_workspace):
+            if os.path.isdir(parent_workspace):
                 return parent_workspace
-        
-        # Look for other project root indicators only if no workspace/ found
+
+        # 4) Detect common project roots if no explicit workspace dir
         root_indicators = [".git", "package.json", "pyproject.toml"]
         if any(os.path.exists(os.path.join(check_dir, indicator)) for indicator in root_indicators):
-            # If we're in a project root but no workspace/, return current directory
+            # Use the project root as workspace base when no 'workspace' dir present
             return check_dir
-        
-        if parent == check_dir:  # Reached root
+
+        if parent == check_dir:  # Reached filesystem root
             break
         check_dir = parent
-    
-    # Default fallback
+
+    # 5) Default fallback: current working directory
     return current_dir
 
 
@@ -1417,14 +1462,17 @@ def format_agent_context_for_prompt(context: Dict[str, Any]) -> str:
     
     system_info = f"**System**: {context['system']['platform']} {context['system']['architecture']}"
     
+    # Include hop context if present
+    hop_context_str = context.get('hop_context', '')
+    
     return f"""
 ## Agent Context Information
 
 {time_info}
 
-{workspace_info}
-- This is your primary working directory unless explicitly told otherwise
-- Use absolute paths or paths relative to this workspace root
+{hop_context_str}
+
+{workspace_info if not hop_context_str else ''}
 
 {caps_info}
 
@@ -1438,6 +1486,9 @@ def add_context_to_agent_prompt(base_prompt: str, workspace_root: Optional[str] 
     """
     Convenience function to add context information to an existing agent system prompt.
     
+    Includes dynamic hop context information so agent knows current workspace location.
+    Works in both sync and async contexts by using asyncio.
+    
     Args:
         base_prompt: The original system prompt
         workspace_root: Optional workspace root override
@@ -1446,6 +1497,63 @@ def add_context_to_agent_prompt(base_prompt: str, workspace_root: Optional[str] 
         Enhanced system prompt with context information
     """
     context = create_agent_context(workspace_root)
+    
+    # Add dynamic hop context information
+    # This needs to be async, so we handle it carefully
+    try:
+        import asyncio
+        from .tools.context_helpers import get_current_context
+        
+        # Try to get current event loop
+        try:
+            loop = asyncio.get_running_loop()
+            # We're in an async context, but this function is sync
+            # Create a task and run it
+            import concurrent.futures
+            import threading
+            
+            def get_context_sync():
+                new_loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(new_loop)
+                try:
+                    return new_loop.run_until_complete(get_current_context())
+                finally:
+                    new_loop.close()
+            
+            # Run in thread pool to avoid blocking
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(get_context_sync)
+                hop_context = future.result(timeout=2)  # 2 second timeout
+        except RuntimeError:
+            # No event loop running, we can safely create one
+            hop_context = asyncio.run(get_current_context())
+        
+        context_id = hop_context.get('contextId', 'local')
+        is_hopped = context_id != 'local' and hop_context.get('status') == 'connected'
+        
+        if is_hopped:
+            # Agent is in a remote hop context
+            hop_info = f"""
+**Current Context**: Hopped to remote server
+- Context ID: `{context_id}`
+- Host: `{hop_context.get('host', 'unknown')}`
+- Username: `{hop_context.get('username', 'unknown')}`
+- Current Directory: `{hop_context.get('cwd', '/')}`
+- **Active Workspace Root**: `{hop_context.get('cwd', '/')}` ⚠️ Use this for file operations!
+
+**Important**: When working with files (saving images, creating files, etc.), use the active workspace root shown above, NOT the local workspace path. All file operations will be executed on the remote server.
+"""
+            context['hop_context'] = hop_info
+        else:
+            # Local context
+            context['hop_context'] = f"""
+**Current Context**: Local (no hop active)
+- **Active Workspace Root**: `{context['workspace_root']}`
+"""
+    except Exception as e:
+        logger.warning(f"Failed to get hop context for agent prompt: {e}")
+        context['hop_context'] = ""
+    
     context_section = format_agent_context_for_prompt(context)
     
     return f"{base_prompt}\n\n{context_section}"

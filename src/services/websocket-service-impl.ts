@@ -12,7 +12,7 @@ import { MessageQueueManager, QueuedMessage } from './message-queue';
 import { ConnectionHealthMonitor, DiagnosticResult } from './connection-monitor';
 import { BackendConfig } from '../types/backend-types';
 
-export interface EnhancedWebSocketConfig extends BackendConfig {
+export interface WebSocketConfig extends BackendConfig {
   enableMessageQueue: boolean;
   enableHealthMonitoring: boolean;
   enableAutoRecovery: boolean;
@@ -42,16 +42,16 @@ export interface MessageOptions {
   retries?: number;
 }
 
-export class EnhancedWebSocketService extends EventEmitter {
+export class WebSocketService extends EventEmitter {
   private connectionManager: ConnectionManager;
   private messageQueueManager: MessageQueueManager;
   private healthMonitor: ConnectionHealthMonitor;
-  private config: EnhancedWebSocketConfig;
+  private config: WebSocketConfig;
   
   private messageIdCounter = 0;
-  private pendingMessages = new Map<string, { resolve: Function; reject: Function; timeout: NodeJS.Timeout }>();
+  private pendingMessages = new Map<string, { resolve: Function; reject: Function; timeout: ReturnType<typeof setTimeout> }>();
   
-  private readonly DEFAULT_CONFIG: EnhancedWebSocketConfig = {
+  private readonly DEFAULT_CONFIG: WebSocketConfig = {
     websocket_url: '',
     http_base_url: '',
     reconnect_attempts: 5,
@@ -70,7 +70,7 @@ export class EnhancedWebSocketService extends EventEmitter {
     }
   };
 
-  constructor(config?: Partial<EnhancedWebSocketConfig>) {
+  constructor(config?: Partial<WebSocketConfig>) {
     super();
     
     this.config = { ...this.DEFAULT_CONFIG, ...config };
@@ -292,7 +292,7 @@ export class EnhancedWebSocketService extends EventEmitter {
   /**
    * Update service configuration
    */
-  updateConfig(config: Partial<EnhancedWebSocketConfig>): void {
+  updateConfig(config: Partial<WebSocketConfig>): void {
     this.config = { ...this.config, ...config };
     
     // Update message queue configs

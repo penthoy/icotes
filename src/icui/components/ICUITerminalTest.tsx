@@ -9,7 +9,7 @@ import React, { useEffect, useRef, useState, useCallback, forwardRef, useImperat
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
-import { EnhancedWebSocketService, ConnectionOptions } from '../../services/websocket-service-impl';
+import { WebSocketService, ConnectionOptions } from '../../services/websocket-service-impl';
 import { WebSocketMigrationHelper } from '../../services/websocket-migration';
 import { useWebSocketService } from '../../contexts/BackendContext';
 
@@ -91,7 +91,7 @@ const ICUITerminalTest = forwardRef<ICUITerminalTestRef, ICUITerminalTestProps>(
   const resizeTimeout = useRef<NodeJS.Timeout | null>(null);
   
   // Enhanced WebSocket service
-  const enhancedService = useRef<EnhancedWebSocketService | null>(null);
+  const wsService = useRef<WebSocketService | null>(null);
   const migrationHelper = useRef<WebSocketMigrationHelper | null>(null);
   const connectionId = useRef<string | null>(null);
   
@@ -143,9 +143,9 @@ const ICUITerminalTest = forwardRef<ICUITerminalTestRef, ICUITerminalTestProps>(
   const handlePaste = useCallback(async () => {
     const clipboard = new EnhancedClipboard();
     const text = await clipboard.paste();
-    if (text && connectionId.current && enhancedService.current) {
+    if (text && connectionId.current && wsService.current) {
       try {
-        await enhancedService.current.sendMessage(connectionId.current, text, {
+        await wsService.current.sendMessage(connectionId.current, text, {
           priority: 'high',
           timeout: 5000
         });
@@ -157,10 +157,10 @@ const ICUITerminalTest = forwardRef<ICUITerminalTestRef, ICUITerminalTestProps>(
 
   // Initialize enhanced WebSocket service
   const initializeEnhancedService = useCallback(() => {
-    if (enhancedService.current) return;
+    if (wsService.current) return;
 
     // Configure enhanced service with optimized settings
-    enhancedService.current = new EnhancedWebSocketService({
+    wsService.current = new WebSocketService({
       enableMessageQueue: true,
       enableHealthMonitoring: true,
       enableAutoRecovery: true,
@@ -181,7 +181,7 @@ const ICUITerminalTest = forwardRef<ICUITerminalTestRef, ICUITerminalTestProps>(
     });
 
     // Enhanced service event handlers - listen for both connection_opened and connected
-    enhancedService.current.on('connection_opened', (data: any) => {
+    wsService.current.on('connection_opened', (data: any) => {
       // Reduced debug: Enhanced service connected
       // console.log('[ICUITerminalTest] Enhanced service connected:', data);
       setIsConnected(true);
@@ -196,13 +196,13 @@ const ICUITerminalTest = forwardRef<ICUITerminalTestRef, ICUITerminalTestProps>(
       onTerminalReady?.(terminal.current!);
     });
 
-    enhancedService.current.on('connected', (data: any) => {
+    wsService.current.on('connected', (data: any) => {
       // Reduced debug: console.log('[ICUITerminalTest] Enhanced service connected (legacy event):', data);
       setIsConnected(true);
       onTerminalReady?.(terminal.current!);
     });
 
-    enhancedService.current.on('connection_closed', (data: any) => {
+    wsService.current.on('connection_closed', (data: any) => {
       // Reduced debug: console.log('[ICUITerminalTest] Enhanced service disconnected:', data);
       setIsConnected(false);
       if (terminal.current) {
@@ -210,7 +210,7 @@ const ICUITerminalTest = forwardRef<ICUITerminalTestRef, ICUITerminalTestProps>(
       }
     });
 
-    enhancedService.current.on('disconnected', (data: any) => {
+    wsService.current.on('disconnected', (data: any) => {
       // Reduced debug: console.log('[ICUITerminalTest] Enhanced service disconnected (legacy event):', data);
       setIsConnected(false);
       if (terminal.current) {
@@ -218,7 +218,7 @@ const ICUITerminalTest = forwardRef<ICUITerminalTestRef, ICUITerminalTestProps>(
       }
     });
 
-    enhancedService.current.on('message', (data: any) => {
+    wsService.current.on('message', (data: any) => {
       if (terminal.current && data.connectionId === connectionId.current) {
         try {
           terminal.current.write(data.message);
@@ -229,14 +229,14 @@ const ICUITerminalTest = forwardRef<ICUITerminalTestRef, ICUITerminalTestProps>(
       }
     });
 
-    enhancedService.current.on('error', (error: any) => {
+    wsService.current.on('error', (error: any) => {
       console.error('[ICUITerminalTest] Enhanced service error:', error);
       if (terminal.current) {
         terminal.current.write(`\r\n\x1b[31mConnection error: ${error.message}\x1b[0m\r\n`);
       }
     });
 
-    enhancedService.current.on('healthUpdate', (health: any) => {
+    wsService.current.on('healthUpdate', (health: any) => {
       setHealthStatus(health);
       // Reduced debug: Only log health issues
       if (health.status === 'unhealthy') {
@@ -244,7 +244,7 @@ const ICUITerminalTest = forwardRef<ICUITerminalTestRef, ICUITerminalTestProps>(
       }
     });
 
-    enhancedService.current.on('connectionClosed', (data: any) => {
+    wsService.current.on('connectionClosed', (data: any) => {
       if (data.connectionId === connectionId.current) {
         // Reduced debug: Only log unexpected connection closures
         if (data.reason && data.reason !== 'normal closure') {
@@ -259,7 +259,7 @@ const ICUITerminalTest = forwardRef<ICUITerminalTestRef, ICUITerminalTestProps>(
 
   // Connect to terminal service
   const connectToTerminal = useCallback(async () => {
-    if (!enhancedService.current || connectionId.current) return;
+    if (!wsService.current || connectionId.current) return;
 
     try {
       const options: ConnectionOptions = {
@@ -272,7 +272,7 @@ const ICUITerminalTest = forwardRef<ICUITerminalTestRef, ICUITerminalTestProps>(
       };
 
       console.log('[ICUITerminalTest] Connecting with options:', options);
-      connectionId.current = await enhancedService.current.connect(options);
+      connectionId.current = await wsService.current.connect(options);
       // Reduced debug: Only log in development mode
       if (process.env.NODE_ENV === 'development') {
         console.log('[ICUITerminalTest] Connected with ID:', connectionId.current);
@@ -332,8 +332,8 @@ const ICUITerminalTest = forwardRef<ICUITerminalTestRef, ICUITerminalTestProps>(
 
     // Setup terminal event handlers
     terminal.current.onData((data) => {
-      if (connectionId.current && enhancedService.current) {
-        enhancedService.current.sendMessage(connectionId.current, data, {
+      if (connectionId.current && wsService.current) {
+        wsService.current.sendMessage(connectionId.current, data, {
           priority: 'high',
           timeout: 1000
         }).catch(console.warn);
@@ -374,8 +374,8 @@ const ICUITerminalTest = forwardRef<ICUITerminalTestRef, ICUITerminalTestProps>(
       if (terminal.current) {
         terminal.current.dispose();
       }
-      if (connectionId.current && enhancedService.current) {
-        enhancedService.current.disconnect(connectionId.current);
+      if (connectionId.current && wsService.current) {
+        wsService.current.disconnect(connectionId.current);
       }
     };
   }, [isDarkTheme, initializeEnhancedService, connectToTerminal]);

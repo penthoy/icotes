@@ -137,6 +137,79 @@ def generate_thumbnail(
         raise
 
 
+def generate_thumbnail_from_bytes(
+    image_bytes: bytes,
+    thumbnails_dir: str,
+    max_size: Tuple[int, int] = (128, 128),
+    scale_factor: float = 0.1,
+    quality: int = 80,
+    image_id: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Generate an optimized thumbnail from raw image bytes.
+
+    This mirrors generate_thumbnail() but doesn't require the original image
+    to be present on disk. Useful when the original lives on a remote host.
+
+    Returns same dict keys as generate_thumbnail().
+    """
+    try:
+        # Load original image from bytes
+        buf = io.BytesIO(image_bytes)
+        img = Image.open(buf)
+        original_width, original_height = img.size
+
+        # Convert to RGB if necessary (e.g., PNG with transparency)
+        if img.mode in ('RGBA', 'LA', 'P'):
+            background = Image.new('RGB', img.size, (255, 255, 255))
+            if img.mode == 'P':
+                img = img.convert('RGBA')
+            background.paste(img, mask=img.split()[-1] if img.mode in ('RGBA', 'LA') else None)
+            img = background
+        elif img.mode != 'RGB':
+            img = img.convert('RGB')
+
+        # Calculate thumbnail size (same strategy)
+        scaled_width = max(1, int(original_width * scale_factor))
+        scaled_height = max(1, int(original_height * scale_factor))
+        if scaled_width <= max_size[0] and scaled_height <= max_size[1]:
+            thumb_width, thumb_height = scaled_width, scaled_height
+        else:
+            img.thumbnail(max_size, Image.Resampling.LANCZOS)
+            thumb_width, thumb_height = img.size
+
+        if (thumb_width, thumb_height) != img.size:
+            img = img.resize((thumb_width, thumb_height), Image.Resampling.LANCZOS)
+
+        # Ensure directory exists
+        if image_id is None:
+            import uuid
+            image_id = str(uuid.uuid4())
+        thumbnail_filename = f"{image_id}.webp"
+        thumbnail_path = Path(thumbnails_dir) / thumbnail_filename
+        Path(thumbnails_dir).mkdir(parents=True, exist_ok=True)
+
+        # Save and encode base64
+        img.save(thumbnail_path, format='WEBP', quality=quality, method=6)
+        file_size = thumbnail_path.stat().st_size
+
+        buffer = io.BytesIO()
+        img.save(buffer, format='WEBP', quality=quality, method=6)
+        thumbnail_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+
+        logger.info(f"Generated thumbnail (bytes): {thumb_width}x{thumb_height}, {file_size} bytes")
+        return {
+            'path': str(thumbnail_path),
+            'base64': thumbnail_base64,
+            'size_bytes': file_size,
+            'width': thumb_width,
+            'height': thumb_height
+        }
+    except Exception as e:
+        logger.error(f"Failed to generate thumbnail from bytes: {e}")
+        raise
+
+
 def calculate_checksum(file_path: str) -> str:
     """
     Calculate SHA256 checksum of a file.

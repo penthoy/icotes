@@ -140,6 +140,35 @@ export function createExplorerContextMenu(
       isVisible: () => true,
     });
 
+    // Copy Path (single file only)
+    items.push({
+      id: 'copyPath',
+      label: 'Copy Path',
+      icon: '📋',
+      shortcut: 'Ctrl+Shift+C',
+      commandId: 'explorer.copyPath',
+      isVisible: () => singleSelection,
+      isEnabled: () => singleSelection,
+    });
+
+    // Copy Relative Path (single file only)
+    items.push({
+      id: 'copyRelativePath',
+      label: 'Copy Relative Path',
+      icon: '📋',
+      shortcut: 'Ctrl+Shift+Alt+C',
+      commandId: 'explorer.copyRelativePath',
+      isVisible: () => singleSelection,
+      isEnabled: () => singleSelection,
+    });
+
+    items.push({
+      id: 'separator3',
+      label: '',
+      separator: true,
+      isVisible: () => true,
+    });
+
     // Rename (only for single selection)
     items.push({
       id: 'rename',
@@ -164,7 +193,7 @@ export function createExplorerContextMenu(
     });
 
     items.push({
-      id: 'separator3',
+      id: 'separator4',
       label: '',
       separator: true,
       isVisible: () => true,
@@ -214,7 +243,7 @@ export function createExplorerContextMenu(
   // Add separator before general actions if we have any items
   if (items.length > 0) {
     items.push({
-      id: 'separator4',
+      id: 'separator5',
       label: '',
       separator: true,
       isVisible: () => true,
@@ -293,7 +322,7 @@ export function createExplorerContextMenu(
   if (isMultiSelect) {
     items.push(
       {
-        id: 'separator5',
+        id: 'separator6',
         label: '',
         separator: true,
         isVisible: () => true,

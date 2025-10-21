@@ -21,6 +21,8 @@ import posixpath
 import stat
 import time
 from dataclasses import asdict
+import io
+import secrets
 from typing import Any, Dict, List, Optional, Tuple, AsyncIterator, Coroutine, TypeVar
 from types import SimpleNamespace
 
@@ -49,12 +51,14 @@ class RemoteFileSystemAdapter:
     Only the methods used by the REST API and Explorer UI are implemented.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, context_id: Optional[str] = None) -> None:
         self._hop = None
         self._message_broker = None
         # Expose a root concept for REST helpers; use '/' as remote root
         self.root_path: str = "/"
         self.is_remote: bool = True
+        # Optional binding to a specific hop context (for namespaced paths)
+        self._context_id: Optional[str] = context_id
 
     async def initialize(self):
         self._hop = await get_hop_service()
@@ -73,7 +77,17 @@ class RemoteFileSystemAdapter:
 
     def _get_cwd(self) -> str:
         try:
-            session = self._hop.status() if self._hop else None
+            if not self._hop:
+                return "/"
+            # If bound to a context, prefer that session's cwd
+            session = None
+            if self._context_id:
+                try:
+                    session = self._hop.get_session(self._context_id)
+                except Exception:
+                    session = None
+            if session is None:
+                session = self._hop.status()
             if session and session.cwd:
                 return session.cwd
         except Exception:
@@ -86,7 +100,12 @@ class RemoteFileSystemAdapter:
         if not self._hop:
             return None
         # Access the live SFTP client; HopService ensures lifecycle
-        # Use method call instead of getattr to ensure it works correctly in Docker
+        if self._context_id:
+            try:
+                return self._hop.get_sftp_for_context(self._context_id)
+            except Exception:
+                return None
+        # Fallback to active context
         return self._hop.get_active_sftp()
 
     async def _publish(self, topic: str, payload: Dict[str, Any]):
@@ -221,15 +240,54 @@ class RemoteFileSystemAdapter:
             return []
 
     async def read_file(self, file_path: str, encoding: str = 'utf-8') -> Optional[str]:
+        """Read file as text with loop-safe SFTP access.
+
+        Uses an ephemeral SFTP client when the current asyncio loop differs from the
+        hop service's active loop to avoid cross-loop Future errors.
+        """
+        path = self._resolve(file_path)
         sftp = self._sftp()
         logger.info("[RemoteFS] read_file path=%s sftp_available=%s", file_path, bool(sftp))
-        if not sftp:
-            return None
-        path = self._resolve(file_path)
+
+        # Determine if we should use an ephemeral SFTP (different event loop)
+        use_ephemeral = False
+        hop = await get_hop_service()
+        try:
+            import asyncio as _asyncio
+            cur_loop = _asyncio.get_running_loop()
+            hop_loop = getattr(hop, 'get_active_loop', lambda: None)()
+            logger.info(
+                "[RemoteFS] read_file loop diag path=%s current_loop=%s hop_loop=%s",
+                path,
+                hex(id(cur_loop)) if cur_loop else None,
+                hex(id(hop_loop)) if hop_loop else None,
+            )
+            if hop_loop is not None and hop_loop is not cur_loop:
+                use_ephemeral = True
+        except Exception:
+            # If loop inspection fails, fall back to default SFTP
+            pass
+
         try:
             # Phase 8: Add timeout protection
-            async with sftp.open(path, 'rb') as f:
-                data = await _with_timeout(f.read(), operation=f"read file {path}")
+            if use_ephemeral:
+                logger.info("[RemoteFS] read_file using ephemeral SFTP due to loop mismatch")
+                async with hop.ephemeral_sftp(self._context_id) as esftp:
+                    if not esftp:
+                        logger.warning("[RemoteFS] ephemeral SFTP unavailable; falling back to active SFTP")
+                        if not sftp:
+                            return None
+                        async with sftp.open(path, 'rb') as f:
+                            data = await _with_timeout(f.read(), operation=f"read file {path}")
+                    else:
+                        async with esftp.open(path, 'rb') as f:
+                            data = await _with_timeout(f.read(), operation=f"read file {path}")
+            else:
+                if not sftp:
+                    return None
+                async with sftp.open(path, 'rb') as f:
+                    data = await _with_timeout(f.read(), operation=f"read file {path}")
+
             try:
                 text = data.decode(encoding)
             except Exception:
@@ -244,15 +302,53 @@ class RemoteFileSystemAdapter:
             return None
 
     async def read_file_binary(self, file_path: str) -> Optional[bytes]:
-        """Read file as binary data."""
+        """Read file as binary data with loop-safe SFTP access.
+
+        Uses an ephemeral SFTP client when the current asyncio loop differs from the
+        hop service's active loop to avoid cross-loop Future errors.
+        """
+        path = self._resolve(file_path)
         sftp = self._sftp()
         logger.info("[RemoteFS] read_file_binary path=%s sftp_available=%s", file_path, bool(sftp))
-        if not sftp:
-            return None
-        path = self._resolve(file_path)
+
+        # Determine if we should use an ephemeral SFTP (different event loop)
+        use_ephemeral = False
+        hop = await get_hop_service()
         try:
-            async with sftp.open(path, 'rb') as f:
-                data = await _with_timeout(f.read(), operation=f"read binary file {path}")
+            import asyncio as _asyncio
+            cur_loop = _asyncio.get_running_loop()
+            hop_loop = getattr(hop, 'get_active_loop', lambda: None)()
+            logger.info(
+                "[RemoteFS] read_file_binary loop diag path=%s current_loop=%s hop_loop=%s",
+                path,
+                hex(id(cur_loop)) if cur_loop else None,
+                hex(id(hop_loop)) if hop_loop else None,
+            )
+            if hop_loop is not None and hop_loop is not cur_loop:
+                use_ephemeral = True
+        except Exception:
+            # If loop inspection fails, fall back to default SFTP
+            pass
+
+        try:
+            if use_ephemeral:
+                logger.info("[RemoteFS] read_file_binary using ephemeral SFTP due to loop mismatch")
+                async with hop.ephemeral_sftp(self._context_id) as esftp:
+                    if not esftp:
+                        logger.warning("[RemoteFS] ephemeral SFTP unavailable; falling back to active SFTP")
+                        if not sftp:
+                            return None
+                        async with sftp.open(path, 'rb') as f:
+                            data = await _with_timeout(f.read(), operation=f"read binary file {path}")
+                    else:
+                        async with esftp.open(path, 'rb') as f:
+                            data = await _with_timeout(f.read(), operation=f"read binary file {path}")
+            else:
+                if not sftp:
+                    return None
+                async with sftp.open(path, 'rb') as f:
+                    data = await _with_timeout(f.read(), operation=f"read binary file {path}")
+
             await self._publish('fs.file_read', {'file_path': path, 'size': len(data), 'encoding': 'binary', 'timestamp': time.time()})
             return data
         except TimeoutError as e:
@@ -268,9 +364,28 @@ class RemoteFileSystemAdapter:
             return False
         path = self._resolve(file_path)
         try:
+            # Loop diagnostics for cross-loop issues
+            try:
+                import asyncio as _asyncio
+                cur_loop = _asyncio.get_running_loop()
+                hop_loop = None
+                try:
+                    hop = await get_hop_service()
+                    hop_loop = getattr(hop, 'get_active_loop', lambda: None)()
+                except Exception:
+                    hop_loop = None
+                logger.info(
+                    "[RemoteFS] write_file_binary loop diagnostics path=%s current_loop=%s hop_loop=%s",
+                    path,
+                    hex(id(cur_loop)) if cur_loop else None,
+                    hex(id(hop_loop)) if hop_loop else None,
+                )
+            except Exception:
+                pass
+
             if create_dirs:
                 dirp = posixpath.dirname(path)
-                await _with_timeout(self._mkdirs(sftp, dirp), operation="create directories")
+                await self._mkdirs(sftp, dirp)
             data = content.encode(encoding)
             # Phase 8: Add timeout protection
             async with sftp.open(path, 'wb') as f:
@@ -279,6 +394,207 @@ class RemoteFileSystemAdapter:
             return True
         except Exception as e:
             logger.error(f"[RemoteFS] write_file error {path}: {e}")
+            return False
+
+    async def write_file_binary(self, file_path: str, content: bytes, create_dirs: bool = True) -> bool:
+        """
+        Write binary content to a remote file (e.g., for images).
+        
+        Args:
+            file_path: Path to the file to write
+            content: Binary content (bytes) to write
+            create_dirs: Whether to create parent directories if they don't exist
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        sftp = self._sftp()
+        if not sftp:
+            return False
+        path = self._resolve(file_path)
+        try:
+            # Loop diagnostics and potential cross-loop mitigation
+            hop = await get_hop_service()
+            use_ephemeral = False
+            try:
+                import asyncio as _asyncio
+                cur_loop = _asyncio.get_running_loop()
+                hop_loop = getattr(hop, 'get_active_loop', lambda: None)()
+                logger.info(
+                    "[RemoteFS] write_file_binary loop diag path=%s current_loop=%s hop_loop=%s",
+                    path,
+                    hex(id(cur_loop)) if cur_loop else None,
+                    hex(id(hop_loop)) if hop_loop else None,
+                )
+                # If loops differ and we have asyncssh, prefer ephemeral session in current loop
+                if hop_loop is not None and hop_loop is not cur_loop:
+                    use_ephemeral = True
+            except Exception:
+                pass
+
+            if create_dirs:
+                dirp = posixpath.dirname(path)
+                # mkdirs must run on the same sftp instance; if using ephemeral, do it inside the context
+                if not use_ephemeral:
+                    await _with_timeout(self._mkdirs(sftp, dirp), operation="create directories")
+            
+            # Write binary data directly
+            # Strategy 1: Write to a temporary file, verify size, then rename atomically
+            tmp_path = f"{path}.tmp.{secrets.token_hex(4)}"
+            try:
+                if use_ephemeral:
+                    async with hop.ephemeral_sftp(self._context_id) as esftp:
+                        if not esftp:
+                            raise RuntimeError("ephemeral SFTP unavailable")
+                        if create_dirs:
+                            await self._mkdirs(esftp, posixpath.dirname(path))
+                        async with esftp.open(tmp_path, 'wb') as f:
+                            written = await f.write(content)
+                            try:
+                                await f.flush()
+                            except Exception:
+                                pass
+                        st = await esftp.stat(tmp_path)
+                else:
+                    async with sftp.open(tmp_path, 'wb') as f:
+                        written = await f.write(content)
+                        try:
+                            await f.flush()
+                        except Exception:
+                            pass
+                    st = await sftp.stat(tmp_path)
+                size = getattr(st, 'st_size', None) or getattr(st, 'size', 0) or 0
+                if size <= 0 or size < len(content):
+                    logger.error(
+                        f"[RemoteFS] Temp write verification failed: {tmp_path} size={size} expected={len(content)} returned={written}"
+                    )
+                    # Clean up temp before fallback
+                    try:
+                        if use_ephemeral:
+                            async with hop.ephemeral_sftp(self._context_id) as es:
+                                if es:
+                                    await es.remove(tmp_path)
+                        else:
+                            await sftp.remove(tmp_path)
+                    except Exception:
+                        pass
+                else:
+                    # Attempt atomic rename over destination
+                    try:
+                        # Remove destination if it exists
+                        if use_ephemeral:
+                            async with hop.ephemeral_sftp(self._context_id) as esftp2:
+                                if not esftp2:
+                                    raise RuntimeError("ephemeral SFTP unavailable")
+                                try:
+                                    await esftp2.remove(path)
+                                except Exception:
+                                    pass
+                                await esftp2.rename(tmp_path, path)
+                        else:
+                            try:
+                                await sftp.remove(path)
+                            except Exception:
+                                pass
+                            await sftp.rename(tmp_path, path)
+                    except Exception as rn_e:
+                        logger.error(f"[RemoteFS] Rename temp -> dest failed ({tmp_path} -> {path}): {rn_e}")
+                        try:
+                            # As a last resort, copy bytes by reopening dest
+                            if use_ephemeral:
+                                async with hop.ephemeral_sftp(self._context_id) as esftp3:
+                                    if not esftp3:
+                                        raise RuntimeError("ephemeral SFTP unavailable")
+                                    async with esftp3.open(path, 'wb') as f2:
+                                        await f2.write(content)
+                            else:
+                                async with sftp.open(path, 'wb') as f2:
+                                    await f2.write(content)
+                        except Exception as wf_e:
+                            logger.error(f"[RemoteFS] Fallback direct write failed for {path}: {wf_e}")
+                            try:
+                                if use_ephemeral:
+                                    async with hop.ephemeral_sftp(self._context_id) as esftp4:
+                                        if esftp4:
+                                            await esftp4.remove(tmp_path)
+                                else:
+                                    await sftp.remove(tmp_path)
+                            except Exception:
+                                pass
+                            return False
+                    # Final verification on destination
+                    try:
+                        if use_ephemeral:
+                            async with hop.ephemeral_sftp(self._context_id) as esftp5:
+                                if not esftp5:
+                                    raise RuntimeError("ephemeral SFTP unavailable")
+                                st2 = await esftp5.stat(path)
+                        else:
+                            st2 = await sftp.stat(path)
+                        size2 = getattr(st2, 'st_size', None) or getattr(st2, 'size', 0) or 0
+                        if size2 <= 0 or size2 < len(content):
+                            logger.error(
+                                f"[RemoteFS] Dest verification failed: {path} size={size2} expected={len(content)}"
+                            )
+                            return False
+                    except Exception as ver_e:
+                        logger.error(f"[RemoteFS] Dest stat failed for {path}: {ver_e}")
+                        return False
+                    await self._publish('fs.file_written', {'file_path': path, 'size': len(content), 'encoding': 'binary', 'created': False, 'timestamp': time.time()})
+                    return True
+            except Exception as e1:
+                logger.error(f"[RemoteFS] Temp write path failed for {path}: {e1}")
+                try:
+                    if use_ephemeral:
+                        async with hop.ephemeral_sftp(self._context_id) as esftp6:
+                            if esftp6:
+                                await esftp6.remove(tmp_path)
+                    else:
+                        await sftp.remove(tmp_path)
+                except Exception:
+                    pass
+
+            # Strategy 2: Fallback to putfo with BytesIO directly to destination
+            try:
+                bio = io.BytesIO(content)
+                # Open and copy in chunks via file object
+                if use_ephemeral:
+                    async with hop.ephemeral_sftp(self._context_id) as esftp7:
+                        if not esftp7:
+                            raise RuntimeError("ephemeral SFTP unavailable")
+                        async with esftp7.open(path, 'wb') as f:
+                            chunk_size = 256 * 1024
+                            total = 0
+                            while True:
+                                chunk = bio.read(chunk_size)
+                                if not chunk:
+                                    break
+                                await f.write(chunk)
+                                total += len(chunk)
+                        st3 = await esftp7.stat(path)
+                else:
+                    async with sftp.open(path, 'wb') as f:
+                        # Write in chunks to avoid issues with very large payloads
+                        chunk_size = 256 * 1024
+                        total = 0
+                        while True:
+                            chunk = bio.read(chunk_size)
+                            if not chunk:
+                                break
+                            await f.write(chunk)
+                            total += len(chunk)
+                    st3 = await sftp.stat(path)
+                size3 = getattr(st3, 'st_size', None) or getattr(st3, 'size', 0) or 0
+                if size3 <= 0 or size3 < len(content):
+                    logger.error(f"[RemoteFS] Stream write verification failed: {path} size={size3} expected={len(content)}")
+                    return False
+                await self._publish('fs.file_written', {'file_path': path, 'size': len(content), 'encoding': 'binary', 'created': False, 'timestamp': time.time()})
+                return True
+            except Exception as e2:
+                logger.error(f"[RemoteFS] putfo/stream write failed for {path}: {e2}")
+                return False
+        except Exception as e:
+            logger.error(f"[RemoteFS] write_file_binary error {path}: {e}")
             return False
 
     async def create_directory(self, dir_path: str, parents: bool = True) -> bool:
@@ -555,6 +871,6 @@ async def _async_generator_wrapper(agen_factory):
             yield item
 
 
-async def get_remote_filesystem_adapter() -> RemoteFileSystemAdapter:
-    adapter = RemoteFileSystemAdapter()
+async def get_remote_filesystem_adapter(context_id: Optional[str] = None) -> RemoteFileSystemAdapter:
+    adapter = RemoteFileSystemAdapter(context_id=context_id)
     return await adapter.initialize()

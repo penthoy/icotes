@@ -22,6 +22,7 @@ from dataclasses import dataclass, asdict, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+from contextlib import asynccontextmanager
 
 from ..utils.logging import sanitize_log_message, mask_credential_value
 
@@ -159,6 +160,7 @@ class HopService:
         self._reconnect_tasks: Dict[str, asyncio.Task] = {}
         self._last_credentials: Dict[str, Dict] = {}  # context_id -> credential data
         self._connection_start_times: Dict[str, float] = {}
+        self._loop = None  # event loop where connection/sftp were created
         
         self._load_credentials()
 
@@ -331,6 +333,12 @@ class HopService:
                 self._connection_start_times[context_id] = time.time()
                 
                 # Phase 8: Use configurable timeout
+                # Record the event loop used to create the SSH/SFTP clients
+                try:
+                    self._loop = asyncio.get_running_loop()
+                    logger.info("[HopService] connect loop id=%s", hex(id(self._loop)))
+                except Exception:
+                    self._loop = None
                 conn = await asyncssh.connect(
                     host=cred.host,
                     port=cred.port or 22,
@@ -420,6 +428,85 @@ class HopService:
                 self._sessions[context_id] = session
                 await self._close_connection(context_id)
                 return session
+    def get_active_loop(self):
+        return self._loop
+
+    @asynccontextmanager
+    async def ephemeral_sftp(self, context_id: Optional[str] = None):
+        """Open a short-lived SFTP client in the CURRENT async loop.
+
+        This avoids cross-loop issues by creating a fresh SSH/SFTP session
+        bound to the caller's event loop. Closes both SFTP and SSH on exit.
+        """
+        if context_id is None:
+            context_id = self._active_context_id
+
+        if context_id == "local" or not ASYNCSSH_AVAILABLE:
+            yield None
+            return
+
+        cred = self._creds.get(context_id)
+        if not cred:
+            yield None
+            return
+
+        # Retrieve last-used secret material (password/passphrase) if any
+        last = self._last_credentials.get(context_id, {})
+        password = last.get('password') if cred.auth == 'password' else None
+        passphrase = last.get('passphrase') if cred.auth == 'privateKey' else None
+        client_keys = None
+        if cred.auth == 'privateKey' and cred.privateKeyId:
+            key_path = str(self.get_key_path(cred.privateKeyId))
+            client_keys = [key_path]
+
+        conn = None
+        sftp = None
+        try:
+            conn = await asyncssh.connect(
+                host=cred.host,
+                port=cred.port or 22,
+                username=cred.username or None,
+                password=password,
+                client_keys=client_keys,
+                passphrase=passphrase,
+                known_hosts=None,
+                connect_timeout=CONNECTION_TIMEOUT,
+            )
+            try:
+                sftp = await asyncio.wait_for(conn.start_sftp_client(), timeout=OPERATION_TIMEOUT)
+            except Exception as e:
+                logger.error(f"[HopService] ephemeral SFTP start failed for {context_id}: {e}")
+                try:
+                    if conn:
+                        conn.close()
+                        await asyncio.wait_for(conn.wait_closed(), timeout=2.0)
+                except Exception:
+                    pass
+                yield None
+                return
+
+            yield sftp
+        finally:
+            # Cleanup ephemeral resources
+            try:
+                if sftp:
+                    res = sftp.exit()
+                    if inspect.isawaitable(res):
+                        try:
+                            await asyncio.wait_for(res, timeout=1.0)
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+            try:
+                if conn:
+                    conn.close()
+                    try:
+                        await asyncio.wait_for(conn.wait_closed(), timeout=2.0)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
 
     def _format_user_friendly_error(self, error: Exception) -> str:
         """Phase 8: Convert technical SSH errors to user-friendly messages."""
@@ -708,6 +795,8 @@ class HopService:
             return None
         conn = self._connections.get(self._active_context_id)
         return conn
+
+    
     
     def get_active_sftp(self):
         """Get the SFTP client for the active context.
@@ -718,6 +807,17 @@ class HopService:
             return None
         sftp = self._sftp_clients.get(self._active_context_id)
         return sftp
+
+    # -------- New helpers for multi-context consumers --------
+    def get_session(self, context_id: str) -> Optional[HopSession]:
+        """Return session object for a specific context id, if present."""
+        return self._sessions.get(context_id)
+
+    def get_sftp_for_context(self, context_id: str):
+        """Return SFTP client for the specified context id (None if unavailable)."""
+        if context_id == 'local':
+            return None
+        return self._sftp_clients.get(context_id)
     
     # Legacy property accessors for backward compatibility
     @property

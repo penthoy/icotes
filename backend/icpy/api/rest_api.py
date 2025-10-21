@@ -507,16 +507,30 @@ class RestAPI:
         """Register filesystem-related routes."""
         
         @self.app.get("/api/files")
-        async def list_files(path: str = "/", include_hidden: bool = False):
+        async def list_files(path: str = "/", include_hidden: bool = False, namespace: Optional[str] = None):
             """List files in directory."""
             try:
                 fs = self.filesystem_service
-                # Only override with remote FS when explicitly remote
                 if self.context_router is not None:
                     try:
-                        fs_rt = await self.context_router.get_filesystem()
-                        if getattr(fs_rt, 'is_remote', False):
-                            fs = fs_rt
+                        # Namespace-aware routing: 'ns:/abs/path'
+                        ctx_id = None
+                        abs_path = path
+                        if namespace:
+                            ctx_id = namespace
+                        else:
+                            try:
+                                ctx_id, abs_path = await self.context_router.parse_namespaced_path(path)
+                            except Exception:
+                                ctx_id, abs_path = None, path
+                        if ctx_id:
+                            fs = await self.context_router.get_filesystem_for_namespace(ctx_id)
+                            path = abs_path
+                        else:
+                            # Fallback to active routing
+                            fs_rt = await self.context_router.get_filesystem()
+                            if getattr(fs_rt, 'is_remote', False):
+                                fs = fs_rt
                     except Exception as e:
                         logger.warning(f"[REST] FS routing error, falling back local: {e}")
                         pass
@@ -527,15 +541,32 @@ class RestAPI:
                 raise HTTPException(status_code=500, detail=str(e))
         
         @self.app.get("/api/files/content")
-        async def get_file_content(path: str):
+        async def get_file_content(path: str, namespace: Optional[str] = None):
             """Get file content."""
             try:
                 fs = self.filesystem_service
                 if self.context_router is not None:
                     try:
-                        fs_rt = await self.context_router.get_filesystem()
-                        if getattr(fs_rt, 'is_remote', False):
-                            fs = fs_rt
+                        ctx_id = None
+                        abs_path = path
+                        if namespace:
+                            # Allow friendly namespace like 'hop1' -> resolve to context id
+                            try:
+                                ctx_id = await self.context_router.resolve_namespace_id(namespace)
+                            except Exception:
+                                ctx_id = namespace
+                        else:
+                            try:
+                                ctx_id, abs_path = await self.context_router.parse_namespaced_path(path)
+                            except Exception:
+                                ctx_id, abs_path = None, path
+                        if ctx_id:
+                            fs = await self.context_router.get_filesystem_for_namespace(ctx_id)
+                            path = abs_path
+                        else:
+                            fs_rt = await self.context_router.get_filesystem()
+                            if getattr(fs_rt, 'is_remote', False):
+                                fs = fs_rt
                     except Exception:
                         pass
                 logger.info("[REST] get_file_content path=%s use_remote=%s", path, getattr(fs, 'is_remote', False))
@@ -550,7 +581,7 @@ class RestAPI:
                 raise HTTPException(status_code=500, detail=str(e))
 
         @self.app.get("/api/files/raw")
-        async def get_file_raw(path: str):
+        async def get_file_raw(path: str, namespace: Optional[str] = None):
             """Return raw (binary) file bytes for previews (images, etc.).
 
             Security: Only serves files inside the configured filesystem root or workspace root.
@@ -573,7 +604,23 @@ class RestAPI:
                 fs_service = self.filesystem_service
                 if self.context_router is not None:
                     try:
-                        fs_service = await self.context_router.get_filesystem()
+                        ctx_id = None
+                        abs_path = path
+                        if namespace:
+                            try:
+                                ctx_id = await self.context_router.resolve_namespace_id(namespace)
+                            except Exception:
+                                ctx_id = namespace
+                        else:
+                            try:
+                                ctx_id, abs_path = await self.context_router.parse_namespaced_path(path)
+                            except Exception:
+                                ctx_id, abs_path = None, path
+                        if ctx_id:
+                            fs_service = await self.context_router.get_filesystem_for_namespace(ctx_id)
+                            path = abs_path
+                        else:
+                            fs_service = await self.context_router.get_filesystem()
                     except Exception:
                         fs_service = self.filesystem_service
 
@@ -596,6 +643,7 @@ class RestAPI:
                         break
 
                 if abs_path is not None:
+                    logger.info(f"[REST][raw] Using local streaming path abs={abs_path}")
                     # Security: ensure selected path is inside either fs_root or workspace_root
                     if not (abs_path.startswith(fs_root) or abs_path.startswith(workspace_root)):
                         raise HTTPException(status_code=400, detail="Path outside workspace root")
@@ -617,6 +665,7 @@ class RestAPI:
 
                 # If no local candidate found (or file is 0-byte) and remote FS is active, stream via adapter
                 if getattr(fs_service, 'is_remote', False):
+                    logger.info(f"[REST][raw] Using REMOTE streaming for path={path} ns={namespace}")
                     # Keep original path semantics (absolute or relative to remote root)
                     mime, _ = mimetypes.guess_type(path)
                     if mime is None:
@@ -646,9 +695,20 @@ class RestAPI:
                 fs = self.filesystem_service
                 if self.context_router is not None:
                     try:
-                        fs_rt = await self.context_router.get_filesystem()
-                        if getattr(fs_rt, 'is_remote', False):
-                            fs = fs_rt
+                        # Allow namespace in request.path
+                        ctx_id = None
+                        abs_path = request.path
+                        try:
+                            ctx_id, abs_path = await self.context_router.parse_namespaced_path(request.path)
+                        except Exception:
+                            ctx_id, abs_path = None, request.path
+                        if ctx_id:
+                            fs = await self.context_router.get_filesystem_for_namespace(ctx_id)
+                            request.path = abs_path
+                        else:
+                            fs_rt = await self.context_router.get_filesystem()
+                            if getattr(fs_rt, 'is_remote', False):
+                                fs = fs_rt
                     except Exception:
                         pass
                 # Normalize type for folder creation
@@ -689,9 +749,19 @@ class RestAPI:
                 fs = self.filesystem_service
                 if self.context_router is not None:
                     try:
-                        fs_rt = await self.context_router.get_filesystem()
-                        if getattr(fs_rt, 'is_remote', False):
-                            fs = fs_rt
+                        ctx_id = None
+                        abs_path = request.path
+                        try:
+                            ctx_id, abs_path = await self.context_router.parse_namespaced_path(request.path)
+                        except Exception:
+                            ctx_id, abs_path = None, request.path
+                        if ctx_id:
+                            fs = await self.context_router.get_filesystem_for_namespace(ctx_id)
+                            request.path = abs_path
+                        else:
+                            fs_rt = await self.context_router.get_filesystem()
+                            if getattr(fs_rt, 'is_remote', False):
+                                fs = fs_rt
                     except Exception:
                         pass
                 logger.info("[REST] update_file path=%s use_remote=%s", request.path, getattr(fs, 'is_remote', False))
@@ -709,15 +779,31 @@ class RestAPI:
                 raise HTTPException(status_code=500, detail=str(e))
 
         @self.app.delete("/api/files")
-        async def delete_file(path: str):
+        async def delete_file(path: str, namespace: Optional[str] = None):
             """Delete file."""
             try:
                 fs = self.filesystem_service
                 if self.context_router is not None:
                     try:
-                        fs_rt = await self.context_router.get_filesystem()
-                        if getattr(fs_rt, 'is_remote', False):
-                            fs = fs_rt
+                        ctx_id = None
+                        abs_path = path
+                        if namespace:
+                            try:
+                                ctx_id = await self.context_router.resolve_namespace_id(namespace)
+                            except Exception:
+                                ctx_id = namespace
+                        else:
+                            try:
+                                ctx_id, abs_path = await self.context_router.parse_namespaced_path(path)
+                            except Exception:
+                                ctx_id, abs_path = None, path
+                        if ctx_id:
+                            fs = await self.context_router.get_filesystem_for_namespace(ctx_id)
+                            path = abs_path
+                        else:
+                            fs_rt = await self.context_router.get_filesystem()
+                            if getattr(fs_rt, 'is_remote', False):
+                                fs = fs_rt
                     except Exception:
                         pass
                 logger.info("[REST] delete_file path=%s use_remote=%s", path, getattr(fs, 'is_remote', False))
@@ -739,9 +825,16 @@ class RestAPI:
                 fs = self.filesystem_service
                 if self.context_router is not None:
                     try:
-                        fs_rt = await self.context_router.get_filesystem()
-                        if getattr(fs_rt, 'is_remote', False):
-                            fs = fs_rt
+                        # Support namespaces on either src or dest; if different, reject for now
+                        src_ctx, src_path = await self.context_router.parse_namespaced_path(request.source_path)
+                        dst_ctx, dst_path = await self.context_router.parse_namespaced_path(request.destination_path)
+                        if src_ctx != dst_ctx:
+                            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cross-context move not supported")
+                        fs = await self.context_router.get_filesystem_for_namespace(src_ctx)
+                        request.source_path = src_path
+                        request.destination_path = dst_path
+                    except HTTPException:
+                        raise
                     except Exception:
                         pass
                 logger.info("[REST] move_file src=%s dst=%s use_remote=%s", request.source_path, request.destination_path, getattr(fs, 'is_remote', False))
@@ -769,9 +862,15 @@ class RestAPI:
                 fs = self.filesystem_service
                 if self.context_router is not None:
                     try:
-                        fs_rt = await self.context_router.get_filesystem()
-                        if getattr(fs_rt, 'is_remote', False):
-                            fs = fs_rt
+                        # If request.path is provided and namespaced, route accordingly
+                        if request.path:
+                            ctx_id, abs_path = await self.context_router.parse_namespaced_path(request.path)
+                            fs = await self.context_router.get_filesystem_for_namespace(ctx_id)
+                            request.path = abs_path
+                        else:
+                            fs_rt = await self.context_router.get_filesystem()
+                            if getattr(fs_rt, 'is_remote', False):
+                                fs = fs_rt
                     except Exception:
                         pass
                 logger.info("[REST] search_files query=%s use_remote=%s", request.query, getattr(fs, 'is_remote', False))
@@ -786,15 +885,31 @@ class RestAPI:
                 raise HTTPException(status_code=500, detail=str(e))
 
         @self.app.get("/api/files/info")
-        async def get_file_info(path: str):
+        async def get_file_info(path: str, namespace: Optional[str] = None):
             """Get file information."""
             try:
                 fs = self.filesystem_service
                 if self.context_router is not None:
                     try:
-                        fs_rt = await self.context_router.get_filesystem()
-                        if getattr(fs_rt, 'is_remote', False):
-                            fs = fs_rt
+                        ctx_id = None
+                        abs_path = path
+                        if namespace:
+                            try:
+                                ctx_id = await self.context_router.resolve_namespace_id(namespace)
+                            except Exception:
+                                ctx_id = namespace
+                        else:
+                            try:
+                                ctx_id, abs_path = await self.context_router.parse_namespaced_path(path)
+                            except Exception:
+                                ctx_id, abs_path = None, path
+                        if ctx_id:
+                            fs = await self.context_router.get_filesystem_for_namespace(ctx_id)
+                            path = abs_path
+                        else:
+                            fs_rt = await self.context_router.get_filesystem()
+                            if getattr(fs_rt, 'is_remote', False):
+                                fs = fs_rt
                     except Exception:
                         pass
                 logger.info("[REST] get_file_info path=%s use_remote=%s", path, getattr(fs, 'is_remote', False))
@@ -810,7 +925,7 @@ class RestAPI:
 
         # File download endpoint (Phase 5 - explorer download)
         @self.app.get("/api/files/download")
-        async def download_file(path: str):  # type: ignore
+        async def download_file(path: str, namespace: Optional[str] = None):  # type: ignore
             """Download a single file specified by absolute or workspace-relative path.
 
             The frontend passes the raw file path as displayed in the explorer tree.
@@ -830,7 +945,23 @@ class RestAPI:
                 fs_service = self.filesystem_service
                 if self.context_router is not None:
                     try:
-                        fs_service = await self.context_router.get_filesystem()
+                        ctx_id = None
+                        abs_path = path
+                        if namespace:
+                            try:
+                                ctx_id = await self.context_router.resolve_namespace_id(namespace)
+                            except Exception:
+                                ctx_id = namespace
+                        else:
+                            try:
+                                ctx_id, abs_path = await self.context_router.parse_namespaced_path(path)
+                            except Exception:
+                                ctx_id, abs_path = None, path
+                        if ctx_id:
+                            fs_service = await self.context_router.get_filesystem_for_namespace(ctx_id)
+                            path = abs_path
+                        else:
+                            fs_service = await self.context_router.get_filesystem()
                     except Exception:
                         fs_service = self.filesystem_service
 

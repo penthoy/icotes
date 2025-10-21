@@ -14,6 +14,8 @@ export interface NotificationOptions {
   duration?: number; // Duration in milliseconds, defaults to 3000
   position?: 'top-right' | 'top-left' | 'bottom-right' | 'bottom-left';
   dismissible?: boolean; // Whether user can click to dismiss
+  key?: string; // Optional idempotency key: replaces any existing toast with the same key
+  replace?: boolean; // When true (default), replace existing toast with the same key
 }
 
 export interface Notification {
@@ -27,11 +29,17 @@ export interface Notification {
 class NotificationService {
   private notifications: Map<string, Notification> = new Map();
   private notificationCallbacks: Set<(notifications: Notification[]) => void> = new Set();
+  private hoverTimeouts: Map<string, ReturnType<typeof setTimeout>> = new Map(); // Track auto-dismiss timeouts
+  private notificationElements: Map<string, HTMLElement> = new Map(); // Track DOM elements
+  private keyIndex: Map<string, string> = new Map(); // key -> notification id
+  private recentMessages: Map<string, number> = new Map(); // message -> last timestamp
 
   private defaultOptions: Required<NotificationOptions> = {
     duration: 3000,
     position: 'top-right',
-    dismissible: true
+    dismissible: true,
+    key: '',
+    replace: true,
   };
 
   /**
@@ -43,7 +51,28 @@ class NotificationService {
     options: NotificationOptions = {}
   ): string {
     const id = `notification_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    const mergedOptions = { ...this.defaultOptions, ...options };
+    const mergedOptions = { ...this.defaultOptions, ...options } as Required<NotificationOptions>;
+
+    // Debounce exact same message within 1s to avoid rapid duplicates
+    // Include key in composite to allow separate toasts with different keys
+    const now = Date.now();
+    const debounceKey = mergedOptions.key 
+      ? `${type}:${message}:${mergedOptions.key}` 
+      : `${type}:${message}`;
+    const last = this.recentMessages.get(debounceKey) || 0;
+    if (now - last < 1000) {
+      this.recentMessages.set(debounceKey, now);
+      return id; // ignore duplicate burst
+    }
+    this.recentMessages.set(debounceKey, now);
+
+    // If key present and replacement enabled, dismiss existing toast with same key
+    if (mergedOptions.key && mergedOptions.replace) {
+      const existingId = this.keyIndex.get(mergedOptions.key);
+      if (existingId) {
+        this.dismiss(existingId);
+      }
+    }
 
     const notification: Notification = {
       id,
@@ -55,6 +84,9 @@ class NotificationService {
 
     // Add notification to active list
     this.notifications.set(id, notification);
+    if (mergedOptions.key) {
+      this.keyIndex.set(mergedOptions.key, id);
+    }
 
     // Create and show DOM element for immediate feedback
     this.createNotificationElement(notification);
@@ -64,12 +96,51 @@ class NotificationService {
 
     // Auto-dismiss if duration > 0
     if (mergedOptions.duration > 0) {
-      setTimeout(() => {
-        this.dismiss(id);
-      }, mergedOptions.duration);
+      this.scheduleAutoDismiss(id, mergedOptions.duration);
     }
 
     return id;
+  }
+
+  /**
+   * Schedule auto-dismiss for a notification
+   */
+  private scheduleAutoDismiss(id: string, duration: number): void {
+    // Clear any existing timeout
+    const existingTimeout = this.hoverTimeouts.get(id);
+    if (existingTimeout) {
+      clearTimeout(existingTimeout);
+    }
+
+    // Schedule new timeout
+    const timeout = setTimeout(() => {
+      this.dismiss(id);
+      this.hoverTimeouts.delete(id);
+    }, duration);
+
+    this.hoverTimeouts.set(id, timeout);
+  }
+
+  /**
+   * Cancel auto-dismiss for a notification (on hover)
+   */
+  private cancelAutoDismiss(id: string): void {
+    const timeout = this.hoverTimeouts.get(id);
+    if (timeout) {
+      clearTimeout(timeout);
+      this.hoverTimeouts.delete(id);
+    }
+  }
+
+  /**
+   * Resume auto-dismiss for a notification (on hover out)
+   */
+  private resumeAutoDismiss(id: string): void {
+    const notification = this.notifications.get(id);
+    if (notification && notification.options.duration > 0) {
+      // Restart full duration after hover (not remaining time)
+      this.scheduleAutoDismiss(id, notification.options.duration);
+    }
   }
 
   /**
@@ -79,9 +150,21 @@ class NotificationService {
     const notification = this.notifications.get(id);
     if (!notification) return false;
 
+    // Clear any pending timeout
+    this.cancelAutoDismiss(id);
+
     this.notifications.delete(id);
     this.removeNotificationElement(id);
     this.notifyComponents();
+
+    // Reposition remaining notifications
+    this.repositionNotifications();
+
+    // Cleanup key index when applicable
+    const k = notification.options.key;
+    if (k && this.keyIndex.get(k) === id) {
+      this.keyIndex.delete(k);
+    }
 
     return true;
   }
@@ -90,6 +173,12 @@ class NotificationService {
    * Clear all notifications
    */
   clear(): void {
+    // Clear all timeouts
+    this.hoverTimeouts.forEach(timeout => clearTimeout(timeout));
+    this.hoverTimeouts.clear();
+    this.keyIndex.clear();
+    this.recentMessages.clear();
+    
     const notificationIds = Array.from(this.notifications.keys());
     notificationIds.forEach(id => this.dismiss(id));
   }
@@ -152,27 +241,25 @@ class NotificationService {
       info: 'bg-blue-500 text-white border-blue-600'
     };
 
-    const positionClasses = {
-      'top-right': 'top-4 right-4',
-      'top-left': 'top-4 left-4',
-      'bottom-right': 'bottom-4 right-4',
-      'bottom-left': 'bottom-4 left-4'
-    };
-
     element.className = `
       fixed px-4 py-3 rounded-lg shadow-lg z-50 transition-all duration-300
       border-l-4 max-w-sm min-w-[250px]
       ${typeClasses[notification.type]}
-      ${positionClasses[notification.options.position]}
     `.trim();
+
+    // Set initial position (will be adjusted after DOM insertion)
+    this.applyPosition(element, notification.options.position, 0);
 
     // Create content
     const content = document.createElement('div');
     content.className = 'flex items-start justify-between gap-3';
 
     const message = document.createElement('div');
-    message.className = 'flex-1 text-sm font-medium';
+    message.className = 'flex-1 text-sm font-medium select-text cursor-text'; // Enable text selection
     message.textContent = notification.message;
+    // Make text selectable
+    message.style.userSelect = 'text';
+    message.style.webkitUserSelect = 'text';
 
     content.appendChild(message);
 
@@ -187,22 +274,121 @@ class NotificationService {
 
     element.appendChild(content);
 
-    // Add to DOM
-    document.body.appendChild(element);
+    // Add hover detection to pause auto-dismiss
+    element.addEventListener('mouseenter', () => {
+      this.cancelAutoDismiss(notification.id);
+    });
 
-    // Animate in
-    requestAnimationFrame(() => {
-      element.style.opacity = '1';
-      element.style.transform = 'translateY(0)';
+    element.addEventListener('mouseleave', () => {
+      this.resumeAutoDismiss(notification.id);
     });
 
     // Set initial styles for animation
     element.style.opacity = '0';
-    element.style.transform = 'translateY(-20px)';
+
+    // Store element reference immediately to prevent race conditions
+    this.notificationElements.set(notification.id, element);
+
+    // Add to DOM first so element gets its dimensions
+    document.body.appendChild(element);
+
+    // Wait for layout to complete, then calculate proper offset and position
+    requestAnimationFrame(() => {
+      const offset = this.calculateNotificationOffset(notification);
+      this.applyPosition(element, notification.options.position, offset);
+      
+      // Animate in on next frame
+      requestAnimationFrame(() => {
+        element.style.opacity = '1';
+      });
+    });
+  }
+
+  /**
+   * Calculate vertical offset for notification based on existing notifications at same position
+   */
+  private calculateNotificationOffset(notification: Notification): number {
+    const position = notification.options.position;
+    let offset = 0;
+
+    // Find all existing notifications at the same position
+    this.notifications.forEach((existingNotification, existingId) => {
+      if (existingNotification.id !== notification.id && 
+          existingNotification.options.position === position) {
+        const element = this.notificationElements.get(existingId);
+        if (element) {
+          // Add height + gap (12px = 0.75rem)
+          offset += element.offsetHeight + 12;
+        }
+      }
+    });
+
+    return offset;
+  }
+
+  /**
+   * Apply position to notification element with offset
+   */
+  private applyPosition(element: HTMLElement, position: string, offset: number): void {
+    const isBottom = position.includes('bottom');
+    const isRight = position.includes('right');
+
+    // Ensure smooth transitions
+    element.style.transition = 'all 0.3s ease-out';
+
+    // Set horizontal position
+    if (isRight) {
+      element.style.right = '1rem';
+      element.style.left = 'auto';
+    } else {
+      element.style.left = '1rem';
+      element.style.right = 'auto';
+    }
+
+    // Set vertical position with offset
+    if (isBottom) {
+      element.style.bottom = `${1 + offset / 16}rem`; // Convert px to rem
+      element.style.top = 'auto';
+    } else {
+      element.style.top = `${1 + offset / 16}rem`;
+      element.style.bottom = 'auto';
+    }
+  }
+
+  /**
+   * Reposition all notifications after one is dismissed
+   */
+  private repositionNotifications(): void {
+    // Group notifications by position
+    const positionGroups = new Map<string, Notification[]>();
+    
+    this.notifications.forEach(notification => {
+      const position = notification.options.position;
+      if (!positionGroups.has(position)) {
+        positionGroups.set(position, []);
+      }
+      positionGroups.get(position)!.push(notification);
+    });
+
+    // Reposition each group
+    positionGroups.forEach((notifications, position) => {
+      let cumulativeOffset = 0;
+      
+      // Sort by timestamp (oldest first for proper stacking)
+      notifications.sort((a, b) => a.timestamp - b.timestamp);
+
+      notifications.forEach(notification => {
+        const element = this.notificationElements.get(notification.id);
+        if (element) {
+          this.applyPosition(element, position, cumulativeOffset);
+          cumulativeOffset += element.offsetHeight + 12;
+        }
+      });
+    });
   }
 
   private removeNotificationElement(id: string): void {
-    const element = document.getElementById(`icui-notification-${id}`);
+    const element = this.notificationElements.get(id);
     if (element) {
       element.style.opacity = '0';
       element.style.transform = 'translateY(-20px)';
@@ -211,6 +397,8 @@ class NotificationService {
         if (element.parentNode) {
           element.parentNode.removeChild(element);
         }
+        // Clean up reference
+        this.notificationElements.delete(id);
       }, 300);
     }
   }

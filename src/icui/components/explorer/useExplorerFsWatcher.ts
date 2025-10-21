@@ -14,7 +14,7 @@ export function useExplorerFsWatcher({ currentPath, onRefresh, loadDirectoryRef 
 
   useEffect(() => {
     const handleFileSystemEvent = (eventData: any) => {
-      log.debug('ICUIExplorer', '[EXPL] filesystem_event received', { event: eventData?.event, data: eventData?.data });
+      // Filesystem events happen very frequently - specific event logs below provide enough detail
       if (!eventData?.data) return;
 
       const { event, data } = eventData;
@@ -56,7 +56,7 @@ export function useExplorerFsWatcher({ currentPath, onRefresh, loadDirectoryRef 
       try {
         const status = await backendService.getConnectionStatus();
         if (!status.connected) return;
-        log.debug('ICUIExplorer', '[EXPL] Subscribing to fs topics');
+        // Subscription happens frequently - keep at debug level, no log needed
         await backendService.notify('subscribe', { topics });
       } catch (error) {
         log.warn('ICUIExplorer', 'Failed to subscribe to filesystem events', { error });
@@ -67,12 +67,12 @@ export function useExplorerFsWatcher({ currentPath, onRefresh, loadDirectoryRef 
       try {
         const status = await backendService.getConnectionStatus();
         if (status.connected) {
-          log.debug('ICUIExplorer', '[EXPL] Initializing subscription on connected');
+          // Initialization happens frequently - no log needed
           await subscribeToEvents();
         } else {
           statusHandlerRef.current = async (payload: any) => {
             if (payload?.status === 'connected') {
-              log.debug('ICUIExplorer', '[EXPL] Connected, subscribing + refreshing');
+              // Connection events happen frequently - no log needed
               await subscribeToEvents();
               if (loadDirectoryRef.current) loadDirectoryRef.current(currentPath);
               if (statusHandlerRef.current) {
@@ -104,7 +104,7 @@ export function useExplorerFsWatcher({ currentPath, onRefresh, loadDirectoryRef 
         try {
           const status = await backendService.getConnectionStatus();
           if (status.connected) {
-            log.debug('ICUIExplorer', '[EXPL] Unsubscribing from fs topics');
+            // Unsubscription happens frequently - no log needed
             await backendService.notify('unsubscribe', { topics });
           }
         } catch (error) {

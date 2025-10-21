@@ -65,13 +65,16 @@ async def get_current_context() -> dict:
         from icpy.services.context_router import get_context_router
         router = await get_context_router()
         session = await router.get_context()
+        cwd = getattr(session, 'cwd', '/')
         return {
             "contextId": session.contextId,
             "status": session.status,
             "host": getattr(session, 'host', None),
             "port": getattr(session, 'port', None),
             "username": getattr(session, 'username', None),
-            "cwd": getattr(session, 'cwd', '/'),
+            "cwd": cwd,
+            # Provide a canonical workspaceRoot alias to reduce ambiguity in tools/prompts
+            "workspaceRoot": cwd,
         }
     except Exception as e:
         logger.warning(f"[ContextHelpers] Failed to get context: {e}")

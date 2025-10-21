@@ -31,6 +31,7 @@ dependencies = [
     "cerebras_cloud_sdk>=1.30.0",
     "asyncssh>=2.14.2",
     "google-genai>=0.1.0",
+    "google-generativeai>=0.8.0",
     "Pillow>=10.0.0",
 ]
 

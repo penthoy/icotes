@@ -168,4 +168,4 @@ WORKDIR /app/backend
 # TERMINAL FIX: Use privileged mode for PTY support
 # Use tini as init system and start the application
 ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--log-config", "logging.conf"]
