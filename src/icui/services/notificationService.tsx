@@ -54,13 +54,17 @@ class NotificationService {
     const mergedOptions = { ...this.defaultOptions, ...options } as Required<NotificationOptions>;
 
     // Debounce exact same message within 1s to avoid rapid duplicates
+    // Include key in composite to allow separate toasts with different keys
     const now = Date.now();
-    const last = this.recentMessages.get(`${type}:${message}`) || 0;
+    const debounceKey = mergedOptions.key 
+      ? `${type}:${message}:${mergedOptions.key}` 
+      : `${type}:${message}`;
+    const last = this.recentMessages.get(debounceKey) || 0;
     if (now - last < 1000) {
-      this.recentMessages.set(`${type}:${message}`, now);
+      this.recentMessages.set(debounceKey, now);
       return id; // ignore duplicate burst
     }
-    this.recentMessages.set(`${type}:${message}`, now);
+    this.recentMessages.set(debounceKey, now);
 
     // If key present and replacement enabled, dismiss existing toast with same key
     if (mergedOptions.key && mergedOptions.replace) {
@@ -134,7 +138,7 @@ class NotificationService {
   private resumeAutoDismiss(id: string): void {
     const notification = this.notifications.get(id);
     if (notification && notification.options.duration > 0) {
-      // Use remaining time or default duration
+      // Restart full duration after hover (not remaining time)
       this.scheduleAutoDismiss(id, notification.options.duration);
     }
   }
@@ -282,11 +286,11 @@ class NotificationService {
     // Set initial styles for animation
     element.style.opacity = '0';
 
+    // Store element reference immediately to prevent race conditions
+    this.notificationElements.set(notification.id, element);
+
     // Add to DOM first so element gets its dimensions
     document.body.appendChild(element);
-
-    // Store element reference after it's in the DOM
-    this.notificationElements.set(notification.id, element);
 
     // Wait for layout to complete, then calculate proper offset and position
     requestAnimationFrame(() => {
