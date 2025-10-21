@@ -86,7 +86,7 @@ async def export_media(body: Dict = Body(...)):
         raise HTTPException(status_code=404, detail="Attachment not found")
 
     # Workspace root should be the parent of the backend directory, not the backend directory itself
-    # Backend runs from /home/penthoy/icotes/backend/, but workspace is /home/penthoy/icotes/
+    # Backend runs from /icotes/backend/, but workspace is /icotes/
     current_dir = Path(os.getcwd()).resolve()
     if current_dir.name == 'backend':
         workspace_root = current_dir.parent
