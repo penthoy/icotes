@@ -160,26 +160,20 @@ async def connect(payload: HopConnectRequest):
         logger.info(f"[HopAPI] Connect requested for credential={payload.credentialId} (asyncssh_available={ASYNCSSH_AVAILABLE})")
         session = await service.connect(payload.credentialId, password=payload.password, passphrase=payload.passphrase)
         logger.info(f"[HopAPI] Connect result: status={session.status} host={session.host} user={session.username} error={session.lastError}")
-        # Enrich payload with credentialName for friendly display on initial connect
-        payload_with_name = session.__dict__.copy()
-        try:
-            if getattr(session, 'credentialId', None):
-                cred = service.get_credential(session.credentialId)  # type: ignore[attr-defined]
-                if cred:
-                    payload_with_name['credentialName'] = cred.get('name')
-        except Exception as e:
-            logger.debug(f"[HopAPI] credential enrichment failed on connect: {e}")
+        
+        # Convert session to dict for response
+        session_dict = session.__dict__.copy()
 
         # Broadcast status change and session list update
         try:
             broker = await get_message_broker()
-            await broker.publish('hop.status', payload_with_name)
+            await broker.publish('hop.status', session_dict)
             # Publish updated session list
             sessions = service.list_sessions()
             await broker.publish('hop.sessions', {"sessions": sessions})
         except Exception as e:
             logger.debug(f"[HopAPI] broker publish failed on status: {e}")
-        return payload_with_name
+        return session_dict
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
@@ -214,15 +208,10 @@ async def status():
     service = await get_hop_service()
     session = service.status()
     logger.info(f"[HopAPI] Status requested: status={session.status} contextId={session.contextId} host={session.host}")
-    # Enrich with credentialName for friendly display in UI
+    
+    # Convert session to dict for response (credentialName already included)
     payload = session.__dict__.copy()
-    try:
-        if getattr(session, 'credentialId', None):
-            cred = service.get_credential(session.credentialId)  # type: ignore[attr-defined]
-            if cred:
-                payload['credentialName'] = cred.get('name')
-    except Exception:
-        pass
+    
     try:
         broker = await get_message_broker()
         await broker.publish('hop.status', payload)

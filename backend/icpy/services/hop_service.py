@@ -25,6 +25,9 @@ from typing import Dict, List, Optional, Tuple
 from contextlib import asynccontextmanager
 
 from ..utils.logging import sanitize_log_message, mask_credential_value
+from ..utils.ssh_config_parser import parse_ssh_config, SSHConfigEntry
+from ..utils.ssh_config_writer import generate_ssh_config, credential_to_config_entry
+from ..scripts.migrate_hop_config import should_migrate, migrate_credentials_to_config
 
 try:
     import asyncssh  # Phase 2: real connectivity
@@ -48,13 +51,8 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _app_data_dir() -> Path:
-    """Return the base directory for icotes SSH data in the workspace.
-
-    We keep hop-related files under workspace/.icotes/ssh for Docker persistence.
-    This ensures credentials survive container restarts when workspace is mounted as a volume.
-    """
-    # Get workspace root from environment or fallback
+def _workspace_root() -> Path:
+    """Get the workspace root directory."""
     workspace_root = os.environ.get('WORKSPACE_ROOT')
     if not workspace_root:
         # Fallback: search upwards for workspace dir
@@ -72,7 +70,16 @@ def _app_data_dir() -> Path:
         else:
             workspace_root = str(Path.cwd() / 'workspace')
     
-    base = Path(workspace_root) / '.icotes' / 'ssh'
+    return Path(workspace_root)
+
+
+def _app_data_dir() -> Path:
+    """Return the base directory for icotes SSH data in the workspace.
+
+    We keep hop-related files under workspace/.icotes/ssh for Docker persistence.
+    This ensures credentials survive container restarts when workspace is mounted as a volume.
+    """
+    base = _workspace_root() / '.icotes' / 'ssh'
     base.mkdir(parents=True, exist_ok=True)
     # Set safe dir perms (700) if possible
     try:
@@ -94,6 +101,22 @@ def _keys_dir() -> Path:
 
 def _creds_file() -> Path:
     return _app_data_dir() / "credentials.json"
+
+
+def _hop_dir() -> Path:
+    """Return the hop directory for config file storage."""
+    hop = _workspace_root() / '.icotes' / 'hop'
+    hop.mkdir(parents=True, exist_ok=True)
+    try:
+        os.chmod(hop, 0o700)
+    except Exception:
+        pass
+    return hop
+
+
+def _config_file() -> Path:
+    """Return the SSH config file path."""
+    return _hop_dir() / "config"
 
 
 @dataclass
@@ -124,6 +147,7 @@ class SSHCredential:
 class HopSession:
     contextId: str = "local"  # "local" or credential id
     credentialId: Optional[str] = None
+    credentialName: Optional[str] = None  # Friendly display name
     status: str = "disconnected"  # disconnected|connecting|connected|error|reconnecting
     cwd: str = "/"
     lastError: Optional[str] = None
@@ -162,15 +186,103 @@ class HopService:
         self._connection_start_times: Dict[str, float] = {}
         self._loop = None  # event loop where connection/sftp were created
         
+        # Phase 2: Config format tracking
+        self._config_format: str = "json"  # "json" or "config"
+        
+        # Phase 3: Auto-migrate on startup if needed
+        self._run_auto_migration()
+        
         self._load_credentials()
+
+    def _run_auto_migration(self) -> None:
+        """Run automatic migration from JSON to config format if needed."""
+        workspace = _workspace_root()
+        if should_migrate(workspace):
+            logger.info("[HopService] Auto-migrating credentials from JSON to SSH config format...")
+            try:
+                result = migrate_credentials_to_config(workspace)
+                logger.info(
+                    f"[HopService] Migration completed: {result.credentials_migrated} credentials, "
+                    f"{result.keys_renamed} keys renamed"
+                )
+                if result.warnings:
+                    for warning in result.warnings:
+                        logger.warning(f"[HopService] Migration warning: {warning}")
+            except Exception as e:
+                logger.error(f"[HopService] Migration failed: {e}", exc_info=True)
+                # Don't fail startup if migration fails - old JSON will still work
 
     # -------------------- Persistence --------------------
     def _load_credentials(self) -> None:
-        path = _creds_file()
-        if not path.exists():
+        """Load credentials from config file (preferred) or JSON (fallback)."""
+        config_path = _config_file()
+        json_path = _creds_file()
+        
+        # Phase 2: Prefer config format if it exists
+        if config_path.exists():
+            self._load_from_config()
+        elif json_path.exists():
+            self._load_from_json()
+        else:
+            # No credentials yet
             self._creds = {}
-            return
+            self._config_format = "json"
+            logger.info("[HopService] No credentials found (will use JSON format)")
+    
+    def _load_from_config(self) -> None:
+        """Load credentials from SSH config file."""
         try:
+            config_path = _config_file()
+            config_text = config_path.read_text(encoding="utf-8")
+            entries = parse_ssh_config(config_text)
+            
+            result: Dict[str, SSHCredential] = {}
+            for entry in entries:
+                # Convert entry to credential dict
+                cred_dict = entry.to_credential_dict()
+                
+                # Skip local context (it's always present)
+                if cred_dict.get('id') == 'local':
+                    continue
+                
+                # Generate ID if missing
+                if not cred_dict.get('id'):
+                    cred_dict['id'] = str(uuid.uuid4())
+                
+                # Create SSHCredential
+                cred = SSHCredential(
+                    id=cred_dict['id'],
+                    name=cred_dict.get('name', ''),
+                    host=cred_dict.get('host', ''),
+                    port=int(cred_dict.get('port', 22)),
+                    username=cred_dict.get('username', ''),
+                    auth=cred_dict.get('auth', 'password'),
+                    privateKeyId=cred_dict.get('privateKeyId'),
+                    defaultPath=cred_dict.get('defaultPath'),
+                    createdAt=cred_dict.get('createdAt', _now_iso()),
+                    updatedAt=cred_dict.get('updatedAt', _now_iso()),
+                )
+                result[cred.id] = cred
+            
+            self._creds = result
+            self._config_format = "config"
+            logger.info(f"[HopService] Loaded {len(result)} credentials from config file")
+            
+        except Exception as e:
+            logger.error(f"Failed to load credentials from config: {e}")
+            self._creds = {}
+            self._config_format = "config"
+    
+    def _load_from_json(self) -> None:
+        """Load credentials from JSON file (legacy format - DEPRECATED)."""
+        path = _creds_file()
+        try:
+            # Phase 5: JSON format is deprecated
+            logger.warning(
+                "[HopService] Loading from legacy JSON format. "
+                "This format is deprecated. Config file will be generated automatically."
+            )
+            
             data = json.loads(path.read_text(encoding="utf-8"))
             result: Dict[str, SSHCredential] = {}
             for item in data:
@@ -189,11 +301,60 @@ class HopService:
                 )
                 result[cred.id] = cred
             self._creds = result
+            self._config_format = "json"
+            logger.info(f"[HopService] Loaded {len(result)} credentials from legacy JSON file")
+            
+            # Phase 5: Always generate config file when loading from JSON
+            if result:
+                self._save_to_config()
+                logger.info(
+                    "[HopService] Generated config file at workspace/.icotes/hop/config. "
+                    "Future saves will only update the config file."
+                )
+                
         except Exception as e:
-            logger.error(f"Failed to load credentials: {e}")
+            logger.error(f"Failed to load credentials from JSON: {e}")
             self._creds = {}
+            self._config_format = "json"
 
     def _save_credentials(self) -> None:
+        """Save credentials to config format only (Phase 5: JSON deprecated)."""
+        # Phase 5: Only save to config format
+        # JSON format is deprecated - kept as read-only fallback
+        self._save_to_config()
+    
+    def _save_to_config(self) -> None:
+        """Save credentials to SSH config file."""
+        try:
+            config_path = _config_file()
+            
+            # Convert credentials to config entries
+            entries = []
+            for cred in self._creds.values():
+                entry = credential_to_config_entry(cred)
+                entries.append(entry)
+            
+            # Generate config text
+            config_text = generate_ssh_config(entries)
+            
+            # Atomic write (write to temp, then rename)
+            temp_path = config_path.with_suffix('.tmp')
+            temp_path.write_text(config_text, encoding="utf-8")
+            temp_path.replace(config_path)
+            
+            # Set permissions (600)
+            try:
+                os.chmod(config_path, 0o600)
+            except Exception:
+                pass
+                
+            logger.debug(f"[HopService] Saved {len(self._creds)} credentials to config file")
+            
+        except Exception as e:
+            logger.error(f"Failed to save credentials to config: {e}")
+    
+    def _save_to_json(self) -> None:
+        """Save credentials to JSON file (backup)."""
         path = _creds_file()
         try:
             serializable = []
@@ -201,8 +362,13 @@ class HopService:
                 d = cred.to_public_dict()
                 serializable.append(d)
             path.write_text(json.dumps(serializable, indent=2), encoding="utf-8")
+            logger.debug(f"[HopService] Saved {len(self._creds)} credentials to JSON backup")
         except Exception as e:
-            logger.error(f"Failed to save credentials: {e}")
+            logger.error(f"Failed to save credentials to JSON: {e}")
+    
+    def get_config_format(self) -> str:
+        """Return current config format: 'json' or 'config'."""
+        return self._config_format
 
     # -------------------- Key management --------------------
     def store_private_key(self, key_bytes: bytes) -> str:
@@ -293,6 +459,7 @@ class HopService:
             session = HopSession(
                 contextId=context_id,
                 credentialId=cred.id,
+                credentialName=cred.name,  # Set the friendly name for UI display
                 status="connecting",
                 cwd=cred.defaultPath or "/",
                 host=cred.host,
@@ -756,11 +923,12 @@ class HopService:
                 session.status = "disconnected"
             session_dict = asdict(session)
             session_dict['active'] = (context_id == self._active_context_id)
-            # Include credential name for easier UI identification
-            if session.credentialId and context_id != 'local':
-                cred = self.get_credential(session.credentialId)
-                if cred:
-                    session_dict['credentialName'] = cred.get('name', context_id)
+            # Ensure credentialName is set (fallback for old sessions or if not set)
+            if context_id != 'local' and not session_dict.get('credentialName'):
+                if session.credentialId:
+                    cred = self.get_credential(session.credentialId)
+                    if cred:
+                        session_dict['credentialName'] = cred.get('name', context_id)
             result.append(session_dict)
         return result
     

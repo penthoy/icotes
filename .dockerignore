@@ -97,12 +97,14 @@ workspace/**
 # exclude (Don't keep) specific subdirectories and files within .icotes
 workspace/.icotes/chat_history/**
 workspace/.icotes/ssh/**
+workspace/.icotes/hop/**
 workspace/.icotes/media/**
 workspace/.icotes/thumbnails/**
 workspace/.icotes//image_references.json
 **/chat_history/
 **/ssh/keys/**
 **/ssh/credentials.json
+**/hop/**
 
 # Temporary files
 *.tmp
