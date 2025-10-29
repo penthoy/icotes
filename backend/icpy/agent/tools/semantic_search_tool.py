@@ -5,6 +5,7 @@ Phases implemented:
 - Phase 1: Use workspace service root; add filename search; case-insensitive fallback; hidden files option.
 - Phase 2: Tokenized AND regex, OR tokens fallback; context lines and max results controls; mode selection.
 - Phase 3: Root selection (workspace or repo via env), better scope handling.
+- Phase 7 (Hop Support): Uses ContextRouter to work with active hop context (local or remote)
 """
 
 import asyncio
@@ -14,6 +15,7 @@ import subprocess
 import re
 from typing import Dict, Any, Optional, List, Tuple
 from .base_tool import BaseTool, ToolResult
+from .context_helpers import get_contextual_filesystem
 from ...services import get_workspace_service
 
 logger = logging.getLogger(__name__)
@@ -216,25 +218,52 @@ class SemanticSearchTool(BaseTool):
         return workspace_root
     
     async def execute(self, **kwargs) -> ToolResult:
-        """Execute the semantic search"""
+        """Execute the semantic search
+        
+        Phase 7 Update: Uses context-aware filesystem to support both local and remote (hop) searching.
+        For local: Uses ripgrep for fast content search
+        For remote: Uses filesystem service's search_files method
+        """
+        query = kwargs.get("query")
+        scope = kwargs.get("scope")
+        file_types = kwargs.get("fileTypes")
+        include_hidden = bool(kwargs.get("includeHidden", False))
+        context_lines = int(kwargs.get("contextLines", 2) or 2)
+        if context_lines < 0:
+            context_lines = 0
+        max_results = int(kwargs.get("maxResults", 50) or 50)
+        mode = kwargs.get("mode", "smart")
+        root = kwargs.get("root", "workspace")
+        
+        if query is None:
+            return ToolResult(success=False, error="query is required")
+        
+        if not query.strip():
+            return ToolResult(success=False, error="query cannot be empty")
+        
+        # Phase 7: Check if we're in a remote context (hopped)
         try:
-            query = kwargs.get("query")
-            scope = kwargs.get("scope")
-            file_types = kwargs.get("fileTypes")
-            include_hidden = bool(kwargs.get("includeHidden", False))
-            context_lines = int(kwargs.get("contextLines", 2) or 2)
-            if context_lines < 0:
-                context_lines = 0
-            max_results = int(kwargs.get("maxResults", 50) or 50)
-            mode = kwargs.get("mode", "smart")
-            root = kwargs.get("root", "workspace")
-            
-            if query is None:
-                return ToolResult(success=False, error="query is required")
-            
-            if not query.strip():
-                return ToolResult(success=False, error="query cannot be empty")
-            
+            from .context_helpers import get_current_context
+            context = await get_current_context()
+            is_remote = context.get("contextId") != "local" and context.get("status") == "connected"
+            logger.debug(f"[SemanticSearch] Context: {context['contextId']}, remote={is_remote}")
+        except Exception as e:
+            logger.debug(f"[SemanticSearch] Could not determine context: {e}")
+            is_remote = False
+        
+        # Phase 7: Use context-aware filesystem
+        if is_remote:
+            logger.debug(f"[SemanticSearch] Using remote filesystem search for query: {query}")
+            return await self._execute_remote_search(query, scope, file_types, include_hidden, max_results)
+        
+        # Local search using ripgrep (original behavior)
+        logger.debug(f"[SemanticSearch] Using local ripgrep search for query: {query}")
+        return await self._execute_local_search(query, scope, file_types, include_hidden, context_lines, mode, max_results, root)
+    
+    async def _execute_local_search(self, query: str, scope: Optional[str], file_types: Optional[List[str]],
+                                    include_hidden: bool, context_lines: int, mode: str, max_results: int, root: str = "workspace") -> ToolResult:
+        """Execute search using local ripgrep (original behavior)"""
+        try:
             # Determine base root and full search path
             base_root = await self._get_base_root(root)
             search_path = self._build_path(base_root, scope)
@@ -329,5 +358,48 @@ class SemanticSearchTool(BaseTool):
         except FileNotFoundError:
             return ToolResult(success=False, error="ripgrep (rg) not found. Please install ripgrep.")
         except Exception as e:
-            logger.error(f"Error executing search for query '{kwargs.get('query')}': {e}")
-            return ToolResult(success=False, error=f"Search failed: {str(e)}") 
+            logger.error(f"Error executing local search for query '{query}': {e}")
+            return ToolResult(success=False, error=f"Search failed: {str(e)}")
+    
+    async def _execute_remote_search(self, query: str, scope: Optional[str], file_types: Optional[List[str]],
+                                     include_hidden: bool, max_results: int) -> ToolResult:
+        """Execute search on remote filesystem using context-aware filesystem service
+        
+        Phase 7: Works with RemoteFileSystemAdapter when hopped to a remote server.
+        Uses the filesystem service's search_files method for content search.
+        """
+        try:
+            filesystem_service = await get_contextual_filesystem()
+            
+            # Query the filesystem service's search capability
+            # The service will return results from the remote server
+            logger.debug(f"[SemanticSearch] Searching remote filesystem for: {query}")
+            search_results = await filesystem_service.search_files(
+                query=query,
+                search_content=True,  # Enable content search
+                file_types=None,  # TODO: Convert fileTypes to FileType objects if needed
+                max_results=max_results
+            )
+            
+            # Convert search results to the expected format (file, line, snippet)
+            formatted_results = []
+            for result in search_results:
+                # Results from search_files have: file_info, matches, score, context
+                file_info = result.get('file_info') if isinstance(result, dict) else getattr(result, 'file_info', None)
+                matches = result.get('matches') if isinstance(result, dict) else getattr(result, 'matches', [])
+                
+                if file_info:
+                    # Extract file path from file_info dict
+                    file_path = file_info.get('path') if isinstance(file_info, dict) else getattr(file_info, 'path', '')
+                    formatted_results.append({
+                        "file": file_path,
+                        "line": None,  # Remote search doesn't provide line numbers yet
+                        "snippet": matches[0] if matches else query
+                    })
+            
+            logger.debug(f"[SemanticSearch] Found {len(formatted_results)} remote results")
+            return ToolResult(success=True, data=self._cap_results(formatted_results, max_results))
+            
+        except Exception as e:
+            logger.error(f"Error executing remote search for query '{query}': {e}")
+            return ToolResult(success=False, error=f"Remote search failed: {str(e)}") 

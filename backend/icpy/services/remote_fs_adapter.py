@@ -359,37 +359,64 @@ class RemoteFileSystemAdapter:
             return None
 
     async def write_file(self, file_path: str, content: str, encoding: str = 'utf-8', create_dirs: bool = True) -> bool:
+        """Write text content to a remote file with loop-safe SFTP access.
+
+        Uses an ephemeral SFTP client when the current asyncio loop differs from the
+        hop service's active loop to avoid cross-loop Future errors.
+        """
         sftp = self._sftp()
         if not sftp:
             return False
         path = self._resolve(file_path)
-        try:
-            # Loop diagnostics for cross-loop issues
-            try:
-                import asyncio as _asyncio
-                cur_loop = _asyncio.get_running_loop()
-                hop_loop = None
-                try:
-                    hop = await get_hop_service()
-                    hop_loop = getattr(hop, 'get_active_loop', lambda: None)()
-                except Exception:
-                    hop_loop = None
-                logger.info(
-                    "[RemoteFS] write_file_binary loop diagnostics path=%s current_loop=%s hop_loop=%s",
-                    path,
-                    hex(id(cur_loop)) if cur_loop else None,
-                    hex(id(hop_loop)) if hop_loop else None,
-                )
-            except Exception:
-                pass
 
+        # Determine if we should use an ephemeral SFTP (different event loop)
+        use_ephemeral = False
+        hop = await get_hop_service()
+        try:
+            import asyncio as _asyncio
+            cur_loop = _asyncio.get_running_loop()
+            hop_loop = getattr(hop, 'get_active_loop', lambda: None)()
+            logger.info(
+                "[RemoteFS] write_file loop diag path=%s current_loop=%s hop_loop=%s",
+                path,
+                hex(id(cur_loop)) if cur_loop else None,
+                hex(id(hop_loop)) if hop_loop else None,
+            )
+            if hop_loop is not None and hop_loop is not cur_loop:
+                use_ephemeral = True
+        except Exception:
+            # If loop inspection fails, fall back to default SFTP
+            pass
+
+        try:
             if create_dirs:
                 dirp = posixpath.dirname(path)
-                await self._mkdirs(sftp, dirp)
+                if use_ephemeral:
+                    async with hop.ephemeral_sftp(self._context_id) as es_mkdir:
+                        if es_mkdir:
+                            await self._mkdirs(es_mkdir, dirp)
+                        else:
+                            # fallback to active sftp
+                            await self._mkdirs(sftp, dirp)
+                else:
+                    await self._mkdirs(sftp, dirp)
+
             data = content.encode(encoding)
-            # Phase 8: Add timeout protection
-            async with sftp.open(path, 'wb') as f:
-                await _with_timeout(f.write(data), operation=f"write file {path}")
+
+            # Phase 8: Add timeout protection and loop-safe write
+            if use_ephemeral:
+                async with hop.ephemeral_sftp(self._context_id) as esftp:
+                    if not esftp:
+                        logger.warning("[RemoteFS] ephemeral SFTP unavailable; falling back to active SFTP")
+                        async with sftp.open(path, 'wb') as f:
+                            await _with_timeout(f.write(data), operation=f"write file {path}")
+                    else:
+                        async with esftp.open(path, 'wb') as f:
+                            await _with_timeout(f.write(data), operation=f"write file {path}")
+            else:
+                async with sftp.open(path, 'wb') as f:
+                    await _with_timeout(f.write(data), operation=f"write file {path}")
+
             await self._publish('fs.file_written', {'file_path': path, 'size': len(data), 'encoding': encoding, 'created': False, 'timestamp': time.time()})
             return True
         except Exception as e:

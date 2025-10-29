@@ -150,7 +150,7 @@ class CreateFileTool(BaseTool):
                     error="Path is outside workspace root or invalid"
                 )
             
-            # Get filesystem service
+            # Get filesystem service (use wrapper so tests can patch this)
             filesystem_service = await get_filesystem_service()
             
             # Create parent directories if requested
@@ -159,8 +159,17 @@ class CreateFileTool(BaseTool):
                 if parent_dir != workspace_root:
                     await filesystem_service.create_directory(parent_dir)
             
-            # Write file
-            await filesystem_service.write_file(normalized_path, content)
+            # Write file and verify success
+            # Phase 8: Check return value from remote_fs_adapter (returns bool for success/failure)
+            result = await filesystem_service.write_file(normalized_path, content)
+            
+            # For remote filesystem adapter, result is a boolean indicating success
+            # Local filesystem service returns None on success, but for consistency we check
+            if result is False:
+                return ToolResult(
+                    success=False,
+                    error=f"Failed to write file {normalized_path}. This may indicate an event loop synchronization issue when hopped to a remote server."
+                )
             
             return ToolResult(success=True, data={"created": True})
             
