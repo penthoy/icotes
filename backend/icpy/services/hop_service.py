@@ -675,6 +675,58 @@ class HopService:
             except Exception:
                 pass
 
+    @asynccontextmanager
+    async def ephemeral_ssh(self, context_id: Optional[str] = None):
+        """Open a short-lived SSH connection in the CURRENT async loop.
+
+        This is analogous to ephemeral_sftp but yields the SSH connection itself.
+        It avoids cross-loop issues by creating a fresh connection bound to the caller's loop.
+        """
+        if context_id is None:
+            context_id = self._active_context_id
+
+        if context_id == "local" or not ASYNCSSH_AVAILABLE:
+            yield None
+            return
+
+        cred = self._creds.get(context_id)
+        if not cred:
+            yield None
+            return
+
+        # Retrieve last-used secret material (password/passphrase) if any
+        last = self._last_credentials.get(context_id, {})
+        password = last.get('password') if cred.auth == 'password' else None
+        passphrase = last.get('passphrase') if cred.auth == 'privateKey' else None
+        client_keys = None
+        if cred.auth == 'privateKey' and cred.privateKeyId:
+            key_path = str(self.get_key_path(cred.privateKeyId))
+            client_keys = [key_path]
+
+        conn = None
+        try:
+            conn = await asyncssh.connect(
+                host=cred.host,
+                port=cred.port or 22,
+                username=cred.username or None,
+                password=password,
+                client_keys=client_keys,
+                passphrase=passphrase,
+                known_hosts=None,
+                connect_timeout=CONNECTION_TIMEOUT,
+            )
+            yield conn
+        finally:
+            try:
+                if conn:
+                    conn.close()
+                    try:
+                        await asyncio.wait_for(conn.wait_closed(), timeout=2.0)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
     def _format_user_friendly_error(self, error: Exception) -> str:
         """Phase 8: Convert technical SSH errors to user-friendly messages."""
         error_str = str(error).lower()

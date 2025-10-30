@@ -23,6 +23,7 @@ from datetime import datetime, timezone
 from typing import Dict, List, Any, AsyncGenerator, Optional, Tuple, Callable
 
 from .tools import get_tool_registry, ToolResult
+from .debug_interceptor import get_interceptor, get_context_snapshot
 
 
 def get_openai_token_param(model_name: str, max_tokens: int) -> dict:
@@ -108,10 +109,22 @@ BASE_SYSTEM_PROMPT_TEMPLATE = """You are {AGENT_NAME}, a helpful and versatile A
 - Never hardcode workspace paths - use the helper function for proper path detection
 - The workspace directory is automatically detected and is the proper location for all user-facing files
 
+**Namespace-aware paths (hop support):**
+- File paths may be prefixed with a namespace to indicate the target context: `<namespace>:/absolute/path`.
+- Examples: `local:/workspace/file.txt`, `hop1:/home/user/app.py`.
+- If no namespace is provided, use the active context (local or current hop).
+- Treat Windows drive letters like `C:/path` as plain paths, not namespaces.
+- When you return paths from tools, prefer the namespaced `filePath` and/or `pathInfo.formatted_path` fields for clarity.
+
+**Namespace defaults and guardrails (to avoid cross-context mistakes):**
+- When hopped, bare paths operate in the REMOTE context. If you need the LOCAL workspace while hopped, explicitly prefix `local:/`.
+- For common local-only files (e.g., `workspace/README.md`, project configs), prefer `local:/workspace/...` unless the user explicitly requests remote.
+- When in doubt, echo back the target path with its namespace (e.g., `local:/...` or `hop1:/...`) before acting.
+
 **Core Behavior:**
 - Be helpful, accurate, and informative in your responses
 - Use tools when appropriate to provide better assistance
-- Explain your reasoning and approach clearly
+- Keep internal reasoning to yourself. Do not include chain-of-thought, step-by-step planning, or meta commentary in the final answer. Provide the answer directly with any necessary brief justification.
 
 **Tool Usage:**
 - Use file tools (read_file, create_file, replace_string_in_file) for file operations
@@ -119,7 +132,12 @@ BASE_SYSTEM_PROMPT_TEMPLATE = """You are {AGENT_NAME}, a helpful and versatile A
 - Use semantic_search to find relevant information in the workspace
 - Use web_search to find current information from the web
 - Use generate_image for image generation. default to 1:1 (square) aspect ratio unless the user explicitly requests a different format or the content clearly requires a specific orientation (e.g., wide landscape, tall portrait)
-- Always explain briefly what you're doing before using a tool
+- When you use tools, do not narrate detailed steps. If helpful, you may add a one-line summary of the action, but prefer letting results speak for themselves.
+
+**Absolute paths are REQUIRED for all tools that accept file paths:**
+- Never pass a relative path like `tool_tests/test.txt` or `./file.png`.
+- Always pass an absolute path, and when working across contexts include the namespace (e.g., `local:/workspace/tool_tests/test.txt` or `hop1:/home/user/tool_tests/test.txt`).
+- When constructing paths, use `get_workspace_path()` to resolve the absolute workspace directory, then join your filename. Echo back namespaced absolute paths in your responses so users can verify the target.
 
 **Response Style:**
 - Be concise but thorough
@@ -451,8 +469,10 @@ class ToolResultFormatter:
                 return f"✅ **Success**: Read {file_path} ({content_lines} lines, {content_size} characters)\n"
             
             elif tool_name == 'create_file' and isinstance(data, dict):
-                # For create_file, show confirmation with path
-                return f"✅ **Success**: {data.get('message', 'File created successfully')}\n"
+                # For create_file, show confirmation with namespaced path if available
+                path = data.get('filePath') or data.get('absolutePath') or 'file'
+                msg = data.get('message') or 'File created successfully'
+                return f"✅ **Success**: {msg} at {path}\n"
             
             elif tool_name == 'replace_string_in_file' and isinstance(data, dict):
                 # For replace_string_in_file, show explicit counts
@@ -513,7 +533,7 @@ class OpenAIStreamingHandler:
     tool call accumulation, execution, and conversation continuation.
     """
     
-    def __init__(self, client, model_name: str, exclude_tools: List[str] = None, use_compact_tools: bool = False):
+    def __init__(self, client, model_name: str, exclude_tools: List[str] = None, use_compact_tools: bool = False, session_id: Optional[str] = None):
         """
         Initialize the streaming handler.
         
@@ -522,6 +542,7 @@ class OpenAIStreamingHandler:
             model_name: Model name to use for completions
             exclude_tools: Optional list of tool names to exclude (e.g., for API compatibility)
             use_compact_tools: If True, use compact tool schemas to save tokens (for context-limited providers)
+            session_id: Optional session ID for debug logging
         """
         self.client = client
         self.model_name = model_name
@@ -530,6 +551,8 @@ class OpenAIStreamingHandler:
         self.tool_executor = ToolExecutor()
         self.tool_loader = ToolDefinitionLoader()
         self.formatter = ToolResultFormatter()
+        self.session_id = session_id
+        self.debug_interceptor = get_interceptor(session_id) if session_id else None
     
     def stream_chat_with_tools(self, messages: List[Dict[str, Any]], 
                               max_tokens: int | None = None,
@@ -679,12 +702,44 @@ class OpenAIStreamingHandler:
                 if max_tokens is not None:
                     api_params.update(get_openai_token_param(self.model_name, max_tokens))
                 
+                # Log API request to debug interceptor (non-blocking)
+                if self.debug_interceptor:
+                    try:
+                        # Create async task to log without blocking the generator
+                        async def _log_request():
+                            try:
+                                context_info = await get_context_snapshot()
+                                await self.debug_interceptor.log_openai_request(api_params, context_info)
+                            except Exception as e:
+                                logger.debug(f"Failed to log API request: {e}")
+                        asyncio.create_task(_log_request())
+                    except Exception as e:
+                        logger.debug(f"Failed to create log task: {e}")
+                
+                # Mark request start for timing diagnostics
+                _req_start_ts = datetime.now().timestamp()
                 stream = self.client.chat.completions.create(**api_params)
                 
                 logger.info("Starting OpenAI stream iteration with tools")
                 
                 # Process the stream and collect tool calls
                 collected_chunks, tool_calls_list, finish_reason = yield from self._process_stream(stream)
+                _req_end_ts = datetime.now().timestamp()
+                
+                # Log API response to debug interceptor (non-blocking)
+                if self.debug_interceptor:
+                    try:
+                        async def _log_response():
+                            try:
+                                await self.debug_interceptor.log_openai_response({
+                                    "chunks_preview": "".join(collected_chunks)[:500] if collected_chunks else "",
+                                    "duration_sec": round(_req_end_ts - _req_start_ts, 3)
+                                }, finish_reason)
+                            except Exception as e:
+                                logger.debug(f"Failed to log API response: {e}")
+                        asyncio.create_task(_log_response())
+                    except Exception as e:
+                        logger.debug(f"Failed to create log task: {e}")
                 
                 # If tool calls are present, handle them and then continue loop
                 if finish_reason == "tool_calls" and tool_calls_list:
@@ -908,6 +963,18 @@ class OpenAIStreamingHandler:
                 
                 # Execute the tool
                 result = self.tool_executor.execute_tool_call_sync(tool_name, arguments)
+                
+                # Log tool execution to debug interceptor (non-blocking)
+                if self.debug_interceptor:
+                    try:
+                        async def _log_tool():
+                            try:
+                                await self.debug_interceptor.log_tool_execution(tool_name, arguments, result)
+                            except Exception as e:
+                                logger.debug(f"Failed to log tool execution: {e}")
+                        asyncio.create_task(_log_tool())
+                    except Exception as e:
+                        logger.debug(f"Failed to create log task: {e}")
                 
                 # Format and display result - yield in smaller chunks for large responses
                 formatted_result = self.formatter.format_tool_result(tool_name, result)
@@ -1533,9 +1600,11 @@ def add_context_to_agent_prompt(base_prompt: str, workspace_root: Optional[str] 
         
         if is_hopped:
             # Agent is in a remote hop context
+            # Prefer friendly credential name when available for namespace label
+            friendly = hop_context.get('credentialName') or hop_context.get('credential_name') or context_id
             hop_info = f"""
 **Current Context**: Hopped to remote server
-- Context ID: `{context_id}`
+- Context ID: `{context_id}` (namespace: `{friendly}`)
 - Host: `{hop_context.get('host', 'unknown')}`
 - Username: `{hop_context.get('username', 'unknown')}`
 - Current Directory: `{hop_context.get('cwd', '/')}`
@@ -1556,4 +1625,11 @@ def add_context_to_agent_prompt(base_prompt: str, workspace_root: Optional[str] 
     
     context_section = format_agent_context_for_prompt(context)
     
-    return f"{base_prompt}\n\n{context_section}"
+    # Add a compact namespace notation reminder for the LLM
+    ns_reminder = (
+        "\n\n### Namespace notation quick guide\n"
+        "Use `<namespace>:/absolute/path` when you need to be explicit. If omitted, the active context applies. "
+        "Show namespaced paths back to the user using the `pathInfo.formatted_path` when available."
+    )
+
+    return f"{base_prompt}\n\n{context_section}{ns_reminder}"

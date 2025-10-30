@@ -900,13 +900,14 @@ class ChatService:
                         }
                         if is_image:
                             # Add path hint for images so tools can reference them
-                            # For namespaced paths (e.g., "hop1:/path"), extract just the path part
+                            # For namespaced paths (e.g., "hop1:/path"), preserve the namespace
                             # Tools use get_contextual_filesystem() which respects active context
+                            # For local paths, add file:// prefix for consistency
                             tool_path = namespaced_path or abs_path or rel_path
                             if tool_path and ':/' in tool_path:
-                                # Extract path after "namespace:/" prefix
-                                _, path_only = tool_path.split(':/', 1)
-                                tool_path = f"file:///{path_only}"
+                                # Preserve namespaced path (e.g., "hop1:/path/image.png")
+                                # Tools can resolve this via context router
+                                pass
                             elif tool_path and not tool_path.startswith('file://'):
                                 tool_path = f"file://{tool_path}"
                             
@@ -1024,7 +1025,7 @@ class ChatService:
                                     data_url = None
 
                             # Try hop-aware namespaced path via ContextRouter (e.g., 'hop1:/abs/path')
-                            if not data_url and isinstance(namespaced, str) and ':/'+'' in namespaced:
+                            if not data_url and isinstance(namespaced, str) and ':/' in namespaced:
                                 logger.info(f"[EMBED-DEBUG] Attempting hop-aware embed for namespaced={namespaced}, hop_ns={hop_ns}")
                                 try:
                                     router = await get_context_router()
@@ -1039,7 +1040,9 @@ class ChatService:
                                         content = await fs.read_file_binary(abs_remote)
                                         logger.info(f"[EMBED-DEBUG] read_file_binary returned: {type(content).__name__ if content else None}, len={len(content) if content else 0}")
                                     if content is None and hasattr(fs, 'read_file'):
+                                        logger.info(f"[EMBED-DEBUG] read_file_binary returned None, trying read_file")
                                         content = await fs.read_file(abs_remote)
+                                        logger.info(f"[EMBED-DEBUG] read_file returned: {type(content).__name__ if content else None}")
                                         if isinstance(content, str):
                                             # Might be base64 string or data URI
                                             import base64 as _b64
@@ -1058,6 +1061,7 @@ class ChatService:
                                             else:
                                                 size_b = len(content.encode('utf-8'))
                                             if size_b > int(max_img_mb * 1024 * 1024):
+                                                logger.warning(f"[EMBED-DEBUG] Image too large: {size_b} bytes > {max_img_mb} MB")
                                                 raise ValueError('image_too_large')
                                         except Exception:
                                             pass
@@ -1068,6 +1072,8 @@ class ChatService:
                                             b64 = _b64.b64encode(content.encode('utf-8')).decode('ascii')
                                         data_url = f"data:{mime};base64,{b64}"
                                         logger.info(f"[EMBED-DEBUG] Successfully embedded namespaced image: {hop_ns} {abs_remote}, data_url_len={len(data_url)}")
+                                    else:
+                                        logger.warning(f"[EMBED-DEBUG] Failed to read image content from {namespaced}")
                                 except Exception as e:
                                     logger.error(f"[EMBED-DEBUG] Failed hop-aware embed for namespaced path {namespaced}: {e}")
                                     import traceback

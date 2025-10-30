@@ -23,6 +23,12 @@ from .base_tool import BaseTool, ToolResult
 from .context_helpers import get_contextual_filesystem, get_current_context
 from .imagen_utils import ASPECT_RATIO_SPECS, resolve_dimensions, guess_mime_from_ext
 
+# Import path utilities for friendly namespace names
+try:
+    from ...services.path_utils import _friendly_namespace_for_context
+except ImportError:
+    _friendly_namespace_for_context = None  # Graceful fallback
+
 # Import native Google SDK for image generation (robust import)
 # Prefer legacy google-generativeai for Gemini image preview flow; fallback to google-genai if needed
 GENAI_AVAILABLE = False
@@ -780,7 +786,17 @@ class ImagenTool(BaseTool):
             # The thumbnail allows instant preview without fetching, and agents can use it for editing
             # Build a hop-aware file URL using the absolute path from save operation
             image_url = None
-            context_name = context.get('contextId', 'local')
+            # Convert context_id to friendly name (hop1, local, etc) for display
+            context_id = context.get('contextId', 'local')
+            context_name = context_id
+            try:
+                if _friendly_namespace_for_context is not None:
+                    context_name = await _friendly_namespace_for_context(context_id)
+            except Exception as e:
+                logger.warning(f"[ImagenTool] Failed to get friendly namespace for context {context_id}: {e}")
+                # Fall back to using context_id
+                context_name = context_id
+            
             if saved_path:
                 # CRITICAL: Use saved_absolute_path directly, not ref.absolute_path
                 # The ImageReferenceService constructs paths using its own workspace root
@@ -801,7 +817,7 @@ class ImagenTool(BaseTool):
                 "timestamp": datetime.now().isoformat(),
                 "mode": effective_mode,
                 "attemptedModels": attempted,
-                "context": context_name,
+                "context": context_name,  # Now displays friendly name (hop1, local, etc)
                 "contextHost": context.get('host')
             }
             
