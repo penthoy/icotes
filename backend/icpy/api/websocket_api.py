@@ -253,7 +253,7 @@ class WebSocketAPI:
             # hop.* is needed for SSH Hop panel to maintain connection state across reconnects.
             default_topics = {"fs.*", "hop.*"}
             connection.subscriptions.update(default_topics)
-            logger.info(f"[WS] Connection {connection_id} auto-subscribed to defaults: {sorted(default_topics)}")
+            logger.debug(f"[WS] Connection {connection_id} auto-subscribed to defaults: {sorted(default_topics)}")
 
             # Update statistics
             self.stats['total_connections'] += 1
@@ -966,7 +966,8 @@ class WebSocketAPI:
     async def _handle_filesystem_event(self, message):
         """Handle filesystem-related events."""
         try:
-            logger.info(f"[WS] Handling filesystem event: {message.topic} - {message.payload}")
+            # Filesystem events are very frequent; keep logs lightweight
+            logger.debug(f"[WS] FS event: {message.topic}")
             
             # Broadcast filesystem events to subscribed connections
             await self._broadcast_to_subscribers('fs.*', {
@@ -1068,7 +1069,11 @@ class WebSocketAPI:
             should_log = True
         
         if should_log and sent_count > 0:
-            logger.info(f"[WS] Broadcast {topic_pattern} to {sent_count} connection(s)")
+            # Demote extremely frequent filesystem topic broadcasts to DEBUG
+            if topic_pattern.startswith('fs'):
+                logger.debug(f"[WS] Broadcast {topic_pattern} to {sent_count} connection(s)")
+            else:
+                logger.info(f"[WS] Broadcast {topic_pattern} to {sent_count} connection(s)")
             self._last_broadcast_log[topic_pattern] = (sent_count, current_time)
         else:
             logger.debug(f"[WS] Broadcast {topic_pattern} to {sent_count} connection(s)")

@@ -223,8 +223,8 @@ class FileSystemEventHandler(FileSystemEventHandler):
             event: Watchdog file system event
         """
         try:
-            # Keep creation events at info for visibility
-            self.logger.info(f"[FS] on_created path={event.src_path} is_dir={event.is_directory}")
+            # Creation events are frequent; log at DEBUG to reduce noise
+            self.logger.debug(f"[FS] on_created path={event.src_path} is_dir={event.is_directory}")
         except Exception:
             pass
         if event.is_directory:
@@ -269,7 +269,8 @@ class FileSystemEventHandler(FileSystemEventHandler):
             event: Watchdog file system event
         """
         try:
-            self.logger.info(f"[FS] on_deleted path={event.src_path} is_dir={event.is_directory}")
+            # Deletion events are frequent; log at DEBUG to reduce noise
+            self.logger.debug(f"[FS] on_deleted path={event.src_path} is_dir={event.is_directory}")
         except Exception:
             pass
         self._schedule_async_task(self._handle_file_deleted(event.src_path, event.is_directory))
@@ -281,7 +282,8 @@ class FileSystemEventHandler(FileSystemEventHandler):
             event: Watchdog file system event
         """
         try:
-            self.logger.info(f"[FS] on_moved src={event.src_path} dest={event.dest_path} is_dir={event.is_directory}")
+            # Move/rename events are frequent; log at DEBUG to reduce noise
+            self.logger.debug(f"[FS] on_moved src={event.src_path} dest={event.dest_path} is_dir={event.is_directory}")
         except Exception:
             pass
         self._schedule_async_task(self._handle_file_moved(event.src_path, event.dest_path, event.is_directory))

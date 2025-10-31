@@ -213,9 +213,19 @@ class FrontendLogger {
     if (entry.level === LogLevel.ERROR || entry.level === LogLevel.WARN) return false;
 
     const msg = entry.message || '';
+    const comp = entry.component || '';
     // SCM polling messages can be very frequent; suppress at INFO/DEBUG
     if (/Getting SCM (status|repo info|diff) from:/i.test(msg)) return true;
     if (/\/api\/scm\/(status|repo|diff)/.test(msg)) return true;
+
+    // Frontend filesystem chatter can be extremely noisy; drop common debug spam
+    if (entry.level === LogLevel.DEBUG) {
+      // ICUIBackendService: filesystem events arrive at high frequency
+      if (comp === 'ICUIBACKENDSERVICE' && /\[BE\] Filesystem event received/i.test(msg)) return true;
+      if (comp === 'ICUIBACKENDSERVICE' && /\[BE\] (Subscription|Unsubscription|Welcome) confirmed|Welcome message received/i.test(msg)) return true;
+      // ICUIExplorer: internal refresh chatter
+      if (comp === 'ICUIEXPLORER' && /\[EXPL\] (modification event ignored for tree|triggering debounced refresh|unknown filesystem_event)/i.test(msg)) return true;
+    }
 
     // Allow everything else
     return false;
