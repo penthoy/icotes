@@ -304,8 +304,8 @@ class SemanticSearchTool(BaseTool):
         
         # Phase 7: Use context-aware filesystem
         if is_remote:
-            logger.info(f"[SemanticSearch] Using remote filesystem search for query: {query}, fileTypes={file_types}")
-            return await self._execute_remote_search(query, scope, file_types, include_hidden, max_results)
+            logger.info(f"[SemanticSearch] Using remote filesystem search for query: {query}, fileTypes={file_types}, mode={mode}")
+            return await self._execute_remote_search(query, scope, file_types, include_hidden, max_results, mode)
         
         # Local search using ripgrep (original behavior)
         logger.info(f"[SemanticSearch] Using local ripgrep search for query: {query}")
@@ -491,135 +491,391 @@ class SemanticSearchTool(BaseTool):
             logger.error(f"Error executing local search for query '{query}': {e}")
             return ToolResult(success=False, error=f"Search failed: {str(e)}")
     
+    def _escape_shell_arg(self, arg: str) -> str:
+        """Escape shell argument to prevent command injection."""
+        # Replace single quotes with '\'' (close quote, escaped quote, open quote)
+        return "'" + arg.replace("'", "'\\''") + "'"
+    
+    def _build_ripgrep_remote_cmd(self, query: str, workspace_root: str, file_types: Optional[List[str]], 
+                                   include_hidden: bool, max_results: int, mode: str = "content") -> str:
+        """Build ripgrep command for remote execution via SSH."""
+        # Escape query for shell
+        escaped_query = self._escape_shell_arg(query)
+        escaped_root = self._escape_shell_arg(workspace_root)
+        
+        if mode == "filename":
+            # Filename-only search
+            cmd = f"rg --files {escaped_root}"
+            if include_hidden:
+                cmd += " --hidden"
+            if file_types:
+                for ft in file_types:
+                    clean_ext = ft.lstrip('.')
+                    cmd += f" -g '*.{clean_ext}'"
+            cmd += f" | rg -i {escaped_query} | head -n {max_results}"
+        else:
+            # Content search
+            cmd = f"rg -n -H --no-heading -i {escaped_query} {escaped_root}"
+            if include_hidden:
+                cmd += " --hidden"
+            if file_types:
+                for ft in file_types:
+                    clean_ext = ft.lstrip('.')
+                    cmd += f" -t {clean_ext}"
+            cmd += f" | head -n {max_results}"
+        
+        return cmd
+    
+    def _build_grep_remote_cmd(self, query: str, workspace_root: str, file_types: Optional[List[str]], 
+                                max_results: int) -> str:
+        """Build grep command as fallback when ripgrep not available."""
+        escaped_query = self._escape_shell_arg(query)
+        escaped_root = self._escape_shell_arg(workspace_root)
+        
+        # Use grep -r for recursive search
+        cmd = f"grep -rnH -i {escaped_query} {escaped_root}"
+        
+        # Add file type filters if specified
+        if file_types:
+            include_patterns = []
+            for ft in file_types:
+                clean_ext = ft.lstrip('.')
+                include_patterns.append(f"--include='*.{clean_ext}'")
+            cmd += " " + " ".join(include_patterns)
+        
+        cmd += f" 2>/dev/null | head -n {max_results}"
+        return cmd
+    
+    def _build_find_remote_cmd(self, query: str, workspace_root: str, file_types: Optional[List[str]], 
+                                max_results: int) -> str:
+        """Build find command for filename-only search as last resort fallback."""
+        escaped_root = self._escape_shell_arg(workspace_root)
+        
+        if file_types:
+            # Build find with extension filters
+            name_patterns = []
+            # Avoid duplicating dots/extensions when the query itself looks like an extension (e.g. ".png")
+            q_for_name = query.lstrip('.') if query else ''
+            for ft in file_types:
+                clean_ext = ft.lstrip('.')
+                # Use shell pattern matching (no need to escape * inside single quotes)
+                if q_for_name:
+                    name_patterns.append(f"-iname '*{q_for_name}*.{clean_ext}'")
+                else:
+                    name_patterns.append(f"-iname '*.{clean_ext}'")
+            
+            if name_patterns:
+                pattern_expr = " -o ".join(name_patterns)
+                cmd = f"find {escaped_root} -type f \\( {pattern_expr} \\) -maxdepth 10 2>/dev/null | head -n {max_results}"
+            else:
+                cmd = f"find {escaped_root} -type f -iname '*{query}*' -maxdepth 10 2>/dev/null | head -n {max_results}"
+        else:
+            # Simple filename search
+            cmd = f"find {escaped_root} -type f -iname '*{query}*' -maxdepth 10 2>/dev/null | head -n {max_results}"
+        
+        return cmd
+    
+    def _parse_search_output(self, output: str, search_type: str = "content") -> List[Dict[str, Any]]:
+        """Parse output from ripgrep/grep commands.
+        
+        Args:
+            output: Command output string
+            search_type: "content" for rg/grep output (file:line:content), "filename" for find output
+        
+        Returns:
+            List of result dicts with file, line, snippet fields
+        """
+        results = []
+        if not output or not output.strip():
+            return results
+        
+        lines = output.strip().split('\n')
+        
+        for line in lines:
+            if not line.strip():
+                continue
+            
+            if search_type == "filename":
+                # Find output: just file paths
+                results.append({
+                    "file": line.strip(),
+                    "line": None,
+                    "snippet": None
+                })
+            else:
+                # Ripgrep/grep output: file:line:content
+                parts = line.split(':', 2)
+                if len(parts) >= 3:
+                    try:
+                        results.append({
+                            "file": parts[0].strip(),
+                            "line": int(parts[1].strip()),
+                            "snippet": parts[2].strip()
+                        })
+                    except (ValueError, IndexError):
+                        # Skip malformed lines
+                        continue
+                elif len(parts) == 1:
+                    # Might be filename-only result
+                    results.append({
+                        "file": parts[0].strip(),
+                        "line": None,
+                        "snippet": None
+                    })
+        
+        return results
+    
     async def _execute_remote_search(self, query: str, scope: Optional[str], file_types: Optional[List[str]],
-                                     include_hidden: bool, max_results: int) -> ToolResult:
-        """Execute search on remote filesystem using context-aware filesystem service
+                                     include_hidden: bool, max_results: int, mode: str = "smart") -> ToolResult:
+        """Execute search on remote server using ripgrep/grep/find via terminal.
         
-        Phase 7: Works with RemoteFileSystemAdapter when hopped to a remote server.
-        Uses the filesystem service's search_files method for content search.
+        Phase 1 Implementation: Uses run_in_terminal to execute search commands on remote server.
         
-        Phase 8 Update: Added filename-only search fallback using run_in_terminal + find
-        to support queries like "cat" with fileTypes=["png"].
+        Fallback chain:
+        1. Try ripgrep (rg) - fast, full-featured
+        2. Fall back to grep - slower but commonly available
+        3. Fall back to find - filename only, last resort
         
-        Note: Remote search is constrained to the remote workspace root. Searches
-        outside the workspace boundary will return empty results.
+        Args:
+            query: Search query string
+            scope: Optional directory scope (relative to workspace root)
+            file_types: Optional list of file extensions to filter
+            include_hidden: Include hidden files in search
+            max_results: Maximum number of results to return
+        
+        Returns:
+            ToolResult with list of search results or error
         """
         try:
-            filesystem_service = await get_contextual_filesystem()
+            from .context_helpers import get_current_context, get_contextual_terminal
+            from icpy.services.path_utils import format_namespaced_path
+            import posixpath
             
-            # Log a warning if scope is provided (remote search ignores scope for now)
-            if scope:
-                logger.warning(f"[SemanticSearch] Remote search ignores scope parameter (requested: {scope}). Searching workspace root only.")
-            
-            # Get current context to determine workspace root
-            from .context_helpers import get_current_context
+            import time
+            # Get current context
             context = await get_current_context()
             workspace_root = context.get("workspaceRoot") or context.get("cwd") or "/"
-            
-            # If fileTypes are provided, try filename-based search first using find command
-            if file_types:
-                logger.info(f"[SemanticSearch] Remote filename search: query={query}, types={file_types}")
-                try:
-                    # Build find command for filename search with extension filters
-                    # Use -iname for case-insensitive matching
-                    name_patterns = []
-                    for ft in file_types:
-                        if ft:
-                            clean_ext = ft.lstrip('.')
-                            # Match files containing query in name AND having the extension
-                            name_patterns.append(f"-iname '*{query}*.{clean_ext}'")
-                    
-                    if name_patterns:
-                        pattern_expr = " -o ".join(name_patterns)
-                        find_cmd = f"find {workspace_root} -type f \\( {pattern_expr} \\) -maxdepth 10 -print 2>/dev/null | head -n {max_results}"
-                        
-                        logger.info(f"[SemanticSearch] Executing remote find: {find_cmd}")
-                        
-                        # Execute find via terminal
-                        from .context_helpers import get_contextual_terminal
-                        terminal = await get_contextual_terminal()
-                        result = await terminal.execute_command(find_cmd)
-                        
-                        logger.info(f"[SemanticSearch] Remote find result: {result}")
-                        
-                        if result and result.get("output"):
-                            output = result["output"].strip()
-                            logger.info(f"[SemanticSearch] Remote find output length: {len(output)} chars")
-                            if output:
-                                # Parse find output (one file per line)
-                                file_paths = [line.strip() for line in output.split('\n') if line.strip()]
-                                logger.info(f"[SemanticSearch] Found {len(file_paths)} files via remote find")
-                                
-                                # Format results with namespaced paths
-                                from icpy.services.path_utils import format_namespaced_path
-                                ctx_id = context.get("contextId", "local")
-                                
-                                formatted_results = []
-                                for fpath in file_paths[:max_results]:
-                                    formatted_path = await format_namespaced_path(ctx_id, fpath)
-                                    formatted_results.append({
-                                        "file": fpath,
-                                        "filePath": formatted_path,
-                                        "line": None,
-                                        "snippet": None
-                                    })
-                                
-                                if formatted_results:
-                                    logger.info(f"[SemanticSearch] Found {len(formatted_results)} files via remote find")
-                                    return ToolResult(success=True, data=formatted_results)
-                            else:
-                                logger.info(f"[SemanticSearch] Remote find returned empty output")
-                        else:
-                            logger.info(f"[SemanticSearch] Remote find returned no result object")
-                except Exception as e:
-                    logger.warning(f"[SemanticSearch] Remote filename search failed, falling back to content search: {e}", exc_info=True)
-            
-            # Fallback to content-based search
-            logger.info(f"[SemanticSearch] Searching remote filesystem for content: {query}")
-            search_results = await filesystem_service.search_files(
-                query=query,
-                search_content=True,  # Enable content search
-                file_types=None,  # TODO: Convert fileTypes to FileType objects if needed
-                max_results=max_results
-            )
-            
-            logger.info(f"[SemanticSearch] Remote content search returned {len(search_results)} results")
-            
-            # Convert search results to the expected format (file, line, snippet)
-            from icpy.services.path_utils import format_namespaced_path
             ctx_id = context.get("contextId", "local")
             
-            formatted_results = []
-            for result in search_results:
-                # Results from search_files have: file_info, matches, score, context
-                file_info = result.get('file_info') if isinstance(result, dict) else getattr(result, 'file_info', None)
-                matches = result.get('matches') if isinstance(result, dict) else getattr(result, 'matches', [])
-                
-                if file_info:
-                    # Extract file path from file_info dict
-                    file_path = file_info.get('path') if isinstance(file_info, dict) else getattr(file_info, 'path', '')
-                    formatted_path = await format_namespaced_path(ctx_id, file_path)
-                    
-                    entry = {
-                        "file": file_path,
-                        "filePath": formatted_path,
-                        "line": None,  # Remote search doesn't provide line numbers yet
-                        "snippet": matches[0] if matches else query
+            # Apply scope if provided
+            if scope:
+                if scope.startswith('/'):
+                    search_path = scope
+                else:
+                    search_path = posixpath.join(workspace_root, scope)
+            else:
+                search_path = workspace_root
+            
+            logger.info(f"[SemanticSearch] Remote search: query='{query}', path='{search_path}', types={file_types}, mode={mode}")
+            logger.info("[SemanticSearch] Starting timer for remote search")
+            _t0 = time.perf_counter()
+            selected_strategy = "none"
+            
+            # Get terminal for command execution (for compatibility in tests),
+            # but prefer a robust hop-aware runner when direct execution is unavailable.
+            terminal = await get_contextual_terminal()
+
+            async def _run_cmd(cmd: str, explain: str) -> dict:
+                """Run a shell command in the active context and return a dict with output/error/status.
+
+                Preference order:
+                1) Use terminal.execute_command if available (keeps unit tests compatible)
+                2) Fallback to RunTerminalTool which handles remote execution via SSH with ephemeral fallback
+                """
+                # Path A: direct terminal service (mocked in tests)
+                if hasattr(terminal, 'execute_command') and callable(getattr(terminal, 'execute_command')):
+                    logger.debug("[SemanticSearch] Executing via terminal.execute_command")
+                    return await terminal.execute_command(cmd)
+                # Path B: robust hop-aware command runner
+                try:
+                    from .run_terminal_tool import RunTerminalTool
+                    runner = RunTerminalTool()
+                    logger.info("[SemanticSearch] Executing via RunTerminalTool fallback (hop-aware)")
+                    r = await runner.execute(command=cmd, explanation=explain, isBackground=False)
+                    if r and r.success and isinstance(r.data, dict):
+                        return r.data
+                    # Normalize error shape
+                    return {
+                        "status": -1,
+                        "output": "",
+                        "error": r.error if r and getattr(r, 'error', None) else "unknown error",
+                        "context": "unknown"
                     }
-                    formatted_results.append(entry)
+                except Exception as e:
+                    logger.warning(f"[SemanticSearch] Fallback RunTerminalTool failed: {e}")
+                    return {"status": -1, "output": "", "error": str(e)}
             
-            logger.debug(f"[SemanticSearch] Found {len(formatted_results)} remote results")
+            # Determine search mode (respect explicit mode when provided)
+            if mode == "filename":
+                is_filename_search = True
+            elif mode == "content":
+                is_filename_search = False
+            else:
+                is_filename_search = self._looks_like_filename(query) or (file_types and not query.strip())
             
-            # If no results and a scope was provided, add a helpful message
-            if not formatted_results and scope:
-                return ToolResult(
-                    success=True,
-                    data=[],
-                    error=f"No results found. Note: Remote search is constrained to the workspace root and cannot search arbitrary paths like '{scope}'. To search outside the workspace, use run_in_terminal with 'rg' or 'find' commands."
-                )
+            # Strategy 1: Try ripgrep
+            try:
+                logger.info("[SemanticSearch] Trying ripgrep (rg)...")
+                mode = "filename" if is_filename_search else "content"
+                rg_cmd = self._build_ripgrep_remote_cmd(query, search_path, file_types, include_hidden, max_results, mode)
+                logger.info(f"[SemanticSearch] Command: {rg_cmd}")
+                
+                result = await _run_cmd(rg_cmd, "Semantic search via ripgrep")
+                
+                if result and isinstance(result, dict) and result.get("output") is not None:
+                    output = str(result.get("output", "")).strip()
+                    try:
+                        err_str = str(result.get("error", ""))
+                        logger.info(
+                            f"[SemanticSearch] rg finished: status={result.get('status')} ctx={result.get('context', '?')} "
+                            f"out_len={len(output)} err_len={len(err_str)}"
+                        )
+                    except Exception:
+                        pass
+                    if output and "command not found" not in output.lower() and "rg: not found" not in output.lower():
+                        # Parse ripgrep output
+                        search_type = "filename" if is_filename_search else "content"
+                        results = self._parse_search_output(output, search_type)
+                        
+                        if results:
+                            selected_strategy = "ripgrep"
+                            logger.info(f"[SemanticSearch] Ripgrep found {len(results)} results")
+                            
+                            # Format with namespaced paths
+                            formatted_results = []
+                            for item in results:
+                                file_path = item["file"]
+                                formatted_path = await format_namespaced_path(ctx_id, file_path)
+                                formatted_results.append({
+                                    "file": file_path,
+                                    "filePath": formatted_path,
+                                    "line": item.get("line"),
+                                    "snippet": item.get("snippet")
+                                })
+                            
+                            _dt = time.perf_counter() - _t0
+                            logger.info(f"[SemanticSearch] Remote search completed in {_dt:.3f}s (strategy=ripgrep, results={len(results)})")
+                            return ToolResult(success=True, data=self._cap_results(formatted_results, max_results))
+                        else:
+                            logger.info("[SemanticSearch] Ripgrep returned no results")
+                    else:
+                        logger.info("[SemanticSearch] Ripgrep not available, trying grep...")
+                else:
+                    logger.info("[SemanticSearch] Ripgrep command failed, trying grep...")
+            except Exception as e:
+                logger.warning(f"[SemanticSearch] Ripgrep failed: {e}, trying grep...")
             
-            return ToolResult(success=True, data=self._cap_results(formatted_results, max_results))
+            # Strategy 2: Try grep (only for content search)
+            if not is_filename_search:
+                try:
+                    logger.info("[SemanticSearch] Trying grep...")
+                    grep_cmd = self._build_grep_remote_cmd(query, search_path, file_types, max_results)
+                    logger.info(f"[SemanticSearch] Command: {grep_cmd}")
+                    
+                    result = await _run_cmd(grep_cmd, "Semantic search via grep")
+                    
+                    if result and isinstance(result, dict) and result.get("output") is not None:
+                        output = str(result.get("output", "")).strip()
+                        try:
+                            err_str = str(result.get("error", ""))
+                            logger.info(
+                                f"[SemanticSearch] grep finished: status={result.get('status')} ctx={result.get('context', '?')} "
+                                f"out_len={len(output)} err_len={len(err_str)}"
+                            )
+                        except Exception:
+                            pass
+                        if output and "command not found" not in output.lower():
+                            # Parse grep output
+                            results = self._parse_search_output(output, "content")
+                            
+                            if results:
+                                selected_strategy = "grep"
+                                logger.info(f"[SemanticSearch] Grep found {len(results)} results")
+                                
+                                # Format with namespaced paths
+                                formatted_results = []
+                                for item in results:
+                                    file_path = item["file"]
+                                    formatted_path = await format_namespaced_path(ctx_id, file_path)
+                                    formatted_results.append({
+                                        "file": file_path,
+                                        "filePath": formatted_path,
+                                        "line": item.get("line"),
+                                        "snippet": item.get("snippet")
+                                    })
+                                
+                                _dt = time.perf_counter() - _t0
+                                logger.info(f"[SemanticSearch] Remote search completed in {_dt:.3f}s (strategy=grep, results={len(results)})")
+                                return ToolResult(success=True, data=self._cap_results(formatted_results, max_results))
+                            else:
+                                logger.info("[SemanticSearch] Grep returned no results")
+                        else:
+                            logger.info("[SemanticSearch] Grep not available, trying find...")
+                    else:
+                        logger.info("[SemanticSearch] Grep command failed, trying find...")
+                except Exception as e:
+                    logger.warning(f"[SemanticSearch] Grep failed: {e}, trying find...")
+            
+            # Strategy 3: Fall back to find (filename-only)
+            try:
+                logger.info("[SemanticSearch] Trying find (filename-only)...")
+                find_cmd = self._build_find_remote_cmd(query, search_path, file_types, max_results)
+                logger.info(f"[SemanticSearch] Command: {find_cmd}")
+                
+                result = await _run_cmd(find_cmd, "Semantic search via find")
+                
+                if result and isinstance(result, dict) and result.get("output") is not None:
+                    output = str(result.get("output", "")).strip()
+                    try:
+                        err_str = str(result.get("error", ""))
+                        logger.info(
+                            f"[SemanticSearch] find finished: status={result.get('status')} ctx={result.get('context', '?')} "
+                            f"out_len={len(output)} err_len={len(err_str)}"
+                        )
+                    except Exception:
+                        pass
+                    if output:
+                        # Parse find output
+                        results = self._parse_search_output(output, "filename")
+                        
+                        if results:
+                            selected_strategy = "find"
+                            logger.info(f"[SemanticSearch] Find found {len(results)} results")
+                            
+                            # Format with namespaced paths
+                            formatted_results = []
+                            for item in results:
+                                file_path = item["file"]
+                                formatted_path = await format_namespaced_path(ctx_id, file_path)
+                                formatted_results.append({
+                                    "file": file_path,
+                                    "filePath": formatted_path,
+                                    "line": None,
+                                    "snippet": None
+                                })
+                            
+                            _dt = time.perf_counter() - _t0
+                            logger.info(f"[SemanticSearch] Remote search completed in {_dt:.3f}s (strategy=find, results={len(results)})")
+                            return ToolResult(success=True, data=self._cap_results(formatted_results, max_results))
+                        else:
+                            logger.info("[SemanticSearch] Find returned no results")
+                    else:
+                        logger.info("[SemanticSearch] Find returned empty output")
+                else:
+                    logger.info("[SemanticSearch] Find command failed")
+            except Exception as e:
+                logger.warning(f"[SemanticSearch] Find failed: {e}")
+            
+            # No results from any strategy
+            logger.info("[SemanticSearch] All search strategies exhausted, no results found")
+            _dt = time.perf_counter() - _t0
+            logger.info(f"[SemanticSearch] Remote search completed in {_dt:.3f}s (strategy={selected_strategy}, results=0)")
+            return ToolResult(
+                success=True,
+                data=[],
+                error="No results found. Tip: Ensure ripgrep (rg) or grep is installed on the remote server for better search results. Run 'sudo apt install ripgrep' or 'sudo yum install ripgrep' to install."
+            )
             
         except Exception as e:
-            logger.error(f"Error executing remote search for query '{query}': {e}")
+            logger.error(f"[SemanticSearch] Error executing remote search for query '{query}': {e}", exc_info=True)
             return ToolResult(success=False, error=f"Remote search failed: {str(e)}") 
