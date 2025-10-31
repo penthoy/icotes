@@ -33,6 +33,7 @@ class FrontendLogger {
     log: typeof console.log;
     warn: typeof console.warn;
     error: typeof console.error;
+    debug: typeof console.debug;
   };
 
   constructor() {
@@ -42,7 +43,8 @@ class FrontendLogger {
     this.originalConsole = {
       log: console.log.bind(console),
       warn: console.warn.bind(console),
-      error: console.error.bind(console)
+      error: console.error.bind(console),
+      debug: console.debug.bind(console)
     };
     
     // Intercept console methods to capture all logs
@@ -71,6 +73,15 @@ class FrontendLogger {
   }
 
   private interceptConsole(): void {
+    // Intercept console.debug
+    console.debug = (...args: any[]) => {
+      this.originalConsole.debug(...args);
+      const component = this.extractComponentFromStack() || 'CONSOLE';
+      const message = args.map(arg => this.stringifyArg(arg)).join(' ');
+      const entry = this.createLogEntry(LogLevel.DEBUG, component, message);
+      this.addToQueue(entry);
+    };
+
     // Intercept console.log
     console.log = (...args: any[]) => {
       this.originalConsole.log(...args);
@@ -167,7 +178,7 @@ class FrontendLogger {
     const entry = this.createLogEntry(LogLevel.DEBUG, component, message, data);
     this.addToQueue(entry);
     // Use original console to prevent recursion
-    this.originalConsole.log(`[${component}] ${message}`, data || '');
+    this.originalConsole.debug(`[${component}] ${message}`, data || '');
   }
 
   info(component: string, message: string, data?: any): void {

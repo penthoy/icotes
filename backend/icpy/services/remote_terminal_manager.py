@@ -151,6 +151,55 @@ class RemoteTerminalManager:
                 pass
         logger.info(f"[RemoteTerm] Terminal {terminal_id} disconnected")
 
+    def session_count(self) -> int:
+        """Return number of active remote terminal sessions currently tracked."""
+        try:
+            return len(self._sessions)
+        except Exception:
+            return 0
+
+    async def shutdown_all(self, reason: str = "unknown") -> int:
+        """Forcefully disconnect all tracked remote terminal sessions without waiting.
+
+        This is used during hop disconnect to ensure no lingering PTY processes keep
+        the SSH connection alive or cause event loop spins/memory growth.
+
+        Returns the number of sessions that were scheduled for shutdown.
+        """
+        count = self.session_count()
+        logger.info("[RemoteTerm] shutdown_all requested: count=%s reason=%s", count, reason)
+        # Copy keys to avoid mutation during iteration
+        for terminal_id in list(self._sessions.keys()):
+            try:
+                await self._force_disconnect(terminal_id)
+            except Exception as e:
+                logger.info("[RemoteTerm] shutdown_all error for %s: %s", terminal_id, e)
+        logger.info("[RemoteTerm] shutdown_all complete: count=%s", count)
+        return count
+
+    async def _force_disconnect(self, terminal_id: str):
+        """Best-effort fast disconnect without waiting for remote closure.
+
+        Unlike disconnect_terminal(), this method avoids any wait_closed() calls
+        and focuses on immediate teardown to prevent hangs under abort scenarios.
+        """
+        proc = self._sessions.pop(terminal_id, None)
+        if proc is None:
+            return
+        try:
+            # Stop stdin writes and attempt graceful termination
+            try:
+                proc.stdin.write_eof()
+            except Exception:
+                pass
+            try:
+                proc.terminate()
+            except Exception:
+                pass
+            # Do not wait on proc.wait_closed() here to avoid potential hangs
+        finally:
+            logger.info("[RemoteTerm] Force-disconnected %s", terminal_id)
+
     async def _pump_stdout(self, proc, websocket: WebSocket, terminal_id: str):
         try:
             first_chunk_logged = False

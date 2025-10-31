@@ -39,6 +39,47 @@ except Exception:  # pragma: no cover - dependency issues handled by tests
 
 logger = logging.getLogger(__name__)
 
+# Configure immediate flush logging for hop disconnect debugging
+# This ensures logs survive VM freeze/restart scenarios
+_hop_debug_handler = None
+try:
+    from logging.handlers import RotatingFileHandler
+    _logs_dir = Path(__file__).parent.parent.parent.parent / 'logs'
+    _logs_dir.mkdir(parents=True, exist_ok=True)
+    _hop_debug_log = _logs_dir / 'hop_disconnect_debug.log'
+    
+    _hop_debug_handler = RotatingFileHandler(
+        str(_hop_debug_log),
+        mode='a',
+        maxBytes=10485760,  # 10MB
+        backupCount=5,
+        encoding='utf-8'
+    )
+    _hop_debug_handler.setLevel(logging.INFO)
+    _formatter = logging.Formatter(
+        '%(asctime)s [%(process)d] [%(levelname)s] %(name)s: %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    _hop_debug_handler.setFormatter(_formatter)
+    
+    # CRITICAL: Set immediate flush to ensure logs persist even if process hangs
+    # This is essential for debugging memory leak freezes that require VM restart
+    import sys
+    if hasattr(_hop_debug_handler, 'stream'):
+        # Force unbuffered writes
+        _hop_debug_handler.stream = open(
+            str(_hop_debug_log), 
+            'a', 
+            buffering=1,  # Line buffering
+            encoding='utf-8'
+        )
+    
+    logger.addHandler(_hop_debug_handler)
+    logger.info("[HopService] Hop disconnect debug logging initialized with immediate flush")
+except Exception as e:
+    # Graceful degradation if custom handler setup fails
+    logger.warning(f"[HopService] Could not initialize hop debug handler: {e}")
+
 # Phase 8: Configuration for timeouts and reconnection
 CONNECTION_TIMEOUT = int(os.environ.get('HOP_CONNECTION_TIMEOUT', '30'))
 OPERATION_TIMEOUT = int(os.environ.get('HOP_OPERATION_TIMEOUT', '60'))
@@ -756,56 +797,122 @@ class HopService:
         to guarantee forward progress and avoid memory growth from stuck tasks.
         """
         start_ts = time.time()
+        close_timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
         used_abort = False
         sftp_closed = False
+        sftp_timeout = False
+        ssh_timeout = False
         
         sftp = self._sftp_clients.get(context_id)
         conn = self._connections.get(context_id)
         
+        logger.info(
+            "[HopClose] START _close_connection context_id=%s has_sftp=%s has_conn=%s timestamp=%s",
+            context_id,
+            sftp is not None,
+            conn is not None,
+            close_timestamp,
+        )
+        
         try:
+            # Proactively shutdown any remote terminal sessions before closing SSH
+            try:
+                from .remote_terminal_manager import get_remote_terminal_manager  # Local import to avoid circular
+                rtm = await get_remote_terminal_manager()
+                try:
+                    rt_count = rtm.session_count()
+                except Exception:
+                    rt_count = -1
+                logger.info(
+                    "[HopClose] Pre-close: remote terminal sessions active=%s", rt_count
+                )
+                try:
+                    await asyncio.wait_for(rtm.shutdown_all(reason=f"hop_close:{context_id}"), timeout=1.0)
+                except asyncio.TimeoutError:
+                    logger.warning("[HopClose] shutdown_all remote terminals timed out (1.0s)")
+                except Exception as e:
+                    logger.warning("[HopClose] shutdown_all remote terminals error: %s", str(e))
+            except Exception as e:
+                logger.info("[HopClose] RemoteTerminalManager not available or error: %s", str(e))
+
             # Close SFTP first
             if sftp:
+                logger.info("[HopClose] SFTP exit() starting...")
+                sftp_start = time.time()
                 try:
                     res = sftp.exit()
                     if inspect.isawaitable(res):
                         await asyncio.wait_for(res, timeout=1.5)
                     sftp_closed = True
-                except Exception:
-                    # Ignore SFTP close errors/timeouts
-                    pass
+                    sftp_elapsed = (time.time() - sftp_start) * 1000
+                    logger.info(
+                        "[HopClose] SFTP exit() completed, elapsed=%.2fms timeout=%s",
+                        sftp_elapsed,
+                        False,
+                    )
+                except asyncio.TimeoutError:
+                    sftp_timeout = True
+                    sftp_elapsed = (time.time() - sftp_start) * 1000
+                    logger.warning(
+                        "[HopClose] SFTP exit() TIMEOUT, elapsed=%.2fms",
+                        sftp_elapsed,
+                    )
+                except Exception as e:
+                    sftp_elapsed = (time.time() - sftp_start) * 1000
+                    logger.warning(
+                        "[HopClose] SFTP exit() ERROR: %s, elapsed=%.2fms",
+                        str(e),
+                        sftp_elapsed,
+                    )
+            else:
+                logger.info("[HopClose] No SFTP client to close")
 
             # Then close SSH connection
             if conn:
+                logger.info("[HopClose] SSH close() called")
                 try:
                     conn.close()
-                except Exception:
-                    pass
-                # Wait briefly for clean shutdown; fall back to abort
+                except Exception as e:
+                    logger.warning("[HopClose] SSH close() ERROR: %s", str(e))
+                
+                # CRITICAL FIX: Call abort() and SKIP wait_closed() entirely
+                # wait_closed() hangs even after abort() when PTY channels are active
+                # The asyncio timeout mechanism cannot interrupt it
+                logger.info("[HopClose] Calling abort() and skipping wait_closed()")
                 try:
-                    await asyncio.wait_for(conn.wait_closed(), timeout=2.5)
-                except (asyncio.TimeoutError, Exception):
-                    # Force-close if graceful close hangs due to open channels
-                    try:
-                        if hasattr(conn, 'abort'):
-                            conn.abort()
-                            used_abort = True
-                    except Exception:
-                        pass
-                    # Best effort wait after abort
-                    try:
-                        await asyncio.wait_for(conn.wait_closed(), timeout=1.0)
-                    except Exception:
-                        pass
+                    if hasattr(conn, 'abort'):
+                        conn.abort()
+                        used_abort = True
+                        logger.info("[HopClose] abort() called successfully")
+                except Exception as e:
+                    logger.warning("[HopClose] abort() ERROR: %s", str(e))
+                
+                # DO NOT call wait_closed() - it blocks indefinitely even after abort()
+                # The connection is forcefully terminated by abort(), no cleanup needed
+                logger.info("[HopClose] Skipping wait_closed() to avoid hang - abort() is sufficient")
+            else:
+                logger.info("[HopClose] No SSH connection to close")
         finally:
+            total_elapsed = (time.time() - start_ts) * 1000
+            
+            # Log asyncio task count and pending futures
+            try:
+                active_tasks = len([t for t in asyncio.all_tasks() if not t.done()])
+                logger.info("[HopClose] Active asyncio tasks: %d", active_tasks)
+            except Exception as e:
+                logger.warning("[HopClose] Could not count active tasks: %s", str(e))
+            
             logger.info(
-                "[HopService] _close_connection complete for %s in %.3fs (sftp_closed=%s, used_abort=%s)",
-                context_id,
-                time.time() - start_ts,
+                "[HopClose] COMPLETE total_elapsed=%.2fms sftp_closed=%s sftp_timeout=%s ssh_timeout=%s used_abort=%s",
+                total_elapsed,
                 sftp_closed,
+                sftp_timeout,
+                ssh_timeout,
                 used_abort,
             )
             self._connections.pop(context_id, None)
             self._sftp_clients.pop(context_id, None)
+            logger.info("[HopClose] Cleaned up connection dictionaries for %s", context_id)
 
     async def _attempt_reconnect(self, context_id: str) -> bool:
         """Phase 8: Attempt automatic reconnection with exponential backoff for a specific context."""
@@ -860,36 +967,109 @@ class HopService:
         Returns:
             The active session after disconnection
         """
+        disconnect_start_time = time.time()
+        disconnect_timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        
+        # Log asyncio task count BEFORE disconnect begins
+        try:
+            all_tasks = asyncio.all_tasks()
+            active_tasks = len([t for t in all_tasks if not t.done()])
+            logger.info(
+                "[HopDisconnect] Pre-disconnect state: active_tasks=%d total_tasks=%d",
+                active_tasks,
+                len(all_tasks),
+            )
+        except Exception as e:
+            logger.warning("[HopDisconnect] Could not count pre-disconnect tasks: %s", str(e))
+        
+        # Log entry BEFORE acquiring lock
+        logger.info(
+            "[HopDisconnect] START disconnect context_id=%s active=%s timestamp=%s",
+            context_id,
+            self._active_context_id,
+            disconnect_timestamp,
+        )
+        
+        logger.info("[HopDisconnect] Acquiring lock...")
+        lock_acquire_start = time.time()
+        
         async with self._lock:
+            lock_elapsed = (time.time() - lock_acquire_start) * 1000
+            logger.info("[HopDisconnect] Lock acquired, elapsed=%.2fms", lock_elapsed)
+            
             # If no context specified, disconnect the active one
             if context_id is None:
                 context_id = self._active_context_id
+                logger.info("[HopDisconnect] No context_id specified, using active: %s", context_id)
             
             # Can't disconnect local
             if context_id == "local":
-                logger.warning("[HopService] Cannot disconnect local context")
+                logger.warning("[HopDisconnect] Cannot disconnect local context, returning")
                 return self._sessions["local"]
             
             # Cancel any reconnection task for this context
-            if context_id in self._reconnect_tasks and not self._reconnect_tasks[context_id].done():
-                self._reconnect_tasks[context_id].cancel()
+            has_reconnect_task = context_id in self._reconnect_tasks
+            task_was_done = False
+            if has_reconnect_task:
+                task_was_done = self._reconnect_tasks[context_id].done()
+                logger.info(
+                    "[HopDisconnect] Cancelling reconnect task: exists=%s done=%s",
+                    has_reconnect_task,
+                    task_was_done,
+                )
+                if not task_was_done:
+                    self._reconnect_tasks[context_id].cancel()
                 self._reconnect_tasks.pop(context_id, None)
+                logger.info("[HopDisconnect] Reconnect task cancelled")
+            else:
+                logger.info("[HopDisconnect] No reconnect task to cancel")
             
+            logger.info("[HopDisconnect] Calling _close_connection...")
+            close_start = time.time()
             await self._close_connection(context_id)
+            close_elapsed = (time.time() - close_start) * 1000
+            logger.info("[HopDisconnect] _close_connection returned, elapsed=%.2fms", close_elapsed)
             
+            logger.info("[HopDisconnect] Cleaning up session data...")
             # Remove session and credentials
             self._sessions.pop(context_id, None)
             self._last_credentials.pop(context_id, None)
             # NOTE: Do NOT clear _connection_start_times - we keep it to prove
             # that a connection was established in this runtime session
             # This prevents false-positive stale session detection
+            logger.info("[HopDisconnect] Session data cleaned up")
             
             # If we disconnected the active context, switch to local
+            old_active = self._active_context_id
             if self._active_context_id == context_id:
                 self._active_context_id = "local"
-                logger.info(f"[HopService] Disconnected {context_id}; context switched to local")
+                logger.info(
+                    "[HopDisconnect] Switching active context: %s -> %s",
+                    old_active,
+                    self._active_context_id,
+                )
             else:
-                logger.info(f"[HopService] Disconnected {context_id}; active context remains {self._active_context_id}")
+                logger.info(
+                    "[HopDisconnect] Active context unchanged: %s (disconnected %s)",
+                    self._active_context_id,
+                    context_id,
+                )
+            
+            total_elapsed = (time.time() - disconnect_start_time) * 1000
+            
+            # Log asyncio task count AFTER disconnect completes
+            try:
+                all_tasks = asyncio.all_tasks()
+                active_tasks = len([t for t in all_tasks if not t.done()])
+                logger.info(
+                    "[HopDisconnect] Post-disconnect state: active_tasks=%d total_tasks=%d",
+                    active_tasks,
+                    len(all_tasks),
+                )
+            except Exception as e:
+                logger.warning("[HopDisconnect] Could not count post-disconnect tasks: %s", str(e))
+            
+            logger.info("[HopDisconnect] COMPLETE total_elapsed=%.2fms", total_elapsed)
             
             return self._sessions[self._active_context_id]
 
