@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { backendService, useTheme } from '../services';
+import NamespaceBadge from './ui/NamespaceBadge';
 
 export interface ICUIBaseFooterProps {
   className?: string;
@@ -40,6 +41,7 @@ export const ICUIBaseFooter: React.FC<ICUIBaseFooterProps> = ({
   const [realConnectionStatus, setRealConnectionStatus] = useState<'connected' | 'disconnected' | 'connecting' | 'error'>('connecting');
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
   const [hopSummary, setHopSummary] = useState<string>('local');
+  const [namespaceInfo, setNamespaceInfo] = useState<{ label: string; isRemote: boolean }>({ label: 'local', isRemote: false });
   
   // Use centralized theme service instead of manual theme detection
   const { theme } = useTheme();
@@ -78,17 +80,26 @@ export const ICUIBaseFooter: React.FC<ICUIBaseFooterProps> = ({
           const s = await (backendService as any).getHopStatus();
           if (!mounted) return;
           if (s?.connected) {
-            setHopSummary(`${s.username || ''}@${s.host || 'remote'}`);
+            const label = s.credentialName || s.credential_name || `${s.username || ''}@${s.host || 'remote'}`;
+            setHopSummary(label);
+            setNamespaceInfo({ label, isRemote: true });
           } else {
             setHopSummary('local');
+            setNamespaceInfo({ label: 'local', isRemote: false });
           }
         }
       } catch { /* ignore */ }
     };
     updateHop();
     const onHop = (s: any) => {
-      if (s?.connected) setHopSummary(`${s.username || ''}@${s.host || 'remote'}`);
-      else setHopSummary('local');
+      if (s?.connected) {
+        const label = s.credentialName || s.credential_name || `${s.username || ''}@${s.host || 'remote'}`;
+        setHopSummary(label);
+        setNamespaceInfo({ label, isRemote: true });
+      } else {
+        setHopSummary('local');
+        setNamespaceInfo({ label: 'local', isRemote: false });
+      }
     };
     (backendService as any).on?.('hop_status', onHop);
     return () => { mounted = false; (backendService as any).off?.('hop_status', onHop); };
@@ -168,12 +179,13 @@ export const ICUIBaseFooter: React.FC<ICUIBaseFooterProps> = ({
 
         {/* Connection Status */}
         <div className="flex items-center space-x-2">
+          {/* Namespace badge */}
+          <NamespaceBadge namespace={namespaceInfo.label} isRemote={namespaceInfo.isRemote} />
           <div 
             className="w-2 h-2 rounded-full"
             style={{ backgroundColor: getConnectionStatusColor() }}
           />
           <span className="text-xs">{getConnectionStatusText()}</span>
-          <span className="text-xs opacity-80">[{hopSummary}]</span>
         </div>
       </div>
     </div>
