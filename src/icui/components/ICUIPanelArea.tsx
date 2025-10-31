@@ -87,27 +87,27 @@ export const ICUIPanelArea: React.FC<ICUIPanelAreaProps> = ({
   // Keep local active tab in sync with prop changes, but don't override unnecessarily
   useEffect(() => {
     if (activePanelId && activePanelId !== localActiveTabId) {
+      console.log(`[PANEL-AREA-SYNC] Area ${id}: ${localActiveTabId} -> ${activePanelId}`);
       setLocalActiveTabId(activePanelId);
     }
-  }, [activePanelId]);
+  }, [activePanelId, localActiveTabId, id]);
 
   // When panels change (reorder/add/remove), ensure the active tab still exists
   useEffect(() => {
     // If current active tab no longer exists, select a sensible default
     const exists = panels.some(p => p.id === localActiveTabId);
     if (!exists) {
+      console.log(`[PANEL-AREA-FALLBACK] Area ${id}: tab ${localActiveTabId} no longer exists, selecting fallback`);
       const next = (activePanelId && panels.some(p => p.id === activePanelId))
         ? activePanelId
         : (panels[0]?.id || '');
       if (next !== localActiveTabId) {
         setLocalActiveTabId(next);
-        // Inform parent if we auto-selected a new tab
-        if (next && next !== activePanelId) {
-          onPanelActivate?.(next);
-        }
+        // DO NOT notify parent during fallback - this causes ping-pong when panels move between areas
+        // The parent already knows about panel changes through handlePanelDrop/handlePanelClose
       }
     }
-  }, [panels]);
+  }, [panels, localActiveTabId, activePanelId, id]);
 
   // Detect newly added panel and auto-activate it to avoid ping-pong on creation
   const prevPanelIdsRef = useRef<string[]>([]);
@@ -129,7 +129,7 @@ export const ICUIPanelArea: React.FC<ICUIPanelAreaProps> = ({
     }
 
     prevPanelIdsRef.current = currentIds;
-  }, [panels, activePanelId]);
+  }, [panels, activePanelId, localActiveTabId, id]);
 
   // Add global dragend listener to clear dragging state if drag is cancelled
   useEffect(() => {
@@ -158,11 +158,13 @@ export const ICUIPanelArea: React.FC<ICUIPanelAreaProps> = ({
 
   // Handle tab operations
   const handleTabActivate = useCallback((tabId: string) => {
+    console.log(`[PANEL-AREA] Tab activate request in area ${id}: ${tabId}, current local: ${localActiveTabId}`);
     if (tabId === localActiveTabId) return; // No-op to prevent redundant updates
     // Optimistically update local active state to avoid visual flicker
     setLocalActiveTabId(tabId);
     onPanelActivate?.(tabId);
-  }, [onPanelActivate, localActiveTabId]);
+    console.log(`[PANEL-AREA] Tab activated in area ${id}: ${tabId}`);
+  }, [onPanelActivate, localActiveTabId, id]);
 
   const handleTabClose = useCallback((tabId: string) => {
     onPanelClose?.(tabId);
@@ -182,7 +184,7 @@ export const ICUIPanelArea: React.FC<ICUIPanelAreaProps> = ({
       setDragOver(true);
       setIsDragging(true); // Mark that we're in a drag operation
     }
-  }, [allowDrop, dragOver]);
+  }, [allowDrop, dragOver, id]);
 
   const handleDragLeave = useCallback((e: React.DragEvent) => {
     if (!allowDrop) return;
@@ -193,7 +195,7 @@ export const ICUIPanelArea: React.FC<ICUIPanelAreaProps> = ({
       setDragOver(false);
       // Don't clear isDragging here - wait for drop or dragend
     }
-  }, [allowDrop]);
+  }, [allowDrop, id]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     if (!allowDrop) return;
@@ -218,7 +220,7 @@ export const ICUIPanelArea: React.FC<ICUIPanelAreaProps> = ({
       // Additional check: ensure we don't already have this panel
       const panelExists = panels.some(panel => panel.id === panelId);
       if (panelExists) {
-        console.warn('Panel already exists in target area, ignoring drop:', { panelId, sourceAreaId, targetAreaId: id });
+        console.warn('[PANEL-AREA-DROP] Panel already exists in target area, ignoring drop:', { panelId, sourceAreaId, targetAreaId: id });
         return;
       }
       
@@ -230,8 +232,6 @@ export const ICUIPanelArea: React.FC<ICUIPanelAreaProps> = ({
       
       // Dropping panel in different area
       onPanelDrop?.(panelId, sourceAreaId);
-    } else if (sourceAreaId === id) {
-      // Ignoring drop in same area
     }
   }, [allowDrop, id, onPanelDrop, panels]);
 

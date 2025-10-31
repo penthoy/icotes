@@ -4,7 +4,7 @@
  * Handles resizable panels, docking areas, and layout persistence
  */
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { ICUIFrameContainer } from './ICUIFrameContainer';
 import { ICUISplitPanel } from './ICUISplitPanel';
 import { ICUIPanelArea, ICUIPanel } from './ICUIPanelArea';
@@ -85,6 +85,30 @@ export const ICUILayout: React.FC<ICUILayoutProps> = ({
 }) => {
   const [currentLayout, setCurrentLayout] = useState<ICUILayoutConfig>(layout || defaultLayout);
 
+  // Add ref to track previous layout for change detection
+  const prevLayoutRef = useRef<ICUILayoutConfig>(currentLayout);
+  
+  // Log layout changes to detect cascading updates
+  useEffect(() => {
+    const prev = prevLayoutRef.current;
+    const changedAreas: string[] = [];
+    
+    Object.keys(currentLayout.areas).forEach(areaId => {
+      const prevArea = prev.areas[areaId];
+      const currArea = currentLayout.areas[areaId];
+      
+      if (prevArea?.activePanelId !== currArea?.activePanelId) {
+        changedAreas.push(`${areaId}: ${prevArea?.activePanelId || 'none'} -> ${currArea?.activePanelId || 'none'}`);
+      }
+    });
+    
+    if (changedAreas.length > 0) {
+      console.log(`[LAYOUT-STATE-CHANGE] Active panels changed:`, changedAreas);
+    }
+    
+    prevLayoutRef.current = currentLayout;
+  }, [currentLayout]);
+
   // Load persisted layout on mount
   useEffect(() => {
     if (persistLayout && layoutKey) {
@@ -151,11 +175,15 @@ export const ICUILayout: React.FC<ICUILayoutProps> = ({
   const handlePanelActivate = useCallback((areaId: string, panelId: string) => {
     setCurrentLayout(prev => {
       const area = prev.areas[areaId];
-      if (!area) return prev;
+      if (!area) {
+        console.warn(`[LAYOUT-ACTIVATE] Area not found: ${areaId}`);
+        return prev;
+      }
       if (area.activePanelId === panelId) {
         // No-op to prevent redundant updates and flicker
         return prev;
       }
+      
       return {
         ...prev,
         areas: {
