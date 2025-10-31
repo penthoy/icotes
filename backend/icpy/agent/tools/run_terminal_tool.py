@@ -11,8 +11,12 @@ import subprocess
 from typing import Dict, Any, Optional
 import traceback
 from .base_tool import BaseTool, ToolResult
+import os
 
 logger = logging.getLogger(__name__)
+
+# Throttle noisy fallback notice: log once at INFO, then DEBUG afterwards
+_SCHEDULING_FALLBACK_LOGGED = False
 
 # Optional imports for hop awareness
 try:
@@ -155,6 +159,12 @@ class RunTerminalTool(BaseTool):
             from concurrent.futures import Future
             import asyncio
             
+            # Configurable, shorter scheduling timeout to avoid 30s stalls
+            try:
+                SCHEDULE_TIMEOUT_SEC = float(os.environ.get('HOP_RUN_SCHEDULE_TIMEOUT', '2.0'))
+            except Exception:
+                SCHEDULE_TIMEOUT_SEC = 2.0
+
             # Get the hop service's event loop where the connection was created
             if HOP_AVAILABLE:
                 hop = await get_hop_service()
@@ -189,11 +199,20 @@ class RunTerminalTool(BaseTool):
                     future = asyncio.run_coroutine_threadsafe(_run_in_conn_loop(), conn_loop)
                     try:
                         # Shorter timeout to avoid long hangs; we'll fall back if exceeded
-                        data = future.result(timeout=30)
+                        data = future.result(timeout=SCHEDULE_TIMEOUT_SEC)
                         return ToolResult(success=True, data=data)
                     except Exception as e:
                         # Timeout or other scheduling failure -> fall back to ephemeral SSH
-                        logger.warning(f"[RunTerminal] Scheduling in hop loop failed ({type(e).__name__}): {e}. Falling back to ephemeral SSH.")
+                        global _SCHEDULING_FALLBACK_LOGGED
+                        if not _SCHEDULING_FALLBACK_LOGGED:
+                            logger.info(f"[RunTerminal] Scheduling in hop loop failed after {SCHEDULE_TIMEOUT_SEC:.1f}s ({type(e).__name__}). Falling back to ephemeral SSH.")
+                            _SCHEDULING_FALLBACK_LOGGED = True
+                        else:
+                            logger.debug(f"[RunTerminal] Scheduling in hop loop failed after {SCHEDULE_TIMEOUT_SEC:.1f}s ({type(e).__name__}). Using ephemeral SSH.")
+                        try:
+                            future.cancel()
+                        except Exception:
+                            pass
                         # Intentionally continue to ephemeral path below
                         pass
 

@@ -941,6 +941,8 @@ class ChatService:
                         message_text += image_hint
                 
                 content_parts: List[Dict[str, Any]] = [{"type": "text", "text": message_text}]
+                # Ensure this is defined regardless of attachments presence to avoid UnboundLocalError
+                added_images = 0
                 if user_message.attachments:
                     media = get_media_service()
                     # Configurable caps to avoid heavy processing and nested-loop overhead
@@ -953,8 +955,7 @@ class ChatService:
                         max_img_mb = float(_os.getenv('CHAT_MAX_IMAGE_SIZE_MB', '3'))
                     except Exception:
                         max_img_mb = 3.0
-
-                    added_images = 0
+                    
                     for att in user_message.attachments:
                         try:
                             kind = att.get('kind')

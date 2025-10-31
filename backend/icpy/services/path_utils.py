@@ -45,13 +45,13 @@ async def _friendly_namespace_for_context(context_id: str) -> str:
     try:
         hop = await get_hop_service()
         sessions = hop.list_sessions()
-        logger.info(f"[PathUtils] Resolving namespace for context_id={context_id}")
+        logger.debug(f"[PathUtils] Resolving namespace for context_id={context_id}")
         for s in sessions:
             cid = s.get("contextId") or s.get("context_id")
             if cid == context_id:
                 ns = s.get("credentialName") or s.get("credential_name")
                 if isinstance(ns, str) and ns.strip():
-                    logger.info(f"[PathUtils] Using session credentialName={ns}")
+                    logger.debug(f"[PathUtils] Using session credentialName={ns}")
                     return ns
     except Exception as e:
         logger.warning(f"[PathUtils] HopService unavailable while resolving namespace: {e}")
@@ -67,7 +67,7 @@ async def _friendly_namespace_for_context(context_id: str) -> str:
         config_path = os.path.join(workspace_root, '.icotes', 'hop', 'config')
 
         if os.path.exists(config_path):
-            logger.info(f"[PathUtils] Reading hop config: {config_path}")
+            logger.debug(f"[PathUtils] Reading hop config: {config_path}")
             current_alias = None
             with open(config_path, 'r', encoding='utf-8') as f:
                 for raw_line in f:
@@ -86,18 +86,18 @@ async def _friendly_namespace_for_context(context_id: str) -> str:
                             meta = json.loads(meta_str)
                             meta_id = meta.get('id')
                             if meta_id and meta_id == context_id and current_alias:
-                                logger.info(f"[PathUtils] Using hop alias from config: {current_alias}")
+                                logger.debug(f"[PathUtils] Using hop alias from config: {current_alias}")
                                 return current_alias
                         except Exception:
                             # Best-effort parsing; continue scanning
                             continue
         else:
-            logger.info(f"[PathUtils] Hop config not found at {config_path}")
+            logger.debug(f"[PathUtils] Hop config not found at {config_path}")
     except Exception as e:
         logger.warning(f"[PathUtils] Failed to parse hop config for namespace resolution: {e}")
 
     # 3) Last resort: return the context_id itself (no invented alias)
-    logger.info(f"[PathUtils] Falling back to contextId as namespace: {context_id}")
+    logger.debug(f"[PathUtils] Falling back to contextId as namespace: {context_id}")
     return context_id
 
 
