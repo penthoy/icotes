@@ -106,6 +106,9 @@ class RunTerminalTool(BaseTool):
     
     async def _execute_local(self, command: str, is_background: bool) -> ToolResult:
         """Execute command locally via subprocess"""
+        # Get current working directory for debugging
+        cwd = os.getcwd()
+        
         if is_background:
             # For background processes, start and return immediately
             process = await asyncio.create_subprocess_shell(
@@ -122,7 +125,8 @@ class RunTerminalTool(BaseTool):
                     "output": "",
                     "error": "",
                     "pid": process.pid,
-                    "context": "local"
+                    "context": "local",
+                    "cwd": cwd
                 }
             )
         else:
@@ -143,7 +147,8 @@ class RunTerminalTool(BaseTool):
                     "output": stdout.decode('utf-8', errors='replace') if stdout else "",
                     "error": stderr.decode('utf-8', errors='replace') if stderr else "",
                     "pid": process.pid,
-                    "context": "local"
+                    "context": "local",
+                    "cwd": cwd
                 }
             )
     
@@ -155,6 +160,16 @@ class RunTerminalTool(BaseTool):
         previously observed hang), falls back to an ephemeral SSH connection
         created in the current loop to avoid cross-loop issues.
         """
+        # Try to get remote working directory for debugging
+        remote_cwd = None
+        try:
+            if HOP_AVAILABLE:
+                router = await get_context_router()
+                context = await router.get_context()
+                remote_cwd = context.cwd or f"/home/{context.username}" if hasattr(context, 'username') else None
+        except Exception:
+            pass
+        
         try:
             from concurrent.futures import Future
             import asyncio
@@ -184,7 +199,8 @@ class RunTerminalTool(BaseTool):
                                 "output": "",
                                 "error": "",
                                 "pid": result.stdout.strip() if result.stdout else "unknown",
-                                "context": "remote"
+                                "context": "remote",
+                                "cwd": remote_cwd
                             }
                         else:
                             result = await ssh_conn.run(command, check=False)
@@ -192,7 +208,8 @@ class RunTerminalTool(BaseTool):
                                 "status": result.exit_status if result.exit_status is not None else -1,
                                 "output": result.stdout if result.stdout else "",
                                 "error": result.stderr if result.stderr else "",
-                                "context": "remote"
+                                "context": "remote",
+                                "cwd": remote_cwd
                             }
                     
                     # Schedule the coroutine in the connection's loop
@@ -231,7 +248,8 @@ class RunTerminalTool(BaseTool):
                                 "error": "",
                                 "pid": pid_str,
                                 "context": "remote",
-                                "mode": "ephemeral"
+                                "mode": "ephemeral",
+                                "cwd": remote_cwd
                             })
                         else:
                             result = await eph_conn.run(command, check=False)
@@ -240,7 +258,8 @@ class RunTerminalTool(BaseTool):
                                 "output": result.stdout if result.stdout else "",
                                 "error": result.stderr if result.stderr else "",
                                 "context": "remote",
-                                "mode": "ephemeral"
+                                "mode": "ephemeral",
+                                "cwd": remote_cwd
                             })
                 except Exception as e:
                     # Fall through to local execution attempt (below) or final error
@@ -260,7 +279,8 @@ class RunTerminalTool(BaseTool):
                         "error": "",
                         "pid": pid_str,
                         "context": "remote",
-                        "mode": "direct"
+                        "mode": "direct",
+                        "cwd": remote_cwd
                     }
                 )
             else:
@@ -273,7 +293,8 @@ class RunTerminalTool(BaseTool):
                         "output": result.stdout if result.stdout else "",
                         "error": result.stderr if result.stderr else "",
                         "context": "remote",
-                        "mode": "direct"
+                        "mode": "direct",
+                        "cwd": remote_cwd
                     }
                 )
                 

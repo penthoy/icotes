@@ -747,6 +747,9 @@ class ImagenTool(BaseTool):
             # Extract raw base64 for thumbnail/reference creation
             raw_base64 = base64.b64encode(image_bytes).decode('utf-8')
             
+            # Calculate accurate size_bytes from the actual image data
+            size_bytes = len(image_bytes)
+            
             # Create reference via ImageReferenceService (avoid writing full local copy if remote)
             image_service = get_image_reference_service()
             ref = await image_service.create_reference(
@@ -781,6 +784,9 @@ class ImagenTool(BaseTool):
                     f"to actual save location {saved_absolute_path}"
                 )
                 ref_dict['absolute_path'] = saved_absolute_path
+            
+            # Fix size_bytes metadata: populate with actual image size
+            ref_dict['size_bytes'] = size_bytes
             
             # Return result with reference AND small thumbnail for preview/editing
             # The thumbnail allows instant preview without fetching, and agents can use it for editing

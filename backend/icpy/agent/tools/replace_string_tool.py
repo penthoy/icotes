@@ -123,6 +123,51 @@ class ReplaceStringTool(BaseTool):
         except Exception:
             return None
     
+    def _generate_diff_preview(self, content: str, old_string: str, new_string: str) -> Dict[str, Any]:
+        """
+        Generate a diff preview showing before/after context for the first replacement
+        
+        Returns:
+            Dict with 'before', 'after', 'lineNumber', and 'contextLines'
+        """
+        try:
+            # Find first occurrence
+            pos = content.find(old_string)
+            if pos == -1:
+                return {"error": "No occurrences found"}
+            
+            # Calculate line number
+            lines_before = content[:pos].count('\n')
+            line_num = lines_before + 1
+            
+            # Extract context: 3 lines before and after
+            lines = content.split('\n')
+            context_size = 3
+            start_line = max(0, lines_before - context_size)
+            end_line = min(len(lines), lines_before + context_size + 1)
+            
+            # Build before snippet
+            before_lines = lines[start_line:end_line]
+            before_snippet = '\n'.join(before_lines)
+            
+            # Build after snippet (with replacement applied)
+            after_content = content.replace(old_string, new_string, 1)  # Only first occurrence
+            after_lines_full = after_content.split('\n')
+            after_lines = after_lines_full[start_line:end_line]
+            after_snippet = '\n'.join(after_lines)
+            
+            return {
+                "lineNumber": line_num,
+                "contextLines": f"{start_line + 1}-{end_line}",
+                "before": before_snippet,
+                "after": after_snippet,
+                "oldString": old_string,
+                "newString": new_string
+            }
+        except Exception as e:
+            logger.warning(f"Failed to generate diff preview: {e}")
+            return {"error": str(e)}
+    
     async def execute(self, **kwargs) -> ToolResult:
         """Execute the replace string operation"""
         try:
@@ -255,13 +300,17 @@ class ReplaceStringTool(BaseTool):
                     "oldString": old_string,
                     "newString": new_string,
                 }
-                # Optional content echo (capped)
+                # Optional content echo with diff preview (capped)
                 if kwargs.get("returnContent", False):
                     MAX_PREVIEW = 10000
                     data["originalContent"] = content[:MAX_PREVIEW]
                     data["modifiedContent"] = new_content[:MAX_PREVIEW]
                     if len(content) > MAX_PREVIEW or len(new_content) > MAX_PREVIEW:
                         data["contentTruncated"] = True
+                    
+                    # Add diff preview showing before/after context for first replacement
+                    if occurrence_count > 0:
+                        data["diff"] = self._generate_diff_preview(content, old_string, new_string)
             else:
                 # Minimal data for test compatibility
                 data = {"replacedCount": occurrence_count}
