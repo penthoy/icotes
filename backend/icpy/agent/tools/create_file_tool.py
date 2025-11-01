@@ -11,6 +11,7 @@ Phase 1 (Namespace Path Utils):
 
 import os
 import logging
+import hashlib
 from typing import Dict, Any, Optional
 from .base_tool import BaseTool, ToolResult
 from .context_helpers import get_contextual_filesystem
@@ -66,6 +67,14 @@ class CreateFileTool(BaseTool):
                 "returnFullData": {
                     "type": "boolean",
                     "description": "If true, include namespaced filePath, absolutePath, and pathInfo in the result."
+                },
+                "returnChecksum": {
+                    "type": "boolean",
+                    "description": "If true, compute and return SHA256 checksum of the content for verification. Default false."
+                },
+                "returnPreview": {
+                    "type": "integer",
+                    "description": "If provided, return the first N lines of content as a preview for verification. Default: no preview."
                 }
             },
             "required": ["filePath", "content"]
@@ -215,23 +224,65 @@ class CreateFileTool(BaseTool):
                     error=f"Failed to write file {normalized_path}. This may indicate an event loop synchronization issue when hopped to a remote server."
                 )
             
+            # Compute checksum if requested
+            checksum = None
+            if kwargs.get("returnChecksum", False):
+                try:
+                    checksum = hashlib.sha256(content.encode('utf-8')).hexdigest()
+                    logger.debug(f"Computed SHA256 checksum for {normalized_path}: {checksum}")
+                except Exception as e:
+                    logger.warning(f"Failed to compute checksum: {e}")
+            
+            # Generate preview if requested
+            preview = None
+            preview_lines_count = kwargs.get("returnPreview")
+            if preview_lines_count and isinstance(preview_lines_count, int) and preview_lines_count > 0:
+                try:
+                    lines = content.split('\n')
+                    preview_lines = lines[:preview_lines_count]
+                    preview = '\n'.join(preview_lines)
+                    if len(lines) > preview_lines_count:
+                        preview += f"\n... ({len(lines) - preview_lines_count} more lines)"
+                    logger.debug(f"Generated preview ({preview_lines_count} lines) for {normalized_path}")
+                except Exception as e:
+                    logger.warning(f"Failed to generate preview: {e}")
+            
             if return_full:
                 # Build namespaced path metadata for UI/agent consumption
                 # Force the intended namespace so display is consistent even when hopped
                 path_info = await self._format_path_info(f"{ctx_id}:{normalized_path}")
                 # Keep backward compatibility while enriching payload
-                return ToolResult(
-                    success=True,
-                    data={
-                        "created": True,
-                        "filePath": path_info.get("formatted_path"),
-                        "absolutePath": path_info.get("absolute_path"),
-                        "pathInfo": path_info,
-                    },
-                )
+                result_data = {
+                    "created": True,
+                    "filePath": path_info.get("formatted_path"),
+                    "absolutePath": path_info.get("absolute_path"),
+                    "pathInfo": path_info,
+                }
+                
+                # Add checksum if computed
+                if checksum:
+                    result_data["sha256"] = checksum
+                
+                # Add preview if generated
+                if preview:
+                    result_data["contentPreview"] = preview
+                    result_data["previewLines"] = preview_lines_count
+                
+                return ToolResult(success=True, data=result_data)
             else:
                 # Minimal data for backward compatibility with existing tests
-                return ToolResult(success=True, data={"created": True})
+                result_data = {"created": True}
+                
+                # Add checksum if computed (even in minimal mode, checksum is useful)
+                if checksum:
+                    result_data["sha256"] = checksum
+                
+                # Add preview if generated
+                if preview:
+                    result_data["contentPreview"] = preview
+                    result_data["previewLines"] = preview_lines_count
+                
+                return ToolResult(success=True, data=result_data)
             
         except FileExistsError as e:
             return ToolResult(success=False, error=str(e))
