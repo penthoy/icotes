@@ -87,6 +87,11 @@ export const ICUIPanelArea: React.FC<ICUIPanelAreaProps> = ({
   // Track if we initiated the change to prevent sync feedback loop
   const isLocalChangeRef = useRef(false);
 
+  // Track parent-initiated changes to detect oscillation and apply hysteresis
+  const lastParentActiveIdRef = useRef<string | null>(activePanelId ?? null);
+  const lastParentChangeTsRef = useRef<number>(0);
+  const parentOscillationCountRef = useRef(0);
+
   // Keep local active tab in sync with prop changes, but ONLY if parent initiated the change
   useEffect(() => {
     // CRITICAL: Don't sync if we initiated the change ourselves
@@ -97,7 +102,29 @@ export const ICUIPanelArea: React.FC<ICUIPanelAreaProps> = ({
     }
     
     if (activePanelId && activePanelId !== localActiveTabId) {
+      const now = Date.now();
+      const lastId = lastParentActiveIdRef.current;
+      const since = now - lastParentChangeTsRef.current;
+
+      // Hysteresis: if parent is flipping between two ids too quickly, ignore this flip
+      if (lastId && lastId !== activePanelId && since < 120) {
+        parentOscillationCountRef.current += 1;
+        console.warn(
+          `[PANEL-AREA-OSC-IGNORED] Area ${id}: parent flip ${lastId} -> ${activePanelId} in ${since}ms (count=${parentOscillationCountRef.current})`
+        );
+        // Do not update local state; wait for things to settle
+        return;
+      }
+
+      // Reset oscillation counter when stable
+      if (since >= 120 && parentOscillationCountRef.current > 0) {
+        console.log(`[PANEL-AREA-OSC-RESET] Area ${id}: stable for ${since}ms, resetting oscillation counter`);
+        parentOscillationCountRef.current = 0;
+      }
+
       console.log(`[PANEL-AREA-SYNC] Area ${id}: ${localActiveTabId} -> ${activePanelId} (parent-initiated)`);
+      lastParentActiveIdRef.current = activePanelId;
+      lastParentChangeTsRef.current = now;
       setLocalActiveTabId(activePanelId);
     }
   }, [activePanelId, localActiveTabId, id]);

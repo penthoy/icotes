@@ -54,6 +54,12 @@ export class ICUIBackendService extends EventEmitter {
   private _initialized = false;
   private _initializing = false;
   private _initAttempts = 0;
+  // Error/throttle controls
+  private _lastConnectErrorAt = 0;
+  private _connectErrorSuppressed = 0;
+  private _lastWsErrorAt = 0;
+  private _wsErrorSuppressed = 0;
+  private _connectCooldownUntil = 0;
   
   // Backend configuration
   private baseUrl: string = '';
@@ -277,7 +283,20 @@ export class ICUIBackendService extends EventEmitter {
     });
 
     this.wsService.on('error', (error: any) => {
-      console.error('[ICUIBackendService] Enhanced service error:', error);
+      // Throttle websocket error logs to avoid spamming
+      const now = Date.now();
+      const windowMs = Number((import.meta as any).env?.VITE_WS_ERROR_LOG_WINDOW_MS) || 5000;
+      if (now - this._lastWsErrorAt < windowMs) {
+        this._wsErrorSuppressed += 1;
+      } else {
+        if (this._wsErrorSuppressed > 0) {
+          console.error('[ICUIBackendService] Enhanced service error (and', this._wsErrorSuppressed, 'more recent errors suppressed):', error);
+          this._wsErrorSuppressed = 0;
+        } else {
+          console.error('[ICUIBackendService] Enhanced service error:', error);
+        }
+        this._lastWsErrorAt = now;
+      }
       this.emit('error', error);
     });
 
@@ -305,6 +324,13 @@ export class ICUIBackendService extends EventEmitter {
           initializing: this._initializing,
           connectionId: this.connectionId
         });
+      }
+      return;
+    }
+    // Respect connect cooldown to avoid hot-looping on repeated failures
+    if (Date.now() < this._connectCooldownUntil) {
+      if ((import.meta as any).env?.VITE_DEBUG_EXPLORER === 'true') {
+        console.debug('[ICUIBackendService][ensureInitialized] in connect cooldown until', new Date(this._connectCooldownUntil).toISOString());
       }
       return;
     }
@@ -398,7 +424,8 @@ export class ICUIBackendService extends EventEmitter {
         autoReconnect: true,
         maxRetries: 5,
         priority: 'high',
-        timeout: 15000
+        // Allow env override; otherwise a safer default of 25-30s to tolerate cold starts
+        timeout: Number((import.meta as any).env?.VITE_WS_CONNECT_TIMEOUT_MS) || 30000
       };
 
       log.debug('ICUIBackendService', 'Connecting with options', options);
@@ -434,7 +461,23 @@ export class ICUIBackendService extends EventEmitter {
       }
       
     } catch (error) {
-      console.error('[ICUIBackendService] Enhanced connection failed:', error);
+      // Throttle connect failure logs and apply a short cooldown before next attempt
+      const now = Date.now();
+      const windowMs = Number((import.meta as any).env?.VITE_WS_CONNECT_LOG_WINDOW_MS) || 5000;
+      const cooldownMs = Number((import.meta as any).env?.VITE_WS_CONNECT_COOLDOWN_MS) || 5000;
+      if (now - this._lastConnectErrorAt < windowMs) {
+        this._connectErrorSuppressed += 1;
+      } else {
+        if (this._connectErrorSuppressed > 0) {
+          console.error('[ICUIBackendService] Enhanced connection failed (and', this._connectErrorSuppressed, 'recent fails suppressed):', error);
+          this._connectErrorSuppressed = 0;
+        } else {
+          console.error('[ICUIBackendService] Enhanced connection failed:', error);
+        }
+        this._lastConnectErrorAt = now;
+      }
+      // Set cooldown to avoid rapid re-attempts from various callers
+      this._connectCooldownUntil = now + cooldownMs;
       
       // Fallback to legacy service
       if (this.migrationHelper) {
