@@ -84,10 +84,20 @@ export const ICUIPanelArea: React.FC<ICUIPanelAreaProps> = ({
     return activePanelId || panels[0]?.id || '';
   });
 
-  // Keep local active tab in sync with prop changes, but don't override unnecessarily
+  // Track if we initiated the change to prevent sync feedback loop
+  const isLocalChangeRef = useRef(false);
+
+  // Keep local active tab in sync with prop changes, but ONLY if parent initiated the change
   useEffect(() => {
+    // CRITICAL: Don't sync if we initiated the change ourselves
+    if (isLocalChangeRef.current) {
+      console.log(`[PANEL-AREA-SYNC-SKIP] Area ${id}: Skipping sync, local change in progress`);
+      isLocalChangeRef.current = false;
+      return;
+    }
+    
     if (activePanelId && activePanelId !== localActiveTabId) {
-      console.log(`[PANEL-AREA-SYNC] Area ${id}: ${localActiveTabId} -> ${activePanelId}`);
+      console.log(`[PANEL-AREA-SYNC] Area ${id}: ${localActiveTabId} -> ${activePanelId} (parent-initiated)`);
       setLocalActiveTabId(activePanelId);
     }
   }, [activePanelId, localActiveTabId, id]);
@@ -158,12 +168,18 @@ export const ICUIPanelArea: React.FC<ICUIPanelAreaProps> = ({
 
   // Handle tab operations
   const handleTabActivate = useCallback((tabId: string) => {
-    console.log(`[PANEL-AREA] Tab activate request in area ${id}: ${tabId}, current local: ${localActiveTabId}`);
+    console.log(`[PANEL-AREA-ACTIVATE] Area ${id}: User activated tab ${tabId}, current: ${localActiveTabId}`);
     if (tabId === localActiveTabId) return; // No-op to prevent redundant updates
+    
+    // Mark that we're initiating this change to prevent sync feedback loop
+    isLocalChangeRef.current = true;
+    
     // Optimistically update local active state to avoid visual flicker
     setLocalActiveTabId(tabId);
+    
+    // Notify parent
     onPanelActivate?.(tabId);
-    console.log(`[PANEL-AREA] Tab activated in area ${id}: ${tabId}`);
+    console.log(`[PANEL-AREA-ACTIVATE] Area ${id}: Notified parent of tab ${tabId}`);
   }, [onPanelActivate, localActiveTabId, id]);
 
   const handleTabClose = useCallback((tabId: string) => {
