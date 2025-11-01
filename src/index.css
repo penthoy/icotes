@@ -198,3 +198,19 @@
     position: relative !important;
     box-sizing: border-box !important;
   }
+
+  /* Chat search highlight styling */
+  .icui-mark,
+  mark.icui-mark {
+    background-color: rgba(255, 235, 59, 0.6) !important;
+    color: inherit !important;
+    padding: 2px 0 !important;
+    border-radius: 2px !important;
+    font-weight: 500 !important;
+  }
+
+  .dark .icui-mark,
+  .dark mark.icui-mark {
+    background-color: rgba(255, 193, 7, 0.5) !important;
+    color: inherit !important;
+  }
