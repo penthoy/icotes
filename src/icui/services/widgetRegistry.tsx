@@ -6,6 +6,7 @@ import SemanticSearchWidget from '../components/chat/widgets/SemanticSearchWidge
 import ProgressWidget from '../components/chat/widgets/ProgressWidget';
 import WebSearchWidget from '../components/chat/widgets/WebSearchWidget';
 import ImageGenerationWidget from '../components/chat/widgets/ImageGenerationWidget';
+import { WebFetchWidget } from '../components/chat/widgets/WebFetchWidget';
 
 // Minimal widget registry for tool call visualization
 export interface ToolCallWidgetComponentProps {
@@ -91,6 +92,18 @@ const builtInWidgets: WidgetConfig[] = [
 	{
 		toolName: 'web_search',
 		component: WebSearchWidget as any,
+		category: 'network',
+		priority: 1
+	},
+	{
+		toolName: 'web_fetch',
+		component: WebFetchWidget as any,
+		category: 'network',
+		priority: 1
+	},
+	{
+		toolName: 'fetch_url',
+		component: WebFetchWidget as any,
 		category: 'network',
 		priority: 1
 	},
