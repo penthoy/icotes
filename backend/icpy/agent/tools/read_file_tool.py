@@ -81,10 +81,6 @@ class ReadFileTool(BaseTool):
                 "returnFullData": {
                     "type": "boolean",
                     "description": "If true, includes namespaced filePath, absolutePath, pathInfo, and line numbers. Default false for backward compatibility."
-                },
-                "returnBase64IfSmall": {
-                    "type": "boolean",
-                    "description": "For images: if true and image is smaller than 100KB, returns full base64 data instead of ImageReference. Default false."
                 }
             },
             "required": ["filePath"]
@@ -362,108 +358,6 @@ class ReadFileTool(BaseTool):
                     except Exception:
                         pass
                 
-                # Check if we should return base64 for small images
-                return_base64_if_small = kwargs.get("returnBase64IfSmall", False)
-                small_image_threshold = 100 * 1024  # 100KB
-                
-                # Read image data to check size
-                image_bytes = None
-                mime_type = None
-                
-                # Try to read the image
-                try:
-                    from .imagen_tool import ImagenTool
-                    loader = ImagenTool()
-                    part = await loader._decode_image_input(f"file://{normalized_path}", None)
-                    if part and isinstance(part.get("data"), (bytes, bytearray)):
-                        image_bytes = bytes(part["data"])
-                        mime_type = part.get("mime_type")
-                        logger.info(f"[ReadFileTool] Loaded image via ImagenTool loader ({len(image_bytes)} bytes)")
-                except Exception as e:
-                    logger.debug(f"[ReadFileTool] ImagenTool loader failed: {e}")
-                
-                # Fallback to filesystem service
-                if image_bytes is None:
-                    filesystem_service_for_img = None
-                    try:
-                        from icpy.services.context_router import get_context_router as _get_cr
-                        router = await _get_cr()
-                        filesystem_service_for_img = await router.get_filesystem_for_namespace(ctx_id)
-                    except Exception:
-                        filesystem_service_for_img = None
-                    if filesystem_service_for_img is None:
-                        filesystem_service_for_img = await get_filesystem_service()
-                    
-                    try:
-                        if hasattr(filesystem_service_for_img, 'read_file_binary'):
-                            image_bytes = await filesystem_service_for_img.read_file_binary(normalized_path)
-                        else:
-                            content_img = await filesystem_service_for_img.read_file(normalized_path)
-                            if isinstance(content_img, bytes):
-                                image_bytes = content_img
-                            else:
-                                try:
-                                    image_bytes = base64.b64decode(content_img)
-                                except Exception:
-                                    logger.error(f"Failed to read image file as binary: {normalized_path}")
-                    except Exception as e:
-                        logger.error(f"Failed to read image file: {normalized_path}: {e}")
-                
-                if not image_bytes:
-                    return ToolResult(
-                        success=False,
-                        error=f"Failed to read image file: {normalized_path}"
-                    )
-                
-                # Check size and return base64 if small and requested
-                image_size = len(image_bytes)
-                if return_base64_if_small and image_size <= small_image_threshold:
-                    # Return inline base64 for small images
-                    logger.info(f"Returning inline base64 for small image ({image_size} bytes <= {small_image_threshold})")
-                    
-                    # Determine MIME type
-                    if not mime_type:
-                        ext = os.path.splitext(normalized_path.lower())[1]
-                        mime_map = {
-                            '.png': 'image/png',
-                            '.jpg': 'image/jpeg',
-                            '.jpeg': 'image/jpeg',
-                            '.gif': 'image/gif',
-                            '.bmp': 'image/bmp',
-                            '.webp': 'image/webp',
-                            '.svg': 'image/svg+xml',
-                            '.ico': 'image/x-icon',
-                            '.tiff': 'image/tiff',
-                            '.tif': 'image/tiff',
-                        }
-                        mime_type = mime_map.get(ext, 'image/png')
-                    
-                    # Encode to base64
-                    base64_data = base64.b64encode(image_bytes).decode('utf-8')
-                    data_uri = f"data:{mime_type};base64,{base64_data}"
-                    
-                    result_data = {
-                        "isImage": True,
-                        "isSmallImage": True,
-                        "base64Data": base64_data,
-                        "dataUri": data_uri,
-                        "mimeType": mime_type,
-                        "sizeBytes": image_size,
-                        "message": f"Small image ({image_size} bytes) returned as inline base64"
-                    }
-                    
-                    if kwargs.get("returnFullData", False):
-                        from icpy.services.path_utils import format_namespaced_path
-                        formatted_path = await format_namespaced_path(ctx_id, normalized_path)
-                        result_data.update({
-                            "filePath": formatted_path,
-                            "absolutePath": normalized_path,
-                            "contextId": ctx_id
-                        })
-                    
-                    return ToolResult(success=True, data=result_data)
-                
-                # Image is large or returnBase64IfSmall not requested - create ImageReference
                 # Create image reference
                 image_ref = await self._create_image_reference(normalized_path, ctx_id, ctx_host)
                 

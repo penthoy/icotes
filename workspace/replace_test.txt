@@ -1,3 +1,0 @@
-first line
-this line contains BETA
-last line

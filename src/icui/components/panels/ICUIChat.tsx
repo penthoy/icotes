@@ -91,7 +91,6 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
     };
   }, [autoConnect]);
   const chatContainerRef = useRef<HTMLDivElement>(null);
-  const chatRootRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [inputValue, setInputValue] = useState('');
@@ -148,18 +147,8 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
     autoScroll: autoScroll && !userHasScrolledUp
   });
 
-  // Chat search hook (Ctrl+F) - context sensitive: only active when Chat has focus
-  const search = useChatSearch(messages, {
-    isActive: () => {
-      try {
-        const root = chatRootRef.current;
-        const activeEl = typeof document !== 'undefined' ? document.activeElement : null;
-        return !!(root && activeEl && root.contains(activeEl));
-      } catch {
-        return true; // fallback to previous behavior
-      }
-    }
-  });
+  // Chat search hook (Ctrl+F)
+  const search = useChatSearch(messages);
 
   // Session synchronization
   const { onSessionChange, emitSessionChange } = useChatSessionSync('ICUIChat');
@@ -628,7 +617,6 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
 
   return (
     <div 
-      ref={chatRootRef}
       className={`icui-chat h-full flex flex-col relative ${className}`} 
       style={{ 
         backgroundColor: 'var(--icui-bg-primary)', 

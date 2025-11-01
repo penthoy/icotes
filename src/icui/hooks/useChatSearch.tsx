@@ -1,12 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ChatMessage } from '../types/chatTypes';
 
-export interface ChatSearchScopeOptions {
-	// Return true when Chat panel should own Ctrl+F handling.
-	// If not provided, defaults to always active (previous behavior).
-	isActive?: () => boolean;
-}
-
 export interface SearchResult {
 	messageId: string;
 	index: number; // occurrence index in message
@@ -20,7 +14,7 @@ export interface SearchOptions {
 	useRegex: boolean;
 }
 
-export function useChatSearch(messages: ChatMessage[], scope?: ChatSearchScopeOptions) {
+export function useChatSearch(messages: ChatMessage[]) {
 	const [query, setQuery] = useState('');
 	const [results, setResults] = useState<SearchResult[]>([]);
 	const [activeIdx, setActiveIdx] = useState(0);
@@ -112,11 +106,7 @@ export function useChatSearch(messages: ChatMessage[], scope?: ChatSearchScopeOp
 
 	// Keyboard handler for Ctrl+F
 	useEffect(() => {
-			const handler = (e: KeyboardEvent) => {
-				// Determine if Chat should own this key combo (context sensitive)
-				const active = scope?.isActive ? scope.isActive() : true;
-				// Only react to keys when chat is the active/focused surface
-				if (!active) return;
+		const handler = (e: KeyboardEvent) => {
 			if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
 				e.preventDefault();
 				setIsOpen(true);
@@ -135,7 +125,7 @@ export function useChatSearch(messages: ChatMessage[], scope?: ChatSearchScopeOp
 		};
 		document.addEventListener('keydown', handler);
 		return () => document.removeEventListener('keydown', handler);
-		}, [isOpen, next, prev, scope?.isActive]);
+	}, [isOpen, next, prev]);
 
 	const toggleCaseSensitive = useCallback(() => {
 		setOptions(prev => ({ ...prev, caseSensitive: !prev.caseSensitive }));
