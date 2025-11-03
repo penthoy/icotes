@@ -117,13 +117,41 @@ export const ICUILayout: React.FC<ICUILayoutProps> = ({
         try {
           const parsedLayout = JSON.parse(saved);
           // Merge persisted layout with provided layout to ensure new panels are included
+          const mergedAreas: Record<string, ICUILayoutArea> = {};
+          
+          Object.keys(layout?.areas || {}).forEach(areaId => {
+            const providedArea = layout?.areas[areaId];
+            const persistedArea = parsedLayout.areas?.[areaId];
+            
+            if (providedArea) {
+              // Start with provided area as base
+              mergedAreas[areaId] = { ...providedArea };
+              
+              // Merge persisted properties if they exist
+              if (persistedArea) {
+                // Preserve size/visibility preferences from persisted state
+                if (persistedArea.size !== undefined) mergedAreas[areaId].size = persistedArea.size;
+                if (persistedArea.visible !== undefined) mergedAreas[areaId].visible = persistedArea.visible;
+                
+                // CRITICAL FIX: Validate activePanelId exists in panelIds before using it
+                if (persistedArea.activePanelId && 
+                    providedArea.panelIds.includes(persistedArea.activePanelId)) {
+                  mergedAreas[areaId].activePanelId = persistedArea.activePanelId;
+                } else if (persistedArea.activePanelId) {
+                  console.warn(
+                    `[LAYOUT-LOAD] Ignoring invalid activePanelId "${persistedArea.activePanelId}" ` +
+                    `for area "${areaId}". Panel not in panelIds:`, providedArea.panelIds
+                  );
+                  // Keep the provided activePanelId or use first panel as fallback
+                  mergedAreas[areaId].activePanelId = providedArea.activePanelId || providedArea.panelIds[0];
+                }
+              }
+            }
+          });
+          
           const mergedLayout = {
             ...parsedLayout,
-            areas: {
-              ...parsedLayout.areas,
-              // Ensure areas from the provided layout are preserved
-              ...(layout ? layout.areas : {}),
-            }
+            areas: mergedAreas,
           };
           setCurrentLayout(mergedLayout);
         } catch (error) {
@@ -181,6 +209,15 @@ export const ICUILayout: React.FC<ICUILayoutProps> = ({
       }
       if (area.activePanelId === panelId) {
         // No-op to prevent redundant updates and flicker
+        return prev;
+      }
+      
+      // CRITICAL FIX: Validate panelId exists in area before activating
+      if (!area.panelIds.includes(panelId)) {
+        console.error(
+          `[LAYOUT-ACTIVATE] Cannot activate panel "${panelId}" in area "${areaId}". ` +
+          `Panel not found in panelIds:`, area.panelIds
+        );
         return prev;
       }
       
