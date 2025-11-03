@@ -105,7 +105,9 @@ docs/guides/
 docs/summaries/
 docs/tickets/
 docs/saasplan/
-
+docs/fixes/
+docs/debug/
+docs/features/
 # GitHub workflows
 .github/workflows/
 
