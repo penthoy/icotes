@@ -251,14 +251,23 @@ class ReplaceStringTool(BaseTool):
                         error=f"Path is outside workspace root or invalid (namespace={ctx_id})"
                     )
 
-            # Get filesystem service; if a specific namespace is requested, attempt to use it
+            # Get filesystem service; prefer patched/local service for tests and local ctx,
+            # but use router when an explicit remote namespace is requested
             filesystem_service = None
-            if get_context_router is not None:
+            try:
+                filesystem_service = await get_filesystem_service()
+            except Exception:
+                filesystem_service = None
+
+            if (ctx_id != "local") and get_context_router is not None:
                 try:
                     router = await get_context_router()  # type: ignore[misc]
-                    filesystem_service = await router.get_filesystem_for_namespace(ctx_id)  # type: ignore[attr-defined]
+                    namespaced_fs = await router.get_filesystem_for_namespace(ctx_id)  # type: ignore[attr-defined]
+                    if namespaced_fs is not None:
+                        filesystem_service = namespaced_fs
                 except Exception:
-                    filesystem_service = None
+                    pass
+
             if filesystem_service is None:
                 filesystem_service = await get_filesystem_service()
             

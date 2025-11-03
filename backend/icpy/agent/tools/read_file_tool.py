@@ -333,14 +333,24 @@ class ReadFileTool(BaseTool):
                         error=f"Path is outside workspace root or invalid (namespace={ctx_id})"
                     )
             
-            # Get filesystem service; prefer explicit namespace when available
+            # Get filesystem service; prefer patched/local service for tests and local ctx,
+            # but use router when an explicit remote namespace is requested.
             filesystem_service = None
             try:
-                from icpy.services.context_router import get_context_router as _get_cr
-                router = await _get_cr()
-                filesystem_service = await router.get_filesystem_for_namespace(ctx_id)
+                filesystem_service = await get_filesystem_service()
             except Exception:
                 filesystem_service = None
+
+            if ctx_id != "local":
+                try:
+                    from icpy.services.context_router import get_context_router as _get_cr
+                    router = await _get_cr()
+                    namespaced_fs = await router.get_filesystem_for_namespace(ctx_id)
+                    if namespaced_fs is not None:
+                        filesystem_service = namespaced_fs
+                except Exception:
+                    pass
+
             if filesystem_service is None:
                 filesystem_service = await get_filesystem_service()
             

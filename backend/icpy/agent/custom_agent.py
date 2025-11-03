@@ -244,8 +244,26 @@ async def call_custom_agent_stream(agent_name: str, message: str, history: List[
     
     # Handle both sync and async generators (gradio-compatible)
     if hasattr(chat_function, '__call__'):
-        for chunk in chat_function(message, history):
-            yield chunk
+        # Run sync generator in thread pool to avoid blocking event loop
+        import asyncio
+        loop = asyncio.get_event_loop()
+        
+        # Create sync generator
+        gen = chat_function(message, history)
+        
+        # Yield chunks from sync generator without blocking
+        while True:
+            try:
+                # Run next() in executor to avoid blocking
+                chunk = await loop.run_in_executor(None, lambda: next(gen))
+                yield chunk
+            except StopIteration:
+                # Generator exhausted normally
+                break
+            except Exception as e:
+                # Log error but let it propagate so chat_service can handle it
+                logger.error(f"Error in agent streaming for {agent_name}: {e}")
+                raise
 
 # Hot reload specific functions
 async def reload_custom_agents() -> List[str]:

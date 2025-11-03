@@ -14,8 +14,6 @@ Capabilities:
 Enhanced with tool integration capabilities for file operations.
 """
 
-import json
-import os
 import logging
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -28,93 +26,42 @@ logger = logging.getLogger(__name__)
 "z-ai/glm-4.6"
 """
 
-AGENT_MODEL_ID = "z-ai/glm-4.6"
+MODEL_NAME = "z-ai/glm-4.6"
 
 # Import required modules and backend helpers
-try:
-    import sys
-    backend_path = os.environ.get("ICOTES_BACKEND_PATH")
-    if not backend_path:
-        # Find the icotes root directory (should contain backend/ directory)
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        while current_dir and current_dir != '/':
-            backend_candidate = os.path.join(current_dir, 'backend')
-            if os.path.isdir(backend_candidate) and os.path.isdir(os.path.join(backend_candidate, 'icpy')):
-                backend_path = backend_candidate
-                break
-            current_dir = os.path.dirname(current_dir)
-        
-        if not backend_path:
-            # Fallback to relative path from workspace/.icotes/plugins/
-            backend_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "backend"))
-    
-    sys.path.append(backend_path)
+from icpy.agent.core.llm.openrouter_client import OpenRouterClientAdapter
+from icpy.agent.core.runtime.general_agent import GeneralAgent
+from icpy.agent.core.runtime.message_utils import build_safe_messages
+from icpy.agent.helpers import (
+    create_standard_agent_metadata,
+    create_environment_reload_function,
+    get_available_tools_summary,
+    ToolDefinitionLoader,
+    add_context_to_agent_prompt,
+)
 
-    # Import OpenRouter client and streaming handler + shared helpers
-    from icpy.agent.clients import get_openrouter_client
-    from icpy.agent.helpers import (
-        create_standard_agent_metadata,
-        create_environment_reload_function,
-        get_available_tools_summary,
-        ToolDefinitionLoader,
-        OpenAIStreamingHandler,
-        add_context_to_agent_prompt,
-    )
+# Agent metadata using helper
+AGENT_METADATA = create_standard_agent_metadata(
+    name="OpenRouterAgentCreator",
+    description="An AI agent (OpenRouter) that helps you create other custom agents using file editing tools",
+    version="1.0.0",
+    author="Hot Reload System",
+    model=MODEL_NAME,
+)
 
-    DEPENDENCIES_AVAILABLE = True
-    logger.info("All dependencies available for OpenRouterAgentCreator")
+# Individual metadata fields for backward compatibility
+AGENT_NAME = AGENT_METADATA["AGENT_NAME"]
+AGENT_DESCRIPTION = AGENT_METADATA["AGENT_DESCRIPTION"]
+AGENT_VERSION = AGENT_METADATA["AGENT_VERSION"]
+AGENT_AUTHOR = AGENT_METADATA["AGENT_AUTHOR"]
 
-    # Agent metadata using helper (after import)
-    AGENT_METADATA = create_standard_agent_metadata(
-        name="OpenRouterAgentCreator",
-        description="An AI agent (OpenRouter) that helps you create other custom agents using file editing tools",
-        version="1.0.0",
-        author="Hot Reload System",
-        model=AGENT_MODEL_ID,
-    )
-
-    # Individual metadata fields for backward compatibility
-    MODEL_NAME = AGENT_METADATA["MODEL_NAME"]
-    AGENT_NAME = AGENT_METADATA["AGENT_NAME"]
-    AGENT_DESCRIPTION = AGENT_METADATA["AGENT_DESCRIPTION"]
-    AGENT_VERSION = AGENT_METADATA["AGENT_VERSION"]
-    AGENT_AUTHOR = AGENT_METADATA["AGENT_AUTHOR"]
-
-    # Create standardized reload function using helper
-    reload_env = create_environment_reload_function([
-        "icpy.agent.helpers",
-        "icpy.agent.clients",
-    ])
-
-except ImportError as e:
-    logger.warning(f"Dependencies not available for OpenRouterAgentCreator: {e}")
-    DEPENDENCIES_AVAILABLE = False
-
-    # Fallback metadata if helpers are not available
-    MODEL_NAME = AGENT_MODEL_ID
-    AGENT_NAME = "OpenRouterAgentCreator"
-    AGENT_DESCRIPTION = "An AI agent (OpenRouter) that helps you create other custom agents using file editing tools"
-    AGENT_VERSION = "1.0.0"
-    AGENT_AUTHOR = "Hot Reload System"
-
-    # Fallback reload function
-    def reload_env():
-        global DEPENDENCIES_AVAILABLE
-        DEPENDENCIES_AVAILABLE = False
-        logger.info("Dependencies still not available after reload")
-        return False
-
-    # Fallback metadata object with standard keys
-    AGENT_METADATA = {
-        "AGENT_NAME": AGENT_NAME,
-        "AGENT_DESCRIPTION": AGENT_DESCRIPTION,
-        "AGENT_VERSION": AGENT_VERSION,
-        "AGENT_AUTHOR": AGENT_AUTHOR,
-        "MODEL_NAME": MODEL_NAME,
-        "AGENT_MODEL_ID": AGENT_MODEL_ID,
-        "status": "error",
-        "error": f"Dependencies not available: {e}",
-    }
+# Create standardized reload function using helper
+reload_env = create_environment_reload_function([
+    "icpy.agent.helpers",
+    "icpy.agent.core.llm.openrouter_client",
+    "icpy.agent.core.runtime.general_agent",
+    "icpy.agent.core.runtime.message_utils",
+])
 
 
 def get_tools():
@@ -123,10 +70,6 @@ def get_tools():
 
     Returns OpenAI-compatible tool definitions for OpenRouter.
     """
-    if not DEPENDENCIES_AVAILABLE:
-        logger.warning("Dependencies not available, returning empty tools list")
-        return []
-
     try:
         loader = ToolDefinitionLoader()
         # Use OpenAI tool schema for OpenRouter compatibility
@@ -152,10 +95,6 @@ def chat(message, history):
     Yields:
         str - Response chunks for streaming
     """
-    if not DEPENDENCIES_AVAILABLE:
-        yield "🚫 Dependencies not available for OpenRouterAgentCreator. Please check your OpenRouter configuration."
-        return
-
     # Enhanced system prompt with tools information and context
     base_system_prompt = f"""You are OpenRouterAgentCreator, an expert AI agent specialized in helping developers create custom agents for icotes using powerful file editing tools.
 
@@ -220,28 +159,14 @@ Be helpful, practical, and focus on creating working solutions."""
     system_prompt = add_context_to_agent_prompt(base_system_prompt)
 
     try:
-        # Initialize OpenRouter client
-        client = get_openrouter_client()
+        # Prepare messages using shared utility
+        safe_messages = build_safe_messages(message, history)
 
-        # Handle JSON string history (gradio compatibility)
-        if isinstance(history, str):
-            try:
-                history = json.loads(history) or []
-            except json.JSONDecodeError:
-                logger.warning("Invalid JSON for history; defaulting to empty list")
-                history = []
-        if not isinstance(history, list):
-            logger.warning(f"Unexpected history type {type(history)}; defaulting to []")
-            history = []
-
-        # Build conversation messages
-        system_message = {"role": "system", "content": system_prompt}
-        messages = [system_message, *history, {"role": "user", "content": message}]
-
-        # Create streaming handler and process (OpenAI-style for OpenRouter compatibility)
-        handler = OpenAIStreamingHandler(client, MODEL_NAME)
-        logger.info("OpenRouterAgentCreator: Starting chat with tools using OpenRouter")
-        yield from handler.stream_chat_with_tools(messages)
+        # Delegate to generalized agent using OpenRouter adapter
+        adapter = OpenRouterClientAdapter()
+        ga = GeneralAgent(adapter, model=MODEL_NAME)
+        logger.info("OpenRouterAgentCreator: Starting chat with tools using GeneralAgent")
+        yield from ga.run(system_prompt=system_prompt, messages=safe_messages)
         logger.info("OpenRouterAgentCreator: Chat completed successfully")
 
     except Exception as e:
