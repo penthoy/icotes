@@ -40,6 +40,28 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', high
   const { isDark } = useTheme();
   const [copiedStates, setCopiedStates] = useState<Record<string, boolean>>({});
   
+  // Simple highlighter for plain text (user messages)
+  const renderHighlightedPlainText = useCallback((text: string, query: string) => {
+    if (!query || !text) return text;
+    const q = query.toLowerCase();
+    const parts: React.ReactNode[] = [];
+    let i = 0;
+    let start = 0;
+    const lower = text.toLowerCase();
+    while ((i = lower.indexOf(q, start)) !== -1) {
+      if (i > start) {
+        parts.push(text.slice(start, i));
+      }
+      const match = text.slice(i, i + q.length);
+      parts.push(
+        <mark key={`mark-${i}`} className="icui-mark">{match}</mark>
+      );
+      start = i + q.length;
+    }
+    if (start < text.length) parts.push(text.slice(start));
+    return parts.length > 0 ? parts : text;
+  }, []);
+  
   // Attachment rendering helper
   const renderAttachment = useCallback((attachment: MediaAttachment, index: number) => {
     // Determine if this is an explorer reference (not an uploaded media asset)
@@ -202,15 +224,23 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', high
       visit(tree, 'text', (node: any, index: number, parent: any) => {
         const value: string = node.value;
         const lower = value.toLowerCase();
-        const idx = lower.indexOf(q);
-        if (idx === -1 || !parent || typeof value !== 'string') return;
-        const before = value.slice(0, idx);
-        const match = value.slice(idx, idx + q.length);
-        const after = value.slice(idx + q.length);
+        if (!parent || typeof value !== 'string') return;
+        let start = 0;
+        let pos = lower.indexOf(q, start);
+        if (pos === -1) return;
         const children: any[] = [];
-        if (before) children.push({ type: 'text', value: before });
-        children.push({ type: 'element', tagName: 'mark', properties: { className: ['icui-mark'] }, children: [{ type: 'text', value: match }] });
-        if (after) children.push({ type: 'text', value: after });
+        while (pos !== -1) {
+          if (pos > start) {
+            children.push({ type: 'text', value: value.slice(start, pos) });
+          }
+          const match = value.slice(pos, pos + q.length);
+          children.push({ type: 'element', tagName: 'mark', properties: { className: ['icui-mark'] }, children: [{ type: 'text', value: match }] });
+          start = pos + q.length;
+          pos = lower.indexOf(q, start);
+        }
+        if (start < value.length) {
+          children.push({ type: 'text', value: value.slice(start) });
+        }
         parent.children.splice(index!, 1, ...children);
       });
     };
@@ -509,7 +539,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', high
         >
           {/* User Message Content - Simple text, no markdown */}
           <div className="whitespace-pre-wrap break-words">
-            {message.content}
+            {renderHighlightedPlainText(message.content, highlightQuery)}
           </div>
           
           {/* User Message Attachments */}
