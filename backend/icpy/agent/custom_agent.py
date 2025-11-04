@@ -186,10 +186,10 @@ def get_agent_chat_function(agent_name: str) -> Callable:
                     
                     with concurrent.futures.ThreadPoolExecutor() as executor:
                         future = executor.submit(init_registry)
-                        agents = future.result(timeout=5)  # 5 second timeout
+                        _ = future.result(timeout=5)  # 5 second timeout
                 else:
                     # No running loop, safe to use run_until_complete
-                    agents = loop.run_until_complete(registry.discover_and_load())
+                    _ = loop.run_until_complete(registry.discover_and_load())
             except Exception as init_error:
                 logger.warning(f"Failed to initialize registry: {init_error}")
         

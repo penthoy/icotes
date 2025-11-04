@@ -18,7 +18,6 @@ import base64
 from typing import Dict, Any, Optional
 from .base_tool import BaseTool, ToolResult
 from .context_helpers import get_contextual_filesystem
-from icpy.services.path_utils import get_display_path_info
 
 logger = logging.getLogger(__name__)
 

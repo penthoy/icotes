@@ -26,15 +26,11 @@ from icpy.agent.core.llm.openai_client import OpenAIClientAdapter
 from icpy.agent.core.runtime.general_agent import GeneralAgent
 from icpy.agent.core.runtime.message_utils import build_safe_messages
 from icpy.agent.helpers import (
-    create_agent_chat_function, 
     get_available_tools_summary,
     ToolDefinitionLoader,
-    ToolExecutor,
     create_standard_agent_metadata,
     create_environment_reload_function,
-    create_agent_context,
     add_context_to_agent_prompt,
-    format_agent_context_for_prompt
 )
 
 # Agent metadata using helper

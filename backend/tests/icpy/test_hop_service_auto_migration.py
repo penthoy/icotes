@@ -46,7 +46,7 @@ class TestAutoMigration:
         # Mock should_migrate to return False
         with patch('icpy.services.hop_service.should_migrate', return_value=False):
             with patch('icpy.services.hop_service.migrate_credentials_to_config') as mock_migrate:
-                service = HopService()
+                _ = HopService()
                 
                 # Should not call migration
                 mock_migrate.assert_not_called()
@@ -57,7 +57,7 @@ class TestAutoMigration:
         
         with patch('icpy.services.hop_service.should_migrate', return_value=False):
             with patch('icpy.services.hop_service.migrate_credentials_to_config') as mock_migrate:
-                service = HopService()
+                _ = HopService()
                 
                 mock_migrate.assert_not_called()
     
@@ -88,7 +88,7 @@ class TestAutoMigration:
         
         with patch('icpy.services.hop_service.should_migrate', return_value=True):
             with patch('icpy.services.hop_service.migrate_credentials_to_config', return_value=mock_result) as mock_migrate:
-                service = HopService()
+                _ = HopService()
                 
                 # Should call migration once
                 mock_migrate.assert_called_once()
@@ -121,7 +121,7 @@ class TestAutoMigration:
         with patch('icpy.services.hop_service.should_migrate', return_value=True):
             with patch('icpy.services.hop_service.migrate_credentials_to_config', return_value=mock_result):
                 with patch('icpy.services.hop_service.logger') as mock_logger:
-                    service = HopService()
+                    _ = HopService()
                     
                     # Should log warning
                     warning_calls = [call for call in mock_logger.warning.call_args_list]

@@ -34,7 +34,7 @@ class TestAutoMigration:
         config_path.write_text("# Existing config\n")
         
         # Initialize service (should not migrate)
-        service = HopService()
+        _ = HopService()
         
         # Config should still exist unchanged
         assert config_path.exists()
@@ -43,7 +43,7 @@ class TestAutoMigration:
     def test_no_migration_when_no_json(self, clean_hop_dir):
         """Should not migrate if no JSON file exists."""
         # Initialize service (should not migrate)
-        service = HopService()
+        _ = HopService()
         
         hop_dir = clean_hop_dir / ".icotes" / "hop"
         config_path = hop_dir / "config"
@@ -77,7 +77,7 @@ class TestAutoMigration:
         key_path.write_text("-----BEGIN OPENSSH PRIVATE KEY-----\nfake key\n-----END OPENSSH PRIVATE KEY-----")
         
         # Initialize service (should trigger migration)
-        service = HopService()
+        _ = HopService()
         
         # Config should be created
         config_path = hop_dir / "config"
@@ -209,7 +209,7 @@ class TestAutoMigration:
         creds_file.write_text(json.dumps(creds_data))
         
         # First startup - should migrate
-        service1 = HopService()
+        _ = HopService()
         config_path = hop_dir / "config"
         assert config_path.exists()
         
@@ -218,7 +218,7 @@ class TestAutoMigration:
         config_path.write_text(original_content + "\n# Manual edit\n")
         
         # Second startup - should NOT re-migrate
-        service2 = HopService()
+        _ = HopService()
         
         # Manual edit should still be there
         assert "# Manual edit" in config_path.read_text()
@@ -250,7 +250,7 @@ class TestMigrationEdgeCases:
         creds_file.write_text(json.dumps(creds_data))
         
         # Should not crash
-        service = HopService()
+        _ = HopService()
         
         # Config should still be created
         config_path = clean_hop_dir / ".icotes" / "hop" / "config"

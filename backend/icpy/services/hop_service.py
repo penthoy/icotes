@@ -25,7 +25,7 @@ from typing import Dict, List, Optional, Tuple
 from contextlib import asynccontextmanager
 
 from ..utils.logging import sanitize_log_message, mask_credential_value
-from ..utils.ssh_config_parser import parse_ssh_config, SSHConfigEntry
+from ..utils.ssh_config_parser import parse_ssh_config
 from ..utils.ssh_config_writer import generate_ssh_config, credential_to_config_entry
 from ..scripts.migrate_hop_config import should_migrate, migrate_credentials_to_config
 

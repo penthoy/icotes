@@ -11,7 +11,7 @@ This module provides detailed logging to track:
 import logging
 import time
 import functools
-from typing import Any, Callable
+from typing import Callable
 from datetime import datetime
 
 logger = logging.getLogger(__name__)

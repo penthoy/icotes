@@ -15,7 +15,6 @@ import hashlib
 from typing import Dict, Any, Optional
 from .base_tool import BaseTool, ToolResult
 from .context_helpers import get_contextual_filesystem
-from icpy.services.path_utils import get_display_path_info
 try:
     # Optional import for namespace-specific FS resolution
     from icpy.services.context_router import get_context_router
@@ -115,8 +114,17 @@ class CreateFileTool(BaseTool):
                     # Normal relative path from workspace root
                     normalized_path = os.path.abspath(os.path.join(workspace_root, file_path))
             
-            # Check if the normalized path is within workspace
-            if not normalized_path.startswith(workspace_root):
+            # Check if the normalized path is within workspace using canonical paths
+            # This prevents bypass with paths like /workspace_bad or /workspace2
+            try:
+                canonical_workspace = os.path.realpath(workspace_root)
+                canonical_path = os.path.realpath(normalized_path)
+                # Ensure the canonical path starts with the canonical workspace
+                # os.path.commonpath will be the workspace if path is within it
+                if os.path.commonpath([canonical_workspace, canonical_path]) != canonical_workspace:
+                    return None
+            except (ValueError, OSError):
+                # commonpath can raise ValueError on Windows with different drives
                 return None
             
             return normalized_path

@@ -141,7 +141,7 @@ class TestDualFormatSaving:
         service = HopService()
         
         # Create new credential
-        new_cred = service.create_credential({
+        _ = service.create_credential({
             "name": "server2",
             "host": "192.168.1.101",
             "port": 22,

@@ -22,8 +22,6 @@ from icpy.agent.helpers import (
     create_environment_reload_function,
     get_available_tools_summary,
     add_context_to_agent_prompt,
-    flatten_message_content,
-    normalize_history,
     BASE_SYSTEM_PROMPT_TEMPLATE,
 )
 from icpy.agent.core.llm.openai_client import OpenAIClientAdapter

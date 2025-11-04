@@ -788,8 +788,9 @@ export class ChatBackendClient {
 
   private handleStreamingMessage(data: any): void {
     // console.log('[ChatBackendClient] Streaming message data:', data);
-    // If we've been interrupted or not streaming anymore, ignore further chunks/ends
-    if ((!this.isStreaming || this.stopRequested) && (data.stream_chunk || data.stream_end)) {
+    // If we've been interrupted (stopRequested), ignore further chunks/ends
+    // Don't check isStreaming here because stream_chunk may arrive before stream_start
+    if (this.stopRequested && (data.stream_chunk || data.stream_end)) {
       // Silently ignore to prevent UI flicker
       return;
     }
