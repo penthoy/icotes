@@ -88,6 +88,28 @@ export const ICUILayout: React.FC<ICUILayoutProps> = ({
   // Add ref to track previous layout for change detection
   const prevLayoutRef = useRef<ICUILayoutConfig>(currentLayout);
   
+  // Track the last layout prop we received to avoid re-processing same prop
+  const lastLayoutPropRef = useRef<ICUILayoutConfig | null>(null);
+
+  // Helper: sanitize a layout so that each area's activePanelId exists in its panelIds
+  const sanitizeLayout = useCallback((cfg: ICUILayoutConfig): ICUILayoutConfig => {
+    const sanitizedAreas: Record<string, ICUILayoutArea> = {};
+    Object.keys(cfg.areas || {}).forEach((areaId) => {
+      const area = cfg.areas[areaId];
+      if (!area) return;
+      let nextActive = area.activePanelId;
+      if (nextActive && !area.panelIds.includes(nextActive)) {
+        console.warn(
+          `[LAYOUT-SANITIZE] Area "${areaId}": invalid activePanelId "${nextActive}" not in panelIds, correcting`,
+          area.panelIds
+        );
+        nextActive = area.panelIds[0];
+      }
+      sanitizedAreas[areaId] = { ...area, activePanelId: nextActive };
+    });
+    return { ...cfg, areas: sanitizedAreas };
+  }, []);
+  
   // Log layout changes to detect cascading updates
   useEffect(() => {
     const prev = prevLayoutRef.current;
@@ -153,7 +175,10 @@ export const ICUILayout: React.FC<ICUILayoutProps> = ({
             ...parsedLayout,
             areas: mergedAreas,
           };
-          setCurrentLayout(mergedLayout);
+          // Final sanitation in case upstream state was corrupted
+          const sanitized = sanitizeLayout(mergedLayout);
+          lastLayoutPropRef.current = sanitized; // Track this as processed
+          setCurrentLayout(sanitized);
         } catch (error) {
           console.warn('Failed to load persisted layout:', error);
           setCurrentLayout(layout || defaultLayout);
@@ -165,16 +190,40 @@ export const ICUILayout: React.FC<ICUILayoutProps> = ({
     } else {
       setCurrentLayout(layout || defaultLayout);
     }
-  }, [persistLayout, layoutKey]);
+  }, [persistLayout, layoutKey, sanitizeLayout]);
 
-  // Update layout when prop changes (only if it's actually different)
+  // Update layout when prop changes (only if the prop itself changed, not our internal state)
   useEffect(() => {
-    if (layout && JSON.stringify(layout) !== JSON.stringify(currentLayout)) {
-      setCurrentLayout(layout);
-    }
-  }, [layout]);
+    if (!layout) return;
 
-  // Save layout changes and call onLayoutChange (only when user makes changes, not prop updates)
+    // Check if this is the same prop object we already processed
+    if (lastLayoutPropRef.current && JSON.stringify(layout) === JSON.stringify(lastLayoutPropRef.current)) {
+      return; // Already processed this prop value
+    }
+
+    // Check if the prop is different from our current state
+    if (JSON.stringify(layout) === JSON.stringify(currentLayout)) {
+      // Prop matches current state, just update our ref and skip
+      lastLayoutPropRef.current = layout;
+      return;
+    }
+
+    // New prop value that differs from current state - sanitize and apply
+    const sanitized = sanitizeLayout(layout);
+
+    // If sanitization yields the same structure we already hold, ignore
+    if (JSON.stringify(sanitized) === JSON.stringify(currentLayout)) {
+      console.log('[LAYOUT-PROP-IGNORE] Prop update sanitized to current layout, skipping');
+      lastLayoutPropRef.current = layout;
+      return;
+    }
+
+    console.log('[LAYOUT-PROP-SYNC] Applying layout prop update');
+    lastLayoutPropRef.current = layout;
+    setCurrentLayout(sanitized);
+  }, [layout, sanitizeLayout]);
+
+  // Save layout changes and call onLayoutChange
   const [isInitialized, setIsInitialized] = useState(false);
   useEffect(() => {
     if (!isInitialized) {
@@ -185,9 +234,11 @@ export const ICUILayout: React.FC<ICUILayoutProps> = ({
     if (persistLayout && layoutKey) {
       localStorage.setItem(layoutKey, JSON.stringify(currentLayout));
     }
-    // Call onLayoutChange only for user-initiated changes
+    
+    // Always call onLayoutChange - let parent decide what to do
+    // The prop-change effect will ignore echoes by checking lastLayoutPropRef
     onLayoutChange?.(currentLayout);
-  }, [currentLayout, persistLayout, layoutKey, isInitialized]);
+  }, [currentLayout, persistLayout, layoutKey, isInitialized, onLayoutChange]);
 
   // Get panels for a specific area
   const getPanelsForArea = useCallback((areaId: string): ICUIPanel[] => {
@@ -201,6 +252,8 @@ export const ICUILayout: React.FC<ICUILayoutProps> = ({
 
   // Handle panel activation
   const handlePanelActivate = useCallback((areaId: string, panelId: string) => {
+    // Trace activation intent for debugging oscillations
+    console.log(`[LAYOUT-ACTIVATE-REQ] area=${areaId} panel=${panelId}`);
     setCurrentLayout(prev => {
       const area = prev.areas[areaId];
       if (!area) {

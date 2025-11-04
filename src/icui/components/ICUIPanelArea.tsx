@@ -1,22 +1,6 @@
 /**
  * ICUI Enhanced Panel Area Component
- * Provides advance}) => {
-  const [dragOver, setDragOver] = useState(false);
-  const [isDragging, setIsDragging] = useState(false); // Track if a drag is in progress
-  const dragCounter = useRef(0);
-
-  // Stable local active tab state to avoid ping-pong with fallback logic
-  const [localActiveTabId, setLocalActiveTabId] = useState<string>(() => {
-    return activePanelId || panels[0]?.id || '';
-  });
-
-  // Keep local active tab in sync with prop changes, but don't override unnecessarily
-  useEffect(() => {
-    if (activePanelId && activePanelId !== localActiveTabId && !isDragging) {
-      setLocalActiveTabId(activePanelId);
-    }
-  }, [activePanelId, localActiveTabId, isDragging]);nctionality extracted from ICUITest3/4
- * Handles panel docking, tab management, and drag/drop between areas
+ * Handles panel docking, tab management, and drag/drop between areas.
  */
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
@@ -81,7 +65,8 @@ export const ICUIPanelArea: React.FC<ICUIPanelAreaProps> = ({
 
   // Stable local active tab state to avoid ping-pong with fallback logic
   const [localActiveTabId, setLocalActiveTabId] = useState<string>(() => {
-    return activePanelId || panels[0]?.id || '';
+    // Do NOT preselect first panel on mount; wait for a valid parent id or a valid fallback
+    return activePanelId || '';
   });
 
   // Track if we initiated the change to prevent sync feedback loop
@@ -100,7 +85,13 @@ export const ICUIPanelArea: React.FC<ICUIPanelAreaProps> = ({
       isLocalChangeRef.current = false;
       return;
     }
-    
+
+    // Validate parent-provided id actually exists in this area's panels
+    if (activePanelId && !panels.some(p => p.id === activePanelId)) {
+      console.warn(`[PANEL-AREA-SYNC-INVALID] Area ${id}: parent activePanelId "${activePanelId}" not found in panels`, panels.map(p => p.id));
+      return; // Ignore invalid parent id to avoid oscillation
+    }
+
     if (activePanelId && activePanelId !== localActiveTabId) {
       const now = Date.now();
       const lastId = lastParentActiveIdRef.current;
@@ -131,6 +122,12 @@ export const ICUIPanelArea: React.FC<ICUIPanelAreaProps> = ({
 
   // When panels change (reorder/add/remove), ensure the active tab still exists
   useEffect(() => {
+    // If panels aren't ready yet, don't attempt fallback
+    if (panels.length === 0) {
+      console.log(`[PANEL-AREA-FALLBACK-SKIP] Area ${id}: panels not ready yet, skipping fallback`);
+      return;
+    }
+
     // If current active tab no longer exists, select a sensible default
     const exists = panels.some(p => p.id === localActiveTabId);
     if (!exists) {
