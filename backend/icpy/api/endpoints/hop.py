@@ -209,8 +209,16 @@ async def status():
     session = service.status()
     logger.info(f"[HopAPI] Status requested: status={session.status} contextId={session.contextId} host={session.host}")
     
-    # Convert session to dict for response (credentialName already included)
+    # Convert session to dict for response; enrich with credentialName when available
     payload = session.__dict__.copy()
+    try:
+        cred_id = getattr(session, 'credentialId', None)
+        if cred_id:
+            cred = service.get_credential(cred_id)
+            if cred:
+                payload['credentialName'] = cred.get('name')
+    except Exception:
+        pass
     
     try:
         broker = await get_message_broker()

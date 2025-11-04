@@ -166,7 +166,12 @@ Be helpful, practical, and focus on creating working solutions."""
         adapter = OpenRouterClientAdapter()
         ga = GeneralAgent(adapter, model=MODEL_NAME)
         logger.info("OpenRouterAgentCreator: Starting chat with tools using GeneralAgent")
-        yield from ga.run(system_prompt=system_prompt, messages=safe_messages)
+        tools = []
+        try:
+            tools = ToolDefinitionLoader().get_openai_tools()
+        except Exception:
+            pass
+        yield from ga.run(system_prompt=system_prompt, messages=safe_messages, tools=tools)
         logger.info("OpenRouterAgentCreator: Chat completed successfully")
 
     except Exception as e:

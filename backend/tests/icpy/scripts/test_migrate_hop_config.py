@@ -5,6 +5,7 @@ Following TDD approach: write tests first, then implement.
 """
 
 import json
+import shutil
 import pytest
 from pathlib import Path
 from icpy.scripts.migrate_hop_config import (

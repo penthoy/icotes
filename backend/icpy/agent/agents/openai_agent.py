@@ -21,6 +21,7 @@ from icpy.agent.helpers import (
     create_standard_agent_metadata,
     create_environment_reload_function,
     get_available_tools_summary,
+    ToolDefinitionLoader,
     add_context_to_agent_prompt,
     BASE_SYSTEM_PROMPT_TEMPLATE,
 )
@@ -73,7 +74,13 @@ def chat(message: str, history: List[Dict[str, str]]) -> Generator[str, None, No
         adapter = OpenAIClientAdapter()
         ga = GeneralAgent(adapter, model=MODEL_NAME)
         logger.info("OpenAIAgent: Starting chat with tools using GeneralAgent")
-        yield from ga.run(system_prompt=system_prompt, messages=safe_messages)
+        # Load tool definitions and pass through
+        tools = []
+        try:
+            tools = ToolDefinitionLoader().get_openai_tools()
+        except Exception:
+            pass
+        yield from ga.run(system_prompt=system_prompt, messages=safe_messages, tools=tools)
         logger.info("OpenAIAgent: Chat completed successfully")
 
     except Exception as e:
