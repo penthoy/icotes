@@ -53,7 +53,7 @@ try:
     sys.path.append(backend_path)
 
     # Import native Google SDK for image generation (Google Gen AI SDK)
-    import google.genai as genai
+    import google.generativeai as genai
     from icpy.agent.helpers import (
         create_standard_agent_metadata,
         create_environment_reload_function,
@@ -438,10 +438,18 @@ Please create an image that exactly matches what the user described. Be precise 
                 yield "\n🔧 **Tool execution complete. Continuing...**\n\n"
                 
                 logger.info("NanoBananaAgent: Yielded image tool call with input")
+                
+                # Provide a friendly confirmation message
+                if saved_file_path:
+                    yield f"✅ Successfully generated your image! Saved as `{saved_file_path}`\n"
+                else:
+                    yield "✅ Successfully generated your image!\n"
             else:
                 logger.warning("NanoBananaAgent: Could not extract image data")
+                yield "⚠️ Image generation completed but could not extract image data from response.\n"
         else:
             logger.info("NanoBananaAgent: No images found in response")
+            yield "⚠️ The model responded but did not generate an image. Please try rephrasing your request.\n"
         
         logger.info("NanoBananaAgent: Chat completed")
 

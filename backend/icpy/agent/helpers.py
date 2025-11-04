@@ -19,11 +19,36 @@ import concurrent.futures
 import copy
 import os
 import platform
+from contextvars import ContextVar
 from datetime import datetime, timezone
 from typing import Dict, List, Any, AsyncGenerator, Optional, Tuple, Callable
 
 from .tools import get_tool_registry, ToolResult
 from .debug_interceptor import get_interceptor, get_context_snapshot
+
+# Phase 2: Context variable to store vendor-specific metadata across async calls
+_vendor_metadata: ContextVar[Optional[Dict[str, Any]]] = ContextVar('vendor_metadata', default=None)
+
+
+def set_vendor_metadata(vendor_parts: Optional[List[Dict]], vendor_model: Optional[str]):
+    """Store vendor-specific metadata in context for later retrieval by chat service."""
+    if vendor_parts or vendor_model:
+        _vendor_metadata.set({
+            'vendor_parts': vendor_parts,
+            'vendor_model': vendor_model
+        })
+    else:
+        _vendor_metadata.set(None)
+
+
+def get_vendor_metadata() -> Optional[Dict[str, Any]]:
+    """Retrieve vendor-specific metadata from context."""
+    return _vendor_metadata.get()
+
+
+def clear_vendor_metadata():
+    """Clear vendor-specific metadata from context."""
+    _vendor_metadata.set(None)
 
 
 def get_openai_token_param(model_name: str, max_tokens: int) -> dict:
@@ -80,7 +105,11 @@ __all__ = [
     'flatten_message_content',
     'normalize_history',
     # Prompt templates
-    'BASE_SYSTEM_PROMPT_TEMPLATE'
+    'BASE_SYSTEM_PROMPT_TEMPLATE',
+    # Vendor metadata (Phase 2)
+    'set_vendor_metadata',
+    'get_vendor_metadata',
+    'clear_vendor_metadata',
 ]
 
 logger = logging.getLogger(__name__)
@@ -332,20 +361,32 @@ class ToolExecutor:
         Synchronous wrapper for tool execution that handles event loop properly.
         
         This is useful when calling from within an existing event loop context.
+        Works correctly whether called from main thread, async context, or executor thread.
         """
         try:
-            # Check if we're already in an event loop
+            # Try to get the running loop
             try:
                 loop = asyncio.get_running_loop()
-                # We're in an async context, create a new thread
+                # We're in an async context with a running loop
+                # We need to run in a new thread to avoid blocking
                 with concurrent.futures.ThreadPoolExecutor() as executor:
-                    future = executor.submit(asyncio.run, self.execute_tool_call(tool_name, arguments))
+                    future = executor.submit(self._run_async_in_new_loop, tool_name, arguments)
                     return future.result()
             except RuntimeError:
-                # No running loop, safe to use asyncio.run
+                # No running loop - we can create one safely
                 return asyncio.run(self.execute_tool_call(tool_name, arguments))
         except Exception as e:
             return {"success": False, "error": str(e)}
+    
+    def _run_async_in_new_loop(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """Helper to run async code in a new event loop (for executor threads)"""
+        # Create a new event loop for this thread
+        new_loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(new_loop)
+        try:
+            return new_loop.run_until_complete(self.execute_tool_call(tool_name, arguments))
+        finally:
+            new_loop.close()
 
 
 class ToolDefinitionLoader:
@@ -553,6 +594,9 @@ class OpenAIStreamingHandler:
         self.formatter = ToolResultFormatter()
         self.session_id = session_id
         self.debug_interceptor = get_interceptor(session_id) if session_id else None
+        # Phase 2: Store vendor-specific metadata from last streaming response
+        self.last_vendor_parts: Optional[List[Dict]] = None
+        self.last_vendor_model: Optional[str] = None
     
     def stream_chat_with_tools(self, messages: List[Dict[str, Any]], 
                               max_tokens: int | None = None,
@@ -718,13 +762,51 @@ class OpenAIStreamingHandler:
                 
                 # Mark request start for timing diagnostics
                 _req_start_ts = datetime.now().timestamp()
-                stream = self.client.chat.completions.create(**api_params)
+                
+                # Enhanced debug logging for Gemini troubleshooting
+                try:
+                    from icpy.utils.gemini_debug_logger import get_gemini_debug_logger
+                    gemini_debug = get_gemini_debug_logger()
+                    # Use session_id as request_id if available, otherwise create one
+                    api_request_id = self.session_id if self.session_id else f"api_{int(_req_start_ts)}"
+                    gemini_debug.log_api_call(api_request_id, self.model_name, len(conv))
+                except Exception as log_err:
+                    logger.debug(f"Failed to log API call: {log_err}")
+                    api_request_id = None
+                
+                try:
+                    stream = self.client.chat.completions.create(**api_params)
+                    
+                    # Log successful API response
+                    if api_request_id:
+                        try:
+                            gemini_debug.log_api_response(api_request_id, 200)
+                        except Exception:
+                            pass
+                except Exception as api_error:
+                    # Log API call failure
+                    if api_request_id:
+                        try:
+                            gemini_debug.log_error(api_request_id, type(api_error).__name__, str(api_error))
+                        except Exception:
+                            pass
+                    # Re-raise the original error
+                    raise
                 
                 logger.info("Starting OpenAI stream iteration with tools")
                 
                 # Process the stream and collect tool calls
-                collected_chunks, tool_calls_list, finish_reason = yield from self._process_stream(stream)
+                collected_chunks, tool_calls_list, finish_reason, vendor_parts = yield from self._process_stream(stream)
                 _req_end_ts = datetime.now().timestamp()
+                
+                # Phase 2: Store vendor_parts in context variable for retrieval by chat service
+                # Check if this is a Gemini model and vendor_parts are present
+                if vendor_parts and 'gemini' in self.model_name.lower():
+                    set_vendor_metadata(vendor_parts, self.model_name)
+                    logger.info(f"[GEMINI-DEBUG] Stored {len(vendor_parts)} vendor parts for model {self.model_name}")
+                else:
+                    # Clear for non-Gemini models or when no parts
+                    clear_vendor_metadata()
                 
                 # Log API response to debug interceptor (non-blocking)
                 if self.debug_interceptor:
@@ -742,8 +824,11 @@ class OpenAIStreamingHandler:
                         logger.debug(f"Failed to create log task: {e}")
                 
                 # If tool calls are present, handle them and then continue loop
-                if finish_reason == "tool_calls" and tool_calls_list:
+                # NOTE: Gemini's OpenAI-compat endpoint returns finish_reason="stop" even with tool calls
+                # So we check for tool_calls_list presence regardless of finish_reason
+                if tool_calls_list:
                     tool_loop_count += 1
+                    logger.info(f"[GEMINI-DEBUG] Tool calls detected | count={len(tool_calls_list)} | finish_reason={finish_reason}")
                     # Handle tool calls
                     yield from self._handle_tool_calls(conv, collected_chunks, tool_calls_list)
                     
@@ -763,7 +848,7 @@ class OpenAIStreamingHandler:
                 # Auto-continue on token limit
                 if finish_reason == "length" and auto_continue and continue_round < max_continue_rounds:
                     continue_round += 1
-                    logger.info(f"Hit token limit; auto-continuing round {continue_round}/{max_continue_rounds}")
+                    logger.info(f"[GEMINI-DEBUG] Token limit hit, auto-continuing | round={continue_round}/{max_continue_rounds}")
                     yield "\n⏭️ Output truncated by token limit. Continuing...\n\n"
                     conv.append({
                         "role": "user",
@@ -772,24 +857,70 @@ class OpenAIStreamingHandler:
                     continue
                 
                 # Otherwise, we're done (stop/content_filter/etc.)
+                logger.info(f"[GEMINI-DEBUG] Stream loop ending | finish_reason={finish_reason} | tool_loops={tool_loop_count} | continue_rounds={continue_round}")
                 break
                 
         except Exception as e:
             logger.error(f"Error in OpenAI streaming with tools: {e}")
             yield f"🚫 Error processing request: {str(e)}\n\nPlease check your configuration."
     
-    def _process_stream(self, stream) -> Tuple[List[str], List[Dict], Optional[str]]:
+    def _process_stream(self, stream) -> Tuple[List[str], List[Dict], Optional[str], Optional[List[Dict]]]:
         """
         Process OpenAI stream and collect content and tool calls.
         
         Returns:
-            Tuple of (collected_chunks, tool_calls_list, finish_reason)
+            Tuple of (collected_chunks, tool_calls_list, finish_reason, vendor_parts)
+            vendor_parts is a list of raw parts from the provider (for Gemini thought signatures)
         """
         collected_chunks = []
         collected_tool_calls = {}  # Use dict to accumulate tool calls by index
         finish_reason = None
         
+        # Phase 0: Track thought signatures for Gemini debugging
+        thought_signature_seen = False
+        parts_with_signatures = []
+        total_parts_count = 0
+        
+        # Phase 2: Collect vendor-specific parts for preservation
+        vendor_parts = []
+        
         for chunk in stream:
+            # Phase 0: Check for thought_signature or thinking fields in chunk
+            # Inspect chunk structure for vendor-specific fields
+            chunk_dict = chunk.model_dump() if hasattr(chunk, 'model_dump') else {}
+            if chunk_dict:
+                # Check choices for thought-related fields
+                for choice in chunk_dict.get('choices', []):
+                    delta = choice.get('delta', {})
+                    
+                    # Phase 2: Collect the entire delta as a vendor part if it contains relevant fields
+                    # We want to preserve: content, tool_calls, thought_signature, thinking, function_call, etc.
+                    if delta and any(key in delta for key in ['content', 'tool_calls', 'thought_signature', 'thinking', 'function_call']):
+                        vendor_parts.append({
+                            'delta': delta,
+                            'index': choice.get('index', 0),
+                            'finish_reason': choice.get('finish_reason')
+                        })
+                    
+                    # Look for thought_signature or thinking fields
+                    if 'thought_signature' in delta:
+                        thought_signature_seen = True
+                        parts_with_signatures.append({
+                            'type': 'thought_signature',
+                            'index': total_parts_count
+                        })
+                        logger.info(f"[GEMINI-DEBUG] Thought signature detected in delta | chunk_index={total_parts_count}")
+                    
+                    if 'thinking' in delta:
+                        thought_signature_seen = True
+                        parts_with_signatures.append({
+                            'type': 'thinking',
+                            'index': total_parts_count
+                        })
+                        logger.info(f"[GEMINI-DEBUG] Thinking field detected in delta | chunk_index={total_parts_count}")
+                    
+                    total_parts_count += 1
+            
             # Capture finish reason
             if chunk.choices[0].finish_reason:
                 finish_reason = chunk.choices[0].finish_reason
@@ -839,7 +970,19 @@ class OpenAIStreamingHandler:
                 }
             })
         
-        return collected_chunks, tool_calls_list, finish_reason
+        # Enhanced debug logging - log finish reason and thought signature presence
+        logger.info(
+            f"[GEMINI-DEBUG] Stream processing complete | "
+            f"finish_reason={finish_reason} | "
+            f"chunks={len(collected_chunks)} | "
+            f"tool_calls={len(tool_calls_list)} | "
+            f"thought_signatures_seen={thought_signature_seen} | "
+            f"parts_with_signatures={len(parts_with_signatures)} | "
+            f"total_parts={total_parts_count} | "
+            f"vendor_parts_collected={len(vendor_parts)}"
+        )
+        
+        return collected_chunks, tool_calls_list, finish_reason, vendor_parts
     
     def _sanitize_tool_result_for_llm(self, tool_name: str, result: Dict[str, Any]) -> Dict[str, Any]:
         """

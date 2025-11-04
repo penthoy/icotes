@@ -263,6 +263,13 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', high
     const blocks: Array<{ type: 'text' | 'toolCall'; content?: string; toolCall?: ToolCallData }> = [];
     const { content, toolCalls } = parsedResult;
 
+    // DEBUG: Log raw content structure for inline code rendering investigation
+    if (message.content && message.content.includes('`') && message.sender === 'ai') {
+      console.log('[INLINE-CODE-DEBUG] Raw message.content:', message.content.substring(0, 500));
+      console.log('[INLINE-CODE-DEBUG] Parsed content:', content.substring(0, 500));
+      console.log('[INLINE-CODE-DEBUG] Tool calls count:', toolCalls.length);
+    }
+
     // If no tool calls, just return cleaned content
     if (toolCalls.length === 0) {
       const clean = getActiveModelHelper().stripAllToolText(content || message.content || '');
@@ -329,6 +336,18 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', high
         .forEach(tc => blocks.push({ type: 'toolCall', toolCall: tc }));
     }
 
+    // DEBUG: Log final blocks structure for inline code rendering investigation
+    if (message.content && message.content.includes('`') && message.sender === 'ai') {
+      console.log('[INLINE-CODE-DEBUG] Final blocks count:', blocks.length);
+      blocks.forEach((block, idx) => {
+        if (block.type === 'text') {
+          console.log(`[INLINE-CODE-DEBUG] Block ${idx} (text):`, block.content?.substring(0, 200));
+        } else {
+          console.log(`[INLINE-CODE-DEBUG] Block ${idx} (toolCall):`, block.toolCall?.output);
+        }
+      });
+    }
+
     return blocks;
   }, [parsedResult, message.content]);
 
@@ -358,6 +377,11 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', high
     const blockIdRef = React.useRef<string>(`${message.id}-${Math.random().toString(36).slice(2, 11)}`);
     const blockId = blockIdRef.current;
     const isCopied = copiedStates[blockId];
+
+    // DEBUG: Log inline code rendering
+    if (inline && typeof children === 'string' && children.length < 50) {
+      console.log('[INLINE-CODE-DEBUG] CodeBlock inline rendering:', { inline, children });
+    }
 
     if (inline) {
       return (

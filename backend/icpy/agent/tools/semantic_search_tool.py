@@ -310,13 +310,13 @@ class SemanticSearchTool(BaseTool):
                 fs = await get_contextual_filesystem()
                 if hasattr(fs, 'search_files') and callable(getattr(fs, 'search_files')):
                     logger.info("[SemanticSearch] Using filesystem.search_files() remote strategy")
+                    # Note: RemoteFileSystemAdapter.search_files doesn't accept 'scope' parameter
+                    # The search is always relative to the current working directory
                     raw = await fs.search_files(
                         query=query,
-                        scope=scope,
+                        search_content=True,
                         file_types=file_types,
-                        include_hidden=include_hidden,
-                        max_results=max_results,
-                        mode=mode,
+                        max_results=max_results
                     )
                     results: List[Dict[str, Any]] = []
                     # Normalize results from adapter into common shape

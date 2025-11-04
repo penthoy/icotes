@@ -6,6 +6,7 @@ Shares message preparation logic with other agents to keep behavior consistent.
 """
 
 import logging
+import os
 from typing import Dict, List, Generator, Any
 
 from icpy.agent.helpers import (
@@ -30,6 +31,27 @@ gemini-2.5-pro
 """
 MODEL_NAME = "gemini-2.5-pro"
 
+# Phase 5: Feature flags for thought signature support
+# Default ON - thought signatures solve premature task completion in Gemini 2.5
+GEMINI_THOUGHT_SIGNATURES = os.getenv('GEMINI_THOUGHT_SIGNATURES', 'on').lower() not in ('off', 'false', '0')
+GEMINI_USE_GOOGLE_SDK = os.getenv('GEMINI_USE_GOOGLE_SDK', 'auto').lower()
+GEMINI_THINKING_BUDGET = os.getenv('GEMINI_THINKING_BUDGET')  # Optional int
+GEMINI_INCLUDE_THOUGHT_SUMMARIES = os.getenv('GEMINI_INCLUDE_THOUGHT_SUMMARIES', 'false').lower() in ('true', '1')
+
+# Phase 5: Gemini-specific system prompt addition for better statefulness
+GEMINI_CONTEXT_PROMPT = """
+When working on multi-step tasks:
+1. At the start of each thinking phase, briefly recap your current progress and remaining steps
+2. Do not conclude or say "done" until ALL requested steps are verified complete
+3. If using tools multiple times, track which operations succeeded and what remains
+
+Formatting guidelines:
+- Present information in clear, natural prose using standard markdown formatting
+- Use headings, lists, and emphasis naturally without adding meta-labels
+- For code blocks, use standard markdown code fences with language specifiers
+- Avoid redundant content-type labels (like 'text', 'code', etc.) in your responses
+"""
+
 AGENT_METADATA = create_standard_agent_metadata(
     name=AGENT_NAME,
     description=AGENT_DESCRIPTION,
@@ -51,13 +73,26 @@ def chat(message: str, history: List[Dict[str, Any]]) -> Generator[str, None, No
     try:
         tools_summary = get_available_tools_summary()
         base_system_prompt = BASE_SYSTEM_PROMPT_TEMPLATE.format(AGENT_NAME=AGENT_NAME, TOOLS_SUMMARY=tools_summary)
+        
+        # Phase 5: Add Gemini-specific context prompt for better multi-step task handling
+        if GEMINI_THOUGHT_SIGNATURES:
+            base_system_prompt += f"\n\n{GEMINI_CONTEXT_PROMPT}"
+            logger.info("[GEMINI-DEBUG] Added context tracking prompt (thought signatures enabled)")
+        
         system_prompt = add_context_to_agent_prompt(base_system_prompt)
 
         safe_messages = build_safe_messages(message, history)
 
         adapter = GeminiClientAdapter()
         ga = GeneralAgent(adapter, model=MODEL_NAME)
-        logger.info("GeminiAgent: Starting chat with tools using GeneralAgent")
+        
+        logger.info(
+            f"GeminiAgent: Starting chat with tools using GeneralAgent | "
+            f"thought_signatures={GEMINI_THOUGHT_SIGNATURES} | "
+            f"use_sdk={GEMINI_USE_GOOGLE_SDK} | "
+            f"thinking_budget={GEMINI_THINKING_BUDGET}"
+        )
+        
         yield from ga.run(system_prompt=system_prompt, messages=safe_messages)
         logger.info("GeminiAgent: Chat completed successfully")
     except Exception as e:

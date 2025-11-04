@@ -67,10 +67,14 @@ class ChatMessage:
     # Phase 0 media groundwork: list of attachment metadata dicts
     # Each attachment dict (Phase 1+) will contain: id, filename, mime_type, size, url (or relative path), and optional thumbnail
     attachments: List[Dict[str, Any]] = field(default_factory=list)
+    # Phase 1: Gemini thought signature support - vendor-specific response parts
+    # These fields are optional and only populated for Gemini assistant messages
+    vendor_parts: Optional[List[Dict[str, Any]]] = None  # Raw parts from provider (including thought_signature)
+    vendor_model: Optional[str] = None  # Model that generated the response (e.g., "gemini-2.5-pro")
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization"""
-        return {
+        result = {
             'id': self.id,
             'content': self.content,
             'sender': self.sender.value,
@@ -81,6 +85,12 @@ class ChatMessage:
             'session_id': self.session_id,
             'attachments': self.attachments
         }
+        # Only include vendor fields if present (backward compatibility)
+        if self.vendor_parts is not None:
+            result['vendor_parts'] = self.vendor_parts
+        if self.vendor_model is not None:
+            result['vendor_model'] = self.vendor_model
+        return result
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'ChatMessage':
@@ -94,7 +104,9 @@ class ChatMessage:
             metadata=data.get('metadata', {}),
             agent_id=data.get('agent_id'),
             session_id=data.get('session_id'),
-            attachments=data.get('attachments', [])
+            attachments=data.get('attachments', []),
+            vendor_parts=data.get('vendor_parts'),  # Optional, defaults to None
+            vendor_model=data.get('vendor_model')   # Optional, defaults to None
         )
 
 
@@ -835,6 +847,17 @@ class ChatService:
     async def _process_with_custom_agent(self, user_message: ChatMessage, agent_type: str):
         """Process user message with a custom agent"""
         logger.debug(f"Processing message with custom agent: {agent_type}")
+        
+        # Enhanced debug logging for Gemini troubleshooting
+        from icpy.utils.gemini_debug_logger import get_gemini_debug_logger
+        debug_logger = get_gemini_debug_logger()
+        debug_logger.log_message_received(
+            user_message.session_id,
+            user_message.content,
+            {'agent_type': agent_type, 'attachments': len(user_message.attachments)}
+        )
+        request_id = debug_logger.log_agent_start(user_message.session_id, agent_type)
+        
         try:
             # Send typing indicator
             await self._send_typing_indicator(user_message.session_id, True)
@@ -852,7 +875,13 @@ class ChatService:
                 if msg.sender == MessageSender.USER:
                     history_list.append({"role": "user", "content": msg.content})
                 elif msg.sender == MessageSender.AI:
-                    history_list.append({"role": "assistant", "content": msg.content})
+                    # Phase 3: Include vendor_parts for Gemini thought signature support
+                    assistant_msg = {"role": "assistant", "content": msg.content}
+                    if msg.vendor_parts is not None:
+                        assistant_msg['vendor_parts'] = msg.vendor_parts
+                    if msg.vendor_model is not None:
+                        assistant_msg['vendor_model'] = msg.vendor_model
+                    history_list.append(assistant_msg)
 
             # Append current user message as multimodal (include image attachments) so custom agents can see them
             try:
@@ -1141,8 +1170,14 @@ class ChatService:
                         await asyncio.sleep(0.01)  # 10ms delay between chunks
                         
                 logger.info(f"Streaming complete: received {chunk_count} chunks, total {len(full_content)} chars")
+                
+                # Enhanced debug logging - log completion
+                debug_logger.log_agent_complete(request_id, len(full_content), chunk_count)
+                
             except Exception as e:
                 logger.error(f"Error during streaming: {e}", exc_info=True)
+                # Enhanced debug logging - log error
+                debug_logger.log_error(request_id, type(e).__name__, str(e))
                 # Continue to store what we have
 
             # Send stream end
@@ -1154,6 +1189,17 @@ class ChatService:
             
             # Store the final complete message for persistence
             if full_content.strip():
+                # Phase 2: Retrieve vendor metadata (thought signatures for Gemini)
+                vendor_metadata = None
+                try:
+                    from icpy.agent.helpers import get_vendor_metadata, clear_vendor_metadata
+                    vendor_metadata = get_vendor_metadata()
+                    logger.info(f"[GEMINI-DEBUG] Retrieved vendor metadata: {vendor_metadata is not None}")
+                    # Clear after retrieval to avoid leakage to next message
+                    clear_vendor_metadata()
+                except Exception as e:
+                    logger.debug(f"Failed to retrieve vendor metadata: {e}")
+                
                 final_message = ChatMessage(
                     id=message_id,
                     content=full_content,
@@ -1161,7 +1207,9 @@ class ChatService:
                     timestamp=datetime.now(timezone.utc).isoformat(),
                     agent_id=agent_type,
                     session_id=user_message.session_id,
-                    metadata={'reply_to': user_message.id, 'streaming_complete': True, 'agentType': agent_type}
+                    metadata={'reply_to': user_message.id, 'streaming_complete': True, 'agentType': agent_type},
+                    vendor_parts=vendor_metadata.get('vendor_parts') if vendor_metadata else None,
+                    vendor_model=vendor_metadata.get('vendor_model') if vendor_metadata else None
                 )
                 await self._store_message(final_message)
             

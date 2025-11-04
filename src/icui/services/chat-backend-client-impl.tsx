@@ -794,11 +794,15 @@ export class ChatBackendClient {
       return;
     }
     
+    // Normalize common fields that may arrive from older backends
+    const chunkText: string = (data.chunk ?? data.content ?? '') as string;
+    const msgId: string = String(data.id || Date.now());
+
     if (data.stream_start) {
   // Reset any prior stop request on new stream
   this.stopRequested = false;
       // Start new streaming message
-      const messageId = data.id || Date.now().toString();
+      const messageId = msgId;
       // console.log('[ChatBackendClient] Starting streaming message:', messageId);
       
       // Mark this message ID as processed to prevent duplicate complete messages
@@ -823,7 +827,30 @@ export class ChatBackendClient {
       this.messageCallbacks.forEach(callback => callback(this.streamingMessage!));
       this.isStreaming = true;
       
-    } else if (data.stream_chunk && this.streamingMessage) {
+    } else if (data.stream_chunk) {
+      // If a chunk arrives before start due to network reordering, initialize lazily
+      if (!this.streamingMessage) {
+        // Create a streaming message on-the-fly so the UI shows the typing indicator
+        this.streamingMessage = {
+          id: msgId,
+          content: '',
+          role: 'assistant',
+          sender: 'ai',
+          timestamp: new Date(),
+          metadata: {
+            agentId: data.agentId,
+            agentName: data.agentName,
+            agentType: data.agentType,
+            messageType: 'streaming',
+            isStreaming: true,
+            streamComplete: false
+          }
+        };
+        this.messageCallbacks.forEach(callback => callback(this.streamingMessage!));
+        this.isStreaming = true;
+        // track to avoid duplicate complete messages
+        this.processedMessageIds.add(msgId);
+      }
       // If a stop was requested, ignore further chunks and finalize locally
       if (this.stopRequested) {
         this.handleStreamStopped({ message: 'Client interrupted during streaming' });
@@ -831,7 +858,7 @@ export class ChatBackendClient {
       }
       // Append chunk to streaming message
       // console.log('[ChatBackendClient] Appending chunk:', data.chunk);
-      this.streamingMessage.content += data.chunk;
+      this.streamingMessage.content += chunkText || '';
       this.messageCallbacks.forEach(callback => callback({ 
         ...this.streamingMessage!,
         metadata: {
@@ -843,12 +870,31 @@ export class ChatBackendClient {
       // Also call stream callbacks for backward compatibility
       this.streamCallbacks.forEach(callback => 
         callback({
-          content: data.chunk || '',
+          content: chunkText || '',
           done: false
         })
       );
       
-    } else if (data.stream_end && this.streamingMessage) {
+    } else if (data.stream_end) {
+      // If end arrives without an open streaming message, create and complete a minimal one
+      if (!this.streamingMessage) {
+        this.streamingMessage = {
+          id: msgId,
+          content: '',
+          role: 'assistant',
+          sender: 'ai',
+          timestamp: new Date(),
+          metadata: {
+            agentId: data.agentId,
+            agentName: data.agentName,
+            agentType: data.agentType,
+            messageType: 'streaming',
+            isStreaming: false,
+            streamComplete: true
+          }
+        };
+        this.processedMessageIds.add(msgId);
+      }
       // Complete streaming message
       // console.log('[ChatBackendClient] Ending streaming message:', this.streamingMessage.id);
       this.streamingMessage.metadata!.streamComplete = true;
@@ -874,18 +920,44 @@ export class ChatBackendClient {
       this.isStreaming = false;
       this.stopRequested = false;
     } else {
-      console.warn('[ChatBackendClient] ⚠️ Unhandled streaming message:', data);
-      
-      // Fallback to old streaming format for compatibility
-      this.streamCallbacks.forEach(callback => 
-        callback({
-          content: data.content || '',
-          done: data.done || false
-        })
-      );
-      
-      if (data.done) {
-        this.isStreaming = false;
+      // As a last resort, treat messages with content/chunk as legacy stream events
+      if (typeof chunkText === 'string' && chunkText.length > 0) {
+        // Create a minimal streaming message to surface content
+        if (!this.streamingMessage) {
+          this.streamingMessage = {
+            id: msgId,
+            content: '',
+            role: 'assistant',
+            sender: 'ai',
+            timestamp: new Date(),
+            metadata: {
+              agentId: data.agentId,
+              agentName: data.agentName,
+              agentType: data.agentType,
+              messageType: 'streaming',
+              isStreaming: true,
+              streamComplete: false
+            }
+          };
+          this.messageCallbacks.forEach(callback => callback(this.streamingMessage!));
+          this.isStreaming = true;
+          this.processedMessageIds.add(msgId);
+        }
+        this.streamingMessage.content += chunkText;
+        this.messageCallbacks.forEach(cb => cb({ ...this.streamingMessage! }));
+        // Do not end here; wait for an explicit end or next phase
+      } else {
+        console.warn('[ChatBackendClient] ⚠️ Unhandled streaming message:', data);
+        // Fallback to old streaming format for compatibility
+        this.streamCallbacks.forEach(callback => 
+          callback({
+            content: data.content || '',
+            done: data.done || false
+          })
+        );
+        if (data.done) {
+          this.isStreaming = false;
+        }
       }
     }
   }
@@ -912,7 +984,7 @@ export class ChatBackendClient {
   }
 
   private handleTypingIndicator(data: any): void {
-    this.typingCallbacks.forEach(callback => callback(data.typing || false));
+    this.typingCallbacks.forEach(callback => callback(data.is_typing ?? data.typing ?? false));
   }
 
   private handleAgentStatus(data: any): void {
