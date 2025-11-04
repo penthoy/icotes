@@ -263,12 +263,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', high
     const blocks: Array<{ type: 'text' | 'toolCall'; content?: string; toolCall?: ToolCallData }> = [];
     const { content, toolCalls } = parsedResult;
 
-    // DEBUG: Log raw content structure for inline code rendering investigation
-    if (message.content && message.content.includes('`') && message.sender === 'ai') {
-      console.log('[INLINE-CODE-DEBUG] Raw message.content:', message.content.substring(0, 500));
-      console.log('[INLINE-CODE-DEBUG] Parsed content:', content.substring(0, 500));
-      console.log('[INLINE-CODE-DEBUG] Tool calls count:', toolCalls.length);
-    }
+    //
 
     // If no tool calls, just return cleaned content
     if (toolCalls.length === 0) {
@@ -336,17 +331,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', high
         .forEach(tc => blocks.push({ type: 'toolCall', toolCall: tc }));
     }
 
-    // DEBUG: Log final blocks structure for inline code rendering investigation
-    if (message.content && message.content.includes('`') && message.sender === 'ai') {
-      console.log('[INLINE-CODE-DEBUG] Final blocks count:', blocks.length);
-      blocks.forEach((block, idx) => {
-        if (block.type === 'text') {
-          console.log(`[INLINE-CODE-DEBUG] Block ${idx} (text):`, block.content?.substring(0, 200));
-        } else {
-          console.log(`[INLINE-CODE-DEBUG] Block ${idx} (toolCall):`, block.toolCall?.output);
-        }
-      });
-    }
+    //
 
     return blocks;
   }, [parsedResult, message.content]);
@@ -378,9 +363,30 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', high
     const blockId = blockIdRef.current;
     const isCopied = copiedStates[blockId];
 
-    // DEBUG: Log inline code rendering
-    if (inline && typeof children === 'string' && children.length < 50) {
-      console.log('[INLINE-CODE-DEBUG] CodeBlock inline rendering:', { inline, children });
+    //
+
+    // Heuristic: Sometimes models emit fenced "```text\nword\n```" blocks for simple terms.
+    // If it's a single short line with language empty/plain/text, render it as inline code instead
+    // to avoid big block styling and the "text" label header.
+    const raw = typeof children === 'string' ? children : String(children);
+    const singleLine = !raw.includes('\n');
+    const lang = (language || '').toLowerCase();
+    const isPlainTextLang = !lang || lang === 'text' || lang === 'plaintext' || lang === 'plain';
+    const looksInlineButBlock = !inline && singleLine && isPlainTextLang && raw.trim().length > 0 && raw.trim().length <= 48;
+
+    if (looksInlineButBlock) {
+      return (
+        <code 
+          className="px-1.5 py-0.5 rounded text-sm font-mono"
+          style={{
+            backgroundColor: 'var(--icui-bg-secondary)',
+            color: 'var(--icui-text-primary)',
+            border: '1px solid var(--icui-border-subtle)'
+          }}
+        >
+          {raw}
+        </code>
+      );
     }
 
     if (inline) {
