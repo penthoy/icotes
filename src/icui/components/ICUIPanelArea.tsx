@@ -1,22 +1,6 @@
 /**
  * ICUI Enhanced Panel Area Component
- * Provides advance}) => {
-  const [dragOver, setDragOver] = useState(false);
-  const [isDragging, setIsDragging] = useState(false); // Track if a drag is in progress
-  const dragCounter = useRef(0);
-
-  // Stable local active tab state to avoid ping-pong with fallback logic
-  const [localActiveTabId, setLocalActiveTabId] = useState<string>(() => {
-    return activePanelId || panels[0]?.id || '';
-  });
-
-  // Keep local active tab in sync with prop changes, but don't override unnecessarily
-  useEffect(() => {
-    if (activePanelId && activePanelId !== localActiveTabId && !isDragging) {
-      setLocalActiveTabId(activePanelId);
-    }
-  }, [activePanelId, localActiveTabId, isDragging]);nctionality extracted from ICUITest3/4
- * Handles panel docking, tab management, and drag/drop between areas
+ * Handles panel docking, tab management, and drag/drop between areas.
  */
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
@@ -81,33 +65,83 @@ export const ICUIPanelArea: React.FC<ICUIPanelAreaProps> = ({
 
   // Stable local active tab state to avoid ping-pong with fallback logic
   const [localActiveTabId, setLocalActiveTabId] = useState<string>(() => {
-    return activePanelId || panels[0]?.id || '';
+    // Do NOT preselect first panel on mount; wait for a valid parent id or a valid fallback
+    return activePanelId || '';
   });
 
-  // Keep local active tab in sync with prop changes, but don't override unnecessarily
+  // Track if we initiated the change to prevent sync feedback loop
+  const isLocalChangeRef = useRef(false);
+
+  // Track parent-initiated changes to detect oscillation and apply hysteresis
+  const lastParentActiveIdRef = useRef<string | null>(activePanelId ?? null);
+  const lastParentChangeTsRef = useRef<number>(0);
+  const parentOscillationCountRef = useRef(0);
+
+  // Keep local active tab in sync with prop changes, but ONLY if parent initiated the change
   useEffect(() => {
+    // CRITICAL: Don't sync if we initiated the change ourselves
+    if (isLocalChangeRef.current) {
+      console.log(`[PANEL-AREA-SYNC-SKIP] Area ${id}: Skipping sync, local change in progress`);
+      isLocalChangeRef.current = false;
+      return;
+    }
+
+    // Validate parent-provided id actually exists in this area's panels
+    if (activePanelId && !panels.some(p => p.id === activePanelId)) {
+      console.warn(`[PANEL-AREA-SYNC-INVALID] Area ${id}: parent activePanelId "${activePanelId}" not found in panels`, panels.map(p => p.id));
+      return; // Ignore invalid parent id to avoid oscillation
+    }
+
     if (activePanelId && activePanelId !== localActiveTabId) {
+      const now = Date.now();
+      const lastId = lastParentActiveIdRef.current;
+      const since = now - lastParentChangeTsRef.current;
+
+      // Hysteresis: if parent is flipping between two ids too quickly, ignore this flip
+      if (lastId && lastId !== activePanelId && since < 120) {
+        parentOscillationCountRef.current += 1;
+        console.warn(
+          `[PANEL-AREA-OSC-IGNORED] Area ${id}: parent flip ${lastId} -> ${activePanelId} in ${since}ms (count=${parentOscillationCountRef.current})`
+        );
+        // Do not update local state; wait for things to settle
+        return;
+      }
+
+      // Reset oscillation counter when stable
+      if (since >= 120 && parentOscillationCountRef.current > 0) {
+        console.log(`[PANEL-AREA-OSC-RESET] Area ${id}: stable for ${since}ms, resetting oscillation counter`);
+        parentOscillationCountRef.current = 0;
+      }
+
+      console.log(`[PANEL-AREA-SYNC] Area ${id}: ${localActiveTabId} -> ${activePanelId} (parent-initiated)`);
+      lastParentActiveIdRef.current = activePanelId;
+      lastParentChangeTsRef.current = now;
       setLocalActiveTabId(activePanelId);
     }
-  }, [activePanelId]);
+  }, [activePanelId, localActiveTabId, id]);
 
   // When panels change (reorder/add/remove), ensure the active tab still exists
   useEffect(() => {
+    // If panels aren't ready yet, don't attempt fallback
+    if (panels.length === 0) {
+      console.log(`[PANEL-AREA-FALLBACK-SKIP] Area ${id}: panels not ready yet, skipping fallback`);
+      return;
+    }
+
     // If current active tab no longer exists, select a sensible default
     const exists = panels.some(p => p.id === localActiveTabId);
     if (!exists) {
+      console.log(`[PANEL-AREA-FALLBACK] Area ${id}: tab ${localActiveTabId} no longer exists, selecting fallback`);
       const next = (activePanelId && panels.some(p => p.id === activePanelId))
         ? activePanelId
         : (panels[0]?.id || '');
       if (next !== localActiveTabId) {
         setLocalActiveTabId(next);
-        // Inform parent if we auto-selected a new tab
-        if (next && next !== activePanelId) {
-          onPanelActivate?.(next);
-        }
+        // DO NOT notify parent during fallback - this causes ping-pong when panels move between areas
+        // The parent already knows about panel changes through handlePanelDrop/handlePanelClose
       }
     }
-  }, [panels]);
+  }, [panels, localActiveTabId, activePanelId, id]);
 
   // Detect newly added panel and auto-activate it to avoid ping-pong on creation
   const prevPanelIdsRef = useRef<string[]>([]);
@@ -129,7 +163,7 @@ export const ICUIPanelArea: React.FC<ICUIPanelAreaProps> = ({
     }
 
     prevPanelIdsRef.current = currentIds;
-  }, [panels, activePanelId]);
+  }, [panels, activePanelId, localActiveTabId, id]);
 
   // Add global dragend listener to clear dragging state if drag is cancelled
   useEffect(() => {
@@ -158,11 +192,19 @@ export const ICUIPanelArea: React.FC<ICUIPanelAreaProps> = ({
 
   // Handle tab operations
   const handleTabActivate = useCallback((tabId: string) => {
+    console.log(`[PANEL-AREA-ACTIVATE] Area ${id}: User activated tab ${tabId}, current: ${localActiveTabId}`);
     if (tabId === localActiveTabId) return; // No-op to prevent redundant updates
+    
+    // Mark that we're initiating this change to prevent sync feedback loop
+    isLocalChangeRef.current = true;
+    
     // Optimistically update local active state to avoid visual flicker
     setLocalActiveTabId(tabId);
+    
+    // Notify parent
     onPanelActivate?.(tabId);
-  }, [onPanelActivate, localActiveTabId]);
+    console.log(`[PANEL-AREA-ACTIVATE] Area ${id}: Notified parent of tab ${tabId}`);
+  }, [onPanelActivate, localActiveTabId, id]);
 
   const handleTabClose = useCallback((tabId: string) => {
     onPanelClose?.(tabId);
@@ -182,7 +224,7 @@ export const ICUIPanelArea: React.FC<ICUIPanelAreaProps> = ({
       setDragOver(true);
       setIsDragging(true); // Mark that we're in a drag operation
     }
-  }, [allowDrop, dragOver]);
+  }, [allowDrop, dragOver, id]);
 
   const handleDragLeave = useCallback((e: React.DragEvent) => {
     if (!allowDrop) return;
@@ -193,7 +235,7 @@ export const ICUIPanelArea: React.FC<ICUIPanelAreaProps> = ({
       setDragOver(false);
       // Don't clear isDragging here - wait for drop or dragend
     }
-  }, [allowDrop]);
+  }, [allowDrop, id]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     if (!allowDrop) return;
@@ -218,7 +260,7 @@ export const ICUIPanelArea: React.FC<ICUIPanelAreaProps> = ({
       // Additional check: ensure we don't already have this panel
       const panelExists = panels.some(panel => panel.id === panelId);
       if (panelExists) {
-        console.warn('Panel already exists in target area, ignoring drop:', { panelId, sourceAreaId, targetAreaId: id });
+        console.warn('[PANEL-AREA-DROP] Panel already exists in target area, ignoring drop:', { panelId, sourceAreaId, targetAreaId: id });
         return;
       }
       
@@ -230,8 +272,6 @@ export const ICUIPanelArea: React.FC<ICUIPanelAreaProps> = ({
       
       // Dropping panel in different area
       onPanelDrop?.(panelId, sourceAreaId);
-    } else if (sourceAreaId === id) {
-      // Ignoring drop in same area
     }
   }, [allowDrop, id, onPanelDrop, panels]);
 

@@ -63,15 +63,27 @@ async def get_current_context() -> dict:
     """
     try:
         from icpy.services.context_router import get_context_router
+        from icpy.services.path_utils import _friendly_namespace_for_context
+
         router = await get_context_router()
         session = await router.get_context()
         cwd = getattr(session, 'cwd', '/')
+
+        # Resolve a friendly namespace label derived from active sessions and hop config.
+        # No hardcoded fallbacks: prefer credential/config alias; finally fall back to contextId.
+        try:
+            namespace = await _friendly_namespace_for_context(session.contextId)
+        except Exception:
+            namespace = 'local' if session.contextId == 'local' else session.contextId
+
         return {
             "contextId": session.contextId,
             "status": session.status,
             "host": getattr(session, 'host', None),
             "port": getattr(session, 'port', None),
             "username": getattr(session, 'username', None),
+            "credentialName": getattr(session, 'credentialName', None),
+            "namespace": namespace,
             "cwd": cwd,
             # Provide a canonical workspaceRoot alias to reduce ambiguity in tools/prompts
             "workspaceRoot": cwd,

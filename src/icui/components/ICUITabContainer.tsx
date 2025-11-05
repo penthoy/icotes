@@ -120,7 +120,7 @@ export const ICUITabContainer: React.FC<ICUITabContainerProps> = ({
     }
     switchCountRef.current += 1;
     if (switchCountRef.current > 6) {
-      // Soft-block: don't activate, just log in dev builds
+      console.warn(`[TAB-SWITCH-BUG] Rapid switching detected - count: ${switchCountRef.current}, blocking to prevent feedback loop`);
       debugLogger.tabOperation('activation-blocked-rapid-switching', { 
         tabId: nextTabId, 
         activeTabId,
@@ -129,10 +129,6 @@ export const ICUITabContainer: React.FC<ICUITabContainerProps> = ({
         windowStart: lastSwitchWindowStartRef.current
       });
       
-      if (process.env.NODE_ENV !== 'production') {
-        // eslint-disable-next-line no-console
-        console.debug('[ICUITabContainer] Rapid tab switching detected - temporarily blocking');
-      }
       // Clear any pending activation
       if (debounceTimerRef.current) {
         window.clearTimeout(debounceTimerRef.current);
@@ -248,12 +244,18 @@ export const ICUITabContainer: React.FC<ICUITabContainerProps> = ({
               borderBottomColor: tab.id === activeTabId ? 'var(--icui-accent)' : 'transparent',
               color: tab.id === activeTabId ? 'var(--icui-text-primary)' : 'var(--icui-text-secondary)'
             }}
-            onClick={() => requestActivate(tab.id)}
+            onClick={() => {
+              requestActivate(tab.id);
+            }}
             onMouseEnter={() => !dragOver && setHoveredTab(tab.id)}
             onMouseLeave={() => setHoveredTab(null)}
-            onDragStart={(e) => handleDragStart(e, tab, index)}
+            onDragStart={(e) => {
+              handleDragStart(e, tab, index);
+            }}
             onDragOver={handleDragOver}
-            onDrop={(e) => handleDrop(e, index)}
+            onDrop={(e) => {
+              handleDrop(e, index);
+            }}
             draggable={enableDragDrop}
           >
             {tab.icon && (

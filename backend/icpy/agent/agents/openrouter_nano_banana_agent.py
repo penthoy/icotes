@@ -33,7 +33,7 @@ from typing import Dict, Any, List
 logger = logging.getLogger(__name__)
 
 # Model configuration - using Gemini for native image generation
-AGENT_MODEL_ID = "google/gemini-2.5-flash-image-preview"
+MODEL_NAME = "google/gemini-2.5-flash-image-preview"
 
 # Import required modules and backend helpers
 try:
@@ -76,11 +76,10 @@ try:
         description="AI image generation agent powered by Google's Gemini 2.5 Flash Image Preview (Nano Banana) via OpenRouter",
         version="1.0.0",
         author="ICOTES",
-        model=AGENT_MODEL_ID,
+        model=MODEL_NAME,
     )
 
     # Individual metadata fields for backward compatibility
-    MODEL_NAME = AGENT_METADATA["MODEL_NAME"]
     AGENT_NAME = AGENT_METADATA["AGENT_NAME"]
     AGENT_DESCRIPTION = AGENT_METADATA["AGENT_DESCRIPTION"]
     AGENT_VERSION = AGENT_METADATA["AGENT_VERSION"]
@@ -97,7 +96,6 @@ except ImportError as e:
     DEPENDENCIES_AVAILABLE = False
 
     # Fallback metadata if helpers are not available
-    MODEL_NAME = AGENT_MODEL_ID
     AGENT_NAME = "OpenRouterNanoBananaAgent"
     AGENT_DESCRIPTION = "AI image generation agent powered by Google's Gemini 2.5 Flash Image Preview (Nano Banana) via OpenRouter"
     AGENT_VERSION = "1.0.0"
@@ -117,7 +115,6 @@ except ImportError as e:
         "AGENT_VERSION": AGENT_VERSION,
         "AGENT_AUTHOR": AGENT_AUTHOR,
         "MODEL_NAME": MODEL_NAME,
-        "AGENT_MODEL_ID": AGENT_MODEL_ID,
         "status": "error",
         "error": f"Dependencies not available: {e}",
     }

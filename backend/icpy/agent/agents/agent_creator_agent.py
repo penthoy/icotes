@@ -11,8 +11,6 @@ This agent specializes in:
 Enhanced with tool integration capabilities for file operations.
 """
 
-import json
-import os
 import logging
 from typing import Dict, List, Any, AsyncGenerator
 
@@ -21,85 +19,42 @@ logger = logging.getLogger(__name__)
 
 # Model selection identifier for UI/router consumption
 # Frontend can read this via config/status endpoints and switch helpers accordingly
-AGENT_MODEL_ID = "gpt5"
+MODEL_NAME = "gpt5"
 
 # Import required modules
-try:
-    import sys
-    backend_path = os.environ.get("ICOTES_BACKEND_PATH")
-    if not backend_path:
-        # Find the icotes root directory (should contain backend/ directory)
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        while current_dir and current_dir != '/':
-            backend_candidate = os.path.join(current_dir, 'backend')
-            if os.path.isdir(backend_candidate) and os.path.isdir(os.path.join(backend_candidate, 'icpy')):
-                backend_path = backend_candidate
-                break
-            current_dir = os.path.dirname(current_dir)
-        
-        if not backend_path:
-            # Fallback to relative path
-            backend_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "backend"))
-    
-    sys.path.append(backend_path)
-    
-    from icpy.agent.clients import get_openai_client
-    from icpy.agent.helpers import (
-        create_agent_chat_function, 
-        get_available_tools_summary,
-        ToolDefinitionLoader,
-        ToolExecutor,
-        OpenAIStreamingHandler,
-        create_standard_agent_metadata,
-        create_environment_reload_function,
-        create_agent_context,
-        add_context_to_agent_prompt,
-        format_agent_context_for_prompt
-    )
-    
-    DEPENDENCIES_AVAILABLE = True
-    logger.info("All dependencies available for AgentCreator")
-    
-    # Agent metadata using helper (after import)
-    AGENT_METADATA = create_standard_agent_metadata(
-        name="AgentCreator",
-        description="An AI agent that helps you create other custom agents using file editing tools",
+from icpy.agent.core.llm.openai_client import OpenAIClientAdapter
+from icpy.agent.core.runtime.general_agent import GeneralAgent
+from icpy.agent.core.runtime.message_utils import build_safe_messages
+from icpy.agent.helpers import (
+    get_available_tools_summary,
+    ToolDefinitionLoader,
+    create_standard_agent_metadata,
+    create_environment_reload_function,
+    add_context_to_agent_prompt,
+)
+
+# Agent metadata using helper
+AGENT_METADATA = create_standard_agent_metadata(
+    name="AgentCreator",
+    description="An AI agent that helps you create other custom agents using file editing tools",
     version="2.1.1", 
-        author="Hot Reload System",
-    model=AGENT_MODEL_ID
-    )
-    
-    # Individual metadata fields for backward compatibility
-    MODEL_NAME = AGENT_METADATA["MODEL_NAME"]
-    AGENT_NAME = AGENT_METADATA["AGENT_NAME"]
-    AGENT_DESCRIPTION = AGENT_METADATA["AGENT_DESCRIPTION"] 
-    AGENT_VERSION = AGENT_METADATA["AGENT_VERSION"]
-    AGENT_AUTHOR = AGENT_METADATA["AGENT_AUTHOR"]
-    
-    # Create standardized reload function using helper
-    reload_env = create_environment_reload_function([
-        "icpy.agent.helpers",
-        "icpy.agent.clients"
-    ])
-    
-except ImportError as e:
-    logger.warning(f"Dependencies not available: {e}")
-    DEPENDENCIES_AVAILABLE = False
-    
-    # Fallback metadata if helpers are not available
-    MODEL_NAME = AGENT_MODEL_ID
-    AGENT_NAME = "AgentCreator"
-    AGENT_DESCRIPTION = "An AI agent that helps you create other custom agents using file editing tools"
-    AGENT_VERSION = "2.1.0"
-    AGENT_AUTHOR = "Hot Reload System"
-    
-    # Fallback reload function
-    def reload_env():
-        """Fallback reload function when helpers are not available"""
-        global DEPENDENCIES_AVAILABLE
-        DEPENDENCIES_AVAILABLE = False
-        logger.info("Dependencies still not available after reload")
-        return False
+    author="Hot Reload System",
+    model=MODEL_NAME
+)
+
+# Individual metadata fields for backward compatibility
+AGENT_NAME = AGENT_METADATA["AGENT_NAME"]
+AGENT_DESCRIPTION = AGENT_METADATA["AGENT_DESCRIPTION"] 
+AGENT_VERSION = AGENT_METADATA["AGENT_VERSION"]
+AGENT_AUTHOR = AGENT_METADATA["AGENT_AUTHOR"]
+
+# Create standardized reload function using helper
+reload_env = create_environment_reload_function([
+    "icpy.agent.helpers",
+    "icpy.agent.core.llm.openai_client",
+    "icpy.agent.core.runtime.general_agent",
+    "icpy.agent.core.runtime.message_utils",
+])
 
 def get_tools():
     """
@@ -107,10 +62,6 @@ def get_tools():
     
     Returns OpenAI function calling compatible tool definitions
     """
-    if not DEPENDENCIES_AVAILABLE:
-        logger.warning("Dependencies not available, returning empty tools list")
-        return []
-    
     try:
         loader = ToolDefinitionLoader()
         tools = loader.get_openai_tools()
@@ -134,10 +85,6 @@ def chat(message, history):
     Yields:
         str - Response chunks for streaming
     """
-    if not DEPENDENCIES_AVAILABLE:
-        yield "🚫 Dependencies not available. Please check your configuration."
-        return
-    
     # Enhanced system prompt with tools information and context
     base_system_prompt = f"""You are AgentCreator, an expert AI agent specialized in helping developers create custom agents for icotes using powerful file editing tools.
 
@@ -203,24 +150,19 @@ Be helpful, practical, and focus on creating working solutions."""
     system_prompt = add_context_to_agent_prompt(base_system_prompt)
     
     try:
-        # Use the helper function to create a chat function
-        # But we need to handle it differently since we're already in the chat function
-        client = get_openai_client()
-        
-        # Handle JSON string history (gradio compatibility)  
-        if isinstance(history, str):
-            history = json.loads(history)
-        
-        # Build conversation messages
-        system_message = {"role": "system", "content": system_prompt}
-        messages = [system_message] + history + [{"role": "user", "content": message}]
-        
-        # Create streaming handler and process
-        handler = OpenAIStreamingHandler(client, MODEL_NAME)
-        
-        logger.info("AgentCreator: Starting chat with tools using helpers")
-        # Enable auto-continue by default with sane limits (override via env)
-        yield from handler.stream_chat_with_tools(messages)
+        # Prepare messages using shared utility
+        safe_messages = build_safe_messages(message, history)
+
+        # Delegate to generalized agent using OpenAI adapter
+        adapter = OpenAIClientAdapter()
+        ga = GeneralAgent(adapter, model=MODEL_NAME)
+        logger.info("AgentCreator: Starting chat with tools using GeneralAgent")
+        tools = []
+        try:
+            tools = ToolDefinitionLoader().get_openai_tools()
+        except Exception:
+            pass
+        yield from ga.run(system_prompt=system_prompt, messages=safe_messages, tools=tools)
         logger.info("AgentCreator: Chat completed successfully")
                 
     except Exception as e:

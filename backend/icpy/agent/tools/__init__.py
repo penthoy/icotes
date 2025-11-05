@@ -11,6 +11,7 @@ from .run_terminal_tool import RunTerminalTool
 from .semantic_search_tool import SemanticSearchTool
 from .websearch_tools import WebSearchTool
 from .imagen_tool import ImagenTool
+from .web_fetch_tool import WebFetchTool
 
 __all__ = [
     "BaseTool",
@@ -23,7 +24,8 @@ __all__ = [
     "RunTerminalTool",
     "SemanticSearchTool",
     "WebSearchTool",
-    "ImagenTool"
+    "ImagenTool",
+    "WebFetchTool"
 ]
 
 # Auto-register all tools when module is imported
@@ -39,6 +41,7 @@ def _register_default_tools():
     registry.register(SemanticSearchTool())
     registry.register(WebSearchTool())
     registry.register(ImagenTool())
+    registry.register(WebFetchTool())
 
 # Register tools on import
 _register_default_tools() 

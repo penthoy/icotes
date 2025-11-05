@@ -482,18 +482,25 @@ export class GenericModelHelper implements ModelHelper {
     const input = toolCall.input || {};
     const output = toolCall.output || {};
     
-    // Enhanced file path extraction - try multiple possible keys
-    let filePath = input.filePath || input.file_path || input.path || 
-                   output.filePath || output.file_path || output.path;
-    
-    // For create_file, the path might be in different locations
-    if (!filePath && toolCall.metadata?.originalToolName === 'create_file') {
-      filePath = input.filePath || input.file_path || input.path;
-    }
-    
-    // For read_file, check common parameter names
-    if (!filePath && toolCall.metadata?.originalToolName === 'read_file') {
-      filePath = input.filePath || input.file_path || input.path;
+    // Determine original tool early so we can tailor path preference logic
+    const originalToolName = toolCall.metadata?.originalToolName || toolCall.toolName;
+
+    // Enhanced file path extraction - prefer namespaced output filePath when available
+    // especially for read_file where the backend returns a properly formatted namespace.
+    let filePath: string | undefined;
+    if (originalToolName === 'read_file') {
+      // Prefer structured output first (namespaced), then fall back to input
+      filePath = (output as any)?.filePath 
+              || (output as any)?.pathInfo?.formatted_path 
+              || (output as any)?.file_path 
+              || input.filePath || input.file_path || input.path || (output as any)?.path;
+    } else if (originalToolName === 'create_file') {
+      // For create_file, path is usually in input
+      filePath = input.filePath || input.file_path || input.path || (output as any)?.filePath || (output as any)?.path;
+    } else {
+      // Generic fallback ordering
+      filePath = input.filePath || input.file_path || input.path || 
+                 (output as any)?.filePath || (output as any)?.file_path || (output as any)?.path;
     }
     
     // Fallback to any string that looks like a path
@@ -508,7 +515,6 @@ export class GenericModelHelper implements ModelHelper {
       filePath = 'Unknown file';
     }
 
-    const originalToolName = toolCall.metadata?.originalToolName || toolCall.toolName;
     const operation = originalToolName === 'create_file' ? 'create' : 
                      originalToolName === 'read_file' ? 'read' :
                      originalToolName === 'replace_string_in_file' ? 'update' : 'update';

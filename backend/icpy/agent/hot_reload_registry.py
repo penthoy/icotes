@@ -149,6 +149,9 @@ class AgentRegistry:
                 agent_name = await self._load_agent_module(agent_path, module_name)
                 if agent_name:
                     loaded_agents.append(agent_name)
+            except ImportError as e:
+                # Optional workspace/custom agent with missing deps – skip without error noise
+                logger.warning(f"Skipping agent {module_name} due to missing dependency: {e}")
             except Exception as e:
                 logger.error(f"Error loading agent {module_name}: {e}")
                 
@@ -214,6 +217,10 @@ class AgentRegistry:
                 logger.warning(f"Agent {module_name} validation failed")
                 return None
                 
+        except ImportError as e:
+            # Treat missing third-party deps for optional agents as a warning and skip
+            logger.warning(f"Skipping agent module {module_name}: missing dependency: {e}")
+            return None
         except Exception as e:
             logger.error(f"Error loading agent module {module_name}: {e}")
             return None

@@ -56,7 +56,8 @@ export class WebSocketService extends EventEmitter {
     http_base_url: '',
     reconnect_attempts: 5,
     reconnect_delay: 1000,
-    request_timeout: 10000,
+    // Increase default request timeout to be more tolerant of cold starts
+    request_timeout: 20000,
     heartbeat_interval: 30000,
     enableMessageQueue: true,
     enableHealthMonitoring: true,
@@ -364,7 +365,18 @@ export class WebSocketService extends EventEmitter {
   private async waitForConnection(connectionId: string, timeout: number): Promise<void> {
     return new Promise((resolve, reject) => {
       const timeoutId = setTimeout(() => {
-        reject(new Error(`Connection timeout after ${timeout}ms`));
+        try {
+          // Try to proactively fail the connection so reconnection logic can kick in
+          const conn = this.connectionManager.getConnectionStatus(connectionId);
+          if (conn && conn.status === 'connecting' && conn.websocket) {
+            // Use an application-specific close code to signal timeout
+            try {
+              conn.websocket.close(4000, 'Connect timeout');
+            } catch {}
+          }
+        } finally {
+          reject(new Error(`Connection timeout after ${timeout}ms`));
+        }
       }, timeout);
 
       const checkConnection = () => {

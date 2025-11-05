@@ -105,13 +105,16 @@ docs/guides/
 docs/summaries/
 docs/tickets/
 docs/saasplan/
-
+docs/fixes/
+docs/debug/
+docs/features/
 # GitHub workflows
 .github/workflows/
 
 # workspace
 workspace/.icotes/chat_history/
 workspace/.icotes/ssh/
+workspace/.icotes/hop/config
 workspace/.icotes_tmp*/
 
 # Playwright

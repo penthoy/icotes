@@ -91,6 +91,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
     };
   }, [autoConnect]);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const chatRootRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [inputValue, setInputValue] = useState('');
@@ -143,11 +144,22 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
     autoConnect: !!(typeof window !== 'undefined' && (localStorage.getItem('icui.chat.active_session') || chatBackendClient.currentSession)) && autoConnect,
     maxMessages,
     persistence,
-    autoScroll
+    // Disable hook-level auto-scroll when user has intentionally scrolled up
+    autoScroll: autoScroll && !userHasScrolledUp
   });
 
-  // Chat search hook (Ctrl+F)
-  const search = useChatSearch(messages);
+  // Chat search hook (Ctrl+F) - context sensitive: only active when Chat has focus
+  const search = useChatSearch(messages, {
+    isActive: () => {
+      try {
+        const root = chatRootRef.current;
+        const activeEl = typeof document !== 'undefined' ? document.activeElement : null;
+        return !!(root && activeEl && root.contains(activeEl));
+      } catch {
+        return true; // fallback to previous behavior
+      }
+    }
+  });
 
   // Session synchronization
   const { onSessionChange, emitSessionChange } = useChatSessionSync('ICUIChat');
@@ -212,13 +224,18 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
     if (!messagesEndRef.current) return;
     if (!autoScroll) return;
 
-    // Only auto-scroll if user is at bottom AND hasn't intentionally scrolled up
+    // Only auto-scroll if user was already at bottom and hasn't scrolled up
+    // Use the state that's updated by the scroll handler, don't recalculate here
     if (isAutoScrollEnabled && !userHasScrolledUp) {
-      // Use instant scroll to avoid jitter during streaming
-      messagesEndRef.current.scrollIntoView({ behavior: 'auto' });
+      // Small delay to ensure DOM has updated with new content
+      requestAnimationFrame(() => {
+        if (messagesEndRef.current) {
+          messagesEndRef.current.scrollIntoView({ behavior: 'auto', block: 'end' });
+        }
+      });
       setHasNewMessages(false);
     } else {
-      // User is reading older messages or has scrolled up; show CTA
+      // User is reading older messages; show "Jump to latest" button
       setHasNewMessages(true);
     }
   }, [messages, autoScroll, isAutoScrollEnabled, userHasScrolledUp]);
@@ -242,17 +259,20 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
         // Detect if user manually scrolled up (not caused by new content)
         const scrolledUp = currentScrollTop < lastScrollTop.current;
         
-        // Update states based on user behavior
-        setIsAutoScrollEnabled(nearBottom);
-        
+        // Critical: Only update auto-scroll state based on MANUAL user scroll actions
+        // Don't update if scroll was caused by auto-scroll itself
         if (scrolledUp && !nearBottom) {
-          // User intentionally scrolled up away from bottom
+          // User intentionally scrolled up away from bottom - LOCK auto-scroll OFF
           setUserHasScrolledUp(true);
-        } else if (nearBottom) {
-          // User is back at bottom, re-enable auto-scrolling
+          setIsAutoScrollEnabled(false);
+        } else if (nearBottom && scrolledUp === false && currentScrollTop > lastScrollTop.current) {
+          // User manually scrolled DOWN to bottom - re-enable auto-scrolling
           setUserHasScrolledUp(false);
+          setIsAutoScrollEnabled(true);
           setHasNewMessages(false);
         }
+        // Note: We don't update states if nearBottom becomes true due to new content arriving
+        // This prevents the "pull back down" effect when user is reading older messages
         
         lastScrollTop.current = currentScrollTop;
         ticking = false;
@@ -608,6 +628,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
 
   return (
     <div 
+      ref={chatRootRef}
       className={`icui-chat h-full flex flex-col relative ${className}`} 
       style={{ 
         backgroundColor: 'var(--icui-bg-primary)', 
@@ -775,9 +796,55 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
         >
           {/* Search bar pinned above input */}
           {search.isOpen && (
-            <div className="space-y-2 border rounded p-3" style={{ borderColor: 'var(--icui-border-subtle)', backgroundColor: 'var(--icui-bg-primary)' }}>
-              {/* existing search UI ... */}
-              {/** retained below unchanged */}
+            <div className="flex items-center gap-2 border rounded p-2" style={{ borderColor: 'var(--icui-border)', backgroundColor: 'var(--icui-bg-secondary)' }}>
+              <input
+                value={search.query}
+                onChange={e => search.setQuery(e.target.value)}
+                placeholder="Search..."
+                className="text-sm px-2 py-1 rounded outline-none flex-1"
+                style={{ 
+                  color: 'var(--icui-text-primary)',
+                  backgroundColor: 'var(--icui-bg-tertiary)',
+                  border: '1px solid var(--icui-border-subtle)'
+                }}
+                autoFocus
+              />
+              <span className="text-xs whitespace-nowrap" style={{ color: 'var(--icui-text-secondary)' }}>
+                {search.results.length === 0 ? '0/0' : `${search.activeIdx + 1}/${search.results.length}`}
+              </span>
+              <button 
+                className="text-xs px-2 py-1 rounded hover:opacity-80 whitespace-nowrap" 
+                onClick={search.prev}
+                style={{ 
+                  color: 'var(--icui-text-primary)',
+                  backgroundColor: 'var(--icui-bg-tertiary)',
+                  border: '1px solid var(--icui-border-subtle)'
+                }}
+              >
+                Prev
+              </button>
+              <button 
+                className="text-xs px-2 py-1 rounded hover:opacity-80 whitespace-nowrap" 
+                onClick={search.next}
+                style={{ 
+                  color: 'var(--icui-text-primary)',
+                  backgroundColor: 'var(--icui-bg-tertiary)',
+                  border: '1px solid var(--icui-border-subtle)'
+                }}
+              >
+                Next
+              </button>
+              <button 
+                className="text-xs px-2 py-1 rounded hover:opacity-80 whitespace-nowrap" 
+                onClick={() => search.setIsOpen(false)}
+                style={{ 
+                  color: 'var(--icui-text-primary)',
+                  backgroundColor: 'var(--icui-bg-tertiary)',
+                  border: '1px solid var(--icui-border-subtle)'
+                }}
+              >
+                Close
+              </button>
             </div>
           )}
 

@@ -11,92 +11,46 @@ This is a general-purpose AI assistant that can:
 Uses Moonshot's Kimi models through OpenAI-compatible API.
 """
 
-# Base system prompt template is centralized in helpers
-
-import json
-import os
 import logging
-from typing import Dict, List, Generator, Any
+from typing import Dict, List, Generator
 
 # Configure logging
 logger = logging.getLogger(__name__)
 
-# Model selection identifier for UI/router consumption
-AGENT_MODEL_ID = "kimi-k2-0711-preview"
-
 # Agent metadata
 AGENT_NAME = "KimiAgent"
 AGENT_DESCRIPTION = "General-purpose AI assistant powered by Moonshot's Kimi models"
-MODEL_NAME = "kimi-k2-0711-preview"  # Default Kimi model
+MODEL_NAME = "kimi-k2-0905-preview"  # Default Kimi model
 
 # Import required modules
-try:
-    import sys
-    backend_path = os.environ.get("ICOTES_BACKEND_PATH")
-    if not backend_path:
-        # Find the icotes root directory (should contain backend/ directory)
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        while current_dir and current_dir != '/':
-            backend_candidate = os.path.join(current_dir, 'backend')
-            if os.path.isdir(backend_candidate) and os.path.isdir(os.path.join(backend_candidate, 'icpy')):
-                backend_path = backend_candidate
-                break
-            current_dir = os.path.dirname(current_dir)
-        
-        if not backend_path:
-            # Fallback to relative path from workspace/.icotes/plugins/
-            backend_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "backend"))
-    
-    sys.path.append(backend_path)
+from icpy.agent.core.llm.moonshot_client import MoonshotClientAdapter
+from icpy.agent.core.runtime.general_agent import GeneralAgent
+from icpy.agent.core.runtime.message_utils import build_safe_messages
+from icpy.agent.helpers import (
+    create_standard_agent_metadata,
+    create_environment_reload_function,
+    get_available_tools_summary,
+    ToolDefinitionLoader,
+    add_context_to_agent_prompt,
+    BASE_SYSTEM_PROMPT_TEMPLATE,
+)
 
-    # Import Moonshot client and streaming handler + shared helpers
-    from icpy.agent.clients import get_moonshot_client
-    from icpy.agent.helpers import (
-        create_standard_agent_metadata,
-        create_environment_reload_function,
-        get_available_tools_summary,
-        OpenAIStreamingHandler,
-        add_context_to_agent_prompt,
-        flatten_message_content,
-        normalize_history,
-        BASE_SYSTEM_PROMPT_TEMPLATE,
-    )
+# Agent metadata using helper
+AGENT_METADATA = create_standard_agent_metadata(
+    name="KimiAgent", 
+    description="General-purpose AI assistant powered by Moonshot's Kimi models",
+    version="1.0.0",
+    author="Hot Reload System",
+    model=MODEL_NAME,
+)
 
-    DEPENDENCIES_AVAILABLE = True
-    logger.info("All dependencies available for KimiAgent")
-
-    # Agent metadata using helper (after import)
-    AGENT_METADATA = create_standard_agent_metadata(
-        name="KimiAgent", 
-        description="General-purpose AI assistant powered by Moonshot's Kimi models",
-        version="1.0.0",
-        author="Hot Reload System",
-        model=AGENT_MODEL_ID,
-    )
-
-    # Environment reload function using helper
-    reload_env = create_environment_reload_function([
-        "icpy.agent.helpers",
-        "icpy.agent.clients",
-    ])
-
-except ImportError as e:
-    logger.warning(f"Import error in KimiAgent: {e}")
-    DEPENDENCIES_AVAILABLE = False
-    AGENT_METADATA = {
-        "AGENT_NAME": AGENT_NAME,
-        "AGENT_DESCRIPTION": AGENT_DESCRIPTION,
-        "AGENT_VERSION": "1.0.0",
-        "AGENT_AUTHOR": "Hot Reload System",
-        "MODEL_NAME": MODEL_NAME if 'MODEL_NAME' in globals() else AGENT_MODEL_ID,
-        "AGENT_MODEL_ID": AGENT_MODEL_ID,
-        "status": "error",
-        "error": f"Dependencies not available: {e}",
-    }
-
-    def reload_env():
-        """Fallback reload function"""
-        logger.info("KimiAgent: Environment reload requested")
+# Environment reload function using helper
+reload_env = create_environment_reload_function([
+    "icpy.agent.helpers",
+    "icpy.agent.core.llm.moonshot_client",
+    "icpy.agent.core.runtime.general_agent",
+    "icpy.agent.core.runtime.message_utils",
+])
 
 
 def chat(message: str, history: List[Dict[str, str]]) -> Generator[str, None, None]:
@@ -110,65 +64,28 @@ def chat(message: str, history: List[Dict[str, str]]) -> Generator[str, None, No
     Yields:
         str: Response chunks as they arrive
     """
-    if not DEPENDENCIES_AVAILABLE:
-        yield "🚫 KimiAgent dependencies are not available. Please check your setup and try again."
-        return
-
     # Build base system prompt with current tools summary and add dynamic context info
     tools_summary = get_available_tools_summary()
     base_system_prompt = BASE_SYSTEM_PROMPT_TEMPLATE.format(AGENT_NAME=AGENT_NAME, TOOLS_SUMMARY=tools_summary)
     system_prompt = add_context_to_agent_prompt(base_system_prompt)
-    
-    # Use shared helpers for content/history normalization
 
     try:
-        # Get Moonshot client
-        client = get_moonshot_client()
-        
-        # Handle JSON string history (gradio compatibility)
-        normalized_history = normalize_history(history)
+        # Prepare messages using shared utility
+        safe_messages = build_safe_messages(message, history)
 
-        # Base conversation messages
-        system_message = {"role": "system", "content": system_prompt}
-        messages: List[Dict[str, str]] = [system_message] + normalized_history
-
-        # Append current user message only if non-empty
-        if isinstance(message, str) and message.strip():
-            messages.append({"role": "user", "content": message})
-        else:
-            logger.info("KimiAgent: Skipping trailing user message because it's empty (provided by caller as \"\")")
-
-        # Final safety filter before sending
-        safe_messages: List[Dict[str, str]] = []
-        dropped = 0
-        for i, m in enumerate(messages):
-            c = m.get("content", "")
-            if m.get("role") == "user" and (not isinstance(c, str) or not c.strip()):
-                dropped += 1
-                logger.warning(f"KimiAgent: Removing empty user message at position {i}")
-                continue
-            # Ensure content is string
-            if not isinstance(c, str):
-                m = {**m, "content": flatten_message_content(c)}
-            safe_messages.append(m)
-        if dropped:
-            logger.info(f"KimiAgent: Dropped {dropped} empty user message(s) before request")
-
-        # Debug preview: roles and content lengths
+        # Delegate to generalized agent using Moonshot adapter
+        adapter = MoonshotClientAdapter()
+        ga = GeneralAgent(adapter, model=MODEL_NAME)
+        logger.info("KimiAgent: Starting chat with tools using GeneralAgent")
+        # Load tool definitions and pass through
+        tools = []
         try:
-            preview = "\n".join([f"{i}: {m['role']} len={len(m.get('content','') or '')}" for i, m in enumerate(safe_messages)])
-            logger.debug("KimiAgent: Outbound messages preview\n" + preview)
+            tools = ToolDefinitionLoader().get_openai_tools()
         except Exception:
             pass
-        
-        # Create streaming handler and process
-        handler = OpenAIStreamingHandler(client, MODEL_NAME)
-        
-        logger.info("KimiAgent: Starting chat with tools using Moonshot client")
-        # Enable auto-continue by default with sane limits
-        yield from handler.stream_chat_with_tools(safe_messages)
+        yield from ga.run(system_prompt=system_prompt, messages=safe_messages, tools=tools)
         logger.info("KimiAgent: Chat completed successfully")
-                
+
     except Exception as e:
         logger.error(f"Error in KimiAgent streaming: {e}")
         yield f"🚫 Error processing request: {str(e)}\n\nPlease check your Moonshot API key configuration (MOONSHOT_API_KEY)."

@@ -67,10 +67,14 @@ class ChatMessage:
     # Phase 0 media groundwork: list of attachment metadata dicts
     # Each attachment dict (Phase 1+) will contain: id, filename, mime_type, size, url (or relative path), and optional thumbnail
     attachments: List[Dict[str, Any]] = field(default_factory=list)
+    # Phase 1: Gemini thought signature support - vendor-specific response parts
+    # These fields are optional and only populated for Gemini assistant messages
+    vendor_parts: Optional[List[Dict[str, Any]]] = None  # Raw parts from provider (including thought_signature)
+    vendor_model: Optional[str] = None  # Model that generated the response (e.g., "gemini-2.5-pro")
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization"""
-        return {
+        result = {
             'id': self.id,
             'content': self.content,
             'sender': self.sender.value,
@@ -81,6 +85,12 @@ class ChatMessage:
             'session_id': self.session_id,
             'attachments': self.attachments
         }
+        # Only include vendor fields if present (backward compatibility)
+        if self.vendor_parts is not None:
+            result['vendor_parts'] = self.vendor_parts
+        if self.vendor_model is not None:
+            result['vendor_model'] = self.vendor_model
+        return result
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'ChatMessage':
@@ -94,7 +104,9 @@ class ChatMessage:
             metadata=data.get('metadata', {}),
             agent_id=data.get('agent_id'),
             session_id=data.get('session_id'),
-            attachments=data.get('attachments', [])
+            attachments=data.get('attachments', []),
+            vendor_parts=data.get('vendor_parts'),  # Optional, defaults to None
+            vendor_model=data.get('vendor_model')   # Optional, defaults to None
         )
 
 
@@ -835,6 +847,17 @@ class ChatService:
     async def _process_with_custom_agent(self, user_message: ChatMessage, agent_type: str):
         """Process user message with a custom agent"""
         logger.debug(f"Processing message with custom agent: {agent_type}")
+        
+        # Enhanced debug logging for Gemini troubleshooting
+        from icpy.utils.gemini_debug_logger import get_gemini_debug_logger
+        debug_logger = get_gemini_debug_logger()
+        debug_logger.log_message_received(
+            user_message.session_id,
+            user_message.content,
+            {'agent_type': agent_type, 'attachments': len(user_message.attachments)}
+        )
+        request_id = debug_logger.log_agent_start(user_message.session_id, agent_type)
+        
         try:
             # Send typing indicator
             await self._send_typing_indicator(user_message.session_id, True)
@@ -852,7 +875,13 @@ class ChatService:
                 if msg.sender == MessageSender.USER:
                     history_list.append({"role": "user", "content": msg.content})
                 elif msg.sender == MessageSender.AI:
-                    history_list.append({"role": "assistant", "content": msg.content})
+                    # Phase 3: Include vendor_parts for Gemini thought signature support
+                    assistant_msg = {"role": "assistant", "content": msg.content}
+                    if msg.vendor_parts is not None:
+                        assistant_msg['vendor_parts'] = msg.vendor_parts
+                    if msg.vendor_model is not None:
+                        assistant_msg['vendor_model'] = msg.vendor_model
+                    history_list.append(assistant_msg)
 
             # Append current user message as multimodal (include image attachments) so custom agents can see them
             try:
@@ -900,13 +929,14 @@ class ChatService:
                         }
                         if is_image:
                             # Add path hint for images so tools can reference them
-                            # For namespaced paths (e.g., "hop1:/path"), extract just the path part
+                            # For namespaced paths (e.g., "hop1:/path"), preserve the namespace
                             # Tools use get_contextual_filesystem() which respects active context
+                            # For local paths, add file:// prefix for consistency
                             tool_path = namespaced_path or abs_path or rel_path
                             if tool_path and ':/' in tool_path:
-                                # Extract path after "namespace:/" prefix
-                                _, path_only = tool_path.split(':/', 1)
-                                tool_path = f"file:///{path_only}"
+                                # Preserve namespaced path (e.g., "hop1:/path/image.png")
+                                # Tools can resolve this via context router
+                                pass
                             elif tool_path and not tool_path.startswith('file://'):
                                 tool_path = f"file://{tool_path}"
                             
@@ -940,6 +970,8 @@ class ChatService:
                         message_text += image_hint
                 
                 content_parts: List[Dict[str, Any]] = [{"type": "text", "text": message_text}]
+                # Ensure this is defined regardless of attachments presence to avoid UnboundLocalError
+                added_images = 0
                 if user_message.attachments:
                     media = get_media_service()
                     # Configurable caps to avoid heavy processing and nested-loop overhead
@@ -952,8 +984,7 @@ class ChatService:
                         max_img_mb = float(_os.getenv('CHAT_MAX_IMAGE_SIZE_MB', '3'))
                     except Exception:
                         max_img_mb = 3.0
-
-                    added_images = 0
+                    
                     for att in user_message.attachments:
                         try:
                             kind = att.get('kind')
@@ -1024,7 +1055,7 @@ class ChatService:
                                     data_url = None
 
                             # Try hop-aware namespaced path via ContextRouter (e.g., 'hop1:/abs/path')
-                            if not data_url and isinstance(namespaced, str) and ':/'+'' in namespaced:
+                            if not data_url and isinstance(namespaced, str) and ':/' in namespaced:
                                 logger.info(f"[EMBED-DEBUG] Attempting hop-aware embed for namespaced={namespaced}, hop_ns={hop_ns}")
                                 try:
                                     router = await get_context_router()
@@ -1039,7 +1070,9 @@ class ChatService:
                                         content = await fs.read_file_binary(abs_remote)
                                         logger.info(f"[EMBED-DEBUG] read_file_binary returned: {type(content).__name__ if content else None}, len={len(content) if content else 0}")
                                     if content is None and hasattr(fs, 'read_file'):
+                                        logger.info(f"[EMBED-DEBUG] read_file_binary returned None, trying read_file")
                                         content = await fs.read_file(abs_remote)
+                                        logger.info(f"[EMBED-DEBUG] read_file returned: {type(content).__name__ if content else None}")
                                         if isinstance(content, str):
                                             # Might be base64 string or data URI
                                             import base64 as _b64
@@ -1058,6 +1091,7 @@ class ChatService:
                                             else:
                                                 size_b = len(content.encode('utf-8'))
                                             if size_b > int(max_img_mb * 1024 * 1024):
+                                                logger.warning(f"[EMBED-DEBUG] Image too large: {size_b} bytes > {max_img_mb} MB")
                                                 raise ValueError('image_too_large')
                                         except Exception:
                                             pass
@@ -1068,6 +1102,8 @@ class ChatService:
                                             b64 = _b64.b64encode(content.encode('utf-8')).decode('ascii')
                                         data_url = f"data:{mime};base64,{b64}"
                                         logger.info(f"[EMBED-DEBUG] Successfully embedded namespaced image: {hop_ns} {abs_remote}, data_url_len={len(data_url)}")
+                                    else:
+                                        logger.warning(f"[EMBED-DEBUG] Failed to read image content from {namespaced}")
                                 except Exception as e:
                                     logger.error(f"[EMBED-DEBUG] Failed hop-aware embed for namespaced path {namespaced}: {e}")
                                     import traceback
@@ -1134,8 +1170,14 @@ class ChatService:
                         await asyncio.sleep(0.01)  # 10ms delay between chunks
                         
                 logger.info(f"Streaming complete: received {chunk_count} chunks, total {len(full_content)} chars")
+                
+                # Enhanced debug logging - log completion
+                debug_logger.log_agent_complete(request_id, len(full_content), chunk_count)
+                
             except Exception as e:
                 logger.error(f"Error during streaming: {e}", exc_info=True)
+                # Enhanced debug logging - log error
+                debug_logger.log_error(request_id, type(e).__name__, str(e))
                 # Continue to store what we have
 
             # Send stream end
@@ -1147,6 +1189,17 @@ class ChatService:
             
             # Store the final complete message for persistence
             if full_content.strip():
+                # Phase 2: Retrieve vendor metadata (thought signatures for Gemini)
+                vendor_metadata = None
+                try:
+                    from icpy.agent.helpers import get_vendor_metadata, clear_vendor_metadata
+                    vendor_metadata = get_vendor_metadata()
+                    logger.info(f"[GEMINI-DEBUG] Retrieved vendor metadata: {vendor_metadata is not None}")
+                    # Clear after retrieval to avoid leakage to next message
+                    clear_vendor_metadata()
+                except Exception as e:
+                    logger.debug(f"Failed to retrieve vendor metadata: {e}")
+                
                 final_message = ChatMessage(
                     id=message_id,
                     content=full_content,
@@ -1154,7 +1207,9 @@ class ChatService:
                     timestamp=datetime.now(timezone.utc).isoformat(),
                     agent_id=agent_type,
                     session_id=user_message.session_id,
-                    metadata={'reply_to': user_message.id, 'streaming_complete': True, 'agentType': agent_type}
+                    metadata={'reply_to': user_message.id, 'streaming_complete': True, 'agentType': agent_type},
+                    vendor_parts=vendor_metadata.get('vendor_parts') if vendor_metadata else None,
+                    vendor_model=vendor_metadata.get('vendor_model') if vendor_metadata else None
                 )
                 await self._store_message(final_message)
             

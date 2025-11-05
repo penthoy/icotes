@@ -126,14 +126,41 @@ const ICUIHop: React.FC<{ className?: string }> = ({ className = '' }) => {
   };
 
   const handleDisconnect = async (contextId?: string) => {
+    const startTime = performance.now();
+    const timestamp = new Date().toISOString();
+    
     try {
       setLoading(true);
-      logHop('disconnect requested', { contextId });
+      logHop('[HOP-DISCONNECT-START]', { 
+        contextId, 
+        timestamp, 
+        activeContext: session?.contextId || session?.context_id,
+        connectedSessions: sessions.length 
+      });
+      
+      logHop('[HOP-DISCONNECT-API-CALL] calling disconnectHop...');
+      const apiStartTime = performance.now();
       await (backendService as any).disconnectHop?.(contextId);
+      const apiDuration = performance.now() - apiStartTime;
+      logHop('[HOP-DISCONNECT-API-RETURN]', { duration_ms: apiDuration.toFixed(2) });
+      
       notificationService.success(contextId ? `Disconnected from ${contextId}` : 'Disconnected', { key: 'hop:status' });
-      // Reload to update sessions list
+      
+      logHop('[HOP-DISCONNECT-RELOAD] reloading sessions...');
+      const reloadStartTime = performance.now();
       await load();
+      const reloadDuration = performance.now() - reloadStartTime;
+      logHop('[HOP-DISCONNECT-RELOAD-COMPLETE]', { duration_ms: reloadDuration.toFixed(2) });
+      
+      const totalDuration = performance.now() - startTime;
+      logHop('[HOP-DISCONNECT-COMPLETE]', { total_duration_ms: totalDuration.toFixed(2) });
     } catch (e: any) {
+      const totalDuration = performance.now() - startTime;
+      logHop('[HOP-DISCONNECT-ERROR]', { 
+        error: e?.message || 'Disconnect failed', 
+        at_stage: 'api_call_or_reload',
+        duration_ms: totalDuration.toFixed(2)
+      });
       setError(e?.message || 'Disconnect failed');
       notificationService.error(e?.message || 'Disconnect failed', { key: 'hop:status' });
     } finally {

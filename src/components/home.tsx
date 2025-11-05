@@ -526,7 +526,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
     }));
   }, [createExplorerContent, createEditorContent, createTerminalContent, createChatContent, createGitContent]);
 
-  // Initialize panels on mount
+  // Initialize panels on mount (run once)
   useEffect(() => {
     const initialPanels: ICUIPanel[] = [
       {
@@ -595,7 +595,9 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
       },
     ];
     setPanels(initialPanels);
-  }, [createExplorerContent, createEditorContent, createTerminalContent, createChatContent, createGitContent, createPreviewContent, createChatHistoryContent]);
+  // We intentionally avoid dependencies here to prevent re-initialization loops
+  // Panel content creators are memoized and their current instances are captured at mount
+  }, []);
 
   // Remove editor panel update effect since ICUIEditor manages its own files
 

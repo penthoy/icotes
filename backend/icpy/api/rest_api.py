@@ -809,6 +809,14 @@ class RestAPI:
                 logger.info("[REST] delete_file path=%s use_remote=%s", path, getattr(fs, 'is_remote', False))
                 ok = await fs.delete_file(path)
                 if ok is False:
+                    # Check if file actually exists - if not, consider it success (already deleted)
+                    try:
+                        file_info = await fs.get_file_info(path)
+                        if file_info is None:
+                            logger.info("[REST] delete_file: file already deleted or doesn't exist: %s", path)
+                            return SuccessResponse(message="File deleted successfully (already gone)")
+                    except Exception:
+                        pass  # If we can't check existence, fall through to error
                     raise HTTPException(status_code=500, detail="Failed to delete file")
                 return SuccessResponse(message="File deleted successfully")
             except Exception as e:
