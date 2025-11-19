@@ -267,6 +267,8 @@ export const ICUIPanelArea: React.FC<ICUIPanelAreaProps> = ({
       // Only set active tab locally after drop is complete, not during drag
       // This prevents rapid tab switching during drag operations
       setTimeout(() => {
+        // Mark as local change to avoid parent sync immediately overriding this selection
+        isLocalChangeRef.current = true;
         setLocalActiveTabId(panelId);
       }, 50); // Small delay to ensure drop completes first
       
