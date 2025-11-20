@@ -184,6 +184,7 @@ class ChatService:
         self.chat_sessions: Dict[str, str] = {}  # connection_id -> session_id
         self.active_connections: Set[str] = set()
         self.websocket_connections: Dict[str, Any] = {}  # connection_id -> websocket
+        self.active_tasks: Dict[str, asyncio.Task] = {}  # session_id -> task
         self.config = ChatConfig()
         # Feature flags (env-driven) for performance tuning
         self.enable_chunk_batching: bool = os.getenv('ENABLE_CHAT_BATCHING', '0') in ('1', 'true', 'True')
@@ -571,12 +572,38 @@ class ChatService:
                 # Fallback to hardcoded list for backward compatibility
                 is_custom_agent = agent_type.lower() in ['personalagent', 'openaidemoagent', 'openrouteragent', 'agentcreator', 'qwen3coderagent']
         
-        if is_custom_agent:
-            # Route to custom agent
-            await self._process_with_custom_agent(message, agent_type)
-        else:
-            # Route to default ICPY agent service
-            await self._process_with_agent(message)
+        # Create a background task for processing so we don't block the websocket loop
+        # and can support cancellation via stop_streaming
+        async def process_task():
+            logger.info(f"Starting processing task for session {session_id}")
+            try:
+                if is_custom_agent:
+                    # Route to custom agent
+                    await self._process_with_custom_agent(message, agent_type)
+                else:
+                    # Route to default ICPY agent service
+                    await self._process_with_agent(message)
+            except asyncio.CancelledError:
+                logger.info(f"Processing task cancelled for session {session_id}")
+            except Exception as e:
+                logger.error(f"Error in processing task: {e}")
+            finally:
+                logger.info(f"Finished processing task for session {session_id}")
+                # Remove from active tasks if it's the current one
+                if session_id in self.active_tasks:
+                    # Only remove if it's the same task (handle race conditions)
+                    # We can't easily check equality with the wrapper, but usually one task per session
+                    # For now just remove it
+                    if self.active_tasks.get(session_id) == asyncio.current_task():
+                        del self.active_tasks[session_id]
+
+        # Cancel any existing task for this session
+        if session_id in self.active_tasks:
+            logger.info(f"Cancelling existing task for session {session_id}")
+            self.active_tasks[session_id].cancel()
+            
+        task = asyncio.create_task(process_task())
+        self.active_tasks[session_id] = task
         
         return message
     
@@ -682,6 +709,9 @@ class ChatService:
             buffer: List[str] = []
             last_emit = time.time()
             async for message in agent.execute(task, context):
+                # Log activity for debugging stop button issues
+                logger.debug(f"Agent streaming active for session {chat_session_id}")
+                
                 if message.message_type == "text":
                     # Send stream start for first chunk
                     if is_first_chunk:
@@ -1143,6 +1173,9 @@ class ChatService:
             chunk_count = 0
             try:
                 async for chunk in custom_stream:
+                    # Log activity for debugging stop button issues
+                    logger.debug(f"Custom agent streaming active for session {user_message.session_id}")
+                    
                     if chunk:  # Only process non-empty chunks
                         chunk_count += 1
                         # Send stream start for first chunk
@@ -2184,7 +2217,16 @@ class ChatService:
         try:
             logger.info(f"Stop streaming requested for session: {session_id}")
             
-            # Try to stop any running agents for this session
+            stopped = False
+            
+            # 1. Cancel the active processing task if any
+            if session_id in self.active_tasks:
+                logger.info(f"Cancelling active task for session {session_id}")
+                task = self.active_tasks[session_id]
+                task.cancel()
+                stopped = True
+            
+            # 2. Try to stop any running agents for this session
             try:
                 from .agent_service import get_agent_service
                 agent_service = await get_agent_service()
@@ -2192,7 +2234,9 @@ class ChatService:
                 # Stop any agent sessions for this chat session
                 for agent_session_id in list(agent_service.agent_sessions.keys()):
                     agent_session = agent_service.agent_sessions.get(agent_session_id)
-                    if agent_session and agent_session.session_id == session_id:
+                    # Note: agent_session.session_id is the agent session ID, not chat session ID
+                    # We need to check metadata if available, or just rely on task cancellation
+                    if agent_session and agent_session.metadata.get('chat_session_id') == session_id:
                         logger.info(f"Stopping agent session {agent_session_id} for chat session {session_id}")
                         await agent_service.stop_agent(agent_session_id)
             except Exception as e:
@@ -2207,10 +2251,10 @@ class ChatService:
             }
             
             # Send to all connections in this session
-            stopped = False
             for websocket_id, ws_session_id in self.chat_sessions.items():
                 if ws_session_id == session_id:
                     await self._send_websocket_message(websocket_id, stop_message)
+                    # If we didn't find a task but found a connection, consider it stopped (message sent)
                     stopped = True
             
             # Also send typing indicator to stop
