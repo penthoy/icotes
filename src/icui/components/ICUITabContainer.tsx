@@ -146,6 +146,8 @@ export const ICUITabContainer: React.FC<ICUITabContainerProps> = ({
       switchCount: switchCountRef.current 
     });
     
+    console.log(`[SURGICAL-DEBUG] TabContainer requestActivate: ${nextTabId} (current: ${activeTabId})`);
+
     lastRequestedTabRef.current = nextTabId;
     if (debounceTimerRef.current) {
       window.clearTimeout(debounceTimerRef.current);
@@ -154,6 +156,7 @@ export const ICUITabContainer: React.FC<ICUITabContainerProps> = ({
       const target = lastRequestedTabRef.current;
       // Use a ref for the latest activeTabId to avoid stale closure
       if (target && target !== activeTabIdRef.current) {
+        console.log(`[SURGICAL-DEBUG] TabContainer executing activation: ${target}`);
         debugLogger.startPerformanceMark(`tab-activation-${target}`);
         onTabActivate(target);
         debugLogger.endPerformanceMark(`tab-activation-${target}`, 'ICUITabContainer');

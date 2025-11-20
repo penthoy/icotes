@@ -254,6 +254,7 @@ export const ICUILayout: React.FC<ICUILayoutProps> = ({
   const handlePanelActivate = useCallback((areaId: string, panelId: string) => {
     // Trace activation intent for debugging oscillations
     console.log(`[LAYOUT-ACTIVATE-REQ] area=${areaId} panel=${panelId}`);
+    console.log(`[SURGICAL-DEBUG] Layout handlePanelActivate called for area=${areaId}, panel=${panelId}`);
     setCurrentLayout(prev => {
       const area = prev.areas[areaId];
       if (!area) {
@@ -262,6 +263,7 @@ export const ICUILayout: React.FC<ICUILayoutProps> = ({
       }
       if (area.activePanelId === panelId) {
         // No-op to prevent redundant updates and flicker
+        console.log(`[SURGICAL-DEBUG] Layout activation ignored - already active: area=${areaId}, panel=${panelId}`);
         return prev;
       }
       
@@ -274,6 +276,7 @@ export const ICUILayout: React.FC<ICUILayoutProps> = ({
         return prev;
       }
       
+      console.log(`[SURGICAL-DEBUG] Layout updating state: area=${areaId}, activePanelId=${panelId}`);
       return {
         ...prev,
         areas: {
