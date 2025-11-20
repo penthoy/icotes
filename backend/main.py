@@ -88,6 +88,7 @@ from icpy.core.auth_helpers import (
     is_browser_navigation, build_unauth_redirect
 )
 from icpy.cli.main_cli import parse_arguments, handle_clipboard_commands
+from icpy.utils.process_reaper import reap_zombies
 
 # Import endpoint modules
 from icpy.api.endpoints import health, auth, clipboard, preview, agents, websockets, hop
@@ -214,6 +215,12 @@ async def lifespan(app: FastAPI):
             
             await shutdown_websocket_api()
             await shutdown_rest_api()
+            
+            # Final cleanup of any stuck child processes
+            reaped = reap_zombies()
+            if reaped > 0:
+                logger.info(f"Reaped {reaped} zombie processes during shutdown")
+                
             logger.info("icpy services shutdown complete")
         except Exception as e:
             logger.error(f"Error during icpy shutdown: {e}")

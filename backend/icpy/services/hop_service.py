@@ -28,6 +28,7 @@ from ..utils.logging import sanitize_log_message, mask_credential_value
 from ..utils.ssh_config_parser import parse_ssh_config
 from ..utils.ssh_config_writer import generate_ssh_config, credential_to_config_entry
 from ..scripts.migrate_hop_config import should_migrate, migrate_credentials_to_config
+from ..utils.process_reaper import reap_zombies
 
 try:
     import asyncssh  # Phase 2: real connectivity
@@ -1024,6 +1025,54 @@ class HopService:
             else:
                 logger.info("[HopDisconnect] No reconnect task to cancel")
             
+            # Phase 9: Comprehensive pre-disconnect cleanup
+            # CRITICAL: Clean up in this exact order to prevent hangs:
+            # 1. Force-close all remote terminals (they can keep SSH connection alive)
+            # 2. Kill any zombie multiprocessing workers
+            # 3. Then safely close SSH/SFTP connections
+            
+            # Step 1: Force-terminate ALL remote terminal sessions
+            try:
+                from .remote_terminal_manager import get_remote_terminal_manager
+                rtm = await get_remote_terminal_manager()
+                logger.info(
+                    "[HopDisconnect] Step 1: RemoteTerm manager_id=%s pre_shutdown sessions=%d tasks=%d",
+                    hex(id(rtm)),
+                    len(getattr(rtm, '_sessions', {})),
+                    len(getattr(rtm, '_tasks', {}))
+                )
+                terminal_count = await rtm.shutdown_all(reason=f"hop_disconnect:{context_id}")
+                logger.info(
+                    "[HopDisconnect] Step 1 COMPLETE: terminated=%d post_shutdown sessions=%d tasks=%d",
+                    terminal_count,
+                    len(getattr(rtm, '_sessions', {})),
+                    len(getattr(rtm, '_tasks', {}))
+                )
+            except Exception as e:
+                logger.warning(f"[HopDisconnect] Failed to shutdown terminals: {e}")
+            
+            # Step 2: Kill zombie processes using external process (can't be blocked by GIL)
+            try:
+                import subprocess
+                import sys
+                reaper_script = Path(__file__).parent.parent / 'utils' / 'process_reaper.py'
+                logger.info("[HopDisconnect] Step 2: Launching external zombie reaper (multiprocessing)...")
+                
+                result = subprocess.run(
+                    [sys.executable, str(reaper_script), "multiprocessing"],
+                    check=False,
+                    timeout=5,
+                    capture_output=True,
+                    text=True
+                )
+                if result.stdout:
+                    logger.info(f"[HopDisconnect] Reaper output: {result.stdout.strip()}")
+                if result.stderr:
+                    logger.info(f"[HopDisconnect] Reaper stderr: {result.stderr.strip()}")
+                logger.info("[HopDisconnect] External reaper completed")
+            except Exception as e:
+                logger.warning(f"[HopDisconnect] External reaper failed: {e}")
+
             logger.info("[HopDisconnect] Calling _close_connection...")
             close_start = time.time()
             await self._close_connection(context_id)
@@ -1239,3 +1288,5 @@ async def get_hop_service() -> HopService:
     if _hop_service_singleton is None:
         _hop_service_singleton = HopService()
     return _hop_service_singleton
+
+

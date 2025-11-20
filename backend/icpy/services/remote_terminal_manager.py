@@ -18,6 +18,7 @@ from typing import Dict, Any, Optional
 from fastapi import WebSocket
 
 from .hop_service import get_hop_service, ASYNCSSH_AVAILABLE
+from ..utils.process_reaper import reap_zombies
 
 logger = logging.getLogger(__name__)
 
@@ -27,9 +28,13 @@ class RemoteTerminalManager:
         self._hop = None
         # Track processes for cleanup
         self._sessions: Dict[str, Any] = {}
+        # Track active tasks per terminal for cancellation
+        self._tasks: Dict[str, list[asyncio.Task]] = {}
+        logger.debug(f"[RemoteTerm] Manager initialized id={hex(id(self))}")
 
     async def initialize(self):
         self._hop = await get_hop_service()
+        logger.debug(f"[RemoteTerm] Manager initialize complete id={hex(id(self))} hop_id={hex(id(self._hop))}")
         return self
 
     async def connect_terminal(self, websocket: WebSocket, terminal_id: str):
@@ -43,12 +48,10 @@ class RemoteTerminalManager:
         conn = self._hop.get_active_connection() if self._hop else None
         session = self._hop.status() if self._hop else None
         logger.info(
-            "[RemoteTerm] connect_terminal called: terminal_id=%s has_hop=%s has_conn=%s session_status=%s contextId=%s",
+            "[RemoteTerm] connect terminal_id=%s context=%s sessions_before=%d",
             terminal_id,
-            self._hop is not None,
-            conn is not None,
-            getattr(session, 'status', None),
-            getattr(session, 'contextId', None)
+            getattr(session, 'contextId', None),
+            len(self._sessions)
         )
         if not self._hop or conn is None:
             error_msg = f"No active SSH connection (hop={self._hop is not None}, conn={conn is not None})"
@@ -111,12 +114,14 @@ class RemoteTerminalManager:
             pass
 
         self._sessions[terminal_id] = proc
-        logger.info(f"[RemoteTerm] Remote shell started for {terminal_id} cwd={cwd}")
+        logger.info(f"[RemoteTerm] shell started terminal_id={terminal_id} cwd={cwd} sessions_now={len(self._sessions)}")
 
         # Start I/O pumps
         read_task = asyncio.create_task(self._pump_stdout(proc, websocket, terminal_id))
         write_task = asyncio.create_task(self._pump_stdin(proc, websocket, terminal_id))
         watch_task = asyncio.create_task(self._watch_process(proc, terminal_id))
+        
+        self._tasks[terminal_id] = [read_task, write_task, watch_task]
 
         try:
             await asyncio.gather(read_task, write_task)
@@ -133,22 +138,24 @@ class RemoteTerminalManager:
                 await asyncio.wait_for(watch_task, timeout=1.0)
             except Exception:
                 pass
+            self._tasks.pop(terminal_id, None)
 
     async def disconnect_terminal(self, terminal_id: str):
+        """Gracefully disconnect a specific terminal session."""
+        # Cancel tasks first
+        tasks = self._tasks.pop(terminal_id, [])
+        for t in tasks:
+            if not t.done():
+                t.cancel()
+        
         proc = self._sessions.pop(terminal_id, None)
         if proc is not None:
             try:
-                proc.stdin.write_eof()
-            except Exception:
-                pass
-            try:
-                proc.terminate()
-            except Exception:
-                pass
-            try:
-                await asyncio.wait_for(proc.wait_closed(), timeout=2.0)
-            except Exception:
-                pass
+                # Force kill immediately - no graceful shutdown
+                proc.kill()
+                logger.info(f"[RemoteTerm] Killed remote process for {terminal_id}")
+            except Exception as e:
+                logger.warning(f"[RemoteTerm] Failed to kill remote process: {e}")
         logger.info(f"[RemoteTerm] Terminal {terminal_id} disconnected")
 
     def session_count(self) -> int:
@@ -159,48 +166,38 @@ class RemoteTerminalManager:
             return 0
 
     async def shutdown_all(self, reason: str = "unknown") -> int:
-        """Forcefully disconnect all tracked remote terminal sessions without waiting.
+        """Forcefully disconnect all tracked remote terminal sessions immediately.
 
         This is used during hop disconnect to ensure no lingering PTY processes keep
-        the SSH connection alive or cause event loop spins/memory growth.
+        the SSH connection alive or cause hangs.
 
-        Returns the number of sessions that were scheduled for shutdown.
+        Returns the number of sessions that were terminated.
         """
         count = self.session_count()
         logger.info("[RemoteTerm] shutdown_all requested: count=%s reason=%s", count, reason)
-        # Copy keys to avoid mutation during iteration
+        
+        # Cancel ALL tasks first (prevents new I/O)
+        for terminal_id in list(self._tasks.keys()):
+            tasks = self._tasks.pop(terminal_id, [])
+            for t in tasks:
+                if not t.done():
+                    t.cancel()
+        
+        # Then force-kill all processes
         for terminal_id in list(self._sessions.keys()):
-            try:
-                await self._force_disconnect(terminal_id)
-            except Exception as e:
-                logger.info("[RemoteTerm] shutdown_all error for %s: %s", terminal_id, e)
-        logger.info("[RemoteTerm] shutdown_all complete: count=%s", count)
+            proc = self._sessions.pop(terminal_id, None)
+            if proc:
+                try:
+                    proc.kill()
+                    logger.info(f"[RemoteTerm] Force-killed terminal {terminal_id}")
+                except Exception as e:
+                    logger.warning(f"[RemoteTerm] Failed to kill {terminal_id}: {e}")
+            
+        logger.info("[RemoteTerm] shutdown_all complete: terminated=%s", count)
         return count
 
-    async def _force_disconnect(self, terminal_id: str):
-        """Best-effort fast disconnect without waiting for remote closure.
-
-        Unlike disconnect_terminal(), this method avoids any wait_closed() calls
-        and focuses on immediate teardown to prevent hangs under abort scenarios.
-        """
-        proc = self._sessions.pop(terminal_id, None)
-        if proc is None:
-            return
-        try:
-            # Stop stdin writes and attempt graceful termination
-            try:
-                proc.stdin.write_eof()
-            except Exception:
-                pass
-            try:
-                proc.terminate()
-            except Exception:
-                pass
-            # Do not wait on proc.wait_closed() here to avoid potential hangs
-        finally:
-            logger.info("[RemoteTerm] Force-disconnected %s", terminal_id)
-
     async def _pump_stdout(self, proc, websocket: WebSocket, terminal_id: str):
+        logger.info(f"[RemoteTerm] _pump_stdout started for {terminal_id}")
         try:
             first_chunk_logged = False
             while True:
@@ -233,10 +230,17 @@ class RemoteTerminalManager:
                     if proc.exit_status is not None or proc.exit_signal is not None:
                         break
                     continue
+                except asyncio.CancelledError:
+                    logger.info(f"[RemoteTerm] _pump_stdout cancelled for {terminal_id}")
+                    raise
         except Exception as e:
-            logger.info(f"[RemoteTerm] stdout pump error {terminal_id}: {e}")
+            if not isinstance(e, asyncio.CancelledError):
+                logger.info(f"[RemoteTerm] stdout pump error {terminal_id}: {e}")
+        finally:
+            logger.info(f"[RemoteTerm] _pump_stdout exited for {terminal_id}")
 
     async def _pump_stdin(self, proc, websocket: WebSocket, terminal_id: str):
+        logger.info(f"[RemoteTerm] _pump_stdin started for {terminal_id}")
         try:
             first_inbound_logged = False
             while True:
@@ -270,11 +274,17 @@ class RemoteTerminalManager:
                     if proc.exit_status is not None or proc.exit_signal is not None:
                         break
                     continue
+                except asyncio.CancelledError:
+                    logger.info(f"[RemoteTerm] _pump_stdin cancelled for {terminal_id}")
+                    raise
                 except Exception:
                     # WebSocket closed or other error
                     break
         except Exception as e:
-            logger.info(f"[RemoteTerm] stdin pump error {terminal_id}: {e}")
+            if not isinstance(e, asyncio.CancelledError):
+                logger.info(f"[RemoteTerm] stdin pump error {terminal_id}: {e}")
+        finally:
+            logger.info(f"[RemoteTerm] _pump_stdin exited for {terminal_id}")
 
     async def _watch_process(self, proc, terminal_id: str):
         try:
@@ -287,5 +297,26 @@ class RemoteTerminalManager:
 
 
 async def get_remote_terminal_manager() -> RemoteTerminalManager:
-    mgr = RemoteTerminalManager()
-    return await mgr.initialize()
+    """Return singleton RemoteTerminalManager.
+
+    Previous implementation returned a NEW instance each call which meant
+    connect_terminal() and disconnect/shutdown paths were operating on
+    different manager objects (empty session tracking on disconnect).
+    This caused zombie remote PTY processes to survive hop disconnect.
+    """
+    global _remote_terminal_manager_singleton
+    try:
+        _remote_terminal_manager_singleton  # type: ignore
+    except NameError:
+        _remote_terminal_manager_singleton = None  # type: ignore
+    if _remote_terminal_manager_singleton is None:
+        logger.info("[RemoteTerm] Creating singleton manager instance")
+        _remote_terminal_manager_singleton = await RemoteTerminalManager().initialize()  # type: ignore
+    else:
+        logger.info(
+            "[RemoteTerm] Reusing singleton manager id=%s sessions=%d tasks=%d",
+            hex(id(_remote_terminal_manager_singleton)),  # type: ignore
+            len(_remote_terminal_manager_singleton._sessions),  # type: ignore
+            len(_remote_terminal_manager_singleton._tasks),  # type: ignore
+        )
+    return _remote_terminal_manager_singleton  # type: ignore
