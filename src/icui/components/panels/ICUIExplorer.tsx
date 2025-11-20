@@ -450,6 +450,26 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
     }
   }, [currentPath, loadDirectory]);
 
+  // Derive parent path for "..." navigation in tree. Format: namespace:/abs/path
+  const parentPath = useMemo(() => {
+    try {
+      if (!currentPath) return '';
+      const colonIdx = currentPath.indexOf(':');
+      if (colonIdx === -1) return '';
+      const ns = currentPath.slice(0, colonIdx);
+      let rest = currentPath.slice(colonIdx + 1); // may start with /
+      if (!rest || rest === '/') return ''; // root level
+      if (rest.endsWith('/')) rest = rest.slice(0, -1);
+      const parts = rest.split('/').filter(Boolean);
+      if (parts.length === 0) return '';
+      parts.pop();
+      const newRest = '/' + parts.join('/');
+      return `${ns}:${newRest || '/'}`;
+    } catch (_) {
+      return '';
+    }
+  }, [currentPath]);
+
   const { handleInternalDrop } = useExplorerDropMove({
     currentPath,
     isInternalExplorerDrag,
@@ -632,6 +652,7 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
       confirmRename={confirmRename}
       setRenameValue={setRenameValue}
       loadDirectory={loadDirectory}
+      parentPath={parentPath}
     />
   );
 
@@ -769,13 +790,22 @@ const ICUIExplorer: React.FC<ICUIExplorerProps> = ({
           <div className="p-4 text-center text-sm" style={{ color: 'var(--icui-text-secondary)' }}>
             Loading directory contents...
           </div>
-        ) : files.length === 0 ? (
+        ) : !isConnected ? (
           <div className="p-4 text-center text-sm" style={{ color: 'var(--icui-text-secondary)' }}>
-            {error ? 'Failed to load directory' : isConnected ? 'Directory is empty' : 'Connect to backend to view files'}
+            Connect to backend to view files
+          </div>
+        ) : error ? (
+          <div className="p-4 text-center text-sm" style={{ color: 'var(--icui-text-secondary)' }}>
+            Failed to load directory
           </div>
         ) : (
           <div>
             {renderFileTree(files)}
+            {files.length === 0 && !parentPath && (
+              <div className="p-4 text-center text-sm" style={{ color: 'var(--icui-text-secondary)' }}>
+                Directory is empty
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -12,6 +12,7 @@ export interface ExplorerTreeProps {
   renamingFileId: string | null;
   renameValue: string;
   renameInputRef: React.RefObject<HTMLInputElement>;
+  parentPath?: string | null;
   // selection + dnd
   isSelected: (id: string) => boolean;
   getDragProps: (node: ICUIFileNode) => Record<string, any>;
@@ -51,14 +52,15 @@ export const ExplorerTree: React.FC<ExplorerTreeProps> = ({
   confirmRename,
   setRenameValue,
   loadDirectory,
+  parentPath,
 }) => {
   const items: React.ReactNode[] = [];
 
-  // Top-level ".." parent navigation when unlocked
-  if (level === 0 && !isPathLocked && currentPath !== '/') {
+  // Top-level ".." parent navigation when unlocked OR when directory is empty (at any level)
+  const shouldShowParent = level === 0 && parentPath && (nodes.length === 0 || !isPathLocked);
+  if (shouldShowParent) {
     const navigateToParent = () => {
-      const parentPath = currentPath.split('/').slice(0, -1).join('/') || '/';
-      loadDirectory(parentPath);
+      if (parentPath) loadDirectory(parentPath);
     };
     items.push(
       <div key="parent-nav" className="select-none">
@@ -173,6 +175,7 @@ export const ExplorerTree: React.FC<ExplorerTreeProps> = ({
               confirmRename={confirmRename}
               setRenameValue={setRenameValue}
               loadDirectory={loadDirectory}
+              parentPath={null}
             />
           </div>
         )}
