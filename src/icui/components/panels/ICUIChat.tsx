@@ -29,6 +29,7 @@ import {
 } from '../../index';
 import { useConfiguredAgents } from '../../../hooks/useConfiguredAgents';
 import { CustomAgentDropdown } from '../menus/CustomAgentDropdown';
+import { resolveWorkspacePath } from '../../lib/workspaceUtils';
 
 import ChatMessage from '../chat/ChatMessage';
 import { useChatSearch } from '../../hooks/useChatSearch';
@@ -550,11 +551,53 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
   }, []);
 
   // Drag & Drop: handled globally via GlobalUploadManager and Explorer drop; Chat handles paste only
+  // Track uploads cancelled before they finish so we can delete them once they complete.
+  const pendingCancelledUploadIds = useRef<Set<string>>(new Set());
 
   const removeStaged = (id: string) => 
     setStaged(prev => {
       const item = prev.find(s => s.id === id);
       if (item?.preview) URL.revokeObjectURL(item.preview);
+
+      if (item?.file) {
+        const matchingUpload = uploadApi.uploads.find(
+          u => u.context === 'chat' && u.file === item.file
+        );
+        if (matchingUpload) {
+          // Remove from queue (aborts if in-flight)
+          uploadApi.removeFile(matchingUpload.id);
+          if (matchingUpload.status === 'completed' && matchingUpload.result) {
+            // Backend returns different key names than UploadResult interface; normalize here.
+            const result: any = matchingUpload.result;
+            const relPath: string | undefined = result.rel_path || result.relative_path;
+            const kind: string = result.type || result.kind || 'files';
+            const pathParts = relPath ? relPath.split('/') : [];
+            const filename = pathParts[pathParts.length - 1];
+            if (filename && kind) {
+              if ((import.meta as any).env?.VITE_DEBUG_MEDIA === 'true') {
+                console.debug('[Chat] Deleting cancelled completed upload', { id: matchingUpload.id, kind, filename, relPath });
+              }
+              mediaService.delete(kind, filename).catch(err => {
+                console.warn('[Chat] Failed to delete cancelled upload from storage:', err);
+              });
+            } else {
+              if ((import.meta as any).env?.VITE_DEBUG_MEDIA === 'true') {
+                console.debug('[Chat] Skip deletion - missing filename/kind', { relPath, kind, result });
+              }
+            }
+          } else {
+            // Defer deletion until completion (small images may race with user clicking X)
+            if ((import.meta as any).env?.VITE_DEBUG_MEDIA === 'true') {
+              console.debug('[Chat] Deferring deletion until upload completes', { id: matchingUpload.id, status: matchingUpload.status });
+            }
+            pendingCancelledUploadIds.current.add(matchingUpload.id);
+          }
+        } else {
+          if ((import.meta as any).env?.VITE_DEBUG_MEDIA === 'true') {
+            console.debug('[Chat] removeStaged: no matching upload found for file');
+          }
+        }
+      }
       return prev.filter(s => s.id !== id);
     });
 
@@ -565,35 +608,36 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
     stagedRef.current.forEach(s => s.preview && URL.revokeObjectURL(s.preview));
   }, []);
 
-  // Clipboard paste (images) -> stage only (upload handled globally to avoid duplicates)
+  // Deferred deletion watcher: when a previously cancelled upload finishes, delete its file.
   useEffect(() => {
-    const onPaste = (e: ClipboardEvent) => {
-      if (!e.clipboardData) return;
-      // If global handler already processed (sets a custom data flag), skip
-      if ((e as any)._icuiGlobalPasteHandled) return;
-      const items = Array.from(e.clipboardData.items);
-      const fileItems = items.filter(it => it.kind === 'file');
-      if (fileItems.length === 0) return;
-      const files: File[] = [];
-      fileItems.forEach(it => {
-        const f = it.getAsFile();
-        if (f) files.push(f);
-      });
-      if (files.length === 0) return;
-      // Only handle if at least one image/* to avoid intercepting generic clipboard
-      const imageFiles = files.filter(f => f.type.startsWith('image/'));
-      if (imageFiles.length === 0) return;
-      imageFiles.forEach(file => {
-        const preview = URL.createObjectURL(file);
-        const tempId = `staged-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-        setStaged(prev => [...prev, { id: tempId, file, preview }]);
-      });
-      // Enqueue uploads for chat context so they will be included on send
-      uploadApi.addFiles(imageFiles, { context: 'chat' });
-    };
-    window.addEventListener('paste', onPaste);
-    return () => window.removeEventListener('paste', onPaste);
-  }, [uploadApi]);
+    if (pendingCancelledUploadIds.current.size === 0) return;
+    const finished: string[] = [];
+    uploadApi.uploads.forEach(u => {
+      if (pendingCancelledUploadIds.current.has(u.id) && u.status === 'completed' && u.result) {
+        const result: any = u.result;
+        const relPath: string | undefined = result.rel_path || result.relative_path;
+        const kind: string = result.type || result.kind || 'files';
+        const pathParts = relPath ? relPath.split('/') : [];
+        const filename = pathParts[pathParts.length - 1];
+        if (filename && kind) {
+          if ((import.meta as any).env?.VITE_DEBUG_MEDIA === 'true') {
+            console.debug('[Chat] Deferred deleting cancelled upload', { id: u.id, kind, filename, relPath });
+          }
+          mediaService.delete(kind, filename).catch(err => {
+            console.warn('[Chat] Deferred delete failed for cancelled upload', u.id, err);
+          });
+        } else {
+          if ((import.meta as any).env?.VITE_DEBUG_MEDIA === 'true') {
+            console.debug('[Chat] Deferred deletion skipped - missing data', { id: u.id, relPath, kind });
+          }
+        }
+        finished.push(u.id);
+      }
+    });
+    if (finished.length) {
+      finished.forEach(id => pendingCancelledUploadIds.current.delete(id));
+    }
+  }, [uploadApi.uploads]);
 
   // --- Explorer Drag & Drop (file references) ---
   // Moved mime inference to shared util to keep this file leaner
@@ -953,7 +997,39 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
                   {staged.map(att => (
                     <div key={att.id} className="relative group border rounded p-1 flex items-center gap-2 max-w-[220px]" style={{ borderColor: 'var(--icui-border-subtle)', background: 'var(--icui-bg-secondary)' }} title={att.file.name}>
                       {att.preview ? (
-                        <img src={att.preview} alt={att.file.name} className="w-8 h-8 object-cover rounded flex-shrink-0" />
+                        <img 
+                          src={att.preview} 
+                          alt={att.file.name} 
+                          className="w-8 h-8 object-cover rounded flex-shrink-0 cursor-pointer hover:ring-2 hover:ring-blue-400 transition" 
+                          onClick={async () => {
+                            // Open staged image in editor
+                            try {
+                              const matchingUpload = uploadApi.uploads.find(
+                                u => u.context === 'chat' && u.file === att.file
+                              );
+                              
+                              if (matchingUpload?.status === 'completed' && matchingUpload.result) {
+                                const result: any = matchingUpload.result;
+                                const relPath = result.rel_path || result.relative_path;
+                                if (relPath) {
+                                  // Construct absolute path using workspace root
+                                  const fullPath = resolveWorkspacePath(`.icotes/media/${relPath}`);
+                                  window.dispatchEvent(new CustomEvent('icui:openFile', {
+                                    detail: { path: fullPath }
+                                  }));
+                                } else {
+                                  notificationService.error('File path not available');
+                                }
+                              } else {
+                                notificationService.info('File is still uploading, please wait...');
+                              }
+                            } catch (err) {
+                              console.error('[Chat] Failed to open staged image:', err);
+                              notificationService.error('Failed to open image preview');
+                            }
+                          }}
+                          title="Click to preview in editor"
+                        />
                       ) : (
                         <div className="w-8 h-8 flex items-center justify-center text-[10px] rounded flex-shrink-0" style={{ background: 'var(--icui-bg-tertiary)', color: 'var(--icui-text-secondary)' }}>{att.file.name.split('.').pop()?.toUpperCase()}</div>
                       )}

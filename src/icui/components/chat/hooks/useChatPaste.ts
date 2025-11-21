@@ -15,8 +15,6 @@ export function useChatPaste(
   useEffect(() => {
     const onPaste = (e: ClipboardEvent) => {
       if (!e.clipboardData) return;
-      // If a global handler already processed this, skip
-      if ((e as any)._icuiGlobalPasteHandled) return;
       const items = Array.from(e.clipboardData.items);
       const files: File[] = [];
       for (const it of items) {

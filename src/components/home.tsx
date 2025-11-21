@@ -346,6 +346,20 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
     };
   }, [handlePreviewFile]);
 
+  // Handle icui:openFile event from chat thumbnails
+  useEffect(() => {
+    const handleOpenFile = (e: any) => {
+      const path = e?.detail?.path;
+      if (typeof path === 'string' && editorRef.current) {
+        editorRef.current.openFilePermanent(path);
+      }
+    };
+    window.addEventListener('icui:openFile', handleOpenFile as any);
+    return () => {
+      window.removeEventListener('icui:openFile', handleOpenFile as any);
+    };
+  }, []);
+
   // Initialize Explorer file operations
   useEffect(() => {
     import('../icui/components/explorer/FileOperations').then(({ ExplorerFileOperations }) => {
