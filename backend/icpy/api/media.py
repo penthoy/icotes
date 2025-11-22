@@ -291,7 +291,8 @@ async def get_image_by_id(image_id: str, thumbnail: bool = False):
 
         # Thumbnail branch
         if thumbnail:
-            if ref.thumbnail_path:
+            # Legacy disk thumbnail branch (deprecated). Prefer embedded base64.
+            if ref.thumbnail_path and ref.thumbnail_path.strip():
                 thumb_path = Path(ref.thumbnail_path)
                 if thumb_path.exists():
                     # Infer mime type from file extension
@@ -302,13 +303,15 @@ async def get_image_by_id(image_id: str, thumbnail: bool = False):
                         thumb_mime = 'image/jpeg'
                     else:
                         thumb_mime = 'image/jpeg'
-                    logger.info(f"[Media API] Serving thumbnail file: {thumb_path}")
+                    logger.warning(
+                        f"[Media API] Serving legacy thumbnail file (DEPRECATED) for {image_id}: {thumb_path}"
+                    )
                     return FileResponse(
                         path=thumb_path,
                         media_type=thumb_mime,
                         headers={
                             "Cache-Control": "public, max-age=31536000",
-                            "X-Image-Source": "thumbnail-file"
+                            "X-Image-Source": "thumbnail-file-legacy"
                         }
                     )
             # Fallback to embedded base64 thumbnail

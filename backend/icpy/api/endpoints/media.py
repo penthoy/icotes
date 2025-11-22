@@ -52,10 +52,18 @@ async def get_image(
             logger.warning(f"[Media API] Image reference not found: {image_id}")
             raise HTTPException(status_code=404, detail=f"Image not found: {image_id}")
         
-        # Determine which file to serve (path-based fallback)
-        if thumbnail and image_ref.thumbnail_path:
+        # Determine which file to serve (path-based fallback). Prefer in-memory base64; thumbnail_path is legacy.
+        if thumbnail and image_ref.thumbnail_path and image_ref.thumbnail_path.strip():
             file_path = Path(image_ref.thumbnail_path)
-            logger.info(f"[Media API] Thumbnail requested for {image_id}; thumbnail_path={file_path}")
+            logger.info(
+                f"[Media API] Thumbnail requested for {image_id}; legacy thumbnail_path={file_path}" 
+                " (DEPRECATED – will be removed; using file on disk if it still exists)"
+            )
+            if not file_path.exists():
+                logger.warning(
+                    f"[Media API] Legacy thumbnail_path set but file missing for {image_id}; will fall back to base64 thumbnail"
+                )
+                file_path = Path(image_ref.absolute_path)  # provisional; actual base64 branch handled below
         else:
             file_path = Path(image_ref.absolute_path)
             logger.info(f"[Media API] Full image requested for {image_id}; absolute_path={file_path}")
@@ -123,14 +131,24 @@ async def get_image(
         # Check if file exists locally
         if not file_path.exists():
             logger.error(f"[Media API] File not found on disk: {file_path}")
-            
-            # Fallback to thumbnail if full image missing (only for local images)
-            if not is_remote and not thumbnail and image_ref.thumbnail_path:
+
+            # Legacy fallback: if a non-empty thumbnail_path exists AND file present, use it. Otherwise rely on base64.
+            if (
+                not is_remote 
+                and not thumbnail 
+                and image_ref.thumbnail_path 
+                and image_ref.thumbnail_path.strip()
+            ):
                 fallback_path = Path(image_ref.thumbnail_path)
                 if fallback_path.exists():
-                    logger.warning(f"[Media API] Falling back to thumbnail: {fallback_path}")
+                    logger.warning(
+                        f"[Media API] Falling back to legacy thumbnail file for {image_id}: {fallback_path} (DEPRECATED)"
+                    )
                     file_path = fallback_path
                 else:
+                    logger.warning(
+                        f"[Media API] Legacy thumbnail_path present but file missing for {image_id}; no file fallback available"
+                    )
                     raise HTTPException(
                         status_code=404,
                         detail=f"Image file not found: {image_ref.current_filename}"

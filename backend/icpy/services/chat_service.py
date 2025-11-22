@@ -1479,6 +1479,9 @@ class ChatService:
             return message_dict
         
         try:
+            # surgicaliterate: track and dedupe thumbnail/reference creation per message
+            processed_images: Dict[str, Dict[str, Any]] = {}
+            import hashlib
             # Check if message contains imageData in metadata
             metadata = message_dict.get('metadata', {})
             
@@ -1512,7 +1515,22 @@ class ChatService:
                 
                 # Handle dict
                 if isinstance(location_data, dict) and 'imageData' in location_data:
+                    # Skip if imageReference already exists (tool already created it)
+                    if 'imageReference' in location_data:
+                        logger.debug(f"Skipping reference creation - already exists in {location_name}")
+                        continue
+                    
                     image_data = location_data['imageData']
+                    try:
+                        digest = hashlib.sha256(image_data.encode('utf-8')).hexdigest()
+                    except Exception:
+                        digest = str(len(image_data))
+                    if digest in processed_images:
+                        # Reuse already-created reference for identical imageData
+                        location_data['imageReference'] = processed_images[digest]
+                        del location_data['imageData']
+                        logger.debug(f"Deduped image reference re-use for {location_name}")
+                        continue
                     
                     # Extract metadata
                     filename = location_data.get('filePath', 'generated_image.png')
@@ -1566,6 +1584,8 @@ class ChatService:
                         # Replace imageData with imageReference
                         location_data['imageReference'] = ref.to_dict()
                         del location_data['imageData']
+                        # Record for dedupe in other locations within same message
+                        processed_images[digest] = location_data['imageReference']
                         
                         # Preserve tool-provided imageUrl/absolutePath if present; only set if missing
                         try:
@@ -1597,6 +1617,19 @@ class ChatService:
                         if not (isinstance(parsed, dict) and 'imageData' in parsed):
                             return parsed
                         image_data_inner = parsed['imageData']
+                        # Skip if already has imageReference (tool provided) or duplicate by digest
+                        if 'imageReference' in parsed:
+                            logger.debug(f"Skipping reference creation - already exists inside parsed block in {location_name}")
+                            return parsed
+                        try:
+                            digest_inner = hashlib.sha256(image_data_inner.encode('utf-8')).hexdigest()
+                        except Exception:
+                            digest_inner = str(len(image_data_inner))
+                        if digest_inner in processed_images:
+                            parsed['imageReference'] = processed_images[digest_inner]
+                            del parsed['imageData']
+                            logger.debug(f"Deduped image reference re-use inside parsed block for {location_name}")
+                            return parsed
                         filename_inner = parsed.get('filePath', 'generated_image.png')
                         prompt_inner = parsed.get('prompt', 'Generated image')
                         model_inner = parsed.get('model', 'unknown')
@@ -1607,6 +1640,7 @@ class ChatService:
                             )
                             parsed['imageReference'] = ref_dict
                             del parsed['imageData']
+                            processed_images[digest_inner] = ref_dict
                             
                             # Replace imageUrl with file path if present
                             try:

@@ -168,10 +168,22 @@ class TestImageRenameResilience:
         # Delete original image
         image_path.unlink()
         
-        # Resolve should return thumbnail path
+        # Because the service no longer writes thumbnail files by default,
+        # simulate a legacy on-disk thumbnail and attach it to the reference so
+        # the resolver fallback behavior remains testable.
+        thumb_dir = workspace_dir / '.icotes' / 'thumbnails'
+        thumb_dir.mkdir(parents=True, exist_ok=True)
+        thumb_file = thumb_dir / f'thumb_{ref.image_id}.webp'
+        # Create a small placeholder thumbnail file
+        with open(thumb_file, 'wb') as tf:
+            tf.write(b'RIFF\x00\x00\x00\x00WEBP')
+
+        # Attach the legacy thumbnail_path to the ref so resolver can fall back
+        ref.thumbnail_path = str(thumb_file)
+
         resolver = ImageResolver(workspace_path=str(workspace_dir))
         resolved_path = await resolver.resolve_image_path(ref)
-        
+
         assert resolved_path is not None
         assert Path(resolved_path).exists()
         assert 'thumbnails' in resolved_path

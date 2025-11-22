@@ -139,5 +139,9 @@ async def test_edit_image_preserve_size_when_no_hints(monkeypatch, tmp_path):
     # The tool should indicate edit mode detected
     assert data.get('mode') == 'edit'
 
-    # Thumbnail and full image URLs present
-    assert data.get('thumbnailUrl') and data.get('fullImageUrl')
+    # Full image URL present; legacy thumbnailUrl removed. Ensure reference has thumbnail_base64.
+    assert data.get('fullImageUrl')
+    ref = data.get('imageReference')
+    assert ref and ref.get('thumbnail_base64') is not None
+    # Ensure legacy field is still present for backward compat but empty
+    assert 'thumbnailUrl' not in data

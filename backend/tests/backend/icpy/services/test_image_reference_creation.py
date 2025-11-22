@@ -157,7 +157,8 @@ class TestImageReferenceCreation:
         assert ref.size_bytes > 0
         assert ref.thumbnail_base64 is not None
         assert len(ref.thumbnail_base64) > 0
-        assert ref.thumbnail_path is not None
+        # thumbnail_path is legacy and may be empty (we now generate in-memory base64 thumbnails)
+        assert ref.thumbnail_path == '' or ref.thumbnail_path is None
         assert ref.prompt == "a test image"
         assert ref.model == "test-model-1"
         assert ref.timestamp > 0
@@ -181,17 +182,10 @@ class TestImageReferenceCreation:
             model="test"
         )
         
-        # Verify thumbnail file exists
-        thumbnail_path = Path(ref.thumbnail_path)
-        assert thumbnail_path.exists()
-        assert thumbnail_path.is_file()
-        
-        # Verify thumbnail is smaller than original
-        thumbnail_size = thumbnail_path.stat().st_size
-        original_size = image_path.stat().st_size
-        # For very small test images, thumbnail might be similar size due to compression overhead
-        # Just verify it exists and is readable
-        assert thumbnail_size > 0
+        # Thumbnails are now kept in-memory as base64 (no file written by default)
+        assert ref.thumbnail_base64 is not None and len(ref.thumbnail_base64) > 0
+        # Legacy thumbnail_path is not written to disk by default
+        assert ref.thumbnail_path == '' or ref.thumbnail_path is None
     
     @pytest.mark.asyncio
     async def test_create_image_reference_checksum_generation(self, workspace_dir, sample_image_base64):
