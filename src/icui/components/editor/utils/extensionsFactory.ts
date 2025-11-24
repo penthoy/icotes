@@ -14,7 +14,9 @@ import {
   crosshairCursor,
   ViewPlugin,
   Decoration,
-  ViewUpdate
+  ViewUpdate,
+  gutter,
+  GutterMarker
 } from "@codemirror/view";
 import { Extension } from "@codemirror/state";
 import {
@@ -84,10 +86,42 @@ function getLanguageExtension(language: string): Extension {
 }
 
 /**
+ * Create custom line numbers for diff view (shows old and new line numbers)
+ */
+function createDiffLineNumbers(file: EditorFile | undefined): Extension {
+  if (!file || !(file as any).isDiff || !file.__diffMeta?.lineNumbers) {
+    return lineNumbers();
+  }
+
+  const lineNumberMap = file.__diffMeta.lineNumbers;
+  
+  return lineNumbers({
+    formatNumber: (lineNo: number) => {
+      const mapping = lineNumberMap.get(lineNo);
+      if (!mapping) return String(lineNo);
+      
+      const oldNum = mapping.old !== null ? String(mapping.old) : '';
+      const newNum = mapping.new !== null ? String(mapping.new) : '';
+      
+      // Format like VS Code: "old new" or just one number if only one side exists
+      if (oldNum && newNum) {
+        return `${oldNum} ${newNum}`;
+      } else if (newNum) {
+        return `  ${newNum}`; // Indent for alignment
+      } else if (oldNum) {
+        return `${oldNum}  `; // Space after for alignment
+      }
+      return '';
+    }
+  });
+}
+
+/**
  * Create diff highlighting decorations
  */
 function createDiffDecorations(file: EditorFile | undefined): Extension {
-  if (!file || file.language !== 'diff') return [];
+  // Check if file has diff metadata (isDiff flag and __diffMeta)
+  if (!file || !(file as any).isDiff || !file.__diffMeta) return [];
 
   const added = Decoration.line({ class: 'cm-diff-added' });
   const removed = Decoration.line({ class: 'cm-diff-removed' });
@@ -140,8 +174,8 @@ export function createEditorExtensions({
   const language = file?.language || 'text';
   
   const extensions: Extension[] = [
-    // Basic editor features
-    lineNumbers(),
+    // Basic editor features - use custom line numbers for diffs
+    createDiffLineNumbers(file),
     foldGutter(),
     dropCursor(),
     indentOnInput(),

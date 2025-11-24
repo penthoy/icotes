@@ -321,10 +321,15 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
       const processed = processDiffPatch(patch);
       const name = `${filePath.split('/').pop() || filePath} (diff)`;
       
+      // Detect language from file extension for syntax highlighting
+      const detectedLang = detectLanguageFromExtension(filePath);
+      const language = detectedLang || 'text';
+      console.log('[ICUIEditor] Detected language for synthetic diff:', language);
+      
       const diffFile: EditorFile = {
         id: tabId,
         name,
-        language: 'diff',
+        language, // Use actual file language for syntax highlighting
         content: processed.content,
         modified: false,
         path: filePath,
@@ -382,10 +387,15 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
       console.log('[ICUIEditor] Creating new diff tab:', name);
       const processed = processDiffPatch(diffData.patch);
       
+      // Detect language from file extension for syntax highlighting
+      const detectedLang = detectLanguageFromExtension(filePath);
+      const language = detectedLang || 'text';
+      console.log('[ICUIEditor] Detected language for diff:', language);
+      
       const diffFile: EditorFile = {
         id: tabId,
         name,
-        language: 'diff',
+        language, // Use actual file language for syntax highlighting
         content: processed.content,
         modified: false,
         path: filePath,
