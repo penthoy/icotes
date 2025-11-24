@@ -549,12 +549,10 @@ const ICUIGit: React.FC<ICUIGitProps> = ({
         }}
         title={`View diff for ${file.path}`}
       >
-        <div className="flex items-start space-x-2 flex-1 min-w-0">
-          <span className={`text-xs font-mono mt-0.5 ${statusConfig.color}`}>{statusConfig.icon}</span>
-          <div className="flex flex-col min-w-0 leading-tight">
-            <span className="text-sm truncate font-medium">{filename}</span>
-            <span className="text-[10px] text-gray-500 dark:text-gray-400 truncate" title={file.path}>{dir || '.'}</span>
-          </div>
+        <div className="flex items-center space-x-2 flex-1 min-w-0">
+          <span className={`text-xs font-mono ${statusConfig.color}`}>{statusConfig.icon}</span>
+          <span className="text-sm truncate font-medium">{filename}</span>
+          {dir && <span className="text-xs text-gray-500 dark:text-gray-400 truncate">{dir}</span>}
         </div>
       </div>
     );
