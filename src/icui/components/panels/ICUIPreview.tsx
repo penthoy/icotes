@@ -15,6 +15,7 @@
 
 import React, { useState, useRef, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react';
 import { backendService, useTheme } from '../../services';
+import { notificationService } from '../../services/notificationService';
 import { previewStateManager, type PreviewState, type PreviewProject } from '../../services/previewStateManager';
 
 // Preview types and interfaces
@@ -24,7 +25,7 @@ interface PreviewFile {
 }
 
 interface ICUIPreviewRef {
-  createPreview: (files: Record<string, string>) => Promise<void>;
+  createPreview: (files: Record<string, string>, baseDir?: string) => Promise<void>;
   updatePreview: (files: Record<string, string>) => Promise<void>;
   clearPreview: () => void;
 }
@@ -166,15 +167,17 @@ const ICUIPreview = forwardRef<ICUIPreviewRef, ICUIPreviewProps>(({
 
   // Notification service (unified)
   const showNotification = useCallback((message: string, type: 'success' | 'error' | 'warning' | 'info' = 'info') => {
-    // Unified service
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { notificationService } = require('../../services/notificationService');
-    notificationService.show(message, type, {
-      position: 'top-right',
-      duration: 3000,
-      dismissible: true,
-      key: `preview:${type}:${message}`,
-    });
+    console.log('[ICUIPreview] showNotification called:', { message, type });
+    try {
+      notificationService.show(message, type, {
+        position: 'top-right',
+        duration: 3000,
+        dismissible: true,
+        key: `preview:${type}:${message}`,
+      });
+    } catch (error) {
+      console.error('[ICUIPreview] Failed to show notification:', error);
+    }
   }, []);
 
   // Safe clipboard function that handles different environments
@@ -278,14 +281,12 @@ const ICUIPreview = forwardRef<ICUIPreviewRef, ICUIPreviewProps>(({
   }, []);
 
   // Create a new preview
-  const createPreview = useCallback(async (files: Record<string, string>) => {
+  const createPreview = useCallback(async (files: Record<string, string>, baseDir?: string) => {
     try {
       updateGlobalState({ isLoading: true, error: null });
       
       const projectType = detectProjectType(files);
-      console.log('Detected project type:', projectType);
       
-      // Send create preview request to backend
       const response = await fetch('/api/preview/create', {
         method: 'POST',
         headers: {
@@ -293,11 +294,13 @@ const ICUIPreview = forwardRef<ICUIPreviewRef, ICUIPreviewProps>(({
         },
         body: JSON.stringify({
           files,
-          projectType
+          projectType,
+          baseDir: baseDir || null
         }),
       });
       
       if (!response.ok) {
+        const errorText = await response.text();
         throw new Error(`Failed to create preview: ${response.statusText}`);
       }
       
@@ -319,18 +322,14 @@ const ICUIPreview = forwardRef<ICUIPreviewRef, ICUIPreviewProps>(({
       // Poll for build completion
       await waitForPreviewReady(result.preview_id);
       
-      // Re-read state after ready to ensure we have a URL
       const latest = previewStateManager.getState();
       const readyUrl = latest.previewUrl || project.url;
       if (readyUrl) {
         showNotification(`Preview created for ${projectType} project`, 'success');
         onPreviewReady?.(readyUrl);
-      } else {
-        console.warn('Preview reported ready but URL is missing');
       }
       
     } catch (error) {
-      console.error('Failed to create preview:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       updateGlobalState({ error: errorMessage });
       showNotification(`Failed to create preview: ${errorMessage}`, 'error');
@@ -461,6 +460,45 @@ const ICUIPreview = forwardRef<ICUIPreviewRef, ICUIPreviewProps>(({
     };
   }, [initialFiles, autoRefresh, refreshDelay, currentProject, updatePreview]);
 
+  // Listen for preview requests from other components (e.g., Explorer)
+  useEffect(() => {
+    const handlePreviewRequest = (event: any) => {
+      console.log('[ICUIPreview] RAW EVENT:', event);
+      console.log('[ICUIPreview] event.type:', event.type);
+      console.log('[ICUIPreview] event.detail:', event.detail);
+      console.log('[ICUIPreview] event.detail JSON:', JSON.stringify(event.detail));
+      
+      const detail = event.detail;
+      if (!detail) {
+        console.error('[ICUIPreview] Event has no detail property');
+        return;
+      }
+      
+      const files = detail.files;
+      const baseDir = detail.baseDir;
+      
+      console.log('[ICUIPreview] files type:', typeof files);
+      console.log('[ICUIPreview] files keys:', files ? Object.keys(files) : 'NONE');
+      console.log('[ICUIPreview] baseDir type:', typeof baseDir);
+      console.log('[ICUIPreview] baseDir value:', baseDir);
+      
+      if (files && typeof files === 'object') {
+        console.log('[ICUIPreview] Calling createPreview with baseDir:', baseDir);
+        createPreview(files, baseDir);
+      } else {
+        console.error('[ICUIPreview] Invalid files object');
+      }
+    };
+
+    window.addEventListener('icui:preview', handlePreviewRequest);
+    console.log('[ICUIPreview] Registered icui:preview event listener');
+    
+    return () => {
+      window.removeEventListener('icui:preview', handlePreviewRequest as EventListener);
+      console.log('[ICUIPreview] Unregistered icui:preview event listener');
+    };
+  }, [createPreview]);
+
   // Check backend connection and validate persisted preview
   useEffect(() => {
     const checkConnection = async () => {
@@ -488,9 +526,13 @@ const ICUIPreview = forwardRef<ICUIPreviewRef, ICUIPreviewProps>(({
       }
     };
     
-    checkConnection();
+    // Delay initial check to allow WebSocket to connect first (prevents flash of "Backend Disconnected")
+    const initialTimeout = setTimeout(checkConnection, 500);
     const interval = setInterval(checkConnection, 30000);
-    return () => clearInterval(interval);
+    return () => {
+      clearTimeout(initialTimeout);
+      clearInterval(interval);
+    };
   }, [currentProject?.id]);
 
   // Initialize with initial files
@@ -699,9 +741,10 @@ const ICUIPreview = forwardRef<ICUIPreviewRef, ICUIPreviewProps>(({
             src={previewUrl || currentProject?.url || ''}
             className="w-full h-full border-0"
             style={{
-              pointerEvents: isParentResizing ? 'none' : 'auto'
+              pointerEvents: isParentResizing ? 'none' : 'auto',
+              display: 'block'
             }}
-            sandbox="allow-scripts allow-forms allow-modals"
+            sandbox="allow-scripts allow-forms allow-modals allow-same-origin allow-pointer-lock"
             title="Live Preview"
             onLoad={() => {
               console.log('Preview iframe loaded');
