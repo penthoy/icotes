@@ -251,12 +251,15 @@
     border-left: 3px solid rgba(59, 130, 246, 0.6) !important;
   }
 
-  /* Diff line number gutter styling - wider to accommodate dual line numbers */
-  .cm-gutters {
+  /* Diff line number gutter styling - wider to accommodate dual line numbers
+     Scope to diff tabs only via .icui-editor-diff container to avoid
+     regressing normal editor gutter width. The React editor component
+     should add this wrapper class only for diff views. */
+  .icui-editor-diff .cm-gutters {
     min-width: 80px !important; /* Wider gutter for "old new" format */
   }
   
-  .cm-lineNumbers .cm-gutterElement {
+  .icui-editor-diff .cm-lineNumbers .cm-gutterElement {
     min-width: 70px !important;
     padding: 0 8px !important;
     text-align: right !important;

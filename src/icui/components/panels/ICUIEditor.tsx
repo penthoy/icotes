@@ -968,8 +968,10 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
     };
   }, []);
 
+  const isDiffTab = Boolean((activeFile as any)?.isDiff);
+
   return (
-    <div className={`icui-editor-container h-full flex flex-col ${className}`}>
+    <div className={`icui-editor-container h-full flex flex-col ${isDiffTab ? 'icui-editor-diff' : ''} ${className}`}>
       {/* File Tabs */}
       <EditorTabBar
         files={files}
