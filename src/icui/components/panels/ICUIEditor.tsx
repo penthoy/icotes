@@ -18,6 +18,7 @@ import { EditorView } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
 import { backendService, useTheme, ConnectionStatus } from '../../services';
 import { getWorkspaceRoot } from '../../lib';
+import { confirmService } from '../../services/confirmService';
 
 // Import from editor module
 import { 
@@ -838,48 +839,67 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
 
   const handleCloseFile = useCallback((fileId: string) => {
     const file = files.find(f => f.id === fileId);
-    if (!file) return;
+    if (!file) {
+      console.log('[Editor] handleCloseFile: file not found', fileId);
+      return;
+    }
+
+    console.log('[Editor] handleCloseFile: called for', file.name, 'modified:', file.modified, 'path:', file.path);
 
     // Save current editor content before closing if this is the active file
     if (fileId === activeFileId && editorViewRef.current) {
       const currentContent = editorViewRef.current.state.doc.toString();
+      console.log('[Editor] handleCloseFile: checking content. current length:', currentContent.length, 'stored length:', file.content.length);
       if (currentContent !== file.content) {
+        console.log('[Editor] handleCloseFile: content differs, updating modified state');
         setFiles(prevFiles => 
           prevFiles.map(f => 
             f.id === fileId 
-              ? { ...f, content: currentContent, modified: f.content !== currentContent }
+              ? { ...f, content: currentContent, modified: true }
               : f
           )
         );
         // Update the file object for the confirmation dialog
-        Object.assign(file, { content: currentContent, modified: file.content !== currentContent });
+        Object.assign(file, { content: currentContent, modified: true });
       }
     }
 
+    console.log('[Editor] handleCloseFile: after content check, file.modified =', file.modified);
+
     if (file.modified) {
+      console.log('[Editor] handleCloseFile: showing confirm dialog');
       // Use global confirm dialog
-      // Lazy import to avoid cyc dependency in large file
-      const { confirmService } = require('../../services/confirmService');
-      const shouldSave = (confirmService as typeof import('../../services/confirmService').confirmService)
-        .confirm({ title: 'Unsaved Changes', message: `${file.name} has unsaved changes. Save before closing?`, confirmText: 'Save', cancelText: 'Discard' });
-      // Note: confirm() returns Promise<boolean>, handle in then to keep function sync
-      (async () => {
-        const ok = await shouldSave;
-        if (ok && connectionStatus.connected && file.path) {
-          handleSaveFile(fileId);
-        }
-        // Proceed to close regardless after handling save choice
-        setFiles(prevFiles => prevFiles.filter(f => f.id !== fileId));
-        if (fileId === activeFileId) {
-          const remainingFiles = files.filter(f => f.id !== fileId);
-          if (remainingFiles.length > 0) {
-            setActiveFileId(remainingFiles[0].id);
-          } else {
-            setActiveFileId('');
+      try {
+        console.log('[Editor] confirmService available:', !!confirmService);
+        const shouldSave = confirmService.confirm({ 
+          title: 'Unsaved Changes', 
+          message: `${file.name} has unsaved changes. Save before closing?`, 
+          confirmText: 'Save', 
+          cancelText: 'Discard' 
+        });
+        console.log('[Editor] confirm() returned promise:', !!shouldSave);
+        // Note: confirm() returns Promise<boolean>, handle in then to keep function sync
+        (async () => {
+          const ok = await shouldSave;
+          console.log('[Editor] User chose:', ok ? 'Save' : 'Discard');
+          if (ok && connectionStatus.connected && file.path) {
+            handleSaveFile(fileId);
           }
-        }
-        onFileClose?.(fileId);
-      })();
+          // Proceed to close regardless after handling save choice
+          setFiles(prevFiles => prevFiles.filter(f => f.id !== fileId));
+          if (fileId === activeFileId) {
+            const remainingFiles = files.filter(f => f.id !== fileId);
+            if (remainingFiles.length > 0) {
+              setActiveFileId(remainingFiles[0].id);
+            } else {
+              setActiveFileId('');
+            }
+          }
+          onFileClose?.(fileId);
+        })();
+      } catch (err) {
+        console.error('[Editor] handleCloseFile: confirmService error:', err);
+      }
       return; // Defer further logic to async block
     }
     // If not modified, proceed to close immediately
