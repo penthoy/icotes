@@ -301,7 +301,7 @@ const ICUIPreview = forwardRef<ICUIPreviewRef, ICUIPreviewProps>(({
       
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Failed to create preview: ${response.statusText}`);
+        throw new Error(`Failed to create preview: ${response.statusText} - ${errorText}`);
       }
       
       const result = await response.json();

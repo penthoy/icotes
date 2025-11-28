@@ -61,9 +61,9 @@ export const WebFetchWidget: React.FC<WebFetchWidgetProps> = ({
   const displayTitle = title || metadata?.title || 'Web Page';
   const isYouTube = metadata?.type === 'youtube_transcript';
 
-  const handleCopy = () => {
+  const handleCopy = async () => {
     try {
-      navigator.clipboard.writeText(content);
+      await navigator.clipboard.writeText(content);
     } catch (err) {
       // Best-effort: clipboard may be blocked in some contexts
       console.error('Clipboard write failed:', err);

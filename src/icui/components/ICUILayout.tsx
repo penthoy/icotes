@@ -258,7 +258,7 @@ export const ICUILayout: React.FC<ICUILayoutProps> = ({
     console.log(`[LAYOUT-PROP-SYNC] Applying layout prop update - center: "${currCenterActive}" -> "${sanitizedCenterActive}"`);
     lastLayoutPropRef.current = layout;
     setCurrentLayout(sanitized);
-  }, [layout, sanitizeLayout, currentLayout]);
+  }, [layout, sanitizeLayout]);
 
   // Save layout changes and call onLayoutChange
   const [isInitialized, setIsInitialized] = useState(false);

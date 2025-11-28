@@ -297,6 +297,8 @@ async def send_files(payload: SendFilesRequest):
     detected_src_ctx = None
     for raw_path in payload.paths:
         ns, clean_path = _strip_namespace(raw_path)
+        if ns:
+            ns = ns.lower()  # Normalize namespace to lowercase for consistent dict lookups
         if ns and not detected_src_ctx:
             # Auto-detect source context from first namespaced path
             detected_src_ctx = ns
@@ -334,7 +336,9 @@ async def send_files(payload: SendFilesRequest):
     
     # Strip namespace from common_prefix if present
     raw_common_prefix = (payload.common_prefix or '').rstrip('/')
-    _, common_prefix = _strip_namespace(raw_common_prefix)
+    prefix_ns, common_prefix = _strip_namespace(raw_common_prefix)
+    if prefix_ns:
+        prefix_ns = prefix_ns.lower()  # Normalize for consistency
     common_prefix = common_prefix.rstrip('/')
     
     if common_prefix and any('..' in p for p in common_prefix.split('/')):

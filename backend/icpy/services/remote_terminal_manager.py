@@ -22,6 +22,9 @@ from ..utils.process_reaper import reap_zombies
 
 logger = logging.getLogger(__name__)
 
+# Module-level singleton (initialized to None)
+_remote_terminal_manager_singleton: Optional[RemoteTerminalManager] = None
+
 
 class RemoteTerminalManager:
     def __init__(self) -> None:
@@ -305,18 +308,14 @@ async def get_remote_terminal_manager() -> RemoteTerminalManager:
     This caused zombie remote PTY processes to survive hop disconnect.
     """
     global _remote_terminal_manager_singleton
-    try:
-        _remote_terminal_manager_singleton  # type: ignore
-    except NameError:
-        _remote_terminal_manager_singleton = None  # type: ignore
     if _remote_terminal_manager_singleton is None:
         logger.info("[RemoteTerm] Creating singleton manager instance")
-        _remote_terminal_manager_singleton = await RemoteTerminalManager().initialize()  # type: ignore
+        _remote_terminal_manager_singleton = await RemoteTerminalManager().initialize()
     else:
-        logger.info(
+        logger.debug(
             "[RemoteTerm] Reusing singleton manager id=%s sessions=%d tasks=%d",
-            hex(id(_remote_terminal_manager_singleton)),  # type: ignore
-            len(_remote_terminal_manager_singleton._sessions),  # type: ignore
-            len(_remote_terminal_manager_singleton._tasks),  # type: ignore
+            hex(id(_remote_terminal_manager_singleton)),
+            len(_remote_terminal_manager_singleton._sessions),
+            len(_remote_terminal_manager_singleton._tasks),
         )
-    return _remote_terminal_manager_singleton  # type: ignore
+    return _remote_terminal_manager_singleton

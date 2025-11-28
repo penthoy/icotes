@@ -101,6 +101,16 @@ async def create_preview(request: PreviewCreateRequest):
                         clean_ref = ref.split('?')[0].split('#')[0].lstrip('./')
                         abs_path = os.path.join(request.baseDir, clean_ref)
                         
+                        # Security: Ensure resolved path stays within baseDir to prevent path traversal
+                        try:
+                            real_abs = os.path.realpath(abs_path)
+                            real_base = os.path.realpath(request.baseDir)
+                            if not real_abs.startswith(real_base + os.sep) and real_abs != real_base:
+                                logger.warning(f"Path traversal attempt blocked: {ref}")
+                                continue
+                        except Exception:
+                            continue
+                        
                         if os.path.isfile(abs_path):
                             try:
                                 with open(abs_path, 'r', encoding='utf-8', errors='ignore') as fh:

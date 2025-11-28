@@ -949,8 +949,8 @@ export class ExplorerFileOperations {
                     const assetResp = await fetch(`/api/files/content?path=${encodeURIComponent(fullPath)}&namespace=${namespace}`);
                     if (assetResp.ok) {
                       const assetData = await assetResp.json();
-                      const assetName = assetPath.split('/').pop() || assetPath;
-                      files[assetName] = assetData.data?.content || assetData.content || '';
+                      // Preserve the relative path as the key so HTML references resolve correctly
+                      files[assetPath] = assetData.data?.content || assetData.content || '';
                     }
                   } catch (err) {
                     log.debug('ExplorerFileOperations', 'Fallback asset read failed', { asset: assetRef, error: err });

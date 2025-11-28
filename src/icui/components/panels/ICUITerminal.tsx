@@ -260,19 +260,31 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
       ta.setAttribute('aria-hidden', 'true');
       document.body.appendChild(ta);
 
+      let resolved = false;
+      
+      const cleanup = (text: string) => {
+        if (resolved) return;
+        resolved = true;
+        clearTimeout(timeoutId);
+        try { document.removeEventListener('paste', onPaste as any, true); } catch {}
+        try { if (document.body.contains(ta)) document.body.removeChild(ta); } catch {}
+        resolve(text);
+      };
+
       const onPaste = (e: ClipboardEvent) => {
         try { e.preventDefault(); } catch {}
         let txt = e.clipboardData?.getData('text/plain') || '';
         setTimeout(() => {
           if (!txt) txt = ta.value;
-          document.removeEventListener('paste', onPaste as any, true);
-          document.body.removeChild(ta);
-          resolve(txt || '');
+          cleanup(txt || '');
         }, 0);
       };
 
       document.addEventListener('paste', onPaste as any, true);
       ta.focus();
+      
+      // Cleanup timeout if paste never fires (e.g., user cancels)
+      const timeoutId = setTimeout(() => cleanup(''), 3000);
     });
 
     let text = await captureViaHidden();
@@ -316,6 +328,18 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
       ta.setAttribute('spellcheck', 'false');
       document.body.appendChild(ta);
 
+      let resolved = false;
+
+      const cleanup = (text: string) => {
+        if (resolved) return;
+        resolved = true;
+        clearTimeout(timeoutId);
+        try { document.removeEventListener('paste', onPaste as any, true); } catch {}
+        try { if (document.body.contains(ta)) document.body.removeChild(ta); } catch {}
+        pasteInProgressRef.current = false;
+        resolve(text);
+      };
+
       const onPaste = (e: ClipboardEvent) => {
         let txt = '';
         try {
@@ -328,15 +352,11 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
         }, 0);
       };
 
-      const cleanup = (text: string) => {
-        document.removeEventListener('paste', onPaste as any, true);
-        document.body.removeChild(ta);
-        pasteInProgressRef.current = false;
-        resolve(text);
-      };
-
       document.addEventListener('paste', onPaste as any, true);
       ta.focus();
+      
+      // Cleanup timeout if paste never fires (e.g., user cancels)
+      const timeoutId = setTimeout(() => cleanup(''), 3000);
     });
   }, []);
 

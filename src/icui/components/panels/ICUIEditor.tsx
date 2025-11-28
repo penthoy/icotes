@@ -869,7 +869,7 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
       (async () => {
         const ok = await shouldSave;
         if (ok && connectionStatus.connected && file.path) {
-          handleSaveFile(fileId);
+          await handleSaveFile(fileId);
         }
         // Proceed to close regardless after handling save choice
         setFiles(prevFiles => prevFiles.filter(f => f.id !== fileId));
