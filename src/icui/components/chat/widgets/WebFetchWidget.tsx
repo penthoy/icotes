@@ -61,8 +61,13 @@ export const WebFetchWidget: React.FC<WebFetchWidgetProps> = ({
   const displayTitle = title || metadata?.title || 'Web Page';
   const isYouTube = metadata?.type === 'youtube_transcript';
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(content);
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(content);
+    } catch (err) {
+      // Best-effort: clipboard may be blocked in some contexts
+      console.error('Clipboard write failed:', err);
+    }
   };
 
   const handleDownload = () => {
@@ -213,7 +218,8 @@ export const WebFetchWidget: React.FC<WebFetchWidgetProps> = ({
           <iframe
             src={url}
             className={`w-full ${getSizeClass()} border border-gray-300 dark:border-gray-600 rounded bg-white`}
-            sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
+            sandbox="allow-scripts allow-popups allow-forms"
+            referrerPolicy="no-referrer"
             title={displayTitle}
           />
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
@@ -372,8 +378,8 @@ export const WebFetchWidget: React.FC<WebFetchWidgetProps> = ({
             {content.substring(0, 200)}...
           </p>
           <div className="flex gap-4 mt-2 text-xs text-gray-500 dark:text-gray-400">
-            {structure?.sections && (
-              <span>{structure.sections.length} sections</span>
+            {structure?.toc && (
+              <span>{structure.toc.length} sections</span>
             )}
             {links && links.length > 0 && (
               <span>{links.length} links</span>

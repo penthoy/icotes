@@ -811,11 +811,9 @@ class ImagenTool(BaseTool):
                 logger.info(f"[ImagenTool] Building result with saved_absolute_path: {saved_absolute_path}, context={context_name}")
 
             result_data = {
-                "imageReference": ref_dict,  # Use corrected reference dict with proper absolute_path
-                "imageData": ref.thumbnail_base64,  # Include thumbnail for preview AND agent editing
+                "imageReference": ref_dict,  # Contains thumbnail_base64 for LLM visual context
                 # Prefer API fullImageUrl unless we truly saved to a file (imageUrl is optional)
                 **({"imageUrl": image_url} if image_url else {}),
-                "thumbnailUrl": f"/api/media/image/{ref.image_id}?thumbnail=true",  # Thumbnail endpoint for UI
                 "fullImageUrl": f"/api/media/image/{ref.image_id}",  # Full image endpoint for downloads
                 "mimeType": mime_type,
                 "prompt": str(prompt),

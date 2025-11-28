@@ -70,6 +70,11 @@ export default defineConfig(({ mode }) => {
           target: process.env.VITE_API_URL || `http://${process.env.SITE_URL || '0.0.0.0'}:${process.env.PORT || '8000'}`,
           changeOrigin: true,
         },
+        // Clipboard endpoints for terminal copy/paste
+        '/clipboard': {
+          target: process.env.VITE_API_URL || `http://${process.env.SITE_URL || '0.0.0.0'}:${process.env.PORT || '8000'}`,
+          changeOrigin: true,
+        },
       },
     }
   };

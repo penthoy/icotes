@@ -97,26 +97,19 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
   // Handle HTML file preview from Explorer context menu
   const handlePreviewFile = useCallback(async (filePath: string) => {
     try {
-      if (process.env.NODE_ENV === 'development') {
-        console.log('[Home] Handling preview for file:', filePath);
-      }
-      
       if (!previewRef.current) {
-        console.error('[Home] Preview ref not available, waiting...');
-        // Wait a bit for the component to mount
+        // Wait briefly for component to mount
         await new Promise(resolve => setTimeout(resolve, 100));
         if (!previewRef.current) {
-          console.error('[Home] Preview ref still not available after waiting');
           return;
         }
       }
 
-      // Read the file content
-  // If the filePath is namespaced, pass namespace for backend routing
-  const nsMatch = filePath.match(/^([^:]+):\/(.*)$/);
-  const nsParam = nsMatch ? `&namespace=${encodeURIComponent(nsMatch[1])}` : '';
-  const rawPath = nsMatch ? `/${nsMatch[2]}` : filePath;
-  const response = await fetch(`/api/files/content?path=${encodeURIComponent(rawPath)}${nsParam}`);
+      // Read file content
+      const nsMatch = filePath.match(/^([^:]+):\/(.*)$/);
+      const nsParam = nsMatch ? `&namespace=${encodeURIComponent(nsMatch[1])}` : '';
+      const rawPath = nsMatch ? `/${nsMatch[2]}` : filePath;
+      const response = await fetch(`/api/files/content?path=${encodeURIComponent(rawPath)}${nsParam}`);
       if (!response.ok) {
         throw new Error(`Failed to read file: ${response.statusText}`);
       }
@@ -125,13 +118,10 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
       const content = result.data.content;
       const fileName = filePath.split('/').pop() || 'file.html';
 
-      // NEW: Also include local dependencies (CSS/JS/images) referenced by the HTML
-      // so that simple multi-file snippets render properly in Preview.
-      // This avoids asking the user to manually bundle files.
+      // Include local dependencies (CSS/JS/images) for HTML files
       let filesMap: Record<string, string> = { [fileName]: content };
 
       try {
-        // Only attempt dependency collection for HTML
         if (/\.html?$/i.test(fileName)) {
           const dirPath = filePath.slice(0, Math.max(0, filePath.lastIndexOf('/')));
           const parser = new DOMParser();
@@ -156,7 +146,6 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
             }
           };
 
-          // Fetch each asset from workspace and include with its original relative key
           await Promise.all(
             assetPaths.map(async (rel) => {
               const abs = toAbs(rel);
@@ -165,14 +154,10 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
                 const resp = await fetch(`/api/files/content?path=${encodeURIComponent(abs)}${nsParam}`);
                 if (!resp.ok) return;
                 const data = await resp.json();
-                // Normalize leading './'
                 const key = rel.replace(/^\.\//, '');
                 filesMap[key] = data.data.content as string;
-              } catch (e) {
-                // Best-effort; missing assets will just 404 in preview server
-                if (process.env.NODE_ENV === 'development') {
-                  console.warn('[Home] Failed to include preview asset:', rel, e);
-                }
+              } catch {
+                // Silently skip missing assets
               }
             })
           );
@@ -322,29 +307,22 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
     };
   }, [currentTheme]);
 
-  // Register preview command for HTML files
-  useEffect(() => {
-    globalCommandRegistry.register({
-      id: 'explorer.preview',
-      label: 'Preview',
-      description: 'Preview HTML file in Live Preview panel',
-      icon: '👁️',
-      category: 'explorer',
-      handler: (context?: any) => {
-        if (context && context.selectedFiles && context.selectedFiles.length > 0) {
-          const selectedFile = context.selectedFiles[0];
-          if (selectedFile.type === 'file' && selectedFile.path) {
-            handlePreviewFile(selectedFile.path);
-          }
-        }
-      }
-    });
+  // Note: explorer.preview command is now registered in ExplorerFileOperations
+  // (removed duplicate registration to avoid conflicts)
 
-    // Cleanup on unmount
-    return () => {
-      globalCommandRegistry.unregister('explorer.preview');
+  // Handle icui:openFile event from chat thumbnails
+  useEffect(() => {
+    const handleOpenFile = (e: any) => {
+      const path = e?.detail?.path;
+      if (typeof path === 'string' && editorRef.current) {
+        editorRef.current.openFilePermanent(path);
+      }
     };
-  }, [handlePreviewFile]);
+    window.addEventListener('icui:openFile', handleOpenFile as any);
+    return () => {
+      window.removeEventListener('icui:openFile', handleOpenFile as any);
+    };
+  }, []);
 
   // Initialize Explorer file operations
   useEffect(() => {

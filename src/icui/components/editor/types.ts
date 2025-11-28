@@ -19,6 +19,7 @@ export interface EditorFile extends ICUIFile {
     removed: Set<number>;
     hunk: Set<number>;
     originalPath?: string;
+    lineNumbers?: Map<number, { old: number | null; new: number | null }>;
   };
 }
 

@@ -208,6 +208,18 @@ export class ExplorerFileOperations {
           description: 'Copy the relative path of the selected file'
         }
       ),
+
+      // Preview command
+      CommandUtils.create(
+        'explorer.preview',
+        'Preview',
+        this.previewFile.bind(this),
+        {
+          category: 'view',
+          icon: '👁️',
+          description: 'Preview file in Preview panel'
+        }
+      ),
     ];
 
     commands.forEach(command => {
@@ -240,6 +252,7 @@ export class ExplorerFileOperations {
       'explorer.sendTo',
       'explorer.copyPath',
       'explorer.copyRelativePath',
+      'explorer.preview',
     ];
 
     commandIds.forEach(commandId => {
@@ -807,6 +820,171 @@ export class ExplorerFileOperations {
         error 
       });
       throw error;
+    }
+  }
+
+  /**
+   * Preview file in Preview panel
+   */
+  private async previewFile(context?: FileOperationContext): Promise<void> {
+    if (!context || !context.selectedFiles || context.selectedFiles.length === 0) {
+      log.warn('ExplorerFileOperations', 'previewFile requires a selected file');
+      return;
+    }
+
+    const file = context.selectedFiles[0];
+    log.info('ExplorerFileOperations', 'Opening file in preview panel', { path: file.path });
+
+    try {
+      // Read main file content
+      // Extract namespace and path (format: "namespace:/path" or just "/path")
+      let cleanPath = file.path;
+      let namespace = 'local';
+      
+      const namespaceMatch = file.path.match(/^([^:]+):(.+)$/);
+      if (namespaceMatch) {
+        namespace = namespaceMatch[1];
+        cleanPath = namespaceMatch[2];
+      }
+      
+      const response = await fetch(`/api/files/content?path=${encodeURIComponent(cleanPath)}&namespace=${namespace}`);
+      if (!response.ok) {
+        throw new Error(`Failed to read file: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      const content = data.data?.content || data.content || '';
+      
+      // Create files object starting with the main file
+      const files: Record<string, string> = {
+        [file.name]: content
+      };
+      
+      // Calculate directory path for asset loading
+      let dirPath = file.path;
+      if (dirPath.includes(':/')) {
+        dirPath = dirPath.substring(dirPath.indexOf(':/') + 1);
+      }
+      if (dirPath.includes('/')) {
+        const lastSlashIndex = dirPath.lastIndexOf('/');
+        dirPath = lastSlashIndex === 0 ? '/' : dirPath.substring(0, lastSlashIndex);
+      } else {
+        dirPath = '/';
+      }
+      if (!dirPath) dirPath = '/';
+      
+      // For HTML files, try to find and include related files in the same directory
+      if (file.name.endsWith('.html') || file.name.endsWith('.htm')) {
+        
+        // List files in the same directory using /api/files
+        try {
+          // Use the namespace from the original file
+          const dirResponse = await fetch(`/api/files?path=${encodeURIComponent(namespace + ':' + dirPath)}&include_hidden=false`);
+          if (dirResponse.ok) {
+            const dirData = await dirResponse.json();
+            // Backend returns file list under data ("data") not children; keep backward compatibility
+            const dirFiles = dirData.children || dirData.data || dirData.files || [];
+            
+            // Use both console + log.debug so it appears in aggregated logs
+            console.log('[FileOperations] Directory files:', dirFiles.map((f: any) => f.name));
+            try {
+              (log as any).debug?.('ExplorerFileOperations', 'Preview directory listing', { path: dirPath, files: dirFiles.map((f: any) => f.name) });
+            } catch (_) {}
+            
+            // Look for common web asset files
+            const assetExtensions = ['.css', '.js', '.json', '.svg', '.png', '.jpg', '.jpeg', '.gif'];
+            const relatedFiles = dirFiles.filter((f: any) => 
+              !f.is_directory && 
+              assetExtensions.some(ext => f.name.toLowerCase().endsWith(ext))
+            );
+            
+            // Read and include related files
+            for (const relFile of relatedFiles) {
+              try {
+                // Extract namespace and clean path from file path
+                let relCleanPath = relFile.path;
+                let relNamespace = namespace;
+                const relMatch = relFile.path.match(/^([^:]+):(.+)$/);
+                if (relMatch) {
+                  relNamespace = relMatch[1];
+                  relCleanPath = relMatch[2];
+                }
+                
+                const relResponse = await fetch(`/api/files/content?path=${encodeURIComponent(relCleanPath)}&namespace=${relNamespace}`);
+                if (relResponse.ok) {
+                  const relData = await relResponse.json();
+                  files[relFile.name] = relData.data?.content || relData.content || '';
+                }
+              } catch (err) {
+                log.warn('ExplorerFileOperations', 'Error reading related file', { file: relFile.name, error: err });
+              }
+            }
+
+            // Fallback: Parse HTML for <link>/<script> references if no assets were included
+            if (Object.keys(files).length === 1) {
+              try {
+                
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(content, 'text/html');
+                
+                const links = Array.from(doc.querySelectorAll('link[rel="stylesheet"]'));
+                const scripts = Array.from(doc.querySelectorAll('script[src]'));
+                
+                const foundAssetPaths = [
+                  ...links.map(l => l.getAttribute('href')),
+                  ...scripts.map(s => s.getAttribute('src'))
+                ].filter((path): path is string => !!path);
+
+                for (const assetRef of foundAssetPaths) {
+                  // Skip remote URLs
+                  if (/^(https?:|\/\/)/i.test(assetRef)) {
+                    continue;
+                  }
+                  
+                  let assetPath = assetRef.startsWith('./') ? assetRef.substring(2) : assetRef;
+                  assetPath = assetPath.split('?')[0].split('#')[0];
+                  const fullPath = (dirPath.endsWith('/') ? dirPath : dirPath + '/') + assetPath;
+                  
+                  try {
+                    const assetResp = await fetch(`/api/files/content?path=${encodeURIComponent(fullPath)}&namespace=${namespace}`);
+                    if (assetResp.ok) {
+                      const assetData = await assetResp.json();
+                      // Preserve the relative path as the key so HTML references resolve correctly
+                      files[assetPath] = assetData.data?.content || assetData.content || '';
+                    }
+                  } catch (err) {
+                    log.debug('ExplorerFileOperations', 'Fallback asset read failed', { asset: assetRef, error: err });
+                  }
+                }
+              } catch (fallbackErr) {
+                log.warn('ExplorerFileOperations', 'Fallback asset parsing failed', { error: fallbackErr });
+              }
+            }
+          } else {
+            log.warn('ExplorerFileOperations', 'Failed to list directory', { status: dirResponse.status });
+          }
+        } catch (err) {
+          log.warn('ExplorerFileOperations', 'Failed to list directory for related files', { error: err });
+        }
+      }
+      
+      // Dispatch custom event to trigger preview
+      window.dispatchEvent(new CustomEvent('icui:preview', {
+        detail: { files, baseDir: dirPath }
+      }));
+      
+      log.info('ExplorerFileOperations', 'Preview event dispatched', { file: file.name, totalFiles: Object.keys(files).length });
+    } catch (error) {
+      log.error('ExplorerFileOperations', 'Failed to preview file', { 
+        path: file.path,
+        error 
+      });
+      console.error('[FileOperations] Preview failed:', error);
+      await confirmService.confirm({
+        title: 'Preview Failed',
+        message: error instanceof Error ? error.message : 'Failed to preview file',
+        confirmText: 'OK'
+      });
     }
   }
 

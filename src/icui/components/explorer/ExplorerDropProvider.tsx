@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { getWorkspaceRoot } from '../../lib/workspaceUtils';
+import { getWorkspaceRoot, stripNamespace } from '../../lib/workspaceUtils';
 import { useMediaUpload } from '../../hooks/useMediaUpload';
 
 interface Props {
@@ -115,6 +115,10 @@ export function ExplorerDropProvider({ selector = '[data-explorer-root]', itemAt
       }
       
       const workspaceRoot = (() => { try { return getWorkspaceRoot(); } catch { return '/'; } })();
+      
+      // Strip namespace prefix from targetPath (e.g., 'local:/home/user' -> '/home/user')
+      // This prevents duplicate paths like 'local:/workspace/local:/workspace/file'
+      targetPath = stripNamespace(targetPath);
       
       // If targetPath is relative (doesn't start with /), make it absolute under workspaceRoot
       if (!targetPath.startsWith('/')) {

@@ -262,16 +262,54 @@ async def send_files(payload: SendFilesRequest):
     - Preserves relative layout using provided common_prefix when possible
     - Creates intermediate directories
     - Returns lists of created paths and per-path errors (does not abort on first error)
+    - Handles namespace prefixes (e.g., local:/path or hop1:/path) automatically
     """
     import os, posixpath, stat as statmod
 
     service = await get_hop_service()
     hop = service
 
-    src_ctx = payload.source_context_id or hop.status().contextId
+    # Helper: Strip namespace prefix from path
+    def _strip_namespace(path: str) -> tuple[str | None, str]:
+        """Strip namespace prefix from path like 'local:/path' or 'hop1:/path'.
+        Returns (namespace, absolute_path).
+        If no namespace, returns (None, path).
+        Handles Windows drive letters (C:/) correctly.
+        """
+        if not path:
+            return (None, path)
+        idx = path.find(':/')
+        if idx > 0:
+            ns = path[:idx]
+            # Skip Windows drive letters (single char like C:/)
+            if idx == 1 and ns.isalpha():
+                return (None, path)
+            # Extract path after namespace:/
+            abs_path = path[idx+1:] or '/'  # Skip the colon, keep the /
+            if not abs_path.startswith('/'):
+                abs_path = '/' + abs_path
+            return (ns, abs_path)
+        return (None, path)
+
+    # Strip namespace prefixes from all incoming paths
+    # The namespace tells us which context the path belongs to
+    stripped_paths = []
+    detected_src_ctx = None
+    for raw_path in payload.paths:
+        ns, clean_path = _strip_namespace(raw_path)
+        if ns:
+            ns = ns.lower()  # Normalize namespace to lowercase for consistent dict lookups
+        if ns and not detected_src_ctx:
+            # Auto-detect source context from first namespaced path
+            detected_src_ctx = ns
+        stripped_paths.append(clean_path)
+        logger.debug(f"[/api/hop/send-files] Stripped {raw_path!r} → ns={ns!r} path={clean_path!r}")
+
+    # Use detected source context if not explicitly provided
+    src_ctx = payload.source_context_id or detected_src_ctx or hop.status().contextId
     dst_ctx = payload.target_context_id
 
-    if not payload.paths:
+    if not stripped_paths:
         logger.info(f"[/api/hop/send-files] No paths provided (src={src_ctx} dst={dst_ctx})")
         return {"success": True, "message": "No paths provided", "created": [], "errors": []}
     if dst_ctx == src_ctx:
@@ -295,7 +333,14 @@ async def send_files(payload: SendFilesRequest):
         return '/'
 
     dest_base = _cred_default_path(dst_ctx).rstrip('/') or '/'
-    common_prefix = (payload.common_prefix or '').rstrip('/')
+    
+    # Strip namespace from common_prefix if present
+    raw_common_prefix = (payload.common_prefix or '').rstrip('/')
+    prefix_ns, common_prefix = _strip_namespace(raw_common_prefix)
+    if prefix_ns:
+        prefix_ns = prefix_ns.lower()  # Normalize for consistency
+    common_prefix = common_prefix.rstrip('/')
+    
     if common_prefix and any('..' in p for p in common_prefix.split('/')):
         logger.warning(f"[/api/hop/send-files] Ignoring suspicious common_prefix={common_prefix!r}")
         common_prefix = ''
@@ -423,8 +468,8 @@ async def send_files(payload: SendFilesRequest):
             logger.warning(f"[/api/hop/send-files] recurse list failed path={src_path}: {e}")
             errors.append(f"list failed: {src_path}: {e}")
 
-    logger.info(f"[/api/hop/send-files] Begin transfer src={src_ctx} dst={dst_ctx} count={len(payload.paths)} dest_base={dest_base} common_prefix={common_prefix!r}")
-    for p in payload.paths:
+    logger.info(f"[/api/hop/send-files] Begin transfer src={src_ctx} dst={dst_ctx} count={len(stripped_paths)} dest_base={dest_base} common_prefix={common_prefix!r}")
+    for p in stripped_paths:
         rel = _rel_for(p)
         logger.debug(f"[/api/hop/send-files] processing path={p} rel={rel}")
         await recurse_path(p, rel)

@@ -21,74 +21,146 @@ import '@xterm/xterm/css/xterm.css';
 import { notificationService } from '../../services/notificationService';
 import { configService } from '../../../services/config-service';
 
-// Enhanced clipboard functionality
+/**
+ * Enhanced Clipboard with Multi-Layer Fallback Strategy
+ * 
+ * Fallback hierarchy:
+ * 1. Server-side clipboard (always works - file-based fallback on server)
+ * 2. Native browser clipboard (only works in secure context with permissions)
+ * 3. In-memory fallback (session-local, always works)
+ * 
+ * Key insight: Server clipboard is AUTHORITATIVE for paste operations
+ * because native clipboard read is heavily restricted by browsers.
+ */
 class EnhancedClipboard {
   private fallbackText: string = '';
+  private static instance: EnhancedClipboard | null = null;
   
+  /**
+   * Get singleton instance to maintain fallback state across calls
+   */
+  static getInstance(): EnhancedClipboard {
+    if (!EnhancedClipboard.instance) {
+      EnhancedClipboard.instance = new EnhancedClipboard();
+    }
+    return EnhancedClipboard.instance;
+  }
+  
+  /**
+   * Check if we're in a secure context (HTTPS or localhost)
+   * Native clipboard API is only available in secure contexts
+   */
+  private isSecureContext(): boolean {
+    return window.isSecureContext || 
+           location.hostname === 'localhost' ||
+           location.hostname === '127.0.0.1' ||
+           location.hostname === '::1';
+  }
+  
+  /**
+   * Copy text to clipboard using multi-layer strategy
+   * Priority: Server (authoritative) → Native (best effort) → Memory fallback
+   */
   async copy(text: string): Promise<boolean> {
     if (!text) return false;
     
     // Store as fallback immediately
     this.fallbackText = text;
     
-    let success = false;
+    let serverSuccess = false;
+    let nativeSuccess = false;
     
-    // Try server-side clipboard FIRST (most reliable cross-platform)
-    if (await this.tryServerClipboard(text)) {
-      success = true;
+    // Try server-side clipboard FIRST (most reliable, works on HTTP and HTTPS)
+    serverSuccess = await this.tryServerClipboard(text);
+    
+    // Always TRY native clipboard (writeText sometimes works even on HTTP)
+    nativeSuccess = await this.tryNativeClipboard(text);
+    
+    // Show notification based on what worked
+    if (nativeSuccess) {
+      this.showClipboardNotification('Copied to system clipboard', 'success');
+    } else if (serverSuccess) {
+      this.showClipboardNotification('Copied (paste with Ctrl+Shift+V)', 'success');
     }
     
-    // Try browser native API (will fail in most cases due to security)
-    if (await this.tryNativeClipboard(text)) {
-      success = true;
-    }
-    
-    // Always show success message since we have server fallback
-    if (success) {
-      this.showClipboardNotification('Text copied to system clipboard', 'success');
-    } else {
-      this.showClipboardNotification('Text stored in session clipboard', 'warning');
-    }
-    
-    return true; // Always return true since we have fallbacks
+    return serverSuccess || nativeSuccess;
   }
 
+  /**
+   * Paste text from clipboard using multi-layer strategy
+   * Priority: Server (authoritative) → Native (if secure + permitted) → Memory fallback
+   * 
+   * IMPORTANT: Server is tried FIRST because native clipboard.readText() 
+   * is heavily restricted and often fails even in secure contexts.
+   */
   async paste(): Promise<string> {
-    // Try server-side clipboard FIRST
+    // SERVER FIRST - this is the authoritative source
     const serverText = await this.tryServerPaste();
-    if (serverText) {
-      return serverText;
+    if (serverText) return serverText;
+    
+    // Try native clipboard only in secure context
+    if (this.isSecureContext()) {
+      const nativeText = await this.tryNativePaste();
+      if (nativeText) return nativeText;
     }
     
-    // Try browser native API
-    const nativeText = await this.tryNativePaste();
-    if (nativeText) {
-      return nativeText;
-    }
-    
-    // Use fallback
-    return this.fallbackText;
+    // Memory fallback (works within same session)
+    return this.fallbackText || '';
   }
 
+  /**
+   * Try to write to native browser clipboard
+   * Only works in secure contexts (HTTPS/localhost)
+   */
   private async tryNativeClipboard(text: string): Promise<boolean> {
+    // Try native clipboard API first
     try {
-      await navigator.clipboard.writeText(text);
-      return true;
-    } catch (error) {
-      // Native clipboard write failed (expected)
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch {
+      // Expected to fail in non-secure contexts
     }
-    return false;
+    
+    // Fallback: execCommand copy via hidden textarea (works on HTTP during user gesture)
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.left = '-9999px';
+      ta.style.top = '0';
+      ta.setAttribute('readonly', '');
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return ok;
+    } catch {
+      return false;
+    }
   }
 
+  /**
+   * Try to read from native browser clipboard
+   * This is VERY restricted - requires secure context + user permission + focus
+   */
   private async tryNativePaste(): Promise<string | null> {
     try {
-      return await navigator.clipboard.readText();
-    } catch (error) {
-      // Native clipboard read failed (expected)
+      if (navigator.clipboard?.readText) {
+        const text = await navigator.clipboard.readText();
+        return text || null;
+      }
+    } catch {
+      // Expected to fail - clipboard.readText is heavily restricted
     }
     return null;
   }
 
+  /**
+   * Write to server-side clipboard (always works)
+   * Server uses file-based fallback if system clipboard unavailable
+   */
   private async tryServerClipboard(text: string): Promise<boolean> {
     try {
       const response = await fetch('/clipboard', {
@@ -97,33 +169,33 @@ class EnhancedClipboard {
         body: JSON.stringify({ text })
       });
       return response.ok;
-    } catch (error) {
-      console.error('Server clipboard write error:', error);
+    } catch {
+      return false;
     }
-    return false;
   }
 
+  /**
+   * Read from server-side clipboard (authoritative source)
+   */
   private async tryServerPaste(): Promise<string | null> {
     try {
       const response = await fetch('/clipboard');
-      const result = await response.json();
+      if (!response.ok) return null;
       
-      if (result.success && result.text) {
-        return result.text;
-      }
-    } catch (error) {
-      console.error('Server clipboard paste error:', error);
+      const result = await response.json();
+      return (result.success && result.text) ? result.text : null;
+    } catch {
+      return null;
     }
-    return null;
   }
 
+  /**
+   * Show notification to user about clipboard operation
+   */
   private showClipboardNotification(message: string, type: 'success' | 'warning'): void {
-    // Use unified notification service to avoid overlapping toasts
-    // Lazy import to avoid heavy imports at module load
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
     notificationService.show(message, type === 'success' ? 'success' : 'warning', {
       position: 'top-right',
-      duration: 3000,
+      duration: 2000,
       dismissible: true,
       key: `terminal:clipboard:${type}`,
     });
@@ -167,21 +239,125 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
   const maxReconnectAttempts = 5;
   const [isConnected, setIsConnected] = useState(false);
 
-  // Clipboard handlers
+  // Clipboard handlers - use singleton to maintain fallback state
   const handleCopy = useCallback(async () => {
     const selection = terminal.current?.getSelection();
     if (selection) {
-      const clipboard = new EnhancedClipboard();
+      const clipboard = EnhancedClipboard.getInstance();
       await clipboard.copy(selection);
     }
   }, []);
 
+  // Legacy paste handler for context menu fallback
   const handlePaste = useCallback(async () => {
-    const clipboard = new EnhancedClipboard();
-    const text = await clipboard.paste();
-    if (text && websocket.current?.readyState === WebSocket.OPEN) {
-      websocket.current.send(text);
+    // Try capturing user paste via hidden textarea
+    const captureViaHidden = () => new Promise<string>((resolve) => {
+      const ta = document.createElement('textarea');
+      ta.style.position = 'fixed';
+      ta.style.left = '-9999px';
+      ta.style.top = '0';
+      ta.style.opacity = '0';
+      ta.setAttribute('aria-hidden', 'true');
+      document.body.appendChild(ta);
+
+      let resolved = false;
+      
+      const cleanup = (text: string) => {
+        if (resolved) return;
+        resolved = true;
+        clearTimeout(timeoutId);
+        try { document.removeEventListener('paste', onPaste as any, true); } catch {}
+        try { if (document.body.contains(ta)) document.body.removeChild(ta); } catch {}
+        resolve(text);
+      };
+
+      const onPaste = (e: ClipboardEvent) => {
+        try { e.preventDefault(); } catch {}
+        let txt = e.clipboardData?.getData('text/plain') || '';
+        setTimeout(() => {
+          if (!txt) txt = ta.value;
+          cleanup(txt || '');
+        }, 0);
+      };
+
+      document.addEventListener('paste', onPaste as any, true);
+      ta.focus();
+      
+      // Cleanup timeout if paste never fires (e.g., user cancels)
+      const timeoutId = setTimeout(() => cleanup(''), 3000);
+    });
+
+    let text = await captureViaHidden();
+
+    // Fallback to server/native strategy for intra-app paste
+    if (!text) {
+      const clipboard = EnhancedClipboard.getInstance();
+      text = await clipboard.paste();
     }
+
+    if (!text) return;
+
+    if (websocket.current?.readyState === WebSocket.OPEN) {
+      websocket.current.send(text);
+    } else {
+      terminal.current?.write(text);
+    }
+  }, []);
+
+  // Track whether terminal is focused for key handling
+  const terminalFocusRef = useRef<boolean>(false);
+  const pasteInProgressRef = useRef<boolean>(false);
+
+  // Unified paste capture that sets up hidden textarea BEFORE default paste executes
+  const captureSystemPaste = useCallback((): Promise<string> => {
+    return new Promise((resolve) => {
+      if (pasteInProgressRef.current) {
+        resolve('');
+        return;
+      }
+      pasteInProgressRef.current = true;
+      const ta = document.createElement('textarea');
+      ta.style.position = 'fixed';
+      ta.style.left = '-9999px';
+      ta.style.top = '0';
+      ta.style.opacity = '0';
+      ta.setAttribute('aria-hidden', 'true');
+      ta.setAttribute('autocomplete', 'off');
+      ta.setAttribute('autocorrect', 'off');
+      ta.setAttribute('autocapitalize', 'off');
+      ta.setAttribute('spellcheck', 'false');
+      document.body.appendChild(ta);
+
+      let resolved = false;
+
+      const cleanup = (text: string) => {
+        if (resolved) return;
+        resolved = true;
+        clearTimeout(timeoutId);
+        try { document.removeEventListener('paste', onPaste as any, true); } catch {}
+        try { if (document.body.contains(ta)) document.body.removeChild(ta); } catch {}
+        pasteInProgressRef.current = false;
+        resolve(text);
+      };
+
+      const onPaste = (e: ClipboardEvent) => {
+        let txt = '';
+        try {
+          txt = e.clipboardData?.getData('text/plain') || '';
+        } catch {}
+        // Allow default so content also goes into textarea (as fallback)
+        setTimeout(() => {
+          if (!txt) txt = ta.value;
+          cleanup(txt);
+        }, 0);
+      };
+
+      document.addEventListener('paste', onPaste as any, true);
+      ta.focus();
+      
+      // Cleanup timeout if paste never fires (e.g., user cancels)
+      const timeoutId = setTimeout(() => cleanup(''), 3000);
+    });
   }, []);
 
   // Theme detection
@@ -257,7 +433,57 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
     fitAddon.current = new FitAddon();
     terminal.current.loadAddon(fitAddon.current);
 
+    // Intercept copy/paste before xterm.js but allow default paste event to fire for capture
+    terminal.current.attachCustomKeyEventHandler((event: KeyboardEvent) => {
+      if (!terminalFocusRef.current) return true; // Only when terminal focused
+      if (event.type !== 'keydown' || event.repeat) return true;
+
+      const isCtrl = event.ctrlKey || event.metaKey;
+      const key = event.key.toLowerCase();
+
+      // COPY variants (we suppress default to avoid selection clearing)
+      if (isCtrl && key === 'c') {
+        if (event.shiftKey || terminal.current?.hasSelection()) {
+          event.preventDefault();
+          handleCopy();
+          return false;
+        }
+      }
+
+      // PASTE variants: we do NOT preventDefault so native paste event fires
+      if (isCtrl && key === 'v') {
+        // Setup capture before default executes
+        captureSystemPaste().then(text => {
+          if (!text) {
+            // Always restore terminal focus even if nothing was pasted
+            terminal.current?.focus();
+            return;
+          }
+          if (websocket.current?.readyState === WebSocket.OPEN) {
+            websocket.current.send(text);
+          } else {
+            terminal.current?.write(text);
+          }
+          // Ensure terminal regains focus so Enter works immediately
+          terminal.current?.focus();
+        });
+        return false; // prevent xterm from double handling; keep default paste for textarea only
+      }
+
+      return true;
+    });
+
     terminal.current.open(terminalRef.current);
+    // Focus tracking
+    const onTerminalMouseDown = () => { terminalFocusRef.current = true; };
+    const onDocMouseDown = (e: MouseEvent) => {
+      if (!terminalRef.current) return;
+      if (!terminalRef.current.contains(e.target as Node)) {
+        terminalFocusRef.current = false;
+      }
+    };
+    terminalRef.current.addEventListener('mousedown', onTerminalMouseDown);
+    document.addEventListener('mousedown', onDocMouseDown);
     
     setTimeout(() => {
       if (fitAddon.current && terminal.current && terminalRef.current) {
@@ -468,6 +694,8 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
     }
 
     return () => {
+      try { terminalRef.current?.removeEventListener('mousedown', onTerminalMouseDown); } catch {}
+      try { document.removeEventListener('mousedown', onDocMouseDown); } catch {}
       if (reconnectTimeout.current) {
         clearTimeout(reconnectTimeout.current);
         reconnectTimeout.current = null;
@@ -489,7 +717,7 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
       }
       window.removeEventListener('resize', handleResize);
     };
-  }, [onTerminalReady, onTerminalOutput, onTerminalExit]);
+  }, [onTerminalReady, onTerminalOutput, onTerminalExit, handleCopy, handlePaste]);
 
   // Theme update effect
   useEffect(() => {
@@ -531,27 +759,6 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
       return () => clearTimeout(themeUpdateTimeout);
     }
   }, [isDarkTheme]);
-
-  // Keyboard shortcuts for copy/paste
-  useEffect(() => {
-    const handleKeyDown = async (event: KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && event.shiftKey) {
-        if (event.key === 'C' || event.key === 'c') {
-          event.preventDefault();
-          await handleCopy();
-        } else if (event.key === 'V' || event.key === 'v') {
-          event.preventDefault();
-          await handlePaste();
-        }
-      }
-    };
-
-    document.addEventListener('keydown', handleKeyDown);
-
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [handleCopy, handlePaste]);
 
   // CSS styles for viewport scrolling
   useEffect(() => {
@@ -652,10 +859,29 @@ const ICUITerminal = forwardRef<ICUITerminalRef, ICUITerminalProps>(({
     }
   }));
 
+  // Handle right-click context menu for copy/paste
+  const handleContextMenu = useCallback(async (event: React.MouseEvent) => {
+    event.preventDefault();
+    
+    // Simple approach: if text is selected, copy it; otherwise paste
+    const selection = terminal.current?.getSelection();
+    if (selection) {
+      console.log('[Terminal] Context menu - copy selected');
+      await handleCopy();
+    } else {
+      console.log('[Terminal] Context menu - paste');
+      await handlePaste();
+    }
+  }, [handleCopy, handlePaste]);
+
   return (
     <div className={`icui-terminal ${className}`}>
       <div className="icui-terminal-container h-full w-full">
-        <div ref={terminalRef} className="h-full w-full" />
+        <div 
+          ref={terminalRef} 
+          className="h-full w-full" 
+          onContextMenu={handleContextMenu}
+        />
       </div>
     </div>
   );

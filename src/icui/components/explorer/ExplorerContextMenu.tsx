@@ -211,6 +211,7 @@ export function createExplorerContextMenu(
 
     // Preview for supported file types
     if (isPreviewableFile) {
+      console.log('[ExplorerContextMenu] Adding Preview menu item for file:', selectedFiles[0].name);
       items.push({
         id: 'preview',
         label: 'Preview',
@@ -219,6 +220,8 @@ export function createExplorerContextMenu(
         isVisible: () => true,
         isEnabled: () => true,
       });
+    } else if (isFile) {
+      console.log('[ExplorerContextMenu] File not previewable:', selectedFiles[0].name);
     }
   }
 

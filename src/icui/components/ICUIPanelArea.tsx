@@ -79,6 +79,8 @@ export const ICUIPanelArea: React.FC<ICUIPanelAreaProps> = ({
 
   // Keep local active tab in sync with prop changes, but ONLY if parent initiated the change
   useEffect(() => {
+    console.log(`[SURGICAL-DEBUG] Area ${id}: activePanelId prop changed to "${activePanelId}", local="${localActiveTabId}", isLocalChange=${isLocalChangeRef.current}`);
+
     // CRITICAL: Don't sync if we initiated the change ourselves
     if (isLocalChangeRef.current) {
       console.log(`[PANEL-AREA-SYNC-SKIP] Area ${id}: Skipping sync, local change in progress`);
@@ -93,6 +95,7 @@ export const ICUIPanelArea: React.FC<ICUIPanelAreaProps> = ({
     }
 
     if (activePanelId && activePanelId !== localActiveTabId) {
+      console.log(`[SURGICAL-DEBUG] Area ${id}: Syncing local state to parent prop "${activePanelId}"`);
       const now = Date.now();
       const lastId = lastParentActiveIdRef.current;
       const since = now - lastParentChangeTsRef.current;
@@ -195,6 +198,7 @@ export const ICUIPanelArea: React.FC<ICUIPanelAreaProps> = ({
     console.log(`[PANEL-AREA-ACTIVATE] Area ${id}: User activated tab ${tabId}, current: ${localActiveTabId}`);
     if (tabId === localActiveTabId) return; // No-op to prevent redundant updates
     
+    console.log(`[SURGICAL-DEBUG] Area ${id}: Setting isLocalChange=true for tab "${tabId}"`);
     // Mark that we're initiating this change to prevent sync feedback loop
     isLocalChangeRef.current = true;
     
@@ -267,6 +271,8 @@ export const ICUIPanelArea: React.FC<ICUIPanelAreaProps> = ({
       // Only set active tab locally after drop is complete, not during drag
       // This prevents rapid tab switching during drag operations
       setTimeout(() => {
+        // Mark as local change to avoid parent sync immediately overriding this selection
+        isLocalChangeRef.current = true;
         setLocalActiveTabId(panelId);
       }, 50); // Small delay to ensure drop completes first
       

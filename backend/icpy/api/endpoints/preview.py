@@ -27,6 +27,7 @@ class PreviewCreateRequest(BaseModel):
     """Request model for creating a preview."""
     files: Dict[str, str]
     projectType: Optional[str] = None
+    baseDir: Optional[str] = None  # Absolute directory path of the primary HTML file (frontend supplied)
 
 
 class PreviewCreateResponse(BaseModel):
@@ -59,6 +60,72 @@ async def create_preview(request: PreviewCreateRequest):
     try:
         if not ICPY_AVAILABLE:
             raise HTTPException(status_code=500, detail="Preview service not available")
+        
+        logger.info(f"Preview creation: {len(request.files)} file(s), baseDir={request.baseDir}")
+
+        # Server-side fallback: Parse HTML for linked assets if only one file provided.
+        # This ensures assets are included even if frontend discovery fails.
+        if request.baseDir and len(request.files) == 1:
+            sole_name = next(iter(request.files.keys()))
+            if sole_name.lower().endswith(('.html', '.htm')):
+                try:
+                    html_content = request.files[sole_name]
+                    import os
+                    import re
+                    
+                    asset_refs = []
+                    try:
+                        from bs4 import BeautifulSoup
+                        soup = BeautifulSoup(html_content, 'html.parser')
+                        for link in soup.find_all('link', rel='stylesheet'):
+                            if link.get('href'):
+                                asset_refs.append(link.get('href'))
+                        for script in soup.find_all('script'):
+                            if script.get('src'):
+                                asset_refs.append(script.get('src'))
+                    except ImportError:
+                        # Regex fallback if BeautifulSoup unavailable
+                        stylesheet_regex = re.compile(r'<link[^>]+href=["\']([^"\' ]+)["\'][^>]*>', re.IGNORECASE)
+                        script_regex = re.compile(r'<script[^>]+src=["\']([^"\' ]+)["\'][^>]*>', re.IGNORECASE)
+                        for m in stylesheet_regex.finditer(html_content):
+                            ref = m.group(1)
+                            if '.css' in ref.lower() or 'stylesheet' in m.group(0).lower():
+                                asset_refs.append(ref)
+                        asset_refs += [m.group(1) for m in script_regex.finditer(html_content)]
+                    
+                    added_count = 0
+                    for ref in asset_refs:
+                        if ref.startswith(('http://', 'https://', '//')):
+                            continue
+                        
+                        clean_ref = ref.split('?')[0].split('#')[0].lstrip('./')
+                        abs_path = os.path.join(request.baseDir, clean_ref)
+                        
+                        # Security: Ensure resolved path stays within baseDir to prevent path traversal
+                        try:
+                            real_abs = os.path.realpath(abs_path)
+                            real_base = os.path.realpath(request.baseDir)
+                            if not real_abs.startswith(real_base + os.sep) and real_abs != real_base:
+                                logger.warning(f"Path traversal attempt blocked: {ref}")
+                                continue
+                        except Exception:
+                            continue
+                        
+                        if os.path.isfile(abs_path):
+                            try:
+                                with open(abs_path, 'r', encoding='utf-8', errors='ignore') as fh:
+                                    asset_content = fh.read()
+                                asset_name = os.path.basename(clean_ref)
+                                if asset_name not in request.files:
+                                    request.files[asset_name] = asset_content
+                                    added_count += 1
+                            except Exception as e:
+                                logger.debug(f"Failed to read asset {abs_path}: {e}")
+                    
+                    if added_count > 0:
+                        logger.info(f"Fallback asset discovery added {added_count} file(s)")
+                except Exception as e:
+                    logger.debug(f"Fallback asset discovery failed: {e}")
         
         preview_service = get_preview_service()
         preview_id = await preview_service.create_preview(

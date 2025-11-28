@@ -130,16 +130,15 @@ class MediaService:
         safe_name = self._sanitize_filename(original_filename)
         attachment_id = uuid.uuid4().hex
         kind = self._classify_kind(mime_type)
-        # Structured directory per kind with hashed shard subdir
+        # Store directly under kind directory (no shard subdir)
         base_kind_dir = {
             'images': self.images_dir,
             'audio': self.audio_dir,
             'files': self.files_dir,
         }[kind]
-        subdir = base_kind_dir / attachment_id[:2]
-        subdir.mkdir(parents=True, exist_ok=True)
+        base_kind_dir.mkdir(parents=True, exist_ok=True)
         stored_name = f"{attachment_id}_{safe_name}"
-        file_path = subdir / stored_name
+        file_path = base_kind_dir / stored_name
         with open(file_path, 'wb') as f:
             f.write(data)
 

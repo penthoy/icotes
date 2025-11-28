@@ -967,7 +967,7 @@ export class ChatBackendClient {
     // Handle stream interruption
     this.isStreaming = false;
     this.streamingMessage = null;
-  this.stopRequested = false;
+    // Keep stopRequested=true after a client interrupt so stray chunks are ignored
     
     // Notify typing stopped
     this.typingCallbacks.forEach(callback => callback(false));

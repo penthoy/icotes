@@ -18,6 +18,7 @@ import { EditorView } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
 import { backendService, useTheme, ConnectionStatus } from '../../services';
 import { getWorkspaceRoot } from '../../lib';
+import { confirmService } from '../../services/confirmService';
 
 // Import from editor module
 import { 
@@ -321,10 +322,15 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
       const processed = processDiffPatch(patch);
       const name = `${filePath.split('/').pop() || filePath} (diff)`;
       
+      // Detect language from file extension for syntax highlighting
+      const detectedLang = detectLanguageFromExtension(filePath);
+      const language = detectedLang || 'text';
+      console.log('[ICUIEditor] Detected language for synthetic diff:', language);
+      
       const diffFile: EditorFile = {
         id: tabId,
         name,
-        language: 'diff',
+        language, // Use actual file language for syntax highlighting
         content: processed.content,
         modified: false,
         path: filePath,
@@ -382,10 +388,15 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
       console.log('[ICUIEditor] Creating new diff tab:', name);
       const processed = processDiffPatch(diffData.patch);
       
+      // Detect language from file extension for syntax highlighting
+      const detectedLang = detectLanguageFromExtension(filePath);
+      const language = detectedLang || 'text';
+      console.log('[ICUIEditor] Detected language for diff:', language);
+      
       const diffFile: EditorFile = {
         id: tabId,
         name,
-        language: 'diff',
+        language, // Use actual file language for syntax highlighting
         content: processed.content,
         modified: false,
         path: filePath,
@@ -837,26 +848,28 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
         setFiles(prevFiles => 
           prevFiles.map(f => 
             f.id === fileId 
-              ? { ...f, content: currentContent, modified: f.content !== currentContent }
+              ? { ...f, content: currentContent, modified: true }
               : f
           )
         );
         // Update the file object for the confirmation dialog
-        Object.assign(file, { content: currentContent, modified: file.content !== currentContent });
+        Object.assign(file, { content: currentContent, modified: true });
       }
     }
 
     if (file.modified) {
-      // Use global confirm dialog
-      // Lazy import to avoid cyc dependency in large file
-      const { confirmService } = require('../../services/confirmService');
-      const shouldSave = (confirmService as typeof import('../../services/confirmService').confirmService)
-        .confirm({ title: 'Unsaved Changes', message: `${file.name} has unsaved changes. Save before closing?`, confirmText: 'Save', cancelText: 'Discard' });
-      // Note: confirm() returns Promise<boolean>, handle in then to keep function sync
+      // Use global confirm dialog to ask user to save or discard changes
+      const shouldSave = confirmService.confirm({ 
+        title: 'Unsaved Changes', 
+        message: `${file.name} has unsaved changes. Save before closing?`, 
+        confirmText: 'Save', 
+        cancelText: 'Discard' 
+      });
+      // Handle the promise asynchronously
       (async () => {
         const ok = await shouldSave;
         if (ok && connectionStatus.connected && file.path) {
-          handleSaveFile(fileId);
+          await handleSaveFile(fileId);
         }
         // Proceed to close regardless after handling save choice
         setFiles(prevFiles => prevFiles.filter(f => f.id !== fileId));
@@ -958,8 +971,10 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
     };
   }, []);
 
+  const isDiffTab = Boolean((activeFile as any)?.isDiff);
+
   return (
-    <div className={`icui-editor-container h-full flex flex-col ${className}`}>
+    <div className={`icui-editor-container h-full flex flex-col ${isDiffTab ? 'icui-editor-diff' : ''} ${className}`}>
       {/* File Tabs */}
       <EditorTabBar
         files={files}

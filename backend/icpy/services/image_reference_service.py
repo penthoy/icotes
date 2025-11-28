@@ -33,8 +33,8 @@ class ImageReference:
     absolute_path: str  # Full system path
     mime_type: str  # MIME type (e.g., "image/png")
     size_bytes: int  # Original file size
-    thumbnail_base64: str  # Small base64 thumbnail for immediate display
-    thumbnail_path: str  # Path to thumbnail file on disk
+    thumbnail_base64: str  # Small base64 thumbnail for LLM visual context
+    thumbnail_path: str  # Legacy field (no longer written to disk)
     prompt: str  # Original generation prompt
     model: str  # Model used to generate
     timestamp: float  # Creation timestamp
@@ -66,10 +66,9 @@ class ImageReferenceService:
         self._workspace_path_obj = Path(workspace_path)
         self._workspace_path_obj.mkdir(parents=True, exist_ok=True)
 
-        # Internal directories
+        # Internal directories (thumbnails dir kept for legacy compatibility but not used)
         self.thumbnails_dir = self._workspace_path_obj / ".icotes" / "thumbnails"
-        self.thumbnails_dir.mkdir(parents=True, exist_ok=True)
-        self._index_path = self.thumbnails_dir.parent / "image_references.json"
+        self._index_path = (self._workspace_path_obj / ".icotes" / "image_references.json")
         self._index_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Concurrency control for async contexts
@@ -152,7 +151,7 @@ class ImageReferenceService:
                 except Exception:
                     checksum = ""
             
-            # Generate thumbnail
+            # Generate thumbnail (in-memory only, no file write)
             try:
                 if absolute_path.exists():
                     thumbnail_result = generate_thumbnail(
@@ -182,7 +181,7 @@ class ImageReferenceService:
                 mime_type=mime_type,
                 size_bytes=size_bytes,
                 thumbnail_base64=thumbnail_result['base64'],
-                thumbnail_path=thumbnail_result['path'],
+                thumbnail_path='',  # No longer written to disk
                 prompt=prompt,
                 model=model,
                 timestamp=time.time(),

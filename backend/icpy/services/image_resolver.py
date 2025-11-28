@@ -91,11 +91,18 @@ class ImageResolver:
                     reference.current_filename = found_by_checksum.name
                 return str(found_by_checksum)
         
-        # Strategy 5: Fallback to thumbnail
-        thumbnail_path = Path(reference.thumbnail_path)
-        if thumbnail_path.exists():
-            logger.warning(f"Original image not found, using thumbnail: {thumbnail_path}")
-            return str(thumbnail_path)
+        # Strategy 5: Fallback to legacy thumbnail_path (DEPRECATED)
+        if reference.thumbnail_path and reference.thumbnail_path.strip():
+            thumbnail_path = Path(reference.thumbnail_path)
+            if thumbnail_path.exists():
+                logger.warning(
+                    f"ImageResolver: Original image not found; using legacy thumbnail_path={thumbnail_path} (DEPRECATED – will be removed)"
+                )
+                return str(thumbnail_path)
+            else:
+                logger.debug(
+                    f"ImageResolver: Legacy thumbnail_path set but file missing for {reference.image_id}; skipping fallback"
+                )
         
         # Not found
         logger.error(f"Failed to resolve image: {reference.image_id}")

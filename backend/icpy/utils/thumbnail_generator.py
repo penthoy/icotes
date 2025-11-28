@@ -99,35 +99,18 @@ def generate_thumbnail(
         if (thumb_width, thumb_height) != img.size:
             img = img.resize((thumb_width, thumb_height), Image.Resampling.LANCZOS)
         
-        # Generate filename
-        if image_id is None:
-            import uuid
-            image_id = str(uuid.uuid4())
-        
-        thumbnail_filename = f"{image_id}.webp"
-        thumbnail_path = Path(thumbnails_dir) / thumbnail_filename
-        
-        # Ensure thumbnails directory exists
-        Path(thumbnails_dir).mkdir(parents=True, exist_ok=True)
-        
-        # Save as WebP with method=6 (best compression, slower but acceptable for thumbnails)
-        img.save(thumbnail_path, format='WEBP', quality=quality, method=6)
-        
-        # Get file size
-        file_size = thumbnail_path.stat().st_size
-        
-        # Generate base64
+        # Generate base64 only (no file write for optimization)
         buffer = io.BytesIO()
         img.save(buffer, format='WEBP', quality=quality, method=6)
         thumbnail_bytes = buffer.getvalue()
         thumbnail_base64 = base64.b64encode(thumbnail_bytes).decode('utf-8')
         
-        logger.info(f"Generated thumbnail: {thumb_width}x{thumb_height}, {file_size} bytes")
+        logger.debug(f"Generated thumbnail (in-memory): {thumb_width}x{thumb_height}, {len(thumbnail_bytes)} bytes")
         
         return {
-            'path': str(thumbnail_path),
+            'path': '',  # No file written
             'base64': thumbnail_base64,
-            'size_bytes': file_size,
+            'size_bytes': len(thumbnail_bytes),
             'width': thumb_width,
             'height': thumb_height
         }
@@ -181,27 +164,17 @@ def generate_thumbnail_from_bytes(
         if (thumb_width, thumb_height) != img.size:
             img = img.resize((thumb_width, thumb_height), Image.Resampling.LANCZOS)
 
-        # Ensure directory exists
-        if image_id is None:
-            import uuid
-            image_id = str(uuid.uuid4())
-        thumbnail_filename = f"{image_id}.webp"
-        thumbnail_path = Path(thumbnails_dir) / thumbnail_filename
-        Path(thumbnails_dir).mkdir(parents=True, exist_ok=True)
-
-        # Save and encode base64
-        img.save(thumbnail_path, format='WEBP', quality=quality, method=6)
-        file_size = thumbnail_path.stat().st_size
-
+        # Generate base64 only (no file write for optimization)
         buffer = io.BytesIO()
         img.save(buffer, format='WEBP', quality=quality, method=6)
-        thumbnail_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+        thumbnail_bytes = buffer.getvalue()
+        thumbnail_base64 = base64.b64encode(thumbnail_bytes).decode('utf-8')
 
-        logger.info(f"Generated thumbnail (bytes): {thumb_width}x{thumb_height}, {file_size} bytes")
+        logger.debug(f"Generated thumbnail from bytes (in-memory): {thumb_width}x{thumb_height}, {len(thumbnail_bytes)} bytes")
         return {
-            'path': str(thumbnail_path),
+            'path': '',  # No file written
             'base64': thumbnail_base64,
-            'size_bytes': file_size,
+            'size_bytes': len(thumbnail_bytes),
             'width': thumb_width,
             'height': thumb_height
         }

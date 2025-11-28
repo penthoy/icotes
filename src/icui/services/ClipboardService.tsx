@@ -134,6 +134,13 @@ export class ClipboardService extends SimpleEventEmitter {
   }
 
   // Core clipboard operations
+  /**
+   * Copy text to clipboard using multi-layer strategy
+   * Priority: Server (always works) → Native (if secure context) → Memory fallback
+   * 
+   * Server is tried FIRST because it works on both HTTP and HTTPS,
+   * and uses file-based fallback if system clipboard unavailable.
+   */
   async copy(text: string): Promise<ClipboardResult> {
     if (!text) {
       return this.notifyResult({ success: false, error: 'No text provided' });
@@ -142,21 +149,36 @@ export class ClipboardService extends SimpleEventEmitter {
     this.fallbackContent = text;
     this.addToHistory(text, 'fallback');
 
-    // Try native clipboard first
-    const nativeResult = await this.tryNativeWrite(text);
-    if (nativeResult.success) {
-      await this.syncToServer(text);
-      this.notify({ type: 'success', message: 'Copied via native clipboard', method: 'native' });
-      this.emit('copy', { text, method: 'native' });
-      return nativeResult;
-    }
+    let serverSuccess = false;
+    let nativeSuccess = false;
 
-    // Try server-side clipboard
+    // Try server-side clipboard FIRST (works on HTTP and HTTPS)
     const serverResult = await this.tryServerWrite(text);
     if (serverResult.success) {
-      this.notify({ type: 'success', message: 'Copied via server clipboard', method: 'server' });
+      serverSuccess = true;
+      console.debug('[ClipboardService] Server write successful');
+    }
+
+    // Try native clipboard in secure context
+    if (this.capabilities.isSecureContext) {
+      const nativeResult = await this.tryNativeWrite(text);
+      if (nativeResult.success) {
+        nativeSuccess = true;
+        console.debug('[ClipboardService] Native write successful');
+      }
+    }
+
+    // Determine best result to return
+    if (nativeSuccess) {
+      this.notify({ type: 'success', message: 'Copied to system clipboard', method: 'native' });
+      this.emit('copy', { text, method: 'native' });
+      return { success: true, method: 'native' };
+    }
+
+    if (serverSuccess) {
+      this.notify({ type: 'success', message: 'Copied to server clipboard', method: 'server' });
       this.emit('copy', { text, method: 'server' });
-      return serverResult;
+      return { success: true, method: 'server' };
     }
 
     // Fallback always succeeds
@@ -169,19 +191,36 @@ export class ClipboardService extends SimpleEventEmitter {
     return await this.copy(text); // History is automatically tracked
   }
 
+  /**
+   * Paste from clipboard using multi-layer strategy
+   * Priority: Server (authoritative) → Native (if permitted) → Memory fallback
+   * 
+   * Server is tried FIRST because native clipboard.readText() is heavily
+   * restricted and often fails even in secure contexts.
+   */
   async paste(): Promise<ClipboardResult> {
-    const nativeResult = await this.tryNativeRead();
-    if (nativeResult.success && nativeResult.content) {
-      this.emit('paste', { text: nativeResult.content, method: 'native' });
-      return nativeResult;
-    }
-
+    // SERVER FIRST - server clipboard is the authoritative source
+    // This works on both HTTP and HTTPS environments
     const serverResult = await this.tryServerRead();
     if (serverResult.success && serverResult.content) {
+      console.debug('[ClipboardService] Paste from server');
       this.emit('paste', { text: serverResult.content, method: 'server' });
       return serverResult;
     }
 
+    // Native clipboard as fallback (usually fails due to permissions)
+    // Only try in secure context
+    if (this.capabilities.isSecureContext) {
+      const nativeResult = await this.tryNativeRead();
+      if (nativeResult.success && nativeResult.content) {
+        console.debug('[ClipboardService] Paste from native');
+        this.emit('paste', { text: nativeResult.content, method: 'native' });
+        return nativeResult;
+      }
+    }
+
+    // Memory fallback (works within same session)
+    console.debug('[ClipboardService] Paste from memory fallback');
     this.emit('paste', { text: this.fallbackContent, method: 'fallback' });
     return {
       success: true,

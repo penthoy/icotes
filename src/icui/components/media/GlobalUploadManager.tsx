@@ -28,6 +28,16 @@ export default function GlobalUploadManager() {
     };
     const handlePaste = (e: ClipboardEvent) => {
       if (!e.clipboardData) return;
+
+      // Guard: if user is pasting into the chat composer we let the chat-specific
+      // paste handler own the upload to avoid duplicate media uploads.
+      try {
+        const activeEl = document.activeElement as HTMLElement | null;
+        if (activeEl && activeEl.closest('[data-chat-composer]')) {
+          return; // chat component will process this paste
+        }
+      } catch { /* ignore DOM access errors */ }
+
       const items = Array.from(e.clipboardData.items);
       const files: File[] = [];
       items.forEach(it => {
@@ -36,13 +46,21 @@ export default function GlobalUploadManager() {
           if (f) files.push(f);
         }
       });
-      // Only auto-open for multiple files to match new UX requirement
+
+      if (files.length === 0) return;
+
+      // If exactly one image file and not multi-file bulk case, defer to context-specific
+      // handlers (e.g. chat) to prevent duplicate uploads.
+      const imageFiles = files.filter(f => f.type.startsWith('image/'));
+      if (files.length === 1 && imageFiles.length === 1) {
+        return; // single image paste handled elsewhere
+      }
+
+      // Bulk / mixed-type paste: use global upload manager.
       if (files.length > 1) {
         setOpen(true);
-        uploadHook.addFiles(files);
-      } else if (files.length === 1) {
-        uploadHook.addFiles(files); // single paste goes silently to queue
       }
+      uploadHook.addFiles(files);
     };
     window.addEventListener('icotes:open-upload-widget' as any, onOpenReq);
     window.addEventListener('keydown', handleKey);

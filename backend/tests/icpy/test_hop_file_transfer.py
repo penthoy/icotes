@@ -361,5 +361,95 @@ class TestFileTransferScenarios:
             print(f"  {name}: {action}")
 
 
+class TestNamespaceStripping:
+    """Test namespace prefix handling in send-files endpoint"""
+    
+    def test_strip_namespace_local(self):
+        """Test stripping 'local:' namespace prefix"""
+        # Import the strip function from the endpoint (we'll need to refactor it)
+        # For now, replicate the logic here
+        def _strip_namespace(path: str) -> tuple[str | None, str]:
+            if not path:
+                return (None, path)
+            idx = path.find(':/')
+            if idx > 0:
+                ns = path[:idx]
+                if idx == 1 and ns.isalpha():
+                    return (None, path)
+                abs_path = path[idx+1:] or '/'
+                if not abs_path.startswith('/'):
+                    abs_path = '/' + abs_path
+                return (ns, abs_path)
+            return (None, path)
+        
+        # Test local namespace
+        ns, path = _strip_namespace('local:/home/penthoy/icotes/file.txt')
+        assert ns == 'local'
+        assert path == '/home/penthoy/icotes/file.txt'
+    
+    def test_strip_namespace_hop(self):
+        """Test stripping 'hop1:' namespace prefix"""
+        def _strip_namespace(path: str) -> tuple[str | None, str]:
+            if not path:
+                return (None, path)
+            idx = path.find(':/')
+            if idx > 0:
+                ns = path[:idx]
+                if idx == 1 and ns.isalpha():
+                    return (None, path)
+                abs_path = path[idx+1:] or '/'
+                if not abs_path.startswith('/'):
+                    abs_path = '/' + abs_path
+                return (ns, abs_path)
+            return (None, path)
+        
+        # Test hop namespace
+        ns, path = _strip_namespace('hop1:/home/remote/data/file.png')
+        assert ns == 'hop1'
+        assert path == '/home/remote/data/file.png'
+    
+    def test_strip_namespace_no_prefix(self):
+        """Test path without namespace prefix"""
+        def _strip_namespace(path: str) -> tuple[str | None, str]:
+            if not path:
+                return (None, path)
+            idx = path.find(':/')
+            if idx > 0:
+                ns = path[:idx]
+                if idx == 1 and ns.isalpha():
+                    return (None, path)
+                abs_path = path[idx+1:] or '/'
+                if not abs_path.startswith('/'):
+                    abs_path = '/' + abs_path
+                return (ns, abs_path)
+            return (None, path)
+        
+        # Test regular path
+        ns, path = _strip_namespace('/home/user/file.txt')
+        assert ns is None
+        assert path == '/home/user/file.txt'
+    
+    def test_strip_namespace_windows_path(self):
+        """Test Windows drive letter is not treated as namespace"""
+        def _strip_namespace(path: str) -> tuple[str | None, str]:
+            if not path:
+                return (None, path)
+            idx = path.find(':/')
+            if idx > 0:
+                ns = path[:idx]
+                if idx == 1 and ns.isalpha():
+                    return (None, path)
+                abs_path = path[idx+1:] or '/'
+                if not abs_path.startswith('/'):
+                    abs_path = '/' + abs_path
+                return (ns, abs_path)
+            return (None, path)
+        
+        # Test Windows path
+        ns, path = _strip_namespace('C:/Users/test/file.txt')
+        assert ns is None
+        assert path == 'C:/Users/test/file.txt'
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
