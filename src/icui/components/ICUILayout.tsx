@@ -196,20 +196,43 @@ export const ICUILayout: React.FC<ICUILayoutProps> = ({
   useEffect(() => {
     if (!layout) return;
 
+    // SURGICAL DEBUG: Log incoming prop and current state for center area
+    const propCenterActive = layout.areas?.center?.activePanelId;
+    const currCenterActive = currentLayout.areas?.center?.activePanelId;
+    const lastPropCenterActive = lastLayoutPropRef.current?.areas?.center?.activePanelId;
+    
+    console.log(`[LAYOUT-PROP-DEBUG] Incoming prop center.activePanelId="${propCenterActive}", current="${currCenterActive}", lastProp="${lastPropCenterActive}"`);
+
+    // HARD GUARDRAIL: If the incoming prop is older/staler than our current center active id,
+    // ignore it to break potential parent<->child feedback loops. This is especially important
+    // when oscillation detection in ICUIPanelArea is already trying to stabilize the UI.
+    if (currCenterActive && propCenterActive && currCenterActive !== propCenterActive) {
+      console.warn(
+        `[LAYOUT-PROP-GUARD] Ignoring prop center.activePanelId="${propCenterActive}" ` +
+        `because current="${currCenterActive}" differs and ICUILayout treats local as source-of-truth`
+      );
+      lastLayoutPropRef.current = layout;
+      return;
+    }
+
     // Check if this is the same prop object we already processed
     if (lastLayoutPropRef.current && JSON.stringify(layout) === JSON.stringify(lastLayoutPropRef.current)) {
+      console.log(`[LAYOUT-PROP-DEBUG] Skipping - same as lastLayoutPropRef`);
       return; // Already processed this prop value
     }
 
     // Check if the prop is different from our current state
     if (JSON.stringify(layout) === JSON.stringify(currentLayout)) {
       // Prop matches current state, just update our ref and skip
+      console.log(`[LAYOUT-PROP-DEBUG] Skipping - prop matches currentLayout`);
       lastLayoutPropRef.current = layout;
       return;
     }
 
     // New prop value that differs from current state - sanitize and apply
     const sanitized = sanitizeLayout(layout);
+    const sanitizedCenterActive = sanitized.areas?.center?.activePanelId;
+    console.log(`[LAYOUT-PROP-DEBUG] Sanitized center.activePanelId="${sanitizedCenterActive}"`);
 
     // If sanitization yields the same structure we already hold, ignore
     if (JSON.stringify(sanitized) === JSON.stringify(currentLayout)) {
@@ -218,10 +241,10 @@ export const ICUILayout: React.FC<ICUILayoutProps> = ({
       return;
     }
 
-    console.log('[LAYOUT-PROP-SYNC] Applying layout prop update');
+    console.log(`[LAYOUT-PROP-SYNC] Applying layout prop update - center: "${currCenterActive}" -> "${sanitizedCenterActive}"`);
     lastLayoutPropRef.current = layout;
     setCurrentLayout(sanitized);
-  }, [layout, sanitizeLayout]);
+  }, [layout, sanitizeLayout, currentLayout]);
 
   // Save layout changes and call onLayoutChange
   const [isInitialized, setIsInitialized] = useState(false);
@@ -230,6 +253,10 @@ export const ICUILayout: React.FC<ICUILayoutProps> = ({
       setIsInitialized(true);
       return; // Don't call onLayoutChange during initialization
     }
+    
+    // SURGICAL DEBUG: Log what we're saving and sending to parent
+    const centerActive = currentLayout.areas?.center?.activePanelId;
+    console.log(`[LAYOUT-SAVE-DEBUG] Saving to localStorage and calling onLayoutChange, center.activePanelId="${centerActive}"`);
     
     if (persistLayout && layoutKey) {
       localStorage.setItem(layoutKey, JSON.stringify(currentLayout));
