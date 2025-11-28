@@ -839,19 +839,12 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
 
   const handleCloseFile = useCallback((fileId: string) => {
     const file = files.find(f => f.id === fileId);
-    if (!file) {
-      console.log('[Editor] handleCloseFile: file not found', fileId);
-      return;
-    }
-
-    console.log('[Editor] handleCloseFile: called for', file.name, 'modified:', file.modified, 'path:', file.path);
+    if (!file) return;
 
     // Save current editor content before closing if this is the active file
     if (fileId === activeFileId && editorViewRef.current) {
       const currentContent = editorViewRef.current.state.doc.toString();
-      console.log('[Editor] handleCloseFile: checking content. current length:', currentContent.length, 'stored length:', file.content.length);
       if (currentContent !== file.content) {
-        console.log('[Editor] handleCloseFile: content differs, updating modified state');
         setFiles(prevFiles => 
           prevFiles.map(f => 
             f.id === fileId 
@@ -864,42 +857,32 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
       }
     }
 
-    console.log('[Editor] handleCloseFile: after content check, file.modified =', file.modified);
-
     if (file.modified) {
-      console.log('[Editor] handleCloseFile: showing confirm dialog');
-      // Use global confirm dialog
-      try {
-        console.log('[Editor] confirmService available:', !!confirmService);
-        const shouldSave = confirmService.confirm({ 
-          title: 'Unsaved Changes', 
-          message: `${file.name} has unsaved changes. Save before closing?`, 
-          confirmText: 'Save', 
-          cancelText: 'Discard' 
-        });
-        console.log('[Editor] confirm() returned promise:', !!shouldSave);
-        // Note: confirm() returns Promise<boolean>, handle in then to keep function sync
-        (async () => {
-          const ok = await shouldSave;
-          console.log('[Editor] User chose:', ok ? 'Save' : 'Discard');
-          if (ok && connectionStatus.connected && file.path) {
-            handleSaveFile(fileId);
+      // Use global confirm dialog to ask user to save or discard changes
+      const shouldSave = confirmService.confirm({ 
+        title: 'Unsaved Changes', 
+        message: `${file.name} has unsaved changes. Save before closing?`, 
+        confirmText: 'Save', 
+        cancelText: 'Discard' 
+      });
+      // Handle the promise asynchronously
+      (async () => {
+        const ok = await shouldSave;
+        if (ok && connectionStatus.connected && file.path) {
+          handleSaveFile(fileId);
+        }
+        // Proceed to close regardless after handling save choice
+        setFiles(prevFiles => prevFiles.filter(f => f.id !== fileId));
+        if (fileId === activeFileId) {
+          const remainingFiles = files.filter(f => f.id !== fileId);
+          if (remainingFiles.length > 0) {
+            setActiveFileId(remainingFiles[0].id);
+          } else {
+            setActiveFileId('');
           }
-          // Proceed to close regardless after handling save choice
-          setFiles(prevFiles => prevFiles.filter(f => f.id !== fileId));
-          if (fileId === activeFileId) {
-            const remainingFiles = files.filter(f => f.id !== fileId);
-            if (remainingFiles.length > 0) {
-              setActiveFileId(remainingFiles[0].id);
-            } else {
-              setActiveFileId('');
-            }
-          }
-          onFileClose?.(fileId);
-        })();
-      } catch (err) {
-        console.error('[Editor] handleCloseFile: confirmService error:', err);
-      }
+        }
+        onFileClose?.(fileId);
+      })();
       return; // Defer further logic to async block
     }
     // If not modified, proceed to close immediately
