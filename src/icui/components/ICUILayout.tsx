@@ -203,13 +203,27 @@ export const ICUILayout: React.FC<ICUILayoutProps> = ({
     
     console.log(`[LAYOUT-PROP-DEBUG] Incoming prop center.activePanelId="${propCenterActive}", current="${currCenterActive}", lastProp="${lastPropCenterActive}"`);
 
-    // HARD GUARDRAIL: If the incoming prop is older/staler than our current center active id,
-    // ignore it to break potential parent<->child feedback loops. This is especially important
-    // when oscillation detection in ICUIPanelArea is already trying to stabilize the UI.
-    if (currCenterActive && propCenterActive && currCenterActive !== propCenterActive) {
+    // HARD GUARDRAIL (ALL AREAS): If the incoming prop's activePanelId for any area conflicts
+    // with our currentLayout's activePanelId, prefer the currentLayout and ignore this prop.
+    // This breaks parent<->child feedback loops where the parent echoes stale active ids.
+    const conflictingAreas: string[] = [];
+    Object.keys(layout.areas || {}).forEach(areaId => {
+      const incomingArea = layout.areas[areaId];
+      const currentArea = currentLayout.areas[areaId];
+      if (!incomingArea || !currentArea) return;
+
+      const incomingActive = incomingArea.activePanelId;
+      const currentActive = currentArea.activePanelId;
+
+      if (incomingActive && currentActive && incomingActive !== currentActive) {
+        conflictingAreas.push(areaId);
+      }
+    });
+
+    if (conflictingAreas.length > 0) {
       console.warn(
-        `[LAYOUT-PROP-GUARD] Ignoring prop center.activePanelId="${propCenterActive}" ` +
-        `because current="${currCenterActive}" differs and ICUILayout treats local as source-of-truth`
+        `[LAYOUT-PROP-GUARD] Ignoring layout prop for areas=${JSON.stringify(conflictingAreas)} ` +
+        `because currentLayout has different activePanelId values and is treated as source-of-truth`
       );
       lastLayoutPropRef.current = layout;
       return;
