@@ -99,3 +99,30 @@ export const getDirectoryPath = (filePath: string): string => {
 export const getFileName = (path: string): string => {
   return path.split('/').pop() || '';
 };
+
+/**
+ * Namespace path utilities
+ * Handles paths with namespace prefixes like 'local:/path' or 'hop1:/path'
+ */
+
+/** Regular expression to match namespace prefix (e.g., 'local:', 'hop1:') */
+const NAMESPACE_REGEX = /^([a-z][a-z0-9]*):(.*)$/i;
+
+/**
+ * Strip namespace prefix from a path
+ * @param path - Path that may include namespace (e.g., 'local:/home/user')
+ * @returns Path without namespace prefix (e.g., '/home/user')
+ */
+export const stripNamespace = (path: string): string => {
+  const match = path.match(NAMESPACE_REGEX);
+  return match ? match[2] : path;
+};
+
+/**
+ * Check if a path has a namespace prefix
+ * @param path - Path to check
+ * @returns True if path has a namespace prefix
+ */
+export const hasNamespace = (path: string): boolean => {
+  return NAMESPACE_REGEX.test(path);
+};
