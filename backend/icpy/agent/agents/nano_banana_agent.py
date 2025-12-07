@@ -1,7 +1,7 @@
 """
 Nano Banana Agent - Image Generation and Editing AI Agent
 
-This agent uses Google's Gemini 2.5 Flash Image Preview ("Nano Banana") model
+This agent uses Google's Gemini 3 Pro Image ("Nano Banana") model
 directly via Google's native API for image generation and editing.
 
 The model natively generates and edits images as part of its response - no separate
@@ -9,14 +9,17 @@ image generation API needed!
 
 Capabilities:
 1. Text-to-image generation using Gemini's native capabilities
-2. Image editing (modify existing images based on text descriptions)
+2. Image editing (modify existing images based on text descriptions)  
 3. Image understanding and analysis
 4. Multi-turn conversations about images
 5. Image generation with contextual understanding
 6. Multimodal input support (text + images)
 7. Generates images directly in base64 format
+8. 4K resolution support with sharp, legible text rendering
+9. Grounded generation with Google Search integration
+10. Conversational editing with thought signatures
 
-Model: gemini-2.5-flash-image-preview (Google Native API)
+Model: gemini-3-pro-image-preview (Google Native API) - Updated December 2025
 """
 
 import json
@@ -29,8 +32,9 @@ from typing import Dict, Any, List
 # Configure logging
 logger = logging.getLogger(__name__)
 
-# Model configuration - using Google's native Gemini model
-AGENT_MODEL_ID = "gemini-2.5-flash-image-preview"
+# Model configuration - using Google's latest native Gemini image model (December 2025)
+# gemini-3-pro-image-preview: Best for complex image generation with reasoning
+AGENT_MODEL_ID = "gemini-3-pro-image-preview"
 
 # Import required modules and backend helpers
 try:
@@ -70,8 +74,8 @@ try:
     # Agent metadata using helper
     AGENT_METADATA = create_standard_agent_metadata(
         name="NanoBananaAgent",
-        description="AI image generation agent powered by Google's Gemini native API",
-        version="1.0.0",
+        description="AI image generation agent powered by Google's Gemini 3 Pro Image API",
+        version="1.1.0",
         author="ICOTES",
         model=AGENT_MODEL_ID,
     )

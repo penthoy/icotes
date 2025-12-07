@@ -25,6 +25,7 @@ class AgentDisplayConfig:
     category: str = "General"
     order: int = 999
     icon: str = "🤖"
+    model_name: Optional[str] = None  # Override model name from agents.json
 
 @dataclass
 class CategoryConfig:
@@ -134,7 +135,8 @@ class AgentConfigService:
             description=agent_config.get("description", ""),
             category=agent_config.get("category", "General"),
             order=agent_config.get("order", 999),
-            icon=agent_config.get("icon", "🤖")
+            icon=agent_config.get("icon", "🤖"),
+            model_name=agent_config.get("modelName", None)  # Optional model override
         )
     
     def get_category_config(self, category_name: str) -> CategoryConfig:

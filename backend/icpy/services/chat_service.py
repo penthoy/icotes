@@ -1163,11 +1163,23 @@ class ChatService:
             # Prepare streaming response
             full_content = ""
             message_id = str(uuid.uuid4())
-            is_first_chunk = True
             
             # Get custom agent stream
             # We pass an empty live message because we've already appended the user's content (with attachments) to history
             custom_stream = call_custom_agent_stream(agent_type, "", history_list)
+            
+            # CRITICAL: Send stream_start IMMEDIATELY before waiting for first chunk
+            # This is especially important for Gemini 3 Pro which can spend 7-14 seconds
+            # "thinking" before emitting any content. Without this, the UI shows no
+            # "Assistant is working..." indicator during the thinking phase.
+            await self._send_streaming_start(
+                user_message.session_id,
+                message_id,
+                user_message.id,
+                agent_type=agent_type,
+                agent_id=agent_type,
+                agent_name=agent_type.title()
+            )
             
             # Process streaming response
             chunk_count = 0
@@ -1178,17 +1190,6 @@ class ChatService:
                     
                     if chunk:  # Only process non-empty chunks
                         chunk_count += 1
-                        # Send stream start for first chunk
-                        if is_first_chunk:
-                            await self._send_streaming_start(
-                                user_message.session_id,
-                                message_id,
-                                user_message.id,
-                                agent_type=agent_type,
-                                agent_id=agent_type,
-                                agent_name=agent_type.title()
-                            )
-                            is_first_chunk = False
                         
                         # Send chunk
                         await self._send_streaming_chunk(
