@@ -268,7 +268,6 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', high
     // If no tool calls, just return cleaned content
     if (toolCalls.length === 0) {
       const clean = getActiveModelHelper().stripAllToolText(content || message.content || '');
-      console.log('[STREAM-SURGICAL] No tool calls. Raw:', message.content?.substring(0, 100), 'Clean:', clean?.substring(0, 100), 'cleanTrimmed:', clean.trim().length);
       if (clean.trim()) blocks.push({ type: 'text', content: clean });
       return blocks;
     }
@@ -591,8 +590,6 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', high
     } else {
     // AI/Agent messages: Clean text layout with full markdown support
   const { content, toolCalls } = parsedResult;
-
-  console.log('[STREAM-SURGICAL] ChatMessage rendering AI message:', message.id, 'content:', content?.substring(0, 100), 'toolCalls:', toolCalls.length, 'blocks:', sequentialBlocks.length);
 
   // Determine if any running tool widgets exist (used to suppress interim raw content)
   const hasRunningTools = toolCalls.some(tc => tc.status === 'running');

@@ -101,7 +101,6 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
       const queued = streamingQueueRef.current;
       if (queued.size === 0) return;
       
-      console.log('[STREAM-SURGICAL] Flushing', queued.size, 'queued streaming messages to state');
       const current = stateRef.current.messages;
       const messageMap = stateRef.current.messageMap;
       const updates: { index: number; message: ChatMessage }[] = [];
@@ -118,7 +117,6 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
       });
       
       if (updates.length > 0 || newMessages.length > 0) {
-        console.log('[STREAM-SURGICAL] Applying flush:', updates.length, 'updates,', newMessages.length, 'new messages');
         // Create new array with minimal copying
         const next = [...current];
         
@@ -131,7 +129,6 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
         const finalMessages = next.length > maxMessages ? next.slice(-maxMessages) : next;
         
         queued.clear();
-        console.log('[STREAM-SURGICAL] setMessages called with', finalMessages.length, 'messages (from flush)');
         setMessages(finalMessages);
       } else {
         queued.clear();
@@ -163,16 +160,13 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
       
       // Set up message callback
       clientRef.current.onMessage((message: ChatMessage) => {
-        console.log('[STREAM-SURGICAL] useChatMessages received message:', message.id, 'sender:', message.sender, 'isStreaming:', message.metadata?.isStreaming, 'content:', message.content.substring(0, 50));
         // Ignore user messages that are broadcast back
         if (message.sender === 'user') {
-          console.log('[STREAM-SURGICAL] Ignoring user message echo');
           return;
         }
         // If this is a streaming update, coalesce updates within 50ms window
         const isStreaming = Boolean(message.metadata?.isStreaming && !message.metadata?.streamComplete);
         if (isStreaming) {
-          console.log('[STREAM-SURGICAL] Queuing streaming message for batched update');
           streamingQueueRef.current.set(message.id, message);
           // Throttle to ~20fps to cut render pressure
           const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
@@ -182,26 +176,19 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
             scheduleFlush();
           }
         } else {
-          console.log('[STREAM-SURGICAL] Committing non-streaming message immediately to state');
           // Non-streaming (or final) messages: commit immediately with optimized updates
           setMessages(prevMessages => {
             const messageMap = stateRef.current.messageMap;
             const existingIndex = messageMap.get(message.id);
             if (existingIndex !== undefined) {
               // Update existing message efficiently
-              console.log('[STREAM-SURGICAL] Updating existing message at index', existingIndex);
               const updatedMessages = [...prevMessages];
               updatedMessages[existingIndex] = message;
-              const result = updatedMessages.length > maxMessages ? updatedMessages.slice(-maxMessages) : updatedMessages;
-              console.log('[STREAM-SURGICAL] setMessages called with', result.length, 'messages (updated existing)');
-              return result;
+              return updatedMessages.length > maxMessages ? updatedMessages.slice(-maxMessages) : updatedMessages;
             }
             
-            console.log('[STREAM-SURGICAL] Adding new message to state');
             const newMessages = [...prevMessages, message];
-            const result = newMessages.length > maxMessages ? newMessages.slice(-maxMessages) : newMessages;
-            console.log('[STREAM-SURGICAL] setMessages called with', result.length, 'messages (new message)');
-            return result;
+            return newMessages.length > maxMessages ? newMessages.slice(-maxMessages) : newMessages;
           });
         }
 

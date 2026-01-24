@@ -67,7 +67,7 @@ class ImagenTool(BaseTool):
     """Generate or edit images using Google's Gemini image-capable models.
 
     Capabilities:
-        - Text-to-image generation (primary model: gemini-2.5-flash-image-preview)
+        - Text-to-image generation (primary model: gemini-2.5-flash-image)
         - Image editing: provide an input image (data URI or base64) + prompt
         - Automatic fallback to stable models if preview model returns mime type error
     """
@@ -128,8 +128,8 @@ class ImagenTool(BaseTool):
             },
             "required": ["prompt"]
         }
-        # Primary preview model & fallbacks
-        self._primary_model = "gemini-2.5-flash-image-preview"
+        # Primary stable model & fallbacks
+        self._primary_model = "gemini-2.5-flash-image"
         self._fallback_models = [
             "gemini-2.5-flash",
             "gemini-2.0-flash-exp",

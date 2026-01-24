@@ -1146,29 +1146,24 @@ export class ChatBackendClient {
   }
 
   onMessage(callback: (message: ChatMessage) => void): void {
-    console.log('[STREAM-SURGICAL] onMessage subscriber registered. Total callbacks:', this.messageCallbacks.length + 1);
     this.messageCallbacks.push(callback);
 
     // Flush any buffered messages to the newly-registered subscriber.
     if (this.pendingMessageOrder.length > 0) {
-      console.log('[STREAM-SURGICAL] Flushing', this.pendingMessageOrder.length, 'buffered messages to new subscriber');
       try {
         for (const id of this.pendingMessageOrder) {
           const msg = this.pendingMessages.get(id);
           if (msg) {
-            console.log('[STREAM-SURGICAL] Flushing buffered message:', msg.id, 'isStreaming:', msg.metadata?.isStreaming);
             callback(msg);
           }
         }
       } catch (e) {
-        console.error('[STREAM-SURGICAL] Error flushing buffered messages:', e);
+        console.error('[ChatBackendClient] Error flushing buffered messages:', e);
       } finally {
         // Once the UI has at least one subscriber, we can drop the buffer.
         this.pendingMessages.clear();
         this.pendingMessageOrder = [];
       }
-    } else {
-      console.log('[STREAM-SURGICAL] No buffered messages to flush');
     }
   }
 
@@ -1189,7 +1184,6 @@ export class ChatBackendClient {
    */
   private notifyMessage(message: ChatMessage): void {
     if (this.messageCallbacks.length === 0) {
-      console.warn('[STREAM-SURGICAL] No callbacks registered! Buffering message:', message.id, 'isStreaming:', message.metadata?.isStreaming);
       const id = String(message.id || '');
       if (id) {
         if (!this.pendingMessages.has(id)) {
@@ -1205,7 +1199,6 @@ export class ChatBackendClient {
       return;
     }
 
-    console.log('[STREAM-SURGICAL] Dispatching message to', this.messageCallbacks.length, 'callbacks. Message:', message.id, 'isStreaming:', message.metadata?.isStreaming, 'content length:', message.content.length);
     this.messageCallbacks.forEach(callback => callback(message));
   }
 
