@@ -85,11 +85,20 @@ export const ICUILayout: React.FC<ICUILayoutProps> = ({
 }) => {
   const [currentLayout, setCurrentLayout] = useState<ICUILayoutConfig>(layout || defaultLayout);
 
+  // Only emit extremely verbose layout logs when explicitly enabled.
+  const layoutDebugEnabled =
+    typeof window !== 'undefined' &&
+    (window as any).__ICUI_LAYOUT_DEBUG__ === true;
+
   // Add ref to track previous layout for change detection
   const prevLayoutRef = useRef<ICUILayoutConfig>(currentLayout);
   
   // Track the last layout prop we received to avoid re-processing same prop
   const lastLayoutPropRef = useRef<ICUILayoutConfig | null>(null);
+
+  // Track the last layout we emitted to the parent to break feedback loops
+  const lastEmittedLayoutJsonRef = useRef<string>('');
+  const emitDebounceTimerRef = useRef<number | null>(null);
 
   // Helper: sanitize a layout so that each area's activePanelId exists in its panelIds
   const sanitizeLayout = useCallback((cfg: ICUILayoutConfig): ICUILayoutConfig => {
@@ -99,16 +108,18 @@ export const ICUILayout: React.FC<ICUILayoutProps> = ({
       if (!area) return;
       let nextActive = area.activePanelId;
       if (nextActive && !area.panelIds.includes(nextActive)) {
-        console.warn(
-          `[LAYOUT-SANITIZE] Area "${areaId}": invalid activePanelId "${nextActive}" not in panelIds, correcting`,
-          area.panelIds
-        );
+        if (layoutDebugEnabled) {
+          console.warn(
+            `[LAYOUT-SANITIZE] Area "${areaId}": invalid activePanelId "${nextActive}" not in panelIds, correcting`,
+            area.panelIds
+          );
+        }
         nextActive = area.panelIds[0];
       }
       sanitizedAreas[areaId] = { ...area, activePanelId: nextActive };
     });
     return { ...cfg, areas: sanitizedAreas };
-  }, []);
+  }, [layoutDebugEnabled]);
   
   // Log layout changes to detect cascading updates
   useEffect(() => {
@@ -125,11 +136,13 @@ export const ICUILayout: React.FC<ICUILayoutProps> = ({
     });
     
     if (changedAreas.length > 0) {
-      console.log(`[LAYOUT-STATE-CHANGE] Active panels changed:`, changedAreas);
+      if (layoutDebugEnabled) {
+        console.log(`[LAYOUT-STATE-CHANGE] Active panels changed:`, changedAreas);
+      }
     }
     
     prevLayoutRef.current = currentLayout;
-  }, [currentLayout]);
+  }, [currentLayout, layoutDebugEnabled]);
 
   // Load persisted layout on mount
   useEffect(() => {
@@ -201,7 +214,20 @@ export const ICUILayout: React.FC<ICUILayoutProps> = ({
     const currCenterActive = currentLayout.areas?.center?.activePanelId;
     const lastPropCenterActive = lastLayoutPropRef.current?.areas?.center?.activePanelId;
     
-    console.log(`[LAYOUT-PROP-DEBUG] Incoming prop center.activePanelId="${propCenterActive}", current="${currCenterActive}", lastProp="${lastPropCenterActive}"`);
+    if (layoutDebugEnabled) {
+      console.log(`[LAYOUT-PROP-DEBUG] Incoming prop center.activePanelId="${propCenterActive}", current="${currCenterActive}", lastProp="${lastPropCenterActive}"`);
+    }
+
+    // If the parent is echoing back what we just emitted, ignore to avoid feedback loops.
+    try {
+      const incomingJson = JSON.stringify(layout);
+      if (incomingJson && incomingJson === lastEmittedLayoutJsonRef.current) {
+        lastLayoutPropRef.current = layout;
+        return;
+      }
+    } catch {
+      // ignore
+    }
 
     // HARD GUARDRAIL (ALL AREAS): If the incoming prop's activePanelId for any area conflicts
     // with our currentLayout's activePanelId, prefer the currentLayout and ignore this prop.
@@ -221,24 +247,30 @@ export const ICUILayout: React.FC<ICUILayoutProps> = ({
     });
 
     if (conflictingAreas.length > 0) {
-      console.warn(
-        `[LAYOUT-PROP-GUARD] Ignoring layout prop for areas=${JSON.stringify(conflictingAreas)} ` +
-        `because currentLayout has different activePanelId values and is treated as source-of-truth`
-      );
+      if (layoutDebugEnabled) {
+        console.warn(
+          `[LAYOUT-PROP-GUARD] Ignoring layout prop for areas=${JSON.stringify(conflictingAreas)} ` +
+          `because currentLayout has different activePanelId values and is treated as source-of-truth`
+        );
+      }
       lastLayoutPropRef.current = layout;
       return;
     }
 
     // Check if this is the same prop object we already processed
     if (lastLayoutPropRef.current && JSON.stringify(layout) === JSON.stringify(lastLayoutPropRef.current)) {
-      console.log(`[LAYOUT-PROP-DEBUG] Skipping - same as lastLayoutPropRef`);
+      if (layoutDebugEnabled) {
+        console.log(`[LAYOUT-PROP-DEBUG] Skipping - same as lastLayoutPropRef`);
+      }
       return; // Already processed this prop value
     }
 
     // Check if the prop is different from our current state
     if (JSON.stringify(layout) === JSON.stringify(currentLayout)) {
       // Prop matches current state, just update our ref and skip
-      console.log(`[LAYOUT-PROP-DEBUG] Skipping - prop matches currentLayout`);
+      if (layoutDebugEnabled) {
+        console.log(`[LAYOUT-PROP-DEBUG] Skipping - prop matches currentLayout`);
+      }
       lastLayoutPropRef.current = layout;
       return;
     }
@@ -246,19 +278,25 @@ export const ICUILayout: React.FC<ICUILayoutProps> = ({
     // New prop value that differs from current state - sanitize and apply
     const sanitized = sanitizeLayout(layout);
     const sanitizedCenterActive = sanitized.areas?.center?.activePanelId;
-    console.log(`[LAYOUT-PROP-DEBUG] Sanitized center.activePanelId="${sanitizedCenterActive}"`);
+    if (layoutDebugEnabled) {
+      console.log(`[LAYOUT-PROP-DEBUG] Sanitized center.activePanelId="${sanitizedCenterActive}"`);
+    }
 
     // If sanitization yields the same structure we already hold, ignore
     if (JSON.stringify(sanitized) === JSON.stringify(currentLayout)) {
-      console.log('[LAYOUT-PROP-IGNORE] Prop update sanitized to current layout, skipping');
+      if (layoutDebugEnabled) {
+        console.log('[LAYOUT-PROP-IGNORE] Prop update sanitized to current layout, skipping');
+      }
       lastLayoutPropRef.current = layout;
       return;
     }
 
-    console.log(`[LAYOUT-PROP-SYNC] Applying layout prop update - center: "${currCenterActive}" -> "${sanitizedCenterActive}"`);
+    if (layoutDebugEnabled) {
+      console.log(`[LAYOUT-PROP-SYNC] Applying layout prop update - center: "${currCenterActive}" -> "${sanitizedCenterActive}"`);
+    }
     lastLayoutPropRef.current = layout;
     setCurrentLayout(sanitized);
-  }, [layout, sanitizeLayout]);
+  }, [layout, sanitizeLayout, currentLayout, layoutDebugEnabled]);
 
   // Save layout changes and call onLayoutChange
   const [isInitialized, setIsInitialized] = useState(false);
@@ -267,19 +305,40 @@ export const ICUILayout: React.FC<ICUILayoutProps> = ({
       setIsInitialized(true);
       return; // Don't call onLayoutChange during initialization
     }
-    
-    // SURGICAL DEBUG: Log what we're saving and sending to parent
-    const centerActive = currentLayout.areas?.center?.activePanelId;
-    console.log(`[LAYOUT-SAVE-DEBUG] Saving to localStorage and calling onLayoutChange, center.activePanelId="${centerActive}"`);
-    
-    if (persistLayout && layoutKey) {
-      localStorage.setItem(layoutKey, JSON.stringify(currentLayout));
+
+    // Debounce persistence + parent emission to avoid flooding during drags/resizes
+    if (emitDebounceTimerRef.current !== null) {
+      window.clearTimeout(emitDebounceTimerRef.current);
+      emitDebounceTimerRef.current = null;
     }
-    
-    // Always call onLayoutChange - let parent decide what to do
-    // The prop-change effect will ignore echoes by checking lastLayoutPropRef
-    onLayoutChange?.(currentLayout);
-  }, [currentLayout, persistLayout, layoutKey, isInitialized, onLayoutChange]);
+    emitDebounceTimerRef.current = window.setTimeout(() => {
+      emitDebounceTimerRef.current = null;
+      try {
+        const json = JSON.stringify(currentLayout);
+        if (json && json === lastEmittedLayoutJsonRef.current) {
+          return;
+        }
+        lastEmittedLayoutJsonRef.current = json;
+        if (layoutDebugEnabled) {
+          const centerActive = currentLayout.areas?.center?.activePanelId;
+          console.log(`[LAYOUT-SAVE] Emitting layout change, center.activePanelId="${centerActive}"`);
+        }
+        if (persistLayout && layoutKey) {
+          localStorage.setItem(layoutKey, json);
+        }
+        onLayoutChange?.(currentLayout);
+      } catch {
+        // best-effort; ignore
+      }
+    }, 150);
+
+    return () => {
+      if (emitDebounceTimerRef.current !== null) {
+        window.clearTimeout(emitDebounceTimerRef.current);
+        emitDebounceTimerRef.current = null;
+      }
+    };
+  }, [currentLayout, persistLayout, layoutKey, isInitialized, onLayoutChange, layoutDebugEnabled]);
 
   // Get panels for a specific area
   const getPanelsForArea = useCallback((areaId: string): ICUIPanel[] => {
@@ -294,8 +353,10 @@ export const ICUILayout: React.FC<ICUILayoutProps> = ({
   // Handle panel activation
   const handlePanelActivate = useCallback((areaId: string, panelId: string) => {
     // Trace activation intent for debugging oscillations
-    console.log(`[LAYOUT-ACTIVATE-REQ] area=${areaId} panel=${panelId}`);
-    console.log(`[SURGICAL-DEBUG] Layout handlePanelActivate called for area=${areaId}, panel=${panelId}`);
+    if (layoutDebugEnabled) {
+      console.log(`[LAYOUT-ACTIVATE-REQ] area=${areaId} panel=${panelId}`);
+      console.log(`[SURGICAL-DEBUG] Layout handlePanelActivate called for area=${areaId}, panel=${panelId}`);
+    }
     setCurrentLayout(prev => {
       const area = prev.areas[areaId];
       if (!area) {
@@ -304,7 +365,9 @@ export const ICUILayout: React.FC<ICUILayoutProps> = ({
       }
       if (area.activePanelId === panelId) {
         // No-op to prevent redundant updates and flicker
-        console.log(`[SURGICAL-DEBUG] Layout activation ignored - already active: area=${areaId}, panel=${panelId}`);
+        if (layoutDebugEnabled) {
+          console.log(`[SURGICAL-DEBUG] Layout activation ignored - already active: area=${areaId}, panel=${panelId}`);
+        }
         return prev;
       }
       
@@ -317,7 +380,9 @@ export const ICUILayout: React.FC<ICUILayoutProps> = ({
         return prev;
       }
       
-      console.log(`[SURGICAL-DEBUG] Layout updating state: area=${areaId}, activePanelId=${panelId}`);
+      if (layoutDebugEnabled) {
+        console.log(`[SURGICAL-DEBUG] Layout updating state: area=${areaId}, activePanelId=${panelId}`);
+      }
       return {
         ...prev,
         areas: {
@@ -330,7 +395,7 @@ export const ICUILayout: React.FC<ICUILayoutProps> = ({
       };
     });
     onPanelActivate?.(panelId, areaId);
-  }, [onPanelActivate]);
+  }, [onPanelActivate, layoutDebugEnabled]);
 
   // Handle panel close
   const handlePanelClose = useCallback((areaId: string, panelId: string) => {
@@ -441,13 +506,19 @@ export const ICUILayout: React.FC<ICUILayoutProps> = ({
 
   // Handle split changes
   const handleSplitChange = useCallback((splitName: string, value: number) => {
-    setCurrentLayout(prev => ({
-      ...prev,
-      splitConfig: {
-        ...prev.splitConfig,
-        [splitName]: value,
-      }
-    }));
+    // Stabilize floating point jitter during drags to avoid micro-diff feedback loops
+    const rounded = Math.round(value * 100) / 100;
+    setCurrentLayout(prev => {
+      const prevVal = (prev.splitConfig as any)?.[splitName];
+      if (typeof prevVal === 'number' && prevVal === rounded) return prev;
+      return {
+        ...prev,
+        splitConfig: {
+          ...prev.splitConfig,
+          [splitName]: rounded,
+        }
+      };
+    });
   }, []);
 
   const leftPanels = getPanelsForArea('left');

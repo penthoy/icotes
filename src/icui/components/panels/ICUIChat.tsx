@@ -805,15 +805,19 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
           </div>
         ) : (
           <div className="space-y-4">
-            {messages.map((message) => (
-              <div key={message.id} data-message-id={message.id}>
-                              <ChatMessage 
-                  message={message}
-                  className=""
-                  highlightQuery={search.isOpen ? search.query : ''}
-                />
-              </div>
-            ))}
+            {(() => {
+              console.log('[STREAM-SURGICAL] ICUIChat rendering messages:', messages.length, 'items. IDs:', messages.map(m => m.id).join(', '));
+              console.log('[STREAM-SURGICAL] Message contents:', messages.map(m => ({ id: m.id, sender: m.sender, content: m.content.substring(0, 50), isStreaming: m.metadata?.isStreaming })));
+              return messages.map((message) => (
+                <div key={message.id} data-message-id={message.id}>
+                                <ChatMessage 
+                    message={message}
+                    className=""
+                    highlightQuery={search.isOpen ? search.query : ''}
+                  />
+                </div>
+              ));
+            })()}
             <div ref={messagesEndRef} data-icui-chat-end />
             {isConnected && (isTyping || isWorkingLocal) && (
               <div className="flex items-center gap-2 text-xs opacity-70 mt-1" style={{ color: 'var(--icui-text-secondary)' }}>

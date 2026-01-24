@@ -1,5 +1,5 @@
 """
-CerebrasQwenAgent - AI agent powered by Cerebras Inference (Qwen 3 Coder 480B) with tool support.
+CerebrasGptOssAgent - AI agent powered by Cerebras Inference with GPT OSS 120B model and tool support.
 
 This agent:
 1) Streams responses via Cerebras client adapter
@@ -7,6 +7,11 @@ This agent:
 3) Uses standard metadata and hot-reload helpers
 4) Uses advanced prompting with dynamic tools summary and environment context
 5) Uses build_safe_messages for history normalization
+
+GPT OSS 120B features:
+- 120 billion parameter open-source model
+- Strong coding and reasoning capabilities
+- Fast inference via Cerebras's hardware acceleration
 """
 
 import logging
@@ -15,10 +20,10 @@ from typing import Dict, List, Generator
 # Configure logging
 logger = logging.getLogger(__name__)
 
-# Model id from Cerebras Supported Models (Preview): qwen-3-coder-480b
-MODEL_NAME = "qwen-3-coder-480b"
-AGENT_NAME = "CerebrasQwenAgent"
-AGENT_DESCRIPTION = "AI assistant powered by Cerebras Qwen 3 Coder 480B with tool calling"
+# Model ID for GPT OSS 120B on Cerebras
+MODEL_NAME = "gpt-oss-120b"
+AGENT_NAME = "CerebrasGptOssAgent"
+AGENT_DESCRIPTION = "AI assistant powered by GPT OSS 120B via Cerebras with tool calling"
 
 from icpy.agent.core.llm.cerebras_client import CerebrasClientAdapter
 from icpy.agent.core.runtime.general_agent import GeneralAgent
@@ -50,7 +55,7 @@ reload_env = create_environment_reload_function([
 
 def chat(message: str, history: List[Dict[str, str]]) -> Generator[str, None, None]:
     """
-    Main chat function for CerebrasQwenAgent with tool support.
+    Main chat function for CerebrasGptOssAgent with tool support.
 
     Args:
         message: User input message
@@ -71,7 +76,7 @@ def chat(message: str, history: List[Dict[str, str]]) -> Generator[str, None, No
         # Delegate to generalized agent using Cerebras adapter
         adapter = CerebrasClientAdapter()
         ga = GeneralAgent(adapter, model=MODEL_NAME)
-        logger.info("CerebrasQwenAgent: Starting chat with tools using GeneralAgent")
+        logger.info("CerebrasGptOssAgent: Starting chat with tools using GeneralAgent")
         # Load tool definitions and pass through
         tools = []
         try:
@@ -79,10 +84,10 @@ def chat(message: str, history: List[Dict[str, str]]) -> Generator[str, None, No
         except Exception:
             pass
         yield from ga.run(system_prompt=system_prompt, messages=safe_messages, tools=tools)
-        logger.info("CerebrasQwenAgent: Chat completed successfully")
+        logger.info("CerebrasGptOssAgent: Chat completed successfully")
 
     except Exception as e:
-        logger.error(f"Error in CerebrasQwenAgent streaming: {e}")
+        logger.error(f"Error in CerebrasGptOssAgent streaming: {e}")
         yield f"🚫 Error processing request: {str(e)}\n\nPlease check your CEREBRAS_API_KEY configuration."
 
 

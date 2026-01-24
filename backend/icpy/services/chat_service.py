@@ -508,6 +508,8 @@ class ChatService:
                     del self.websocket_connections[websocket_id]
                 if websocket_id in self.chat_sessions:
                     del self.chat_sessions[websocket_id]
+        else:
+            logger.warning(f"No websocket found for {websocket_id}")
     
     async def handle_user_message(self, websocket_id: str, content: str, metadata: Dict[str, Any] = None) -> ChatMessage:
         """Handle a message from the user with support for agent routing"""
@@ -1172,6 +1174,8 @@ class ChatService:
             # This is especially important for Gemini 3 Pro which can spend 7-14 seconds
             # "thinking" before emitting any content. Without this, the UI shows no
             # "Assistant is working..." indicator during the thinking phase.
+            logger.debug(f"[STREAM-DEBUG] About to send stream_start for session {user_message.session_id}, agent {agent_type}")
+            logger.debug(f"[STREAM-DEBUG] Active chat_sessions: {list(self.chat_sessions.values())}")
             await self._send_streaming_start(
                 user_message.session_id,
                 message_id,
@@ -1196,7 +1200,10 @@ class ChatService:
                             user_message.session_id,
                             message_id,
                             chunk,
-                            user_message.id
+                            user_message.id,
+                            agent_type=agent_type,
+                            agent_id=agent_type,
+                            agent_name=agent_type.title()
                         )
                         full_content += chunk
                         
@@ -1218,7 +1225,10 @@ class ChatService:
             await self._send_streaming_end(
                 user_message.session_id,
                 message_id,
-                user_message.id
+                user_message.id,
+                agent_type=agent_type,
+                agent_id=agent_type,
+                agent_name=agent_type.title()
             )
             
             # Store the final complete message for persistence
@@ -1267,6 +1277,8 @@ class ChatService:
             final_agent_id = agent_id or self.config.agent_id
             final_agent_name = agent_name or self.config.agent_name
             
+            logger.debug(f"[STREAM-DEBUG] _send_streaming_start called for session {session_id}, agent_type={final_agent_type}")
+            
             streaming_message = {
                 'type': 'message_stream',
                 'id': message_id,
@@ -1286,25 +1298,36 @@ class ChatService:
             }
             
             # Send to all connections in this session
+            sent_count = 0
             for websocket_id, ws_session_id in self.chat_sessions.items():
                 if ws_session_id == session_id:
+                    logger.debug(f"[STREAM-DEBUG] Sending stream_start to websocket {websocket_id} for session {session_id}")
                     await self._send_websocket_message(websocket_id, streaming_message)
+                    sent_count += 1
+            
+            if sent_count == 0:
+                logger.warning(f"[STREAM-DEBUG] No websockets found for session {session_id}. Active sessions: {list(self.chat_sessions.values())}")
                     
         except Exception as e:
             logger.error(f"Failed to send streaming start: {e}")
 
-    async def _send_streaming_chunk(self, session_id: str, message_id: str, content: str, reply_to_id: str = None):
+    async def _send_streaming_chunk(self, session_id: str, message_id: str, content: str, reply_to_id: str = None, agent_type: str = None, agent_id: str = None, agent_name: str = None):
         """Send streaming chunk message"""
         try:
+            # Use provided agent info or fall back to default OpenAI config
+            final_agent_type = agent_type or 'openai'
+            final_agent_id = agent_id or self.config.agent_id
+            final_agent_name = agent_name or self.config.agent_name
+            
             streaming_message = {
                 'type': 'message_stream',
                 'id': message_id,
                 'chunk': content,
                 'sender': MessageSender.AI.value,
                 'timestamp': datetime.now(timezone.utc).isoformat(),
-                'agentId': self.config.agent_id,
-                'agentName': self.config.agent_name,
-                'agentType': 'openai',
+                'agentId': final_agent_id,
+                'agentName': final_agent_name,
+                'agentType': final_agent_type,
                 'session_id': session_id,
                 'stream_start': False,
                 'stream_chunk': True,
@@ -1318,22 +1341,34 @@ class ChatService:
             # Send to all connections in this session
             for websocket_id, ws_session_id in self.chat_sessions.items():
                 if ws_session_id == session_id:
+                    logger.debug(f"[STREAM-DEBUG] Sending streaming_chunk to websocket {websocket_id} for session {session_id}, agentType={final_agent_type}")
                     await self._send_websocket_message(websocket_id, streaming_message)
+            
+            # Debug: log if no websockets found for session
+            if not any(ws_session_id == session_id for ws_session_id in self.chat_sessions.values()):
+                logger.warning(f"[STREAM-DEBUG] No websockets found for session {session_id}. Active sessions: {list(self.chat_sessions.values())}")
                     
         except Exception as e:
             logger.error(f"Failed to send streaming chunk: {e}")
 
-    async def _send_streaming_end(self, session_id: str, message_id: str, reply_to_id: str = None):
+    async def _send_streaming_end(self, session_id: str, message_id: str, reply_to_id: str = None, agent_type: str = None, agent_id: str = None, agent_name: str = None):
         """Send streaming end message"""
         try:
+            # Use provided agent info or fall back to default OpenAI config
+            final_agent_type = agent_type or 'openai'
+            final_agent_id = agent_id or self.config.agent_id
+            final_agent_name = agent_name or self.config.agent_name
+            
+            logger.debug(f"[STREAM-DEBUG] _send_streaming_end called for session {session_id}, agent_type={final_agent_type}")
+            
             streaming_message = {
                 'type': 'message_stream',
                 'id': message_id,
                 'sender': MessageSender.AI.value,
                 'timestamp': datetime.now(timezone.utc).isoformat(),
-                'agentId': self.config.agent_id,
-                'agentName': self.config.agent_name,
-                'agentType': 'openai',
+                'agentId': final_agent_id,
+                'agentName': final_agent_name,
+                'agentType': final_agent_type,
                 'session_id': session_id,
                 'stream_start': False,
                 'stream_chunk': False,
@@ -1345,9 +1380,15 @@ class ChatService:
             }
             
             # Send to all connections in this session
+            sent_count = 0
             for websocket_id, ws_session_id in self.chat_sessions.items():
                 if ws_session_id == session_id:
+                    logger.debug(f"[STREAM-DEBUG] Sending stream_end to websocket {websocket_id} for session {session_id}")
                     await self._send_websocket_message(websocket_id, streaming_message)
+                    sent_count += 1
+            
+            if sent_count == 0:
+                logger.warning(f"[STREAM-DEBUG] No websockets found for session {session_id} at stream_end. Active sessions: {list(self.chat_sessions.values())}")
                     
         except Exception as e:
             logger.error(f"Failed to send streaming end: {e}")

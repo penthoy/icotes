@@ -46,3 +46,9 @@ To add or update an agent:
 3) The hot-reload system will pick it up automatically, or click the reload button next to the Agent
    selector in the Chat window to force a reload.
 You can use your updated agent immediately after reload.
+
+## Detailed Change log ##
+Add Z.AI GLM 4.7 For Cerebras inference.
+Add GPT OSS 120 for both Cerebras and Groq
+Remove/Deprecate Cerebrase qwen-code
+Fixed Stream display bug

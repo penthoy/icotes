@@ -111,6 +111,12 @@ export class ChatBackendClient {
   private streamCallbacks: ((data: { content: string; done: boolean }) => void)[] = [];
   private typingCallbacks: ((typing: boolean) => void)[] = [];
   private errorCallbacks: ((error: string) => void)[] = [];
+
+  // If WebSocket messages arrive before the UI subscribes (common during initial mount),
+  // buffer the latest state per message id and flush once a subscriber registers.
+  private pendingMessages: Map<string, ChatMessage> = new Map();
+  private pendingMessageOrder: string[] = [];
+  private readonly maxPendingMessages: number = 100;
   
   // Session management
   private currentSessionId: string = '';
@@ -694,10 +700,8 @@ export class ChatBackendClient {
       // console.log('[ChatBackendClient] Message parsed:', data);
       
       if (data.type === 'message') {
-        // console.log('[ChatBackendClient] Handling complete message');
         this.handleCompleteMessage(data);
       } else if (data.type === 'message_stream') {
-        // console.log('[ChatBackendClient] Handling streaming message');
         this.handleStreamingMessage(data);
       } else if (data.type === 'stream_stopped') {
         // console.log('[ChatBackendClient] Handling stream stopped');
@@ -782,12 +786,11 @@ export class ChatBackendClient {
       return;
     }
     
-    this.messageCallbacks.forEach(callback => callback(message));
+    this.notifyMessage(message);
     this.isStreaming = false;
   }
 
   private handleStreamingMessage(data: any): void {
-    // console.log('[ChatBackendClient] Streaming message data:', data);
     // If we've been interrupted (stopRequested), ignore further chunks/ends
     // Don't check isStreaming here because stream_chunk may arrive before stream_start
     if (this.stopRequested && (data.stream_chunk || data.stream_end)) {
@@ -804,7 +807,6 @@ export class ChatBackendClient {
   this.stopRequested = false;
       // Start new streaming message
       const messageId = msgId;
-      // console.log('[ChatBackendClient] Starting streaming message:', messageId);
       
       // Mark this message ID as processed to prevent duplicate complete messages
       this.processedMessageIds.add(messageId);
@@ -825,7 +827,7 @@ export class ChatBackendClient {
         }
       };
       
-      this.messageCallbacks.forEach(callback => callback(this.streamingMessage!));
+      this.notifyMessage(this.streamingMessage!);
       this.isStreaming = true;
       
     } else if (data.stream_chunk) {
@@ -847,7 +849,7 @@ export class ChatBackendClient {
             streamComplete: false
           }
         };
-        this.messageCallbacks.forEach(callback => callback(this.streamingMessage!));
+        this.notifyMessage(this.streamingMessage!);
         this.isStreaming = true;
         // track to avoid duplicate complete messages
         this.processedMessageIds.add(msgId);
@@ -858,15 +860,14 @@ export class ChatBackendClient {
         return;
       }
       // Append chunk to streaming message
-      // console.log('[ChatBackendClient] Appending chunk:', data.chunk);
       this.streamingMessage.content += chunkText || '';
-      this.messageCallbacks.forEach(callback => callback({ 
+      this.notifyMessage({
         ...this.streamingMessage!,
         metadata: {
           ...this.streamingMessage!.metadata!,
           isStreaming: true
         }
-      }));
+      });
       
       // Also call stream callbacks for backward compatibility
       this.streamCallbacks.forEach(callback => 
@@ -900,14 +901,14 @@ export class ChatBackendClient {
       // console.log('[ChatBackendClient] Ending streaming message:', this.streamingMessage.id);
       this.streamingMessage.metadata!.streamComplete = true;
       this.streamingMessage.metadata!.isStreaming = false;
-      this.messageCallbacks.forEach(callback => callback({ 
+      this.notifyMessage({
         ...this.streamingMessage!,
         metadata: {
           ...this.streamingMessage!.metadata!,
           isStreaming: false,
           streamComplete: true
         }
-      }));
+      });
       
       // Call stream callbacks with done flag
       this.streamCallbacks.forEach(callback => 
@@ -1145,7 +1146,30 @@ export class ChatBackendClient {
   }
 
   onMessage(callback: (message: ChatMessage) => void): void {
+    console.log('[STREAM-SURGICAL] onMessage subscriber registered. Total callbacks:', this.messageCallbacks.length + 1);
     this.messageCallbacks.push(callback);
+
+    // Flush any buffered messages to the newly-registered subscriber.
+    if (this.pendingMessageOrder.length > 0) {
+      console.log('[STREAM-SURGICAL] Flushing', this.pendingMessageOrder.length, 'buffered messages to new subscriber');
+      try {
+        for (const id of this.pendingMessageOrder) {
+          const msg = this.pendingMessages.get(id);
+          if (msg) {
+            console.log('[STREAM-SURGICAL] Flushing buffered message:', msg.id, 'isStreaming:', msg.metadata?.isStreaming);
+            callback(msg);
+          }
+        }
+      } catch (e) {
+        console.error('[STREAM-SURGICAL] Error flushing buffered messages:', e);
+      } finally {
+        // Once the UI has at least one subscriber, we can drop the buffer.
+        this.pendingMessages.clear();
+        this.pendingMessageOrder = [];
+      }
+    } else {
+      console.log('[STREAM-SURGICAL] No buffered messages to flush');
+    }
   }
 
   onStream(callback: (data: { content: string; done: boolean }) => void): void {
@@ -1164,6 +1188,24 @@ export class ChatBackendClient {
    * Helper method to notify message callbacks (like deprecated client)
    */
   private notifyMessage(message: ChatMessage): void {
+    if (this.messageCallbacks.length === 0) {
+      console.warn('[STREAM-SURGICAL] No callbacks registered! Buffering message:', message.id, 'isStreaming:', message.metadata?.isStreaming);
+      const id = String(message.id || '');
+      if (id) {
+        if (!this.pendingMessages.has(id)) {
+          this.pendingMessageOrder.push(id);
+        }
+        this.pendingMessages.set(id, message);
+        // Cap memory in case UI never subscribes
+        while (this.pendingMessageOrder.length > this.maxPendingMessages) {
+          const oldest = this.pendingMessageOrder.shift();
+          if (oldest) this.pendingMessages.delete(oldest);
+        }
+      }
+      return;
+    }
+
+    console.log('[STREAM-SURGICAL] Dispatching message to', this.messageCallbacks.length, 'callbacks. Message:', message.id, 'isStreaming:', message.metadata?.isStreaming, 'content length:', message.content.length);
     this.messageCallbacks.forEach(callback => callback(message));
   }
 
