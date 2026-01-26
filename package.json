@@ -12,10 +12,10 @@
     "preview": "vite preview",
     "test": "vitest",
     "test:ui": "vitest --ui",
-  "test:run": "vitest run",
-  "e2e": "playwright test",
-  "e2e:ui": "playwright test --ui",
-  "e2e:report": "playwright show-report",
+    "test:run": "vitest run",
+    "e2e": "playwright test",
+    "e2e:ui": "playwright test --ui",
+    "e2e:report": "playwright show-report",
     "types:supabase": "npx supabase gen types typescript --project-id $SUPABASE_PROJECT_ID > src/types/supabase.ts",
     "start": "./start.sh",
     "dev-backend": "cd backend && uv run python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload --reload-exclude '.venv/*' --reload-exclude 'venv/*' --reload-exclude '__pycache__' --reload-exclude '*.pyc' --log-config logging.conf",
@@ -101,6 +101,7 @@
     "tailwindcss-animate": "^1.0.7",
     "unist-util-visit": "^5.0.0",
     "vaul": "^0.9.1",
+    "wavesurfer.js": "^7.12.1",
     "zod": "^3.23.8"
   },
   "devDependencies": {

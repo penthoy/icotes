@@ -11,6 +11,7 @@ export type { DiffMetadata, ProcessedDiff } from './utils/diffProcessor';
 // Components
 export { ImageViewerPanel } from './components/ImageViewerPanel';
 export { PDFViewerPanel } from './components/PDFViewerPanel';
+export { MediaPlayerPanel } from './components/MediaPlayerPanel';
 export { EditorTabBar } from './components/EditorTabBar';
 export { EditorActionBar } from './components/EditorActionBar';
 export { LanguageSelectorModal } from './components/LanguageSelectorModal';

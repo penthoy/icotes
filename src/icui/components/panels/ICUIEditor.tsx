@@ -27,6 +27,7 @@ import {
   EditorNotificationService,
   ImageViewerPanel,
   PDFViewerPanel,
+  MediaPlayerPanel,
   EditorTabBar,
   EditorActionBar,
   LanguageSelectorModal,
@@ -142,9 +143,14 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
       // Auto-detect file type from file extension first
       const detectedFileType = detectFileTypeFromExtension(filePath);
       
-      // For image and PDF files, we don't need to load the text content
-      if (detectedFileType === 'image' || detectedFileType === 'pdf') {
-        const fileName = filePath.split('/').pop() || (detectedFileType === 'pdf' ? 'document.pdf' : 'image');
+      // For media/image/PDF files, we don't need to load text content
+      if (detectedFileType === 'image' || detectedFileType === 'pdf' || detectedFileType === 'audio' || detectedFileType === 'video') {
+        const fileName = filePath.split('/').pop() || (
+          detectedFileType === 'pdf' ? 'document.pdf' :
+          detectedFileType === 'audio' ? 'audio' :
+          detectedFileType === 'video' ? 'video' :
+          'image'
+        );
         
         // Check if this file is already open
         const existingFileIndex = files.findIndex(f => f.path === filePath && !(f as any).isDiff);
@@ -254,9 +260,14 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
         setFiles(prev => prev.filter(f => !f.isTemporary));
       }
 
-      // For image and PDF files, we don't need to load the text content
-      if (detectedFileType === 'image' || detectedFileType === 'pdf') {
-        const fileName = filePath.split('/').pop() || (detectedFileType === 'pdf' ? 'document.pdf' : 'image');
+      // For media/image/PDF files, we don't need to load text content
+      if (detectedFileType === 'image' || detectedFileType === 'pdf' || detectedFileType === 'audio' || detectedFileType === 'video') {
+        const fileName = filePath.split('/').pop() || (
+          detectedFileType === 'pdf' ? 'document.pdf' :
+          detectedFileType === 'audio' ? 'audio' :
+          detectedFileType === 'video' ? 'video' :
+          'image'
+        );
         const fileData = {
           id: `file-${Date.now()}-${Math.random()}`,
           name: fileName,
@@ -1021,6 +1032,13 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
               key={activeFile.path || activeFile.id}
               filePath={activeFile.path || ''}
               fileName={activeFile.name}
+            />
+          ) : activeFile.language === 'audio' || activeFile.language === 'video' ? (
+            <MediaPlayerPanel
+              key={activeFile.path || activeFile.id}
+              filePath={activeFile.path || ''}
+              fileName={activeFile.name}
+              mediaType={activeFile.language as 'audio' | 'video'}
             />
           ) : (
             // Code Editor

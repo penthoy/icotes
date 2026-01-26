@@ -26,7 +26,9 @@ export const supportedFileTypes: FileTypeInfo[] = [
   { id: 'go', name: 'Go' },
   { id: 'text', name: 'Plain Text' },
   { id: 'image', name: 'Image' },
-  { id: 'pdf', name: 'PDF Document' }
+  { id: 'pdf', name: 'PDF Document' },
+  { id: 'audio', name: 'Audio' },
+  { id: 'video', name: 'Video' }
 ];
 
 /**
@@ -80,7 +82,16 @@ export function detectFileTypeFromExtension(filePath: string): string | null {
     'bmp': 'image',
     'ico': 'image',
     // PDF documents
-    'pdf': 'pdf'
+    'pdf': 'pdf',
+    // Audio extensions
+    'mp3': 'audio',
+    'wav': 'audio',
+    'm4a': 'audio',
+    'ogg': 'audio',
+    // Video extensions
+    'mp4': 'video',
+    'mov': 'video',
+    'webm': 'video'
   };
   
   // If no extension found (no dot in filename), treat as plain text
