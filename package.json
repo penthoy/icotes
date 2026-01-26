@@ -4,7 +4,7 @@
   "version": "2.3.5",
   "type": "module",
   "scripts": {
-    "dev": "npm run build && cd backend && uv run python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload --log-config logging.conf",
+    "dev": "npm run build && cd backend && uv run python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload --reload-exclude '.venv/*' --reload-exclude 'venv/*' --reload-exclude '__pycache__' --reload-exclude '*.pyc' --log-config logging.conf",
     "dev-frontend": "vite",
     "build": "tsc && vite build",
     "build-no-errors": "tsc && vite build",
@@ -18,7 +18,7 @@
   "e2e:report": "playwright show-report",
     "types:supabase": "npx supabase gen types typescript --project-id $SUPABASE_PROJECT_ID > src/types/supabase.ts",
     "start": "./start.sh",
-    "dev-backend": "cd backend && uv run python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload --log-config logging.conf",
+    "dev-backend": "cd backend && uv run python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload --reload-exclude '.venv/*' --reload-exclude 'venv/*' --reload-exclude '__pycache__' --reload-exclude '*.pyc' --log-config logging.conf",
     "prod": "npm run build && ./start.sh",
     "logs:view": "tail -f logs/backend.log",
     "logs:clear": "rm -f logs/*.log && echo 'Logs cleared'"

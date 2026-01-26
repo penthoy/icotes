@@ -179,6 +179,8 @@ if command -v uv &> /dev/null && [ -f "pyproject.toml" ]; then
         --port "$BACKEND_PORT" \
         --reload \
         --reload-dir . \
+        --reload-exclude ".venv/*" \
+        --reload-exclude "venv/*" \
         --reload-exclude "*.pyc" \
         --reload-exclude "__pycache__" \
         --log-config logging.conf \
@@ -200,6 +202,8 @@ else
         --port "$BACKEND_PORT" \
         --reload \
         --reload-dir . \
+        --reload-exclude ".venv/*" \
+        --reload-exclude "venv/*" \
         --reload-exclude "*.pyc" \
         --reload-exclude "__pycache__" \
         --log-config logging.conf \

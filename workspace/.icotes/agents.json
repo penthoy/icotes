@@ -4,10 +4,10 @@
     "OpenAIAgent": {
       "enabled": true,
       "displayName": "OpenAIAgent",
-      "description": "OpenAI agent gpt-5.1",
+      "description": "OpenAI agent gpt-5.2",
       "category": "Built-in",
       "order": 3,
-      "modelName": "gpt-5.1"
+      "modelName": "gpt-5.2"
     },
     "GeminiAgent": {
       "enabled": true,

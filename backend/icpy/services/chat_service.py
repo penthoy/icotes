@@ -387,6 +387,23 @@ class ChatService:
                         else:
                             if not rel_path:
                                 rel_path = orig_path
+                    
+                    # If no absolute path yet but we have a relative path, compute it from workspace
+                    if not abs_path and isinstance(rel_path, str) and rel_path and self.workspace_root:
+                        from pathlib import Path as _P
+                        # Uploaded files are stored in workspace/.icotes/media/{rel_path}
+                        # Example: rel_path = "files/uuid_filename.pdf"
+                        # Full path = "{workspace}/.icotes/media/files/uuid_filename.pdf"
+                        media_base = _P(self.workspace_root) / '.icotes' / 'media'
+                        computed_abs = (media_base / rel_path).resolve()
+                        # Only use if file exists and is within media base (security check)
+                        try:
+                            computed_abs.relative_to(media_base)
+                            if computed_abs.exists():
+                                abs_path = str(computed_abs)
+                        except (ValueError, Exception):
+                            # Path is outside media base or doesn't exist, skip
+                            logger.debug(f"Computed path {computed_abs} is invalid or doesn't exist")
                 except Exception as e:
                     logger.debug(f"Attachment path normalization issue for {att_id}: {e}")
                 mime = item.get('mime_type') or item.get('mime') or 'application/octet-stream'
@@ -467,6 +484,12 @@ class ChatService:
                     **({'hop_namespace': hop_namespace} if hop_namespace else {}),
                     **({'namespaced_path': namespaced_path} if namespaced_path else {})
                 })
+                # Debug logging for attachment path resolution
+                logger.debug(
+                    f"[ChatService] Normalized attachment {att_id}: "
+                    f"rel_path={rel_path}, abs_path={abs_path}, orig_path={orig_path}, "
+                    f"filename={filename}"
+                )
         except Exception as e:
             logger.warning(f"Attachment normalization error: {e}")
         return normalized

@@ -11,7 +11,7 @@ from typing import Dict, List, Generator, Any
 logger = logging.getLogger(__name__)
 
 # Default model for OpenAI - Updated to latest flagship model (December 2025)
-MODEL_NAME = "gpt-5.1"
+MODEL_NAME = "gpt-5.2"
 AGENT_NAME = "OpenAIAgent"
 AGENT_DESCRIPTION = "Generic AI assistant powered by OpenAI models with tool calling"
 

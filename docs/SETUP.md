@@ -164,6 +164,43 @@ python main.py
 # Build frontend (served by backend in single port mode)
 npm run build
 ```
+
+## SSH Hop Configuration
+
+icotes uses OpenSSH config format for hop connections. This ensures full compatibility with VS Code Remote SSH and standard SSH clients.
+
+- Config file: `workspace/.icotes/hop/config`
+- SSH keys: `workspace/.icotes/ssh/keys/`
+- Legacy JSON: `workspace/.icotes/ssh/credentials.json` (deprecated, read-only)
+
+Example entry:
+
+```
+# icotes hop configuration
+# This file is compatible with VS Code Remote SSH config
+
+Host my-server
+   HostName 192.168.1.10
+   User ubuntu
+   Port 22
+   IdentityFile ~/.icotes/ssh/keys/my-server_key
+   # icotes-meta: {"id": "hop-123", "auth": "privateKey"}
+```
+
+Validation tool (recommended):
+
+```bash
+cd backend
+uv run python -m icpy.scripts.validate_hop_config
+```
+
+Migration and deprecation:
+- On startup, if a legacy `credentials.json` exists and no config file is present, icotes auto-migrates to SSH config format and creates a backup `credentials.json.bak`.
+- Phase 5 stops writing to JSON. Only the SSH config file is updated.
+- You may see a deprecation warning when loading from legacy JSON; this is expected during migration.
+
+Docker note:
+- Local dev credentials under `workspace/.icotes/hop/**` are excluded by `.dockerignore` to avoid leaking secrets into images.
 ## Project Structure
 
 ```

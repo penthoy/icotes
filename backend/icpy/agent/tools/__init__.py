@@ -12,6 +12,8 @@ from .semantic_search_tool import SemanticSearchTool
 from .websearch_tools import WebSearchTool
 from .imagen_tool import ImagenTool
 from .web_fetch_tool import WebFetchTool
+from .read_doc_tool import ReadDocTool
+from .write_doc_tool import WriteDocTool
 
 __all__ = [
     "BaseTool",
@@ -25,7 +27,9 @@ __all__ = [
     "SemanticSearchTool",
     "WebSearchTool",
     "ImagenTool",
-    "WebFetchTool"
+    "WebFetchTool",
+    "ReadDocTool",
+    "WriteDocTool",
 ]
 
 # Auto-register all tools when module is imported
@@ -42,6 +46,8 @@ def _register_default_tools():
     registry.register(WebSearchTool())
     registry.register(ImagenTool())
     registry.register(WebFetchTool())
+    registry.register(ReadDocTool())
+    registry.register(WriteDocTool())
 
 # Register tools on import
 _register_default_tools() 

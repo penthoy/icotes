@@ -57,6 +57,7 @@ export interface ChatMessage {
     context?: any;
     isStreaming?: boolean;
     streamComplete?: boolean;
+    error?: boolean;  // Flag to indicate this is an error message
     // For backward compatibility
     model?: string;
     agent?: string;
@@ -231,14 +232,14 @@ export class ChatBackendClient {
     });
 
     this.wsService.on('message', (data: any) => {
-      // console.log('[ChatBackendClient] Raw message received:', data);
+      console.log('[ChatBackendClient] Raw message received:', data);
       if (data.connectionId === this.connectionId) {
         // Use rawData if available (original JSON string), otherwise stringify the parsed message
         const messageData = data.rawData || JSON.stringify(data.message);
-        // console.log('[ChatBackendClient] Processing message for connectionId:', this.connectionId, 'data:', messageData);
+        console.log('[ChatBackendClient] Processing message for connectionId:', this.connectionId, 'type:', data.message?.type);
         this.handleWebSocketMessage({ data: messageData });
       } else {
-        // console.log('[ChatBackendClient] Message not for this connection:', data.connectionId, 'expected:', this.connectionId);
+        console.log('[ChatBackendClient] Message not for this connection:', data.connectionId, 'expected:', this.connectionId);
       }
     });
 
@@ -688,7 +689,7 @@ export class ChatBackendClient {
    */
   private handleWebSocketMessage(event: { data: string }): void {
     try {
-      // console.log('[ChatBackendClient] handleWebSocketMessage called with:', event.data);
+      console.log('[ChatBackendClient] handleWebSocketMessage called with type:', JSON.parse(event.data)?.type);
       
       // Check if event.data is valid before parsing
       if (!event.data || event.data === 'undefined' || typeof event.data !== 'string') {
@@ -702,6 +703,7 @@ export class ChatBackendClient {
       if (data.type === 'message') {
         this.handleCompleteMessage(data);
       } else if (data.type === 'message_stream') {
+        console.log('[ChatBackendClient] Streaming message:', data.stream_start ? 'START' : data.stream_chunk ? 'CHUNK' : 'END');
         this.handleStreamingMessage(data);
       } else if (data.type === 'stream_stopped') {
         // console.log('[ChatBackendClient] Handling stream stopped');
@@ -901,14 +903,19 @@ export class ChatBackendClient {
       // console.log('[ChatBackendClient] Ending streaming message:', this.streamingMessage.id);
       this.streamingMessage.metadata!.streamComplete = true;
       this.streamingMessage.metadata!.isStreaming = false;
-      this.notifyMessage({
+      
+      // Force immediate notification to ensure message appears without refresh
+      const finalMessage = {
         ...this.streamingMessage!,
         metadata: {
           ...this.streamingMessage!.metadata!,
           isStreaming: false,
           streamComplete: true
         }
-      });
+      };
+      
+      // Bypass buffering for completed messages
+      this.messageCallbacks.forEach(callback => callback(finalMessage));
       
       // Call stream callbacks with done flag
       this.streamCallbacks.forEach(callback => 
@@ -946,7 +953,10 @@ export class ChatBackendClient {
           this.processedMessageIds.add(msgId);
         }
         this.streamingMessage.content += chunkText;
-        this.messageCallbacks.forEach(cb => cb({ ...this.streamingMessage! }));
+        // Force immediate update for streaming chunks to ensure visibility
+        if (this.messageCallbacks.length > 0) {
+          this.messageCallbacks.forEach(cb => cb({ ...this.streamingMessage! }));
+        }
         // Do not end here; wait for an explicit end or next phase
       } else {
         console.warn('[ChatBackendClient] ⚠️ Unhandled streaming message:', data);
@@ -994,9 +1004,39 @@ export class ChatBackendClient {
   }
 
   private handleErrorMessage(data: any): void {
-    const error = data.error || 'Unknown chat error';
-      log.error('ChatBackendClient', 'Chat error', { error });
-    this.handleError(error);
+    const error = data.error || data.message || 'Unknown chat error';
+    log.error('ChatBackendClient', 'Chat error', { error });
+    
+    // Create a visible error message in the chat
+    const errorMessage: ChatMessage = {
+      id: `error_${Date.now()}_${Math.random().toString(36).substring(2)}`,
+      role: 'assistant',
+      sender: 'ai',
+      content: `Error: ${typeof error === 'object' ? JSON.stringify(error, null, 2) : error}`,
+      timestamp: new Date(),
+      metadata: {
+        messageType: 'error',
+        isStreaming: false,
+        streamComplete: true,
+        error: true
+      }
+    };
+    
+    // Force immediate notification (bypass buffering)
+    this.messageCallbacks.forEach(callback => callback(errorMessage));
+    
+    // Also call error callbacks
+    this.handleError(typeof error === 'object' ? JSON.stringify(error) : error);
+    
+    // End any active streaming
+    if (this.streamingMessage) {
+      this.streamingMessage.metadata!.streamComplete = true;
+      this.streamingMessage.metadata!.isStreaming = false;
+      this.messageCallbacks.forEach(callback => callback(this.streamingMessage!));
+      this.streamingMessage = null;
+    }
+    this.isStreaming = false;
+    this.typingCallbacks.forEach(callback => callback(false));
   }
 
   private handleError(error: string): void {
@@ -1077,7 +1117,6 @@ export class ChatBackendClient {
 
       const synthetic: ChatMessage = {
         id: syntheticMessageId,
-        role: 'assistant',
         content: '',
         timestamp: new Date(),
         sender: 'ai',
@@ -1183,7 +1222,9 @@ export class ChatBackendClient {
    * Helper method to notify message callbacks (like deprecated client)
    */
   private notifyMessage(message: ChatMessage): void {
+    console.log('[ChatBackendClient] notifyMessage called, callbacks:', this.messageCallbacks.length, 'isStreaming:', message.metadata?.isStreaming);
     if (this.messageCallbacks.length === 0) {
+      console.log('[ChatBackendClient] NO CALLBACKS - buffering message:', message.id);
       const id = String(message.id || '');
       if (id) {
         if (!this.pendingMessages.has(id)) {
@@ -1199,6 +1240,7 @@ export class ChatBackendClient {
       return;
     }
 
+    console.log('[ChatBackendClient] Calling', this.messageCallbacks.length, 'callbacks with message:', message.id, 'content length:', message.content?.length);
     this.messageCallbacks.forEach(callback => callback(message));
   }
 
