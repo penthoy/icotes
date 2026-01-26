@@ -23,9 +23,9 @@ def test_openai_agent_delegates_to_general_agent(monkeypatch):
 
 def test_openai_agent_model_identifier():
     """Verify the OpenAI agent uses the latest model identifier (December 2025)."""
-    # gpt-5.1 is the latest flagship model as of December 2025
-    assert openai_agent.MODEL_NAME == "gpt-5.1"
-    assert openai_agent.AGENT_METADATA["MODEL_NAME"] == "gpt-5.1"
+    # gpt-5.2 is the latest flagship model as of December 2025
+    assert openai_agent.MODEL_NAME == "gpt-5.2"
+    assert openai_agent.AGENT_METADATA["MODEL_NAME"] == "gpt-5.2"
 
 
 def test_openai_agent_metadata():

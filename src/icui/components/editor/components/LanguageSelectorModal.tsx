@@ -5,7 +5,7 @@
  */
 
 import React from 'react';
-import { supportedLanguages } from '../utils/languageDetection';
+import { supportedFileTypes as supportedLanguages } from '../utils/fileTypeDetection';
 
 interface LanguageSelectorModalProps {
   fileName: string;
