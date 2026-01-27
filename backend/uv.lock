@@ -180,6 +180,7 @@ dependencies = [
     { name = "beautifulsoup4" },
     { name = "cerebras-cloud-sdk" },
     { name = "crewai" },
+    { name = "elevenlabs" },
     { name = "fastapi" },
     { name = "google-genai" },
     { name = "google-generativeai" },
@@ -230,6 +231,7 @@ requires-dist = [
     { name = "beautifulsoup4", specifier = ">=4.12.0" },
     { name = "cerebras-cloud-sdk", specifier = ">=1.30.0" },
     { name = "crewai", specifier = "==0.30.11" },
+    { name = "elevenlabs", specifier = ">=1.0.0" },
     { name = "fastapi", specifier = "==0.104.1" },
     { name = "google-genai", specifier = ">=0.1.0" },
     { name = "google-generativeai", specifier = ">=0.8.0" },
@@ -918,6 +920,23 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/c0/1f/924e3caae75f471eae4b26bd13b698f6af2c44279f67af317439c2f4c46a/ecdsa-0.19.1.tar.gz", hash = "sha256:478cba7b62555866fcb3bb3fe985e06decbdb68ef55713c4e5ab98c57d508e61", size = 201793, upload-time = "2025-03-13T11:52:43.25Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/cb/a3/460c57f094a4a165c84a1341c373b0a4f5ec6ac244b998d5021aade89b77/ecdsa-0.19.1-py2.py3-none-any.whl", hash = "sha256:30638e27cf77b7e15c4c4cc1973720149e1033827cfd00661ca5c8cc0cdb24c3", size = 150607, upload-time = "2025-03-13T11:52:41.757Z" },
+]
+
+[[package]]
+name = "elevenlabs"
+version = "2.32.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "httpx" },
+    { name = "pydantic" },
+    { name = "pydantic-core" },
+    { name = "requests" },
+    { name = "typing-extensions" },
+    { name = "websockets" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/8f/09/d945c793699a0df0de3f0038e3517c851093249a78f83e010e0a047d513f/elevenlabs-2.32.0.tar.gz", hash = "sha256:b3f7d41c12a1054b0b0130555099b6b8011cf134239ecedb1d4286e96461fd36", size = 454997, upload-time = "2026-01-26T10:56:14.936Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/95/6e/794c320b96dcd4531f6f6ad2cb99fbbaf5b425d6ad617321401fe723d19c/elevenlabs-2.32.0-py3-none-any.whl", hash = "sha256:396c8ff4a229a88ea3120e02c44ef840dda057c7f439b9fa070222dc4b644a4d", size = 1213229, upload-time = "2026-01-26T10:56:12.76Z" },
 ]
 
 [[package]]

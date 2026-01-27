@@ -14,6 +14,8 @@ from .imagen_tool import ImagenTool
 from .web_fetch_tool import WebFetchTool
 from .read_doc_tool import ReadDocTool
 from .write_doc_tool import WriteDocTool
+from .elevenlabs_tts_tool import ElevenLabsTTSTool
+from .elevenlabs_stt_tool import ElevenLabsSTTTool
 
 __all__ = [
     "BaseTool",
@@ -30,6 +32,8 @@ __all__ = [
     "WebFetchTool",
     "ReadDocTool",
     "WriteDocTool",
+    "ElevenLabsTTSTool",
+    "ElevenLabsSTTTool",
 ]
 
 # Auto-register all tools when module is imported
@@ -48,6 +52,8 @@ def _register_default_tools():
     registry.register(WebFetchTool())
     registry.register(ReadDocTool())
     registry.register(WriteDocTool())
+    registry.register(ElevenLabsTTSTool())
+    registry.register(ElevenLabsSTTTool())
 
 # Register tools on import
 _register_default_tools() 
