@@ -276,6 +276,77 @@ class GeminiNativeClientAdapter(BaseLLMClient):
             config=config,
             tools=tools
         )
+
+    @staticmethod
+    def _serialize_tool_success_data(tool_name: str, result: Dict[str, Any]) -> str:
+        """Serialize a tool success payload for the frontend tool-call parser.
+
+        IMPORTANT: The frontend expects valid JSON for widget rendering.
+        Do not truncate by slicing JSON strings (it breaks parsing).
+        """
+        data = result.get('data', {})
+
+        # Keep non-dict outputs compact
+        if not isinstance(data, dict):
+            data_str = str(data) if data else 'Operation completed'
+            if len(data_str) > 500:
+                data_str = data_str[:500] + "... (truncated)"
+            return data_str
+
+        # Dict outputs: always emit valid JSON
+        max_json_chars = 8000
+
+        # Special-case image generation: keep only widget-critical fields so previews work.
+        if tool_name == 'generate_image':
+            image_ref = data.get('imageReference') if isinstance(data.get('imageReference'), dict) else None
+            compact: Dict[str, Any] = {
+                # Widget reads these directly
+                'imageUrl': data.get('imageUrl') or data.get('image_url') or data.get('url'),
+                'fullImageUrl': data.get('fullImageUrl') or data.get('full_image_url') or data.get('fullImageURL'),
+                # Helpful metadata
+                'prompt': data.get('prompt'),
+                'model': data.get('model'),
+                'timestamp': data.get('timestamp'),
+                'size': data.get('size'),
+                'width': data.get('width'),
+                'height': data.get('height'),
+                'context': data.get('context') or data.get('contextId') or data.get('context_id'),
+                'filePath': data.get('filePath') or data.get('file_path'),
+                'absolutePath': data.get('absolutePath') or data.get('absolute_path'),
+                'savedToWorkspace': data.get('savedToWorkspace') if 'savedToWorkspace' in data else data.get('saved_to_workspace'),
+                'message': data.get('message'),
+            }
+            # Prefer NOT to embed base64 thumbnails in streamed chat output.
+            # The widget can load from imageUrl (file:// -> /api/files/raw) or fullImageUrl.
+            if image_ref:
+                compact['imageReference'] = {
+                    'image_id': image_ref.get('image_id'),
+                    'relative_path': image_ref.get('relative_path'),
+                    'absolute_path': image_ref.get('absolute_path'),
+                    'mime_type': image_ref.get('mime_type'),
+                    'width': image_ref.get('width'),
+                    'height': image_ref.get('height'),
+                    'timestamp': image_ref.get('timestamp'),
+                    'model': image_ref.get('model'),
+                    'prompt': image_ref.get('prompt'),
+                }
+
+            # Drop null/empty keys to keep output tight
+            compact = {k: v for k, v in compact.items() if v not in (None, '', [])}
+            return json.dumps(compact)
+
+        # Generic dict serialization (safe size limiting)
+        json_str = json.dumps(data)
+        if len(json_str) <= max_json_chars:
+            return json_str
+
+        # If it's too large, emit a compact summary that still parses.
+        summary = {
+            'truncated': True,
+            'note': f"Tool result too large to stream ({len(json_str)} chars).",
+            'keys': sorted(list(data.keys())),
+        }
+        return json.dumps(summary)
     
     def _run_conversation_loop(
         self,
@@ -362,18 +433,7 @@ class GeminiNativeClientAdapter(BaseLLMClient):
                     # Format result using proper format for frontend widgets
                     # Format: ✅ **Success**: result or ❌ **Error**: error
                     if result.get("success"):
-                        data = result.get('data', 'Operation completed')
-                        # For JSON-serializable data, include it
-                        if isinstance(data, dict):
-                            try:
-                                data_str = json.dumps(data)
-                            except:
-                                data_str = str(data)
-                        else:
-                            data_str = str(data) if data else 'Operation completed'
-                        # Truncate very long results
-                        if len(data_str) > 500:
-                            data_str = data_str[:500] + "... (truncated)"
+                        data_str = self._serialize_tool_success_data(tool_name, result)
                         yield f"✅ **Success**: {data_str}\n"
                     else:
                         yield f"❌ **Error**: {result.get('error', 'Unknown error')}\n"

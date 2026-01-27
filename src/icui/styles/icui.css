@@ -84,6 +84,17 @@
   background-color: var(--icui-bg-primary);
 }
 
+/*
+ * During resize drags, iframe/embed/object elements can capture mouse events.
+ * This is especially noticeable with the browser-native PDF viewer (iframe).
+ * Disabling pointer events while dragging keeps divider movement smooth.
+ */
+body.icui-resize-dragging iframe,
+body.icui-resize-dragging embed,
+body.icui-resize-dragging object {
+  pointer-events: none !important;
+}
+
 .icui-split-handle {
   position: absolute;
   z-index: 10;

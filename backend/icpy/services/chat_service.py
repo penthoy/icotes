@@ -350,6 +350,53 @@ class ChatService:
             if len(first) == 8 and all(c in '0123456789abcdef' for c in first.lower()) and rest.startswith('session_'):
                 return rest
         return stem
+
+    def _meta_path(self, session_id: str) -> Path:
+        return self.history_root / f"{session_id}.meta.json"
+
+    def _surgical_iterate_enabled(self) -> bool:
+        return os.getenv('SURGICAL_ITERATE', '0') in ('1', 'true', 'True')
+
+    def _derive_default_session_name(self, content: str) -> str:
+        try:
+            line = (content or '').strip().splitlines()[0].strip()
+            if not line:
+                return 'New Chat'
+            # Keep it short and filesystem/UI safe
+            line = ' '.join(line.split())
+            return line[:60]
+        except Exception:
+            return 'New Chat'
+
+    def _ensure_session_meta(self, session_id: str, name: Optional[str] = None) -> None:
+        """Ensure a session has a sidecar meta file.
+
+        Some sessions are created implicitly via websocket activity (without calling
+        the session CRUD endpoints). Without a sidecar, the UI falls back to showing
+        the raw session_id as the session name after refresh.
+        """
+        try:
+            meta_path = self._meta_path(session_id)
+            if meta_path.exists():
+                return
+
+            display_name = (name or '').strip() if isinstance(name, str) else ''
+            if not display_name:
+                display_name = 'New Chat'
+
+            payload = {
+                'id': session_id,
+                'name': display_name,
+                'created': time.time(),
+                'updated': time.time(),
+            }
+            with open(meta_path, 'w', encoding='utf-8') as mf:
+                json.dump(payload, mf, ensure_ascii=False)
+            if self._surgical_iterate_enabled():
+                logger.info(f"[SURGICALITERATE] created missing meta for {session_id}: name={display_name!r}")
+        except Exception as e:
+            if self._surgical_iterate_enabled():
+                logger.warning(f"[SURGICALITERATE] failed creating meta for {session_id}: {e}")
     
     def _normalize_attachments(self, raw_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Normalize various frontend attachment shapes into a standard dict.
@@ -1915,6 +1962,16 @@ class ChatService:
         """Store a message to JSONL per session."""
         try:
             session_id = message.session_id or "default"
+
+            # Ensure meta sidecar exists for implicitly-created sessions.
+            # Prefer using the first user message as a title.
+            meta_name: Optional[str] = None
+            try:
+                if getattr(message, 'sender', None) == 'user' and getattr(message, 'content', None):
+                    meta_name = self._derive_default_session_name(str(message.content))
+            except Exception:
+                meta_name = None
+            self._ensure_session_meta(session_id, meta_name)
             
             # Convert imageData to ImageReference before storage
             message_dict = await self._convert_image_data_to_reference(message.to_dict())
@@ -2232,11 +2289,8 @@ class ChatService:
             file_path = self._session_file_new(session_id)
             file_path.touch()
             
-            # Persist display name if provided
-            if name:
-                meta_path = self.history_root / f"{session_id}.meta.json"
-                with open(meta_path, 'w', encoding='utf-8') as mf:
-                    json.dump({'id': session_id, 'name': name}, mf, ensure_ascii=False)
+            # Persist display name (always create meta so UI never falls back to raw session_id)
+            self._ensure_session_meta(session_id, name or 'New Chat')
             
             logger.info(f"Created new chat session: {session_id}")
             return session_id

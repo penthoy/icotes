@@ -21,7 +21,7 @@ from typing import Dict, List, Generator
 logger = logging.getLogger(__name__)
 
 # Model ID for GPT OSS 120B on Groq
-MODEL_NAME = "gpt-oss-120b"
+MODEL_NAME = "openai/gpt-oss-120b"
 AGENT_NAME = "GroqGptOssAgent"
 AGENT_DESCRIPTION = "AI assistant powered by GPT OSS 120B via Groq with tool calling"
 

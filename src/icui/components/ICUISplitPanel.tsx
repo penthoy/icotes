@@ -170,12 +170,19 @@ export const ICUISplitPanel: React.FC<ICUISplitPanelProps> = ({
       document.addEventListener('mouseup', handleMouseUp);
       document.body.style.cursor = splitConfig.direction === 'horizontal' ? 'col-resize' : 'row-resize';
       document.body.style.userSelect = 'none';
+
+      // IMPORTANT: iframe-based content (like the browser's PDF viewer) can capture mouse events,
+      // which makes divider dragging feel "stuck" or only work in one direction.
+      // While resizing, we disable pointer events on iframes via a global body class.
+      document.body.classList.add('icui-resize-dragging');
       
       return () => {
         document.removeEventListener('mousemove', handleMouseMove);
         document.removeEventListener('mouseup', handleMouseUp);
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
+
+        document.body.classList.remove('icui-resize-dragging');
       };
     }
   }, [splitState.isDragging, handleMouseMove, handleMouseUp, splitConfig.direction]);
