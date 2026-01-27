@@ -66,45 +66,6 @@ export const PDFViewerPanel: React.FC<PDFViewerPanelProps> = ({ filePath, fileNa
         color: 'var(--icui-text-primary)'
       }}
     >
-      {/* Toolbar */}
-      <div 
-        className="flex items-center justify-between px-4 py-2 border-b"
-        style={{ 
-          borderColor: 'var(--icui-border-subtle)',
-          backgroundColor: 'var(--icui-bg-secondary)'
-        }}
-      >
-        <div className="flex items-center gap-4">
-          <span className="text-sm font-medium">{fileName}</span>
-          {pdfLoaded && (
-            <span 
-              className="text-xs px-2 py-1 rounded"
-              style={{ 
-                backgroundColor: 'var(--icui-bg-tertiary)',
-                color: 'var(--icui-text-secondary)'
-              }}
-            >
-              PDF Document
-            </span>
-          )}
-        </div>
-        
-        <div className="flex items-center gap-2">
-          {/* Download button */}
-          <button
-            onClick={handleDownload}
-            className="px-3 py-1.5 text-sm rounded transition-colors"
-            style={{
-              backgroundColor: 'var(--icui-bg-tertiary)',
-              color: 'var(--icui-text-primary)'
-            }}
-            title="Download PDF"
-          >
-            📥 Download
-          </button>
-        </div>
-      </div>
-
       {/* PDF Viewer Container */}
       <div className="flex-1 relative overflow-hidden">
         {/* Loading state */}
