@@ -136,6 +136,9 @@ main() {
     
     # Install Node.js
     install_nodejs
+
+    # Install bun
+    install_bun
     
     # Install Python
     install_python
@@ -190,6 +193,19 @@ install_nodejs() {
     fi
 }
 
+# Install bun
+install_bun() {
+    print_status "Installing bun..."
+    if ! command -v bun &> /dev/null; then
+        execute_cmd "apt update"
+        execute_cmd "apt install -y unzip"
+        execute_cmd "curl -fsSL https://bun.sh/install | bash"
+        execute_cmd "bash -lc 'source ~/.bashrc && bun --version'"
+    else
+        print_success "bun is already installed"
+    fi
+}
+
 # Install Python
 install_python() {
     print_status "Installing Python..."
@@ -234,8 +250,8 @@ setup_app_directory() {
     execute_cmd "chmod +x $APP_DIR/start.sh"
     
     # Install dependencies as app user
-    execute_cmd "sudo -u $APP_USER bash -c 'cd $APP_DIR && npm ci --omit=dev'"
-    execute_cmd "sudo -u $APP_USER bash -c 'cd $APP_DIR && npm run build'"
+    execute_cmd "sudo -u $APP_USER bash -c 'export BUN_INSTALL=\"$HOME/.bun\" && export PATH=\"$BUN_INSTALL/bin:$PATH\" && cd $APP_DIR && bun install --frozen-lockfile'"
+    execute_cmd "sudo -u $APP_USER bash -c 'export BUN_INSTALL=\"$HOME/.bun\" && export PATH=\"$BUN_INSTALL/bin:$PATH\" && cd $APP_DIR && bun run build'"
     
     print_success "Application directory setup complete"
 }

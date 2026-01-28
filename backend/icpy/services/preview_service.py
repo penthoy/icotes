@@ -677,11 +677,18 @@ class PreviewService:
             
             # Install dependencies
             env_install = os.environ.copy()
-            env_install["npm_config_ignore_scripts"] = "1"
             from shutil import which
+            bun_exe = which("bun")
             npm_exe = which("npm") or "npm"
+
+            if bun_exe:
+                install_cmd = (bun_exe, "install", "--ignore-scripts")
+            else:
+                env_install["npm_config_ignore_scripts"] = "1"
+                install_cmd = (npm_exe, "install", "--ignore-scripts")
+
             install_proc = await asyncio.create_subprocess_exec(
-                npm_exe, "install", "--ignore-scripts",
+                *install_cmd,
                 cwd=str(project_dir),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
@@ -690,7 +697,8 @@ class PreviewService:
             rc = await install_proc.wait()
             if rc != 0:
                 _, err = await install_proc.communicate()
-                raise RuntimeError(f"npm install failed: {err.decode(errors='ignore')[:400]}")
+                tool = "bun" if bun_exe else "npm"
+                raise RuntimeError(f"{tool} install failed: {err.decode(errors='ignore')[:400]}")
             
             # Start dev server
             port = self._get_available_port()
@@ -699,8 +707,13 @@ class PreviewService:
             env = os.environ.copy()
             env["PORT"] = str(port)
             
+            if bun_exe:
+                start_cmd = (bun_exe, "run", "start")
+            else:
+                start_cmd = (npm_exe, "start")
+
             preview.process = await asyncio.create_subprocess_exec(
-                npm_exe, "start",
+                *start_cmd,
                 cwd=str(project_dir),
                 env=env,
                 stdout=asyncio.subprocess.PIPE,

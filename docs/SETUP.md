@@ -6,7 +6,7 @@ This guide provides detailed setup instructions for the icotes development envir
 
 - **Node.js** (v18 or higher)
 - **Python** 3.8 or higher
-- **npm** (comes with Node.js)
+- **bun** (JavaScript runtime + package manager)
 - **UV** package manager (recommended) or pip
 - **Ubuntu/Debian Linux** (preferred, but adaptable to other systems)
 
@@ -35,7 +35,11 @@ The easiest way to set up icotes is using the automated setup script:
 sudo apt update
 
 # Install required system packages
-sudo apt install -y curl git build-essential nodejs npm python3 python3-pip python3-venv
+sudo apt install -y curl git build-essential nodejs python3 python3-pip python3-venv unzip
+
+# Install bun
+curl -fsSL https://bun.sh/install | bash
+source ~/.bashrc
 ```
 
 ### 2. Install UV Package Manager (Recommended)
@@ -51,8 +55,8 @@ export PATH="$HOME/.local/bin:$PATH"
 ### 3. Setup Frontend Dependencies
 
 ```bash
-# Install Node.js dependencies
-npm install
+# Install JS dependencies
+bun install
 
 # Clean any previous builds
 rm -rf dist
@@ -162,7 +166,7 @@ python main.py
 **Frontend Build:**
 ```bash
 # Build frontend (served by backend in single port mode)
-npm run build
+bun run build
 ```
 
 ## SSH Hop Configuration
@@ -280,10 +284,10 @@ icotes/
 - `./verify-setup.sh` - Verify installation
 
 ### Frontend Scripts
-- `npm run dev` - Start Vite dev server (development only)
-- `npm run build` - Build for production
-- `npm run lint` - Run ESLint
-- `npm run preview` - Preview production build
+- `bun run dev` - Build frontend + start backend dev server (single-port)
+- `bun run build` - Build for production
+- `bun run lint` - Run ESLint
+- `bun run preview` - Preview production build
 
 ### Backend Scripts
 - `cd backend && uv run python main.py` - Start with UV
@@ -351,8 +355,8 @@ VITE_WORKSPACE_ROOT=/path/to/icotes/workspace
 5. **Dependencies issues**:
    ```bash
    # Frontend
-   rm -rf node_modules package-lock.json
-   npm install
+   rm -rf node_modules bun.lock
+   bun install
    
    # Backend
    cd backend
@@ -402,7 +406,7 @@ VITE_WORKSPACE_ROOT=/path/to/icotes/workspace
 
 For production deployment:
 
-1. **Build frontend**: `npm run build`
+1. **Build frontend**: `bun run build`
 2. **Configure environment**: Update `.env` for production
 3. **Start backend**: The backend serves both API and frontend
 4. **Use process manager**: Consider using PM2 or similar for production

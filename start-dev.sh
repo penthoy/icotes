@@ -13,6 +13,15 @@ if [ -f ".env" ]; then
     export $(cat .env | grep -v '^#' | grep -v '^$' | xargs)
 fi
 
+# Ensure bun is available on PATH for non-interactive shells
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"
+
+if ! command -v bun &> /dev/null; then
+    echo "❌ Error: bun not found. Please run ./setup.sh (or install bun from https://bun.sh)."
+    exit 1
+fi
+
 # Set default values if not provided
 export NODE_ENV=development
 export BACKEND_HOST=${BACKEND_HOST:-${SITE_URL:-0.0.0.0}}
@@ -69,12 +78,12 @@ trap cleanup SIGINT SIGTERM
 # Install Node.js dependencies if needed
 if [ ! -d "node_modules" ]; then
     echo "📦 Installing Node.js dependencies..."
-    npm install
+    bun install
 fi
 
 # Build the frontend for development (with source maps and dev optimizations)
 echo "🏗️  Building frontend for development..."
-npm run build
+bun run build
 if [ $? -ne 0 ]; then
     echo "❌ Frontend build failed. Please fix the errors and try again."
     exit 1
