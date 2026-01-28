@@ -20,8 +20,8 @@ from typing import Dict, List, Generator
 # Configure logging
 logger = logging.getLogger(__name__)
 
-# Model ID for GPT OSS 120B on Groq
-MODEL_NAME = "gpt-oss-120b"
+# Model ID for GPT OSS 120B on Groq (uses openai/ prefix for OpenAI-compatible API)
+MODEL_NAME = "openai/gpt-oss-120b"
 AGENT_NAME = "GroqGptOssAgent"
 AGENT_DESCRIPTION = "AI assistant powered by GPT OSS 120B via Groq with tool calling"
 
@@ -87,8 +87,8 @@ def chat(message: str, history: List[Dict[str, str]]) -> Generator[str, None, No
         logger.info("GroqGptOssAgent: Chat completed successfully")
 
     except Exception as e:
-        logger.error(f"Error in GroqGptOssAgent streaming: {e}")
-        yield f"🚫 Error processing request: {str(e)}\n\nPlease check your GROQ_API_KEY configuration."
+        logger.exception(f"Error in GroqGptOssAgent streaming: {e}")
+        yield "🚫 Error processing request.\n\nPlease check your GROQ_API_KEY configuration."
 
 
 if __name__ == "__main__":

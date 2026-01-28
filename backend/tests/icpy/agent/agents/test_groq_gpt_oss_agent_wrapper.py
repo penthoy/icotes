@@ -4,8 +4,6 @@ Validates agent delegates to GeneralAgent correctly and uses correct model ident
 """
 from typing import Iterable
 
-import types
-
 from icpy.agent.agents import groq_gpt_oss_agent
 from icpy.agent.core.llm.groq_client import GroqClientAdapter
 
@@ -23,8 +21,8 @@ def test_groq_gpt_oss_agent_delegates_to_general_agent(monkeypatch):
 
 def test_groq_gpt_oss_agent_model_identifier():
     """Verify the Groq GPT OSS agent uses the correct model identifier."""
-    assert groq_gpt_oss_agent.MODEL_NAME == "gpt-oss-120b"
-    assert groq_gpt_oss_agent.AGENT_METADATA["MODEL_NAME"] == "gpt-oss-120b"
+    assert groq_gpt_oss_agent.MODEL_NAME == "openai/gpt-oss-120b"
+    assert groq_gpt_oss_agent.AGENT_METADATA["MODEL_NAME"] == "openai/gpt-oss-120b"
 
 
 def test_groq_gpt_oss_agent_metadata():

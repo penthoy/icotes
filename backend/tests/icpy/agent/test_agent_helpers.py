@@ -8,6 +8,7 @@ from icpy.agent.helpers import get_model_name_for_agent
 
 def test_get_model_name_for_agent_uses_fallback_when_no_config():
     """Test that fallback model is used when no config is available."""
+    # Since the import is inside the function, we patch at the source module level
     with patch('icpy.services.agent_config_service.get_agent_config_service') as mock_get_service:
         # Simulate config service not available
         mock_get_service.side_effect = Exception("Service not available")
