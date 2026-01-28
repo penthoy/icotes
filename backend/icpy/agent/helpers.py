@@ -92,6 +92,7 @@ __all__ = [
     # Metadata and environment helpers
     'create_standard_agent_metadata',
     'create_environment_reload_function',
+    'get_model_name_for_agent',
     
     # Context bootstrapping functions
     'create_agent_context',
@@ -944,7 +945,8 @@ class OpenAIStreamingHandler:
                             'function': {
                                 'name': '',
                                 'arguments': ''
-                            }
+                            },
+                            'extra_content': None  # For Gemini 3 thought signatures
                         }
                     
                     # Accumulate tool call data
@@ -956,19 +958,55 @@ class OpenAIStreamingHandler:
                             collected_tool_calls[index]['function']['name'] = tool_call_delta.function.name
                         if tool_call_delta.function.arguments:
                             collected_tool_calls[index]['function']['arguments'] += tool_call_delta.function.arguments
+                    
+                    # Capture extra_content for Gemini 3 thought signatures (OpenAI compat format)
+                    # The thought signature comes in extra_content.google.thought_signature
+                    if hasattr(tool_call_delta, 'extra_content') and tool_call_delta.extra_content:
+                        collected_tool_calls[index]['extra_content'] = tool_call_delta.extra_content
+                        logger.info(f"[GEMINI-DEBUG] Captured extra_content for tool call {index}")
+                    # Also try to get it from model_dump if direct access doesn't work
+                    elif chunk_dict:
+                        try:
+                            for choice in chunk_dict.get('choices', []):
+                                delta = choice.get('delta', {})
+                                for tc in delta.get('tool_calls', []):
+                                    if tc.get('index') == index and tc.get('extra_content'):
+                                        collected_tool_calls[index]['extra_content'] = tc['extra_content']
+                                        logger.info(f"[GEMINI-DEBUG] Captured extra_content from model_dump for tool call {index}")
+                        except Exception as e:
+                            logger.debug(f"[GEMINI-DEBUG] Could not extract extra_content from model_dump: {e}")
         
         # Convert collected tool calls to list format
+        # For Gemini models, we must include the provider-specific extra_content.google.thought_signature
+        # field on each tool call when sending tool results back. Other providers do not
+        # understand this field, so we only attach it when the model name indicates Gemini.
+        model_name_lower = (self.model_name or "").lower()
+        is_gemini_model = model_name_lower.startswith("gemini-")
+
         tool_calls_list = []
         for index in sorted(collected_tool_calls.keys()):
             tc = collected_tool_calls[index]
-            tool_calls_list.append({
+            tool_call_entry = {
                 "id": tc['id'],
                 "type": "function",
                 "function": {
                     "name": tc['function']['name'],
                     "arguments": tc['function']['arguments']
                 }
-            })
+            }
+
+            extra_content = tc.get('extra_content')
+            if extra_content:
+                # Always log for debugging
+                logger.info(f"[GEMINI-DEBUG] Tool call {index} has extra_content")
+
+                # Only send extra_content back to the API for Gemini models, where
+                # thought signatures are required for tool calls.
+                if is_gemini_model:
+                    tool_call_entry['extra_content'] = extra_content
+                    logger.info(f"[GEMINI-DEBUG] Including extra_content on tool call {index} for Gemini model {self.model_name}")
+
+            tool_calls_list.append(tool_call_entry)
         
         # Enhanced debug logging - log finish reason and thought signature presence
         logger.info(
@@ -1366,6 +1404,36 @@ def create_simple_agent_chat_function(agent_name: str, system_prompt: str, model
             yield f"🚫 Error processing request: {str(e)}\n\nPlease check your configuration."
     
     return chat
+
+
+def get_model_name_for_agent(agent_name: str, fallback_model: str) -> str:
+    """
+    Get the model name for an agent with priority:
+    1. modelName from agents.json (if configured)
+    2. Fallback to the default MODEL_NAME from the agent file
+    
+    This allows easy model switching via agents.json without modifying agent code.
+    
+    Args:
+        agent_name: The name of the agent (e.g., "OpenAIAgent")
+        fallback_model: The default model name to use if not configured in agents.json
+        
+    Returns:
+        The model name to use for the agent
+    """
+    try:
+        from icpy.services.agent_config_service import get_agent_config_service
+        config_service = get_agent_config_service()
+        display_config = config_service.get_agent_display_config(agent_name)
+        
+        if display_config.model_name:
+            logger.info(f"Using model from agents.json for {agent_name}: {display_config.model_name}")
+            return display_config.model_name
+    except Exception as e:
+        logger.debug(f"Could not get model from config for {agent_name}: {e}")
+    
+    logger.debug(f"Using fallback model for {agent_name}: {fallback_model}")
+    return fallback_model
 
 
 def create_standard_agent_metadata(name: str, description: str, version: str = "1.0.0", 

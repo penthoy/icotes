@@ -47,6 +47,10 @@ export interface ChatMessage {
   timestamp: Date;
   sender: 'user' | 'ai' | 'system';
   metadata?: {
+    // Session correlation (used for replay buffering + history merge)
+    session_id?: string;
+    sessionId?: string;
+    session?: string;
     agentId?: string;
     agentName?: string;
     agentType?: 'openai' | 'crewai' | 'langchain' | 'langgraph';
@@ -57,6 +61,7 @@ export interface ChatMessage {
     context?: any;
     isStreaming?: boolean;
     streamComplete?: boolean;
+    error?: boolean;  // Flag to indicate this is an error message
     // For backward compatibility
     model?: string;
     agent?: string;
@@ -111,6 +116,14 @@ export class ChatBackendClient {
   private streamCallbacks: ((data: { content: string; done: boolean }) => void)[] = [];
   private typingCallbacks: ((typing: boolean) => void)[] = [];
   private errorCallbacks: ((error: string) => void)[] = [];
+
+  // Replay buffer for late subscribers.
+  // Important: we keep this even when there are already subscribers, because the chat panel
+  // may mount later than another consumer and would otherwise miss messages until refresh.
+  // Key format: `${sessionKey}:${messageId}`.
+  private pendingMessages: Map<string, ChatMessage> = new Map();
+  private pendingMessageOrder: string[] = [];
+  private readonly maxPendingMessages: number = 300;
   
   // Session management
   private currentSessionId: string = '';
@@ -146,6 +159,35 @@ export class ChatBackendClient {
         idsArray.slice(-500).forEach(id => this.processedMessageIds.add(id));
       }
     }, 60000); // Clean up every minute
+  }
+
+  private isSurgicalIterateEnabled(): boolean {
+    try {
+      const g: any = typeof globalThis !== 'undefined' ? globalThis : undefined;
+      const forced = Boolean(g && (g as any).__ICOTES_SURGICAL_ITERATE__);
+      const ls = g && (g as any).localStorage;
+      const flag = ls && typeof ls.getItem === 'function' ? ls.getItem('icotes:surgicaliterate') : null;
+      return forced || flag === '1' || flag === 'true';
+    } catch {
+      return false;
+    }
+  }
+
+  private getSessionKeyForMessage(message: ChatMessage): string {
+    try {
+      const meta: any = (message as any).metadata || {};
+      const raw = meta.session_id || meta.sessionId || meta.session || '';
+      const key = String(raw || '').trim();
+      return key || this.currentSessionId || 'unknown';
+    } catch {
+      return this.currentSessionId || 'unknown';
+    }
+  }
+
+  private makePendingKey(sessionKey: string, messageId: string): string {
+    const sk = sessionKey || 'unknown';
+    const mid = messageId || '';
+    return `${sk}:${mid}`;
   }
 
   /**
@@ -225,14 +267,10 @@ export class ChatBackendClient {
     });
 
     this.wsService.on('message', (data: any) => {
-      // console.log('[ChatBackendClient] Raw message received:', data);
       if (data.connectionId === this.connectionId) {
         // Use rawData if available (original JSON string), otherwise stringify the parsed message
         const messageData = data.rawData || JSON.stringify(data.message);
-        // console.log('[ChatBackendClient] Processing message for connectionId:', this.connectionId, 'data:', messageData);
         this.handleWebSocketMessage({ data: messageData });
-      } else {
-        // console.log('[ChatBackendClient] Message not for this connection:', data.connectionId, 'expected:', this.connectionId);
       }
     });
 
@@ -682,7 +720,7 @@ export class ChatBackendClient {
    */
   private handleWebSocketMessage(event: { data: string }): void {
     try {
-      // console.log('[ChatBackendClient] handleWebSocketMessage called with:', event.data);
+      console.log('[ChatBackendClient] handleWebSocketMessage called with type:', JSON.parse(event.data)?.type);
       
       // Check if event.data is valid before parsing
       if (!event.data || event.data === 'undefined' || typeof event.data !== 'string') {
@@ -694,10 +732,9 @@ export class ChatBackendClient {
       // console.log('[ChatBackendClient] Message parsed:', data);
       
       if (data.type === 'message') {
-        // console.log('[ChatBackendClient] Handling complete message');
         this.handleCompleteMessage(data);
       } else if (data.type === 'message_stream') {
-        // console.log('[ChatBackendClient] Handling streaming message');
+        console.log('[ChatBackendClient] Streaming message:', data.stream_start ? 'START' : data.stream_chunk ? 'CHUNK' : 'END');
         this.handleStreamingMessage(data);
       } else if (data.type === 'stream_stopped') {
         // console.log('[ChatBackendClient] Handling stream stopped');
@@ -782,12 +819,11 @@ export class ChatBackendClient {
       return;
     }
     
-    this.messageCallbacks.forEach(callback => callback(message));
+    this.notifyMessage(message);
     this.isStreaming = false;
   }
 
   private handleStreamingMessage(data: any): void {
-    // console.log('[ChatBackendClient] Streaming message data:', data);
     // If we've been interrupted (stopRequested), ignore further chunks/ends
     // Don't check isStreaming here because stream_chunk may arrive before stream_start
     if (this.stopRequested && (data.stream_chunk || data.stream_end)) {
@@ -804,7 +840,6 @@ export class ChatBackendClient {
   this.stopRequested = false;
       // Start new streaming message
       const messageId = msgId;
-      // console.log('[ChatBackendClient] Starting streaming message:', messageId);
       
       // Mark this message ID as processed to prevent duplicate complete messages
       this.processedMessageIds.add(messageId);
@@ -825,7 +860,7 @@ export class ChatBackendClient {
         }
       };
       
-      this.messageCallbacks.forEach(callback => callback(this.streamingMessage!));
+      this.notifyMessage(this.streamingMessage!);
       this.isStreaming = true;
       
     } else if (data.stream_chunk) {
@@ -847,7 +882,7 @@ export class ChatBackendClient {
             streamComplete: false
           }
         };
-        this.messageCallbacks.forEach(callback => callback(this.streamingMessage!));
+        this.notifyMessage(this.streamingMessage!);
         this.isStreaming = true;
         // track to avoid duplicate complete messages
         this.processedMessageIds.add(msgId);
@@ -858,15 +893,14 @@ export class ChatBackendClient {
         return;
       }
       // Append chunk to streaming message
-      // console.log('[ChatBackendClient] Appending chunk:', data.chunk);
       this.streamingMessage.content += chunkText || '';
-      this.messageCallbacks.forEach(callback => callback({ 
+      this.notifyMessage({
         ...this.streamingMessage!,
         metadata: {
           ...this.streamingMessage!.metadata!,
           isStreaming: true
         }
-      }));
+      });
       
       // Also call stream callbacks for backward compatibility
       this.streamCallbacks.forEach(callback => 
@@ -900,14 +934,19 @@ export class ChatBackendClient {
       // console.log('[ChatBackendClient] Ending streaming message:', this.streamingMessage.id);
       this.streamingMessage.metadata!.streamComplete = true;
       this.streamingMessage.metadata!.isStreaming = false;
-      this.messageCallbacks.forEach(callback => callback({ 
+      
+      // Force immediate notification to ensure message appears without refresh
+      const finalMessage = {
         ...this.streamingMessage!,
         metadata: {
           ...this.streamingMessage!.metadata!,
           isStreaming: false,
           streamComplete: true
         }
-      }));
+      };
+
+      // Go through notifyMessage so late subscribers can replay this final state
+      this.notifyMessage(finalMessage);
       
       // Call stream callbacks with done flag
       this.streamCallbacks.forEach(callback => 
@@ -940,12 +979,13 @@ export class ChatBackendClient {
               streamComplete: false
             }
           };
-          this.messageCallbacks.forEach(callback => callback(this.streamingMessage!));
+          this.notifyMessage(this.streamingMessage!);
           this.isStreaming = true;
           this.processedMessageIds.add(msgId);
         }
         this.streamingMessage.content += chunkText;
-        this.messageCallbacks.forEach(cb => cb({ ...this.streamingMessage! }));
+        // Go through notifyMessage so it is replayable for late subscribers
+        this.notifyMessage({ ...this.streamingMessage! });
         // Do not end here; wait for an explicit end or next phase
       } else {
         console.warn('[ChatBackendClient] ⚠️ Unhandled streaming message:', data);
@@ -993,9 +1033,39 @@ export class ChatBackendClient {
   }
 
   private handleErrorMessage(data: any): void {
-    const error = data.error || 'Unknown chat error';
-      log.error('ChatBackendClient', 'Chat error', { error });
-    this.handleError(error);
+    const error = data.error || data.message || 'Unknown chat error';
+    log.error('ChatBackendClient', 'Chat error', { error });
+    
+    // Create a visible error message in the chat
+    const errorMessage: ChatMessage = {
+      id: `error_${Date.now()}_${Math.random().toString(36).substring(2)}`,
+      role: 'assistant',
+      sender: 'ai',
+      content: `Error: ${typeof error === 'object' ? JSON.stringify(error, null, 2) : error}`,
+      timestamp: new Date(),
+      metadata: {
+        messageType: 'error',
+        isStreaming: false,
+        streamComplete: true,
+        error: true
+      }
+    };
+    
+    // Go through notifyMessage so late subscribers can replay
+    this.notifyMessage(errorMessage);
+    
+    // Also call error callbacks
+    this.handleError(typeof error === 'object' ? JSON.stringify(error) : error);
+    
+    // End any active streaming
+    if (this.streamingMessage) {
+      this.streamingMessage.metadata!.streamComplete = true;
+      this.streamingMessage.metadata!.isStreaming = false;
+      this.notifyMessage({ ...this.streamingMessage! });
+      this.streamingMessage = null;
+    }
+    this.isStreaming = false;
+    this.typingCallbacks.forEach(callback => callback(false));
   }
 
   private handleError(error: string): void {
@@ -1067,7 +1137,7 @@ export class ChatBackendClient {
       };
 
       // Emit updated streaming message
-      this.messageCallbacks.forEach(cb => cb(this.streamingMessage!));
+      this.notifyMessage(this.streamingMessage!);
     } else {
       // Emit or update a synthetic tool message
       const existingMessageId = this.toolMessageIds.get(toolId);
@@ -1076,7 +1146,6 @@ export class ChatBackendClient {
 
       const synthetic: ChatMessage = {
         id: syntheticMessageId,
-        role: 'assistant',
         content: '',
         timestamp: new Date(),
         sender: 'ai',
@@ -1088,7 +1157,7 @@ export class ChatBackendClient {
         }
       } as any;
 
-      this.messageCallbacks.forEach(cb => cb(synthetic));
+      this.notifyMessage(synthetic);
     }
   }
 
@@ -1146,6 +1215,41 @@ export class ChatBackendClient {
 
   onMessage(callback: (message: ChatMessage) => void): void {
     this.messageCallbacks.push(callback);
+
+    // Replay buffered messages to the newly-registered subscriber.
+    // Do NOT clear the buffer: other panels/consumers may mount later.
+    if (this.pendingMessageOrder.length > 0) {
+      const enabled = this.isSurgicalIterateEnabled();
+      const sessionKey = this.currentSessionId || 'unknown';
+      try {
+        if (enabled) {
+          console.debug('[SURGICALITERATE][ChatBackendClient] onMessage subscribe', {
+            sessionKey,
+            callbacks: this.messageCallbacks.length,
+            bufferedTotal: this.pendingMessageOrder.length,
+          });
+        }
+
+        // Prefer replaying current session, but always include any 'unknown' buffered
+        // messages (these can happen before the client learns the session id).
+        const prefix = `${sessionKey}:`;
+        const unknownPrefix = 'unknown:';
+        for (const key of this.pendingMessageOrder) {
+          // When sessionKey is 'unknown', only replay messages with 'unknown:' prefix
+          // to prevent leaking messages from other sessions
+          if (sessionKey === 'unknown') {
+            if (!key.startsWith(unknownPrefix)) continue;
+          } else {
+            // When we have a real session ID, replay messages for that session
+            if (!key.startsWith(prefix) && !key.startsWith(unknownPrefix)) continue;
+          }
+          const msg = this.pendingMessages.get(key);
+          if (msg) callback(msg);
+        }
+      } catch (e) {
+        console.error('[ChatBackendClient] Error replaying buffered messages:', e);
+      }
+    }
   }
 
   onStream(callback: (data: { content: string; done: boolean }) => void): void {
@@ -1164,7 +1268,55 @@ export class ChatBackendClient {
    * Helper method to notify message callbacks (like deprecated client)
    */
   private notifyMessage(message: ChatMessage): void {
-    this.messageCallbacks.forEach(callback => callback(message));
+    const enabled = this.isSurgicalIterateEnabled();
+
+    // Attach current session id to messages that don't have it yet.
+    // This avoids replay-buffering under 'unknown:' when stream_start arrives
+    // before the handshake/status updates set currentSessionId.
+    const meta: any = (message as any).metadata || undefined;
+    const hasSession = Boolean(meta && (meta.session_id || meta.sessionId || meta.session));
+    if (!hasSession && this.currentSessionId) {
+      message = {
+        ...message,
+        metadata: {
+          ...(message.metadata || {}),
+          session_id: this.currentSessionId,
+        },
+      };
+    }
+
+    const msgId = String((message as any).id || '');
+    const sessionKey = this.getSessionKeyForMessage(message);
+    const pendingKey = this.makePendingKey(sessionKey, msgId);
+
+    // Always update replay buffer
+    if (msgId) {
+      if (!this.pendingMessages.has(pendingKey)) {
+        this.pendingMessageOrder.push(pendingKey);
+      }
+      this.pendingMessages.set(pendingKey, message);
+      while (this.pendingMessageOrder.length > this.maxPendingMessages) {
+        const oldest = this.pendingMessageOrder.shift();
+        if (oldest) this.pendingMessages.delete(oldest);
+      }
+    }
+
+    if (enabled) {
+      console.debug('[SURGICALITERATE][ChatBackendClient] notifyMessage', {
+        sessionKey,
+        id: msgId,
+        callbacks: this.messageCallbacks.length,
+        buffered: this.pendingMessageOrder.length,
+        messageType: (message as any).metadata?.messageType,
+        isStreaming: (message as any).metadata?.isStreaming,
+        streamComplete: (message as any).metadata?.streamComplete,
+        contentLen: typeof (message as any).content === 'string' ? (message as any).content.length : 0,
+      });
+    }
+
+    if (this.messageCallbacks.length > 0) {
+      this.messageCallbacks.forEach(callback => callback(message));
+    }
   }
 
   /**

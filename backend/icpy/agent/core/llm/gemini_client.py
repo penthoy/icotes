@@ -1,3 +1,12 @@
+"""
+Legacy Gemini client adapter using OpenAI-compatible endpoint.
+
+DEPRECATED: This adapter uses Google's OpenAI-compatible API endpoint which does NOT
+properly support Gemini 3's thought signatures for tool calling. Use GeminiNativeClientAdapter
+from gemini_native_client.py instead for Gemini 3 models.
+
+This adapter is kept for potential fallback scenarios or non-tool-calling use cases.
+"""
 from __future__ import annotations
 
 from typing import Any, Dict, Iterable, List, Optional

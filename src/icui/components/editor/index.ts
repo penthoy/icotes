@@ -10,6 +10,8 @@ export type { DiffMetadata, ProcessedDiff } from './utils/diffProcessor';
 
 // Components
 export { ImageViewerPanel } from './components/ImageViewerPanel';
+export { PDFViewerPanel } from './components/PDFViewerPanel';
+export { MediaPlayerPanel } from './components/MediaPlayerPanel';
 export { EditorTabBar } from './components/EditorTabBar';
 export { EditorActionBar } from './components/EditorActionBar';
 export { LanguageSelectorModal } from './components/LanguageSelectorModal';
@@ -22,11 +24,14 @@ export { EditorNotificationService } from './utils/notifications';
 export type { NotificationType } from './utils/notifications';
 
 export { 
+  detectFileTypeFromExtension,
   detectLanguageFromExtension, 
+  getAvailableFileTypes,
   getAvailableLanguages,
+  supportedFileTypes,
   supportedLanguages 
-} from './utils/languageDetection';
-export type { LanguageInfo } from './utils/languageDetection';
+} from './utils/fileTypeDetection';
+export type { FileTypeInfo, LanguageInfo } from './utils/fileTypeDetection';
 
 export { processDiffPatch } from './utils/diffProcessor';
 export { createEditorExtensions } from './utils/extensionsFactory';

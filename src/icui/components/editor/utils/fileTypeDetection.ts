@@ -1,16 +1,17 @@
 /**
- * Language Detection Utilities
+ * File Type Detection Utilities
  * 
- * Detects programming language/file type from file extensions
- * Used for syntax highlighting and file handling
+ * Detects file types from file extensions for proper handling in the editor.
+ * Supports programming languages, documents, images, and multimedia files.
+ * Used for syntax highlighting, file rendering, and determining the appropriate viewer.
  */
 
-export interface LanguageInfo {
+export interface FileTypeInfo {
   id: string;
   name: string;
 }
 
-export const supportedLanguages: LanguageInfo[] = [
+export const supportedFileTypes: FileTypeInfo[] = [
   { id: 'python', name: 'Python' },
   { id: 'javascript', name: 'JavaScript' },
   { id: 'typescript', name: 'TypeScript' },
@@ -24,19 +25,22 @@ export const supportedLanguages: LanguageInfo[] = [
   { id: 'rust', name: 'Rust' },
   { id: 'go', name: 'Go' },
   { id: 'text', name: 'Plain Text' },
-  { id: 'image', name: 'Image' }
+  { id: 'image', name: 'Image' },
+  { id: 'pdf', name: 'PDF Document' },
+  { id: 'audio', name: 'Audio' },
+  { id: 'video', name: 'Video' }
 ];
 
 /**
- * Detects language from file extension
+ * Detects file type from file extension
  * @param filePath - Full path to the file
- * @returns Language ID string or null if unsupported
+ * @returns File type ID string or null if unsupported
  */
-export function detectLanguageFromExtension(filePath: string): string | null {
+export function detectFileTypeFromExtension(filePath: string): string | null {
   const fileName = filePath.split('/').pop() || '';
   const ext = fileName.includes('.') ? fileName.split('.').pop()?.toLowerCase() || '' : '';
   
-  const langMap: Record<string, string> = {
+  const fileTypeMap: Record<string, string> = {
     'py': 'python',
     'js': 'javascript',
     'jsx': 'javascript',
@@ -76,7 +80,18 @@ export function detectLanguageFromExtension(filePath: string): string | null {
     'svg': 'image',
     'webp': 'image',
     'bmp': 'image',
-    'ico': 'image'
+    'ico': 'image',
+    // PDF documents
+    'pdf': 'pdf',
+    // Audio extensions
+    'mp3': 'audio',
+    'wav': 'audio',
+    'm4a': 'audio',
+    'ogg': 'audio',
+    // Video extensions
+    'mp4': 'video',
+    'mov': 'video',
+    'webm': 'video'
   };
   
   // If no extension found (no dot in filename), treat as plain text
@@ -84,15 +99,25 @@ export function detectLanguageFromExtension(filePath: string): string | null {
     return 'text';
   }
   
-  return langMap[ext] || null; // Return null for unsupported extensions
+  return fileTypeMap[ext] || null; // Return null for unsupported extensions
 }
 
 /**
- * Gets available language options for manual selection
+ * Gets available file types for manual selection (primarily for code/text files)
  */
-export function getAvailableLanguages(): string[] {
+export function getAvailableFileTypes(): string[] {
   return [
     'text', 'python', 'javascript', 'typescript', 'markdown', 'json', 
     'html', 'css', 'yaml', 'shell', 'cpp', 'rust', 'go'
   ];
 }
+
+// Backward compatibility aliases - to be deprecated
+/** @deprecated Use supportedFileTypes instead */
+export const supportedLanguages = supportedFileTypes;
+/** @deprecated Use FileTypeInfo instead */
+export type LanguageInfo = FileTypeInfo;
+/** @deprecated Use detectFileTypeFromExtension instead */
+export const detectLanguageFromExtension = detectFileTypeFromExtension;
+/** @deprecated Use getAvailableFileTypes instead */
+export const getAvailableLanguages = getAvailableFileTypes;

@@ -15,6 +15,31 @@ import { notificationService } from '../services/notificationService';
 // Constants
 const FLUSH_INTERVAL_MS = 50; // Streaming update throttling (50ms batching) to reduce re-renders under high chunk rates
 
+const mergeMessagesById = (
+  history: ChatMessage[],
+  live: ChatMessage[],
+  maxMessages: number
+): ChatMessage[] => {
+  const messageMap = new Map<string, ChatMessage>();
+  const order: string[] = [];
+
+  const ingest = (message: ChatMessage | null | undefined) => {
+    if (!message) return;
+    const id = String((message as any).id || '');
+    if (!id) return;
+    if (!messageMap.has(id)) order.push(id);
+    // Prefer the most recent version of the message (live updates should win)
+    messageMap.set(id, message);
+  };
+
+  // Keep history order, then overlay live messages (and append any new ones)
+  history.forEach(ingest);
+  live.forEach(ingest);
+
+  const merged = order.map(id => messageMap.get(id)!).filter(Boolean);
+  return merged.length > maxMessages ? merged.slice(-maxMessages) : merged;
+};
+
 export interface UseChatMessagesOptions {
   autoConnect?: boolean;
   maxMessages?: number;
@@ -85,6 +110,8 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
     messages: [], 
     messageMap: new Map() 
   });
+  // Track current session to detect session switches and properly clear messages
+  const currentSessionRef = useRef<string>('');
   
   // Update refs when messages change, maintaining efficient lookup map
   useEffect(() => { 
@@ -160,13 +187,16 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
       
       // Set up message callback
       clientRef.current.onMessage((message: ChatMessage) => {
+        console.log('[useChatMessages] onMessage callback received:', message.id, 'sender:', message.sender, 'isStreaming:', message.metadata?.isStreaming, 'content length:', message.content?.length);
         // Ignore user messages that are broadcast back
         if (message.sender === 'user') {
+          console.log('[useChatMessages] Ignoring user message');
           return;
         }
         // If this is a streaming update, coalesce updates within 50ms window
         const isStreaming = Boolean(message.metadata?.isStreaming && !message.metadata?.streamComplete);
         if (isStreaming) {
+          console.log('[useChatMessages] Queuing streaming message for flush');
           streamingQueueRef.current.set(message.id, message);
           // Throttle to ~20fps to cut render pressure
           const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
@@ -176,6 +206,7 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
             scheduleFlush();
           }
         } else {
+          console.log('[useChatMessages] Non-streaming message, committing immediately');
           // Non-streaming (or final) messages: commit immediately with optimized updates
           setMessages(prevMessages => {
             const messageMap = stateRef.current.messageMap;
@@ -192,9 +223,37 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
           });
         }
 
-        // Heuristics: if a streaming assistant message arrives, set typing true until completed
-        const streaming = message.metadata?.isStreaming && !message.metadata?.streamComplete;
-        setIsTyping(Boolean(streaming));
+        // Heuristics for typing state:
+        // - If a streaming message arrives, maintain typing=true until streamComplete
+        // - Only turn off typing when we receive a message with streamComplete=true
+        // - Don't turn off typing just because a non-streaming message arrived
+        //   (it could be a broadcast, status update, etc.)
+        // The backend typing indicator and stream_end events are the authoritative source
+        const isStreamStart = message.metadata?.isStreaming && !message.metadata?.streamComplete;
+        const isStreamComplete = message.metadata?.streamComplete === true;
+        const isError = message.metadata?.error === true;
+        
+        if (isStreamStart) {
+          setIsTyping(true);
+        } else if (isStreamComplete || isError) {
+          setIsTyping(false);
+          // Force flush any pending streaming updates when stream completes or errors
+          if (streamingQueueRef.current.size > 0) {
+            const queued = Array.from(streamingQueueRef.current.values());
+            streamingQueueRef.current.clear();
+            setMessages(prev => {
+              const updated = [...prev];
+              queued.forEach(queuedMsg => {
+                const existingIndex = prev.findIndex(m => m.id === queuedMsg.id);
+                if (existingIndex >= 0) {
+                  updated[existingIndex] = queuedMsg;
+                }
+              });
+              return updated;
+            });
+          }
+        }
+        // Note: Don't change isTyping for non-streaming messages without explicit stream state
       });
       
       // Set up status callback
@@ -203,6 +262,27 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
       // Set up typing callback from backend
       clientRef.current.onTyping((typing: boolean) => {
         setIsTyping(typing);
+      });
+      
+      // Set up error callback to ensure typing indicator is cleared on errors
+      clientRef.current.onError((error: string) => {
+        console.error('[useChatMessages] Chat error:', error);
+        setIsTyping(false);
+        // Force flush any pending streaming messages
+        if (streamingQueueRef.current.size > 0) {
+          const queued = Array.from(streamingQueueRef.current.values());
+          streamingQueueRef.current.clear();
+          setMessages(prev => {
+            const updated = [...prev];
+            queued.forEach(queuedMsg => {
+              const existingIndex = prev.findIndex(m => m.id === queuedMsg.id);
+              if (existingIndex >= 0) {
+                updated[existingIndex] = queuedMsg;
+              }
+            });
+            return updated;
+          });
+        }
       });
     }
     
@@ -222,7 +302,10 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
       // Load message history if persistence is enabled
       if (persistence) {
         const history = await client.getMessageHistory(maxMessages, client.currentSession);
-        setMessages(history);
+        // Track current session for proper session-switch detection
+        currentSessionRef.current = client.currentSession;
+        // Merge history with any live messages that may have arrived during connect/initialize
+        setMessages(prev => mergeMessagesById(history, prev, maxMessages));
       }
       
       // Get initial agent status
@@ -423,8 +506,20 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
       
       const effectiveSessionId = sessionId || client.currentSession;
       const history = await client.getMessageHistory(maxMessages, effectiveSessionId);
-      
-      setMessages(history);
+
+      // Detect session switch: if we're loading a different session, REPLACE messages
+      // instead of merging. Merge is only safe for same-session reloads (late stream updates).
+      const isSessionSwitch = effectiveSessionId !== currentSessionRef.current;
+      if (isSessionSwitch) {
+        // Clear streaming queue from previous session
+        streamingQueueRef.current.clear();
+        // Replace messages entirely with new session's history
+        setMessages(history.length > maxMessages ? history.slice(-maxMessages) : history);
+        currentSessionRef.current = effectiveSessionId;
+      } else {
+        // Same session: merge to preserve late-arriving stream updates
+        setMessages(prev => mergeMessagesById(history, prev, maxMessages));
+      }
     } catch (error) {
       console.error('Failed to reload messages:', error);
       notificationService.error('Failed to reload messages');

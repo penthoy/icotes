@@ -12,6 +12,12 @@ from .semantic_search_tool import SemanticSearchTool
 from .websearch_tools import WebSearchTool
 from .imagen_tool import ImagenTool
 from .web_fetch_tool import WebFetchTool
+from .read_doc_tool import ReadDocTool
+from .write_doc_tool import WriteDocTool
+from .elevenlabs_tts_tool import ElevenLabsTTSTool
+from .elevenlabs_stt_tool import ElevenLabsSTTTool
+from .elevenlabs_music_tool import ElevenLabsMusicTool
+from .elevenlabs_sfx_tool import ElevenLabsSoundEffectsTool
 
 __all__ = [
     "BaseTool",
@@ -25,7 +31,13 @@ __all__ = [
     "SemanticSearchTool",
     "WebSearchTool",
     "ImagenTool",
-    "WebFetchTool"
+    "WebFetchTool",
+    "ReadDocTool",
+    "WriteDocTool",
+    "ElevenLabsTTSTool",
+    "ElevenLabsSTTTool",
+    "ElevenLabsMusicTool",
+    "ElevenLabsSoundEffectsTool",
 ]
 
 # Auto-register all tools when module is imported
@@ -42,6 +54,12 @@ def _register_default_tools():
     registry.register(WebSearchTool())
     registry.register(ImagenTool())
     registry.register(WebFetchTool())
+    registry.register(ReadDocTool())
+    registry.register(WriteDocTool())
+    registry.register(ElevenLabsTTSTool())
+    registry.register(ElevenLabsSTTTool())
+    registry.register(ElevenLabsMusicTool())
+    registry.register(ElevenLabsSoundEffectsTool())
 
 # Register tools on import
 _register_default_tools() 

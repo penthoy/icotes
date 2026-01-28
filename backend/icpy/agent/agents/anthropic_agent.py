@@ -15,6 +15,7 @@ from icpy.agent.helpers import (
     ToolDefinitionLoader,
     add_context_to_agent_prompt,
     BASE_SYSTEM_PROMPT_TEMPLATE,
+    get_model_name_for_agent,
 )
 from icpy.agent.core.llm.anthropic_client import AnthropicClientAdapter
 from icpy.agent.core.runtime.general_agent import GeneralAgent
@@ -24,14 +25,15 @@ from icpy.agent.core.runtime.message_utils import build_safe_messages
 logger = logging.getLogger(__name__)
 
 AGENT_NAME = "AnthropicAgent"
-AGENT_DESCRIPTION = "Generic AI assistant powered by Claude (Anthropic) with tool calling"
-# Default model (caller can override via environment or params in future evolutions)
-MODEL_NAME = "claude-sonnet-4-20250514"
+AGENT_DESCRIPTION = "Generic AI assistant powered by Claude Opus 4.5 (Anthropic) with tool calling"
+# Default model - Updated to Claude Opus 4.5 (December 2025)
+# Available models: claude-opus-4-5, claude-sonnet-4-5, claude-haiku-4-5
+MODEL_NAME = "claude-opus-4-5-20251101"
 
 AGENT_METADATA = create_standard_agent_metadata(
     name=AGENT_NAME,
     description=AGENT_DESCRIPTION,
-    version="1.0.0",
+    version="1.1.0",
     author="Icotes",
     model=MODEL_NAME,
 )
@@ -55,9 +57,12 @@ def chat(message: str, history: List[Dict[str, Any]]) -> Generator[str, None, No
 
         safe_messages = build_safe_messages(message, history)
 
+        # Get model name from config or use fallback
+        model = get_model_name_for_agent(AGENT_NAME, MODEL_NAME)
+
         adapter = AnthropicClientAdapter()
-        ga = GeneralAgent(adapter, model=MODEL_NAME)
-        logger.info("AnthropicAgent: Starting chat with tools using GeneralAgent")
+        ga = GeneralAgent(adapter, model=model)
+        logger.info(f"AnthropicAgent: Starting chat with model={model} using GeneralAgent")
         # Load tool definitions and pass through
         tools = []
         try:

@@ -26,11 +26,13 @@ import {
   ICUIEditorRef, 
   EditorNotificationService,
   ImageViewerPanel,
+  PDFViewerPanel,
+  MediaPlayerPanel,
   EditorTabBar,
   EditorActionBar,
   LanguageSelectorModal,
-  detectLanguageFromExtension,
-  supportedLanguages,
+  detectFileTypeFromExtension,
+  supportedFileTypes,
   processDiffPatch,
   createEditorExtensions,
   useFileOperations
@@ -123,7 +125,7 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
         setActiveFileId(fileWithLanguage.id);
       }
       
-      const languageName = supportedLanguages.find(l => l.id === selectedLanguage)?.name || selectedLanguage;
+      const languageName = supportedFileTypes.find(l => l.id === selectedLanguage)?.name || selectedLanguage;
       const fileTypeMsg = file.isTemporary ? ' (temporary)' : '';
       EditorNotificationService.show(`Opened ${fileWithLanguage.name}${fileTypeMsg} with ${languageName} highlighting`, 'success');
     }
@@ -131,31 +133,36 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
     // Clean up
     setShowLanguageFallback(false);
     setPendingFile(null);
-  }, [files, pendingFile, supportedLanguages]);
+  }, [files, pendingFile, supportedFileTypes]);
 
   // File opening methods for external control (e.g., from Explorer)
   const openFile = useCallback(async (filePath: string) => {
     try {
       setIsLoading(true);
       
-      // Auto-detect language from file extension first
-      const detectedLanguage = detectLanguageFromExtension(filePath);
+      // Auto-detect file type from file extension first
+      const detectedFileType = detectFileTypeFromExtension(filePath);
       
-      // For image files, we don't need to load the text content
-      if (detectedLanguage === 'image') {
-        const fileName = filePath.split('/').pop() || 'image';
+      // For media/image/PDF files, we don't need to load text content
+      if (detectedFileType === 'image' || detectedFileType === 'pdf' || detectedFileType === 'audio' || detectedFileType === 'video') {
+        const fileName = filePath.split('/').pop() || (
+          detectedFileType === 'pdf' ? 'document.pdf' :
+          detectedFileType === 'audio' ? 'audio' :
+          detectedFileType === 'video' ? 'video' :
+          'image'
+        );
         
-        // Check if this image is already open
+        // Check if this file is already open
         const existingFileIndex = files.findIndex(f => f.path === filePath && !(f as any).isDiff);
         if (existingFileIndex >= 0) {
           // File is already open - force refresh by creating a new file ID
-          // This ensures React re-renders the ImageViewerPanel with fresh state
+          // This ensures React re-renders the viewer panel with fresh state
           const fileData = {
             id: `file-${Date.now()}-${Math.random()}`, // New ID to force refresh
             name: fileName,
             path: filePath,
-            content: '', // No content needed for images
-            language: 'image',
+            content: '', // No content needed for images/PDFs
+            language: detectedFileType,
             modified: false,
             isTemporary: false
           };
@@ -166,13 +173,13 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
           ));
           setActiveFileId(fileData.id);
         } else {
-          // Add new image file
+          // Add new file
           const fileData = {
             id: `file-${Date.now()}-${Math.random()}`,
             name: fileName,
             path: filePath,
-            content: '', // No content needed for images
-            language: 'image',
+            content: '', // No content needed for images/PDFs
+            language: detectedFileType,
             modified: false,
             isTemporary: false
           };
@@ -185,10 +192,10 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
         return;
       }
       
-      // For non-image files, load the content
+      // For non-image/PDF files, load the content
       const fileData = await backendService.getFile(filePath);
       
-      if (detectedLanguage === null) {
+      if (detectedFileType === null) {
         // Show language fallback selector for unsupported extensions
         setPendingFile({ file: fileData, filePath });
         setShowLanguageFallback(true);
@@ -196,7 +203,7 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
         return;
       }
       
-      const fileWithLanguage = { ...fileData, language: detectedLanguage };
+      const fileWithLanguage = { ...fileData, language: detectedFileType };
       
       // Check if a NON-diff version of the file is already open (ignore diff tabs sharing path)
       const existingFileIndex = files.findIndex(f => f.path === filePath && !(f as any).isDiff);
@@ -208,7 +215,7 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
             ...f, 
             content: fileWithLanguage.content,
             isTemporary: false, 
-            language: detectedLanguage,
+            language: detectedFileType,
             modified: false // Reset modified flag since we're loading fresh content
           } : f
         ));
@@ -227,14 +234,14 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
     } finally {
       setIsLoading(false);
     }
-  }, [files, detectLanguageFromExtension]);
+  }, [files, detectFileTypeFromExtension]);
 
   const openFileTemporary = useCallback(async (filePath: string) => {
     try {
       setIsLoading(true);
       
-      // Auto-detect language from file extension first
-      const detectedLanguage = detectLanguageFromExtension(filePath);
+      // Auto-detect file type from file extension first
+      const detectedFileType = detectFileTypeFromExtension(filePath);
       
       // Check if file is already open
       const existingFileIndex = files.findIndex(f => f.path === filePath);
@@ -253,15 +260,20 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
         setFiles(prev => prev.filter(f => !f.isTemporary));
       }
 
-      // For image files, we don't need to load the text content
-      if (detectedLanguage === 'image') {
-        const fileName = filePath.split('/').pop() || 'image';
+      // For media/image/PDF files, we don't need to load text content
+      if (detectedFileType === 'image' || detectedFileType === 'pdf' || detectedFileType === 'audio' || detectedFileType === 'video') {
+        const fileName = filePath.split('/').pop() || (
+          detectedFileType === 'pdf' ? 'document.pdf' :
+          detectedFileType === 'audio' ? 'audio' :
+          detectedFileType === 'video' ? 'video' :
+          'image'
+        );
         const fileData = {
           id: `file-${Date.now()}-${Math.random()}`,
           name: fileName,
           path: filePath,
-          content: '', // No content needed for images
-          language: 'image',
+          content: '', // No content needed for images/PDFs
+          language: detectedFileType,
           modified: false,
           isTemporary: true
         };
@@ -276,7 +288,7 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
       // Load the new file and mark it as temporary
       const fileData = await backendService.getFile(filePath);
       
-      if (detectedLanguage === null) {
+      if (detectedFileType === null) {
         // Show language fallback selector for unsupported extensions
         setPendingFile({ file: { ...fileData, isTemporary: true }, filePath });
         setShowLanguageFallback(true);
@@ -284,7 +296,7 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
         return;
       }
       
-      const temporaryFile = { ...fileData, language: detectedLanguage, isTemporary: true };
+      const temporaryFile = { ...fileData, language: detectedFileType, isTemporary: true };
       
       // Add new temporary file to the list (keeping all permanent files)
       setFiles(prev => [...prev.filter(f => !f.isTemporary), temporaryFile]);
@@ -297,7 +309,7 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
     } finally {
       setIsLoading(false);
     }
-  }, [files, detectLanguageFromExtension]);
+  }, [files, detectFileTypeFromExtension]);
 
   const openFilePermanent = useCallback(async (filePath: string) => {
     await openFile(filePath);
@@ -322,9 +334,9 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
       const processed = processDiffPatch(patch);
       const name = `${filePath.split('/').pop() || filePath} (diff)`;
       
-      // Detect language from file extension for syntax highlighting
-      const detectedLang = detectLanguageFromExtension(filePath);
-      const language = detectedLang || 'text';
+      // Detect file type from extension for syntax highlighting
+      const detectedFileType = detectFileTypeFromExtension(filePath);
+      const language = detectedFileType || 'text';
       console.log('[ICUIEditor] Detected language for synthetic diff:', language);
       
       const diffFile: EditorFile = {
@@ -388,9 +400,9 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
       console.log('[ICUIEditor] Creating new diff tab:', name);
       const processed = processDiffPatch(diffData.patch);
       
-      // Detect language from file extension for syntax highlighting
-      const detectedLang = detectLanguageFromExtension(filePath);
-      const language = detectedLang || 'text';
+      // Detect file type from extension for syntax highlighting
+      const detectedFileType = detectFileTypeFromExtension(filePath);
+      const language = detectedFileType || 'text';
       console.log('[ICUIEditor] Detected language for diff:', language);
       
       const diffFile: EditorFile = {
@@ -1012,6 +1024,21 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
               key={activeFile.path || activeFile.id}
               filePath={activeFile.path || ''}
               fileName={activeFile.name}
+            />
+          ) : activeFile.language === 'pdf' ? (
+            // PDF Viewer - Display PDF documents using browser's native viewer
+            // Key prop ensures React creates a new instance for each different PDF file
+            <PDFViewerPanel 
+              key={activeFile.path || activeFile.id}
+              filePath={activeFile.path || ''}
+              fileName={activeFile.name}
+            />
+          ) : activeFile.language === 'audio' || activeFile.language === 'video' ? (
+            <MediaPlayerPanel
+              key={activeFile.path || activeFile.id}
+              filePath={activeFile.path || ''}
+              fileName={activeFile.name}
+              mediaType={activeFile.language as 'audio' | 'video'}
             />
           ) : (
             // Code Editor

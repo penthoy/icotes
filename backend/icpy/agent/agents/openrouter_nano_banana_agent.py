@@ -1,12 +1,8 @@
 """
 OpenRouter Nano Banana Agent - Image Generation AI Agent
 
-This agent uses Google's Gemini 2.5 Flash Image Preview ("Nano Banana") model
-via OpenRouter for direct image generation from text descrip        # If we reach here, dump diagnostics once
-        try:
-            from icpy.agent.helpers import get_workspace_path
-            workspace_dir = get_workspace_path()
-            diag_path = os.path.join(workspace_dir, "nano_banana_last_response.json").
+This agent uses Google's Gemini 2.5 Flash Image ("Nano Banana") model
+via OpenRouter for direct image generation from text descriptions.
 
 The model natively generates images as part of its response - no separate
 image generation API needed!
@@ -18,7 +14,7 @@ Capabilities:
 4. Image generation with contextual understanding
 5. Generates images directly in base64 format
 
-Model: google/gemini-2.5-flash-image-preview (Nano Banana) via OpenRouter
+Model: google/gemini-2.5-flash-image (Nano Banana) via OpenRouter
 Pricing: $0.30/M input, $2.50/M output, $0.03/K output imgs
 """
 
@@ -33,7 +29,7 @@ from typing import Dict, Any, List
 logger = logging.getLogger(__name__)
 
 # Model configuration - using Gemini for native image generation
-MODEL_NAME = "google/gemini-2.5-flash-image-preview"
+MODEL_NAME = "google/gemini-2.5-flash-image"
 
 # Import required modules and backend helpers
 try:

@@ -8,7 +8,7 @@ This project uses multiple environment files for different deployment scenarios:
 
 | File | Purpose | Usage |
 |------|---------|-------|
-| `.env` | **Local Development** | Used when running locally with `npm run dev` or `python main.py` |
+| `.env` | **Local Development** | Used when running locally with `bun run dev` or `python main.py` |
 | `.env.example` | **Template** | Copy this to `.env` for local development |
 | `.env.production` | **Production Template** | Reference for production environment variables |
 
@@ -55,7 +55,7 @@ For local development:
 ```bash
 cp .env.example .env
 # Edit .env with your API keys and preferences
-npm run dev
+bun run dev
 ```
 
 For Docker deployment:

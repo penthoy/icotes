@@ -4,23 +4,26 @@
     "OpenAIAgent": {
       "enabled": true,
       "displayName": "OpenAIAgent",
-      "description": "Built-in generic gpt-5-mini agent",
+      "description": "OpenAI agent gpt-5.2",
       "category": "Built-in",
-      "order": 1
+      "order": 3,
+      "modelName": "gpt-5.2"
     },
     "GeminiAgent": {
       "enabled": true,
       "displayName": "GeminiAgent",
-      "description": "Auto-discovered agent: GeminiAgent",
+      "description": "Limited Free api available: gemini-3-pro-preview",
       "category": "Built-in",
-      "order": 2
+      "order": 1,
+      "modelName": "gemini-3-pro-preview"
     },
     "AnthropicAgent": {
       "enabled": true,
       "displayName": "AnthropicAgent",
-      "description": "Auto-discovered agent: AnthropicAgent",
+      "description": "claude haiku 4.5",
       "category": "Built-in",
-      "order": 3
+      "order": 2,
+      "modelName": "claude-haiku-4-5-20251001"
     },
     "GroqKimiAgent": {
       "enabled": true,
@@ -28,14 +31,6 @@
       "description": "Very fast coding agent",
       "category": "Built-in",
       "order": 4
-    },
-    "AgentCreator": {
-      "enabled": true,
-      "displayName": "Agent Creator",
-      "description": "An AI agent that helps you create other custom agents",
-      "category": "Built-in",
-      "order": 5,
-      "icon": "\ud83e\udde0"
     },
     "OpenRouterAgent": {
       "enabled": true,
@@ -45,8 +40,16 @@
       "order": 4,
       "icon": "\ud83c\udf10"
     },
+    "AgentCreator": {
+      "enabled": false,
+      "displayName": "Agent Creator",
+      "description": "An AI agent that helps you create other custom agents",
+      "category": "Built-in",
+      "order": 5,
+      "icon": "\ud83e\udde0"
+    },
     "ClaudeAgentCreator": {
-      "enabled": true,
+      "enabled": false,
       "displayName": "Claude Agent Creator",
       "description": "An AI agent (Claude) that helps you create other custom agents",
       "category": "Built-in",
@@ -54,7 +57,7 @@
       "icon": "\ud83e\udde0"
     },
     "OpenRouterAgentCreator": {
-      "enabled": true,
+      "enabled": false,
       "displayName": "OpenRouter Agent Creator",
       "description": "An AI agent (OpenRouter) that helps you create other custom agents",
       "category": "Built-in",
@@ -77,20 +80,29 @@
       "order": 6,
       "icon": "\ud83c\udfe0"
     },
-    "PersonalAgent": {
-      "enabled": false,
-      "displayName": "Personal Assistant (Tool Demo)",
-      "description": "Proof-of-concept agent demonstrating tool use capabilities",
-      "category": "Built-in",
-      "order": 999,
-      "icon": "\ud83d\udee0\ufe0f"
-    },
-    "CerebrasQwenAgent": {
+    "ZaiGlmAgent": {
       "enabled": true,
-      "displayName": "CerebrasQwenAgent",
-      "description": "Ultra fast coding agent",
+      "displayName": "Z.AI GLM 4.7",
+      "description": "Top open-source coding agent with enhanced reasoning via Cerebras",
       "category": "Built-in",
-      "order": 999
+      "order": 7,
+      "icon": "🤖"
+    },
+    "GroqGptOssAgent": {
+      "enabled": true,
+      "displayName": "Groq GPT OSS 120B",
+      "description": "Fast coding agent powered by GPT OSS 120B via Groq's LPU",
+      "category": "Built-in",
+      "order": 8,
+      "icon": "⚡"
+    },
+    "CerebrasGptOssAgent": {
+      "enabled": true,
+      "displayName": "Cerebras GPT OSS 120B",
+      "description": "Fast coding agent powered by GPT OSS 120B via Cerebras",
+      "category": "Built-in",
+      "order": 9,
+      "icon": "🚀"
     },
     "Qwen3CoderAgent": {
       "enabled": false,
@@ -103,16 +115,24 @@
     "NanoBananaAgent": {
       "enabled": true,
       "displayName": "Nano Banana",
-      "description": "AI image generation powered by Google's Gemini 2.5 Flash Image Preview (Nano Banana)",
+      "description": "AI image generation powered by Google's Gemini 3 Pro Image",
       "category": "Built-in",
       "order": 10,
-      "icon": "\ud83c\udf4c"
+      "icon": "\ud83c\udf4c",
+      "modelName": "gemini-3-pro-image-preview"
     },
     "OpenRouterNanoBananaAgent": {
       "enabled": true,
       "displayName": "OpenRouterNanoBanana",
       "description": "Auto-discovered agent: OpenRouterNanoBanana",
       "category": "Built-in",
+      "order": 999
+    },
+    "PersonalAgent": {
+      "enabled": true,
+      "displayName": "PersonalAgent",
+      "description": "Auto-discovered agent: PersonalAgent",
+      "category": "General",
       "order": 999
     }
   },
@@ -129,7 +149,7 @@
   "settings": {
     "showCategories": true,
     "showDescriptions": true,
-    "defaultAgent": "OpenAIAgent",
+    "defaultAgent": "GeminiAgent",
     "autoReloadOnChange": true
   }
 }

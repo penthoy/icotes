@@ -10,9 +10,17 @@ This software is provided "as is," without warranties or support.
 That said, feel free to try it out and share feedback—would love to hear your thoughts. 
 
 # Quick change log
-## [2.0.5] - Add hop panel, image generation, sending files between servers
-
-# Features at a glance #
+## [2.4.1] - 
+# New Features
+Added new AI agents: Z.AI GLM 4.7, Groq GPT OSS 120B, and Cerebras GPT OSS 120B for enhanced coding and reasoning.
+Added document processing tools: read and write Excel, Word, PDF, PowerPoint, and CSV files directly in chat.
+Added ElevenLabs audio tools: text-to-speech, speech-to-text, music generation, and sound effects creation.
+Added PDF viewer and media players (audio/video) in the editor for better file preview support.
+# Improvements
+Updated AI models: OpenAI (gpt-5.2), Gemini (3-pro), Anthropic (Opus 4.5) for better performance.
+Enhanced image viewer with zoom, pan, and intuitive controls.
+Improved chat session management and streaming stability.
+Switched to Bun package manager for faster builds.
 
 ## Agent Creator ##
 This is the default selected agent. It's a custom agent, and the code lives at
@@ -46,3 +54,9 @@ To add or update an agent:
 3) The hot-reload system will pick it up automatically, or click the reload button next to the Agent
    selector in the Chat window to force a reload.
 You can use your updated agent immediately after reload.
+
+## Changelog
+Add Z.AI GLM 4.7 For Cerebras inference.
+Add GPT OSS 120 for both Cerebras and Groq
+Remove/Deprecate Cerebras qwen-code
+Fixed Stream display bug

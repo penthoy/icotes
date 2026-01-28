@@ -37,11 +37,9 @@ command_exists() {
 install_nodejs() {
     print_status "Checking Node.js installation..."
     
-    if command_exists node && command_exists npm; then
+    if command_exists node; then
         NODE_VERSION=$(node --version)
-        NPM_VERSION=$(npm --version)
         print_success "Node.js already installed: $NODE_VERSION"
-        print_success "npm already installed: $NPM_VERSION"
         
         # Check if version is adequate (v18+)
         NODE_MAJOR=$(echo $NODE_VERSION | sed 's/v//' | cut -d. -f1)
@@ -53,20 +51,48 @@ install_nodejs() {
         fi
     fi
     
-    print_status "Installing/upgrading Node.js and npm..."
+    print_status "Installing/upgrading Node.js..."
     
     # Install Node.js via NodeSource repository for better compatibility
     curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
     sudo apt-get install -y nodejs
     
     # Verify installation
-    if command_exists node && command_exists npm; then
+    if command_exists node; then
         NODE_VERSION=$(node --version)
-        NPM_VERSION=$(npm --version)
         print_success "Node.js installed/updated: $NODE_VERSION"
-        print_success "npm installed/updated: $NPM_VERSION"
     else
         print_error "Failed to install Node.js"
+        exit 1
+    fi
+}
+
+# Function to install bun
+install_bun() {
+    print_status "Checking bun installation..."
+
+    if command_exists bun; then
+        print_success "bun already installed: $(bun --version)"
+        return 0
+    fi
+
+    # bun installer requires unzip
+    if ! command_exists unzip; then
+        print_status "Installing unzip (required by bun installer)..."
+        sudo apt-get update
+        sudo apt-get install -y unzip
+    fi
+
+    print_status "Installing bun (JavaScript runtime + package manager)..."
+    curl -fsSL https://bun.sh/install | bash
+
+    export BUN_INSTALL="$HOME/.bun"
+    export PATH="$BUN_INSTALL/bin:$PATH"
+
+    if command_exists bun; then
+        print_success "bun installed: $(bun --version)"
+    else
+        print_error "Failed to install bun"
         exit 1
     fi
 }
@@ -158,9 +184,11 @@ setup_backend() {
 setup_frontend() {
     print_status "Setting up frontend..."
     
-    # Install/update Node.js dependencies
-    print_status "Installing/updating Node.js dependencies..."
-    npm install
+    # Install/update JS dependencies
+    print_status "Installing/updating JS dependencies with bun..."
+    export BUN_INSTALL="$HOME/.bun"
+    export PATH="$BUN_INSTALL/bin:$PATH"
+    bun install
     
     # Ensure dist directory is clean for fresh builds
     if [ -d "dist" ]; then
@@ -253,7 +281,9 @@ test_installation() {
     
     # Build frontend first
     print_status "Building frontend for testing..."
-    npm run build || {
+    export BUN_INSTALL="$HOME/.bun"
+    export PATH="$BUN_INSTALL/bin:$PATH"
+    bun run build || {
         print_error "Frontend build failed"
         return 1
     }
@@ -343,6 +373,9 @@ main() {
     
     # Install Node.js
     install_nodejs
+
+    # Install bun
+    install_bun
     
     # Install Python
     install_python

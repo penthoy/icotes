@@ -3,9 +3,49 @@
   - Added `src/icui/components/explorer/utils.ts` and `icons.ts`
   - Refactored `src/icui/components/panels/ICUIExplorer.tsx` to consume the new helpers (no behavior changes)
   - Tests: `tests/frontend/unit/explorer.utils.test.ts`
-  - Verified with `npm test -- --run --coverage` and production build
+  - Verified with `bun run test -- --run --coverage` and production build
 
 # Working Features
+
+- [x] Add 2 agents: GPT OSS 120B for Groq and Cerebras (January 2026)
+  - Created GroqGptOssAgent using model `gpt-oss-120b` via Groq's LPU architecture
+  - Created CerebrasGptOssAgent using model `gpt-oss-120b` via Cerebras inference
+  - 120 billion parameter open-source model with strong coding and reasoning
+  - Files created: backend/icpy/agent/agents/groq_gpt_oss_agent.py, backend/icpy/agent/agents/cerebras_gpt_oss_agent.py
+  - Tests added: backend/tests/icpy/agent/agents/test_groq_gpt_oss_agent_wrapper.py, backend/tests/icpy/agent/agents/test_cerebras_gpt_oss_agent_wrapper.py
+  - Configuration updated: workspace/.icotes/agents.json
+
+- [x] Fix streaming issue for custom agents (January 2026)
+  - Fixed bug where Z.AI GLM, Groq, and other custom agents' streaming responses weren't displayed in real-time
+  - Issue: _send_streaming_chunk and _send_streaming_end were hardcoded to use 'openai' agentType
+  - Solution: Updated methods to accept and use actual agent_type, agent_id, agent_name parameters
+  - File updated: backend/icpy/services/chat_service.py
+
+- [x] Add Z.AI GLM 4.7 for Cerebras (January 2026)
+  - Replaced CerebrasQwenAgent with ZaiGlmAgent using model `zai-glm-4.7`
+  - Top open-source model with enhanced coding, reasoning, and tool usage capabilities
+  - 131k context window, up to 40k max output tokens
+  - Reference: https://inference-docs.cerebras.ai/resources/glm-47-migration
+  - Files updated: backend/icpy/agent/agents/zai_glm_agent.py
+  - Tests added: backend/tests/icpy/agent/agents/test_zai_glm_agent_wrapper.py
+  - Configuration updated: workspace/.icotes/agents.json
+
+- [x] upgrade all agents to the latest version (December 2025)
+  - OpenAI: gpt-5-mini → gpt-5.1 (v1.3.0)
+  - Anthropic: claude-sonnet-4-20250514 → claude-opus-4-5-20251101 (v1.1.0)
+  - Gemini: gemini-2.5-pro → gemini-3-pro-preview (v1.1.0)
+  - NanoBanana: gemini-2.5-flash-image-preview → gemini-3-pro-image-preview (v1.1.0)
+  - Added tests for model identifier verification
+  - Files updated: backend/icpy/agent/agents/{openai,anthropic,gemini,nano_banana}_agent.py
+  - Tests added: backend/tests/icpy/agent/agents/test_nano_banana_agent_wrapper.py
+
+- [x] Update Nano Banana model names to stable versions (January 2026)
+  - Updated imagen_tool.py: gemini-2.5-flash-image-preview → gemini-2.5-flash-image
+  - Updated openrouter_nano_banana_agent.py: google/gemini-2.5-flash-image-preview → google/gemini-2.5-flash-image
+  - The "-preview" suffix is no longer needed for the stable 2.5 Flash Image model
+  - Reference: https://ai.google.dev/gemini-api/docs/image-generation
+  - Files updated: backend/icpy/agent/tools/imagen_tool.py, backend/icpy/agent/agents/openrouter_nano_banana_agent.py
+  - Tests updated: backend/tests/integration/test_groq_image_generation.py
 
 ### December 2025 - Agent System Improvements & Centralization
 

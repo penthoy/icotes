@@ -10,8 +10,8 @@ from typing import Dict, List, Generator, Any
 # Configure logging
 logger = logging.getLogger(__name__)
 
-# Default model for OpenAI
-MODEL_NAME = "gpt-5-mini"
+# Default model for OpenAI - Updated to latest flagship model (December 2025)
+MODEL_NAME = "gpt-5.2"
 AGENT_NAME = "OpenAIAgent"
 AGENT_DESCRIPTION = "Generic AI assistant powered by OpenAI models with tool calling"
 
@@ -24,6 +24,7 @@ from icpy.agent.helpers import (
     ToolDefinitionLoader,
     add_context_to_agent_prompt,
     BASE_SYSTEM_PROMPT_TEMPLATE,
+    get_model_name_for_agent,
 )
 from icpy.agent.core.llm.openai_client import OpenAIClientAdapter
 from icpy.agent.core.runtime.general_agent import GeneralAgent
@@ -34,7 +35,7 @@ DEPENDENCIES_AVAILABLE = True
 AGENT_METADATA = create_standard_agent_metadata(
     name=AGENT_NAME,
     description=AGENT_DESCRIPTION,
-    version="1.2.0",
+    version="1.3.0",
     author="Icotes",
     model=MODEL_NAME,
 )
@@ -70,10 +71,13 @@ def chat(message: str, history: List[Dict[str, str]]) -> Generator[str, None, No
         # Prepare messages using shared utility (preserves previous behavior)
         safe_messages = build_safe_messages(message, history)
 
+        # Get model name from config or use fallback
+        model = get_model_name_for_agent(AGENT_NAME, MODEL_NAME)
+
         # Delegate to generalized agent using OpenAI adapter
         adapter = OpenAIClientAdapter()
-        ga = GeneralAgent(adapter, model=MODEL_NAME)
-        logger.info("OpenAIAgent: Starting chat with tools using GeneralAgent")
+        ga = GeneralAgent(adapter, model=model)
+        logger.info(f"OpenAIAgent: Starting chat with model={model} using GeneralAgent")
         # Load tool definitions and pass through
         tools = []
         try:

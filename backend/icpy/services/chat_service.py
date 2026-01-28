@@ -350,6 +350,53 @@ class ChatService:
             if len(first) == 8 and all(c in '0123456789abcdef' for c in first.lower()) and rest.startswith('session_'):
                 return rest
         return stem
+
+    def _meta_path(self, session_id: str) -> Path:
+        return self.history_root / f"{session_id}.meta.json"
+
+    def _surgical_iterate_enabled(self) -> bool:
+        return os.getenv('SURGICAL_ITERATE', '0') in ('1', 'true', 'True')
+
+    def _derive_default_session_name(self, content: str) -> str:
+        try:
+            line = (content or '').strip().splitlines()[0].strip()
+            if not line:
+                return 'New Chat'
+            # Keep it short and filesystem/UI safe
+            line = ' '.join(line.split())
+            return line[:60]
+        except Exception:
+            return 'New Chat'
+
+    def _ensure_session_meta(self, session_id: str, name: Optional[str] = None) -> None:
+        """Ensure a session has a sidecar meta file.
+
+        Some sessions are created implicitly via websocket activity (without calling
+        the session CRUD endpoints). Without a sidecar, the UI falls back to showing
+        the raw session_id as the session name after refresh.
+        """
+        try:
+            meta_path = self._meta_path(session_id)
+            if meta_path.exists():
+                return
+
+            display_name = (name or '').strip() if isinstance(name, str) else ''
+            if not display_name:
+                display_name = 'New Chat'
+
+            payload = {
+                'id': session_id,
+                'name': display_name,
+                'created': time.time(),
+                'updated': time.time(),
+            }
+            with open(meta_path, 'w', encoding='utf-8') as mf:
+                json.dump(payload, mf, ensure_ascii=False)
+            if self._surgical_iterate_enabled():
+                logger.info(f"[SURGICALITERATE] created missing meta for {session_id}: name={display_name!r}")
+        except Exception as e:
+            if self._surgical_iterate_enabled():
+                logger.warning(f"[SURGICALITERATE] failed creating meta for {session_id}: {e}")
     
     def _normalize_attachments(self, raw_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Normalize various frontend attachment shapes into a standard dict.
@@ -387,6 +434,23 @@ class ChatService:
                         else:
                             if not rel_path:
                                 rel_path = orig_path
+                    
+                    # If no absolute path yet but we have a relative path, compute it from workspace
+                    if not abs_path and isinstance(rel_path, str) and rel_path and self.workspace_root:
+                        from pathlib import Path as _P
+                        # Uploaded files are stored in workspace/.icotes/media/{rel_path}
+                        # Example: rel_path = "files/uuid_filename.pdf"
+                        # Full path = "{workspace}/.icotes/media/files/uuid_filename.pdf"
+                        media_base = _P(self.workspace_root) / '.icotes' / 'media'
+                        computed_abs = (media_base / rel_path).resolve()
+                        # Only use if file exists and is within media base (security check)
+                        try:
+                            computed_abs.relative_to(media_base)
+                            if computed_abs.exists():
+                                abs_path = str(computed_abs)
+                        except (ValueError, Exception):
+                            # Path is outside media base or doesn't exist, skip
+                            logger.debug(f"Computed path {computed_abs} is invalid or doesn't exist")
                 except Exception as e:
                     logger.debug(f"Attachment path normalization issue for {att_id}: {e}")
                 mime = item.get('mime_type') or item.get('mime') or 'application/octet-stream'
@@ -467,6 +531,12 @@ class ChatService:
                     **({'hop_namespace': hop_namespace} if hop_namespace else {}),
                     **({'namespaced_path': namespaced_path} if namespaced_path else {})
                 })
+                # Debug logging for attachment path resolution
+                logger.debug(
+                    f"[ChatService] Normalized attachment {att_id}: "
+                    f"rel_path={rel_path}, abs_path={abs_path}, orig_path={orig_path}, "
+                    f"filename={filename}"
+                )
         except Exception as e:
             logger.warning(f"Attachment normalization error: {e}")
         return normalized
@@ -508,6 +578,8 @@ class ChatService:
                     del self.websocket_connections[websocket_id]
                 if websocket_id in self.chat_sessions:
                     del self.chat_sessions[websocket_id]
+        else:
+            logger.warning(f"No websocket found for {websocket_id}")
     
     async def handle_user_message(self, websocket_id: str, content: str, metadata: Dict[str, Any] = None) -> ChatMessage:
         """Handle a message from the user with support for agent routing"""
@@ -1163,11 +1235,25 @@ class ChatService:
             # Prepare streaming response
             full_content = ""
             message_id = str(uuid.uuid4())
-            is_first_chunk = True
             
             # Get custom agent stream
             # We pass an empty live message because we've already appended the user's content (with attachments) to history
             custom_stream = call_custom_agent_stream(agent_type, "", history_list)
+            
+            # CRITICAL: Send stream_start IMMEDIATELY before waiting for first chunk
+            # This is especially important for Gemini 3 Pro which can spend 7-14 seconds
+            # "thinking" before emitting any content. Without this, the UI shows no
+            # "Assistant is working..." indicator during the thinking phase.
+            logger.debug(f"[STREAM-DEBUG] About to send stream_start for session {user_message.session_id}, agent {agent_type}")
+            logger.debug(f"[STREAM-DEBUG] Active chat_sessions: {list(self.chat_sessions.values())}")
+            await self._send_streaming_start(
+                user_message.session_id,
+                message_id,
+                user_message.id,
+                agent_type=agent_type,
+                agent_id=agent_type,
+                agent_name=agent_type.title()
+            )
             
             # Process streaming response
             chunk_count = 0
@@ -1178,24 +1264,16 @@ class ChatService:
                     
                     if chunk:  # Only process non-empty chunks
                         chunk_count += 1
-                        # Send stream start for first chunk
-                        if is_first_chunk:
-                            await self._send_streaming_start(
-                                user_message.session_id,
-                                message_id,
-                                user_message.id,
-                                agent_type=agent_type,
-                                agent_id=agent_type,
-                                agent_name=agent_type.title()
-                            )
-                            is_first_chunk = False
                         
                         # Send chunk
                         await self._send_streaming_chunk(
                             user_message.session_id,
                             message_id,
                             chunk,
-                            user_message.id
+                            user_message.id,
+                            agent_type=agent_type,
+                            agent_id=agent_type,
+                            agent_name=agent_type.title()
                         )
                         full_content += chunk
                         
@@ -1217,7 +1295,10 @@ class ChatService:
             await self._send_streaming_end(
                 user_message.session_id,
                 message_id,
-                user_message.id
+                user_message.id,
+                agent_type=agent_type,
+                agent_id=agent_type,
+                agent_name=agent_type.title()
             )
             
             # Store the final complete message for persistence
@@ -1266,6 +1347,8 @@ class ChatService:
             final_agent_id = agent_id or self.config.agent_id
             final_agent_name = agent_name or self.config.agent_name
             
+            logger.debug(f"[STREAM-DEBUG] _send_streaming_start called for session {session_id}, agent_type={final_agent_type}")
+            
             streaming_message = {
                 'type': 'message_stream',
                 'id': message_id,
@@ -1285,25 +1368,36 @@ class ChatService:
             }
             
             # Send to all connections in this session
+            sent_count = 0
             for websocket_id, ws_session_id in self.chat_sessions.items():
                 if ws_session_id == session_id:
+                    logger.debug(f"[STREAM-DEBUG] Sending stream_start to websocket {websocket_id} for session {session_id}")
                     await self._send_websocket_message(websocket_id, streaming_message)
+                    sent_count += 1
+            
+            if sent_count == 0:
+                logger.warning(f"[STREAM-DEBUG] No websockets found for session {session_id}. Active sessions: {list(self.chat_sessions.values())}")
                     
         except Exception as e:
             logger.error(f"Failed to send streaming start: {e}")
 
-    async def _send_streaming_chunk(self, session_id: str, message_id: str, content: str, reply_to_id: str = None):
+    async def _send_streaming_chunk(self, session_id: str, message_id: str, content: str, reply_to_id: str = None, agent_type: str = None, agent_id: str = None, agent_name: str = None):
         """Send streaming chunk message"""
         try:
+            # Use provided agent info or fall back to default OpenAI config
+            final_agent_type = agent_type or 'openai'
+            final_agent_id = agent_id or self.config.agent_id
+            final_agent_name = agent_name or self.config.agent_name
+            
             streaming_message = {
                 'type': 'message_stream',
                 'id': message_id,
                 'chunk': content,
                 'sender': MessageSender.AI.value,
                 'timestamp': datetime.now(timezone.utc).isoformat(),
-                'agentId': self.config.agent_id,
-                'agentName': self.config.agent_name,
-                'agentType': 'openai',
+                'agentId': final_agent_id,
+                'agentName': final_agent_name,
+                'agentType': final_agent_type,
                 'session_id': session_id,
                 'stream_start': False,
                 'stream_chunk': True,
@@ -1317,22 +1411,34 @@ class ChatService:
             # Send to all connections in this session
             for websocket_id, ws_session_id in self.chat_sessions.items():
                 if ws_session_id == session_id:
+                    logger.debug(f"[STREAM-DEBUG] Sending streaming_chunk to websocket {websocket_id} for session {session_id}, agentType={final_agent_type}")
                     await self._send_websocket_message(websocket_id, streaming_message)
+            
+            # Debug: log if no websockets found for session
+            if not any(ws_session_id == session_id for ws_session_id in self.chat_sessions.values()):
+                logger.warning(f"[STREAM-DEBUG] No websockets found for session {session_id}. Active sessions: {list(self.chat_sessions.values())}")
                     
         except Exception as e:
             logger.error(f"Failed to send streaming chunk: {e}")
 
-    async def _send_streaming_end(self, session_id: str, message_id: str, reply_to_id: str = None):
+    async def _send_streaming_end(self, session_id: str, message_id: str, reply_to_id: str = None, agent_type: str = None, agent_id: str = None, agent_name: str = None):
         """Send streaming end message"""
         try:
+            # Use provided agent info or fall back to default OpenAI config
+            final_agent_type = agent_type or 'openai'
+            final_agent_id = agent_id or self.config.agent_id
+            final_agent_name = agent_name or self.config.agent_name
+            
+            logger.debug(f"[STREAM-DEBUG] _send_streaming_end called for session {session_id}, agent_type={final_agent_type}")
+            
             streaming_message = {
                 'type': 'message_stream',
                 'id': message_id,
                 'sender': MessageSender.AI.value,
                 'timestamp': datetime.now(timezone.utc).isoformat(),
-                'agentId': self.config.agent_id,
-                'agentName': self.config.agent_name,
-                'agentType': 'openai',
+                'agentId': final_agent_id,
+                'agentName': final_agent_name,
+                'agentType': final_agent_type,
                 'session_id': session_id,
                 'stream_start': False,
                 'stream_chunk': False,
@@ -1344,9 +1450,15 @@ class ChatService:
             }
             
             # Send to all connections in this session
+            sent_count = 0
             for websocket_id, ws_session_id in self.chat_sessions.items():
                 if ws_session_id == session_id:
+                    logger.debug(f"[STREAM-DEBUG] Sending stream_end to websocket {websocket_id} for session {session_id}")
                     await self._send_websocket_message(websocket_id, streaming_message)
+                    sent_count += 1
+            
+            if sent_count == 0:
+                logger.warning(f"[STREAM-DEBUG] No websockets found for session {session_id} at stream_end. Active sessions: {list(self.chat_sessions.values())}")
                     
         except Exception as e:
             logger.error(f"Failed to send streaming end: {e}")
@@ -1850,6 +1962,20 @@ class ChatService:
         """Store a message to JSONL per session."""
         try:
             session_id = message.session_id or "default"
+
+            # Ensure meta sidecar exists for implicitly-created sessions.
+            # Prefer using the first user message as a title.
+            meta_name: Optional[str] = None
+            try:
+                sender = getattr(message, 'sender', None)
+                # Compare against MessageSender enum, not string
+                if sender and (sender == MessageSender.USER or (hasattr(sender, 'value') and sender.value == 'user')):
+                    content = getattr(message, 'content', None)
+                    if content:
+                        meta_name = self._derive_default_session_name(str(content))
+            except Exception:
+                meta_name = None
+            self._ensure_session_meta(session_id, meta_name)
             
             # Convert imageData to ImageReference before storage
             message_dict = await self._convert_image_data_to_reference(message.to_dict())
@@ -2167,11 +2293,8 @@ class ChatService:
             file_path = self._session_file_new(session_id)
             file_path.touch()
             
-            # Persist display name if provided
-            if name:
-                meta_path = self.history_root / f"{session_id}.meta.json"
-                with open(meta_path, 'w', encoding='utf-8') as mf:
-                    json.dump({'id': session_id, 'name': name}, mf, ensure_ascii=False)
+            # Persist display name (always create meta so UI never falls back to raw session_id)
+            self._ensure_session_meta(session_id, name or 'New Chat')
             
             logger.info(f"Created new chat session: {session_id}")
             return session_id

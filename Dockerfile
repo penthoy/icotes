@@ -5,15 +5,15 @@ ARG BUILD_DATE
 ARG GIT_COMMIT
 
 # Stage 1: Build frontend
-FROM node:18-alpine AS frontend-builder
+FROM oven/bun:1.3.7-alpine AS frontend-builder
 
 WORKDIR /app
 
 # Copy package files first for better caching
-COPY package*.json ./
+COPY package.json bun.lock ./
 
-# Install Node.js dependencies (including devDependencies for build)
-RUN npm ci
+# Install JS dependencies (including devDependencies for build)
+RUN bun install --frozen-lockfile
 
 # Copy frontend source code
 COPY . .
@@ -23,7 +23,7 @@ COPY . .
 ENV VITE_API_URL=
 ENV VITE_WS_URL=
 ENV VITE_BACKEND_URL=
-RUN npm run build
+RUN bun run build
 
 # Stage 2: Setup Python backend dependencies
 FROM python:3.12-slim AS backend-base

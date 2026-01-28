@@ -61,7 +61,7 @@ def test_result_sanitization():
             'prompt': 'test image',
             'message': 'Image generated successfully',
             'filePath': 'test.png',
-            'model': 'gemini-2.5-flash-image-preview',
+            'model': 'gemini-2.5-flash-image',
             'timestamp': '2025-10-05T12:00:00'
         }
     }
@@ -111,7 +111,7 @@ def test_frontend_format():
             'prompt': 'test image',
             'message': 'Image generated successfully',
             'filePath': 'test.png',
-            'model': 'gemini-2.5-flash-image-preview',
+            'model': 'gemini-2.5-flash-image',
             'timestamp': '2025-10-05T12:00:00'
         }
     }

@@ -61,6 +61,7 @@ export interface ChatMessage {
     context?: any;
     isStreaming?: boolean;
     streamComplete?: boolean;
+    error?: boolean;  // Flag to indicate this is an error message
     // Tool call widgets supplied by backend
     toolCalls?: ToolCallMeta[];
   };
