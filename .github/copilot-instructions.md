@@ -7,7 +7,7 @@ icotes is an AI-powered web-based IDE with a **single-port architecture** servin
 ### Tech Stack
 - **Frontend**: React 18 + TypeScript + Vite, ICUI custom panel system (Blender-inspired), CodeMirror 6
 - **Backend**: FastAPI + Python 3.12, ICPY modular services
-- **Package Managers**: `npm` (frontend), `uv` (backend - mandatory for speed/isolation)
+- **Package Managers**: `bun` (frontend), `uv` (backend - mandatory for speed/isolation)
 - **Communication**: Single WebSocket connection (`/ws`) with event-driven message routing
 - **Deployment**: Docker (single port), nginx/traefik compatible
 
@@ -67,7 +67,7 @@ export const icuiBackendService = new ICUIBackendService();
 **Development** (SINGLE PORT - frontend served from backend):
 ```bash
 ./start-dev.sh  # Builds React, runs uvicorn with --reload on :8000
-# OR: npm run dev (same command)
+# OR: bun run dev (same command)
 ```
 
 **Production**:
@@ -93,9 +93,9 @@ uv run pytest tests/icpy/test_workspace_service.py -v  # Specific test
 
 **Frontend**:
 ```bash
-npm test              # Vitest unit tests (src/tests/)
-npm run e2e           # Playwright e2e tests (e2e/)
-npm run e2e:ui        # Playwright UI mode
+bun test              # Vitest unit tests (src/tests/)
+bun run e2e           # Playwright e2e tests (e2e/)
+bun run e2e:ui        # Playwright UI mode
 ```
 
 **Important**: Backend tests use fixtures; no running server required. Frontend e2e tests expect app running on :8000.
@@ -110,7 +110,7 @@ docker run -d -p 8000:8000 penthoy/icotes:latest
 
 **Manual Build**:
 ```bash
-npm run build     # Builds to dist/, backend serves static files
+bun run build     # Builds to dist/, backend serves static files
 ./start.sh        # Production mode
 ```
 
