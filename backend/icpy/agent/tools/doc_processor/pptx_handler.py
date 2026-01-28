@@ -60,7 +60,6 @@ class PPTXHandler(DocumentHandler):
             content_parts = []
             tables = []
             total_slides = len(prs.slides)
-            slides_to_read = min(total_slides, max_slides)
             
             for slide_idx, slide in enumerate(prs.slides):
                 if slide_idx >= max_slides:

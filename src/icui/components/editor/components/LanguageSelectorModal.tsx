@@ -5,7 +5,12 @@
  */
 
 import React from 'react';
-import { supportedFileTypes as supportedLanguages } from '../utils/fileTypeDetection';
+import { supportedFileTypes, getAvailableFileTypes } from '../utils/fileTypeDetection';
+
+// Filter to only include code/text file types suitable for syntax highlighting
+// Exclude media types (image, pdf, audio, video) which use specialized viewers
+const codeFileTypes = getAvailableFileTypes();
+const supportedLanguages = supportedFileTypes.filter(ft => codeFileTypes.includes(ft.id));
 
 interface LanguageSelectorModalProps {
   fileName: string;

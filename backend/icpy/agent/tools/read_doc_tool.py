@@ -13,7 +13,7 @@ Follows existing tool patterns with namespaced path support.
 
 import os
 import logging
-from typing import Any, Dict, Optional
+from typing import Optional
 
 from .base_tool import BaseTool, ToolResult
 from .context_helpers import get_contextual_filesystem

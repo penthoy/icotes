@@ -1967,8 +1967,12 @@ class ChatService:
             # Prefer using the first user message as a title.
             meta_name: Optional[str] = None
             try:
-                if getattr(message, 'sender', None) == 'user' and getattr(message, 'content', None):
-                    meta_name = self._derive_default_session_name(str(message.content))
+                sender = getattr(message, 'sender', None)
+                # Compare against MessageSender enum, not string
+                if sender and (sender == MessageSender.USER or (hasattr(sender, 'value') and sender.value == 'user')):
+                    content = getattr(message, 'content', None)
+                    if content:
+                        meta_name = self._derive_default_session_name(str(content))
             except Exception:
                 meta_name = None
             self._ensure_session_meta(session_id, meta_name)

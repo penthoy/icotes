@@ -239,6 +239,13 @@ if ! command -v uv &> /dev/null; then
     echo "✅ uv installed successfully"
 fi
 
+# Check if bun is available
+if ! command -v bun &> /dev/null; then
+    echo "⚠️  Bun not found. Please run setup.sh first to install bun."
+    echo "   Or install bun manually: curl -fsSL https://bun.sh/install | bash"
+    exit 1
+fi
+
 # Install Node.js dependencies if node_modules doesn't exist
 if [ ! -d "node_modules" ]; then
     echo "📦 Installing Node.js dependencies..."

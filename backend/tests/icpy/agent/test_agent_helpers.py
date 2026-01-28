@@ -1,7 +1,6 @@
 """
 Tests for agent helper functions including get_model_name_for_agent.
 """
-import pytest
 from unittest.mock import patch, MagicMock
 
 from icpy.agent.helpers import get_model_name_for_agent

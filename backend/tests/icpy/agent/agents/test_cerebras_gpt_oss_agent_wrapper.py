@@ -4,8 +4,6 @@ Validates agent delegates to GeneralAgent correctly and uses correct model ident
 """
 from typing import Iterable
 
-import types
-
 from icpy.agent.agents import cerebras_gpt_oss_agent
 from icpy.agent.core.llm.cerebras_client import CerebrasClientAdapter
 

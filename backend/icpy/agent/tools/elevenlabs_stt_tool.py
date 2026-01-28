@@ -18,7 +18,7 @@ from typing import Any, Dict, List, Optional
 from io import BytesIO
 
 from .base_tool import BaseTool, ToolResult
-from .context_helpers import get_contextual_filesystem, get_current_context
+from .context_helpers import get_contextual_filesystem
 
 # Lazy import ElevenLabs SDK to avoid loading at startup
 ELEVENLABS_AVAILABLE = False

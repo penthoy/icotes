@@ -1,17 +1,16 @@
 /**
  * PDF Viewer Panel Component
  * 
- * Displays PDF files in the editor using the browser's native PDF viewer.
- * Follows the same pattern as ImageViewerPanel for consistency.
+ * Displays PDF files in the editor using Mozilla's PDF.js library (pdfjs-dist).
+ * Renders PDF pages via canvas-based rendering for better control and features.
  * 
  * Features:
- * - Native browser PDF rendering (no external dependencies)
- * - Loading states and error handling
- * - Full-screen PDF viewing with browser's built-in controls
+ * - Page-by-page rendering with PDF.js (pdfjs-dist dependency)
+ * - Zoom controls and page navigation
  * - Download functionality
+ * - Loading states and error handling
  * 
  * Future extension points:
- * - Custom PDF controls (zoom, page navigation)
  * - PDF annotations and highlighting
  * - Text extraction and search
  */

@@ -267,14 +267,10 @@ export class ChatBackendClient {
     });
 
     this.wsService.on('message', (data: any) => {
-      console.log('[ChatBackendClient] Raw message received:', data);
       if (data.connectionId === this.connectionId) {
         // Use rawData if available (original JSON string), otherwise stringify the parsed message
         const messageData = data.rawData || JSON.stringify(data.message);
-        console.log('[ChatBackendClient] Processing message for connectionId:', this.connectionId, 'type:', data.message?.type);
         this.handleWebSocketMessage({ data: messageData });
-      } else {
-        console.log('[ChatBackendClient] Message not for this connection:', data.connectionId, 'expected:', this.connectionId);
       }
     });
 
@@ -1239,7 +1235,14 @@ export class ChatBackendClient {
         const prefix = `${sessionKey}:`;
         const unknownPrefix = 'unknown:';
         for (const key of this.pendingMessageOrder) {
-          if (sessionKey !== 'unknown' && !key.startsWith(prefix) && !key.startsWith(unknownPrefix)) continue;
+          // When sessionKey is 'unknown', only replay messages with 'unknown:' prefix
+          // to prevent leaking messages from other sessions
+          if (sessionKey === 'unknown') {
+            if (!key.startsWith(unknownPrefix)) continue;
+          } else {
+            // When we have a real session ID, replay messages for that session
+            if (!key.startsWith(prefix) && !key.startsWith(unknownPrefix)) continue;
+          }
           const msg = this.pendingMessages.get(key);
           if (msg) callback(msg);
         }

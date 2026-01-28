@@ -12,7 +12,7 @@ import logging
 import os
 from typing import Any, Dict, Generator, Iterable, List, Optional
 
-from .base import BaseLLMClient, ProviderNotConfigured, ProviderError
+from .base import BaseLLMClient, ProviderNotConfigured
 
 logger = logging.getLogger(__name__)
 
@@ -483,7 +483,7 @@ class GeminiNativeClientAdapter(BaseLLMClient):
             if inspect.iscoroutine(result):
                 try:
                     # Try to get existing event loop
-                    loop = asyncio.get_running_loop()
+                    asyncio.get_running_loop()
                     # If we're in an async context, we need to run in a thread
                     import concurrent.futures
                     with concurrent.futures.ThreadPoolExecutor() as executor:
