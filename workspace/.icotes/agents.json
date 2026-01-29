@@ -6,86 +6,39 @@
       "displayName": "OpenAIAgent",
       "description": "OpenAI agent gpt-5.2",
       "category": "Built-in",
-      "order": 3,
+      "order": 2,
       "modelName": "gpt-5.2"
     },
-    "GeminiAgent": {
+    "KimiAgent": {
       "enabled": true,
-      "displayName": "GeminiAgent",
-      "description": "Limited Free api available: gemini-3-pro-preview",
+      "displayName": "Kimi K2.5",
+      "description": "SOTA AI assistant powered by Moonshot's Kimi models",
       "category": "Built-in",
       "order": 1,
-      "modelName": "gemini-3-pro-preview"
+      "icon": "\ud83c\udf19"
     },
     "AnthropicAgent": {
       "enabled": true,
       "displayName": "AnthropicAgent",
       "description": "claude haiku 4.5",
       "category": "Built-in",
-      "order": 2,
+      "order": 3,
       "modelName": "claude-haiku-4-5-20251001"
     },
-    "GroqKimiAgent": {
+    "GeminiAgent": {
       "enabled": true,
-      "displayName": "GroqKimiAgent",
-      "description": "Very fast coding agent",
-      "category": "Built-in",
-      "order": 4
-    },
-    "OpenRouterAgent": {
-      "enabled": true,
-      "displayName": "OpenRouter",
-      "description": "Built-in agent: Multi-model AI agent via OpenRouter",
+      "displayName": "GeminiAgent",
+      "description": "Limited Free api available: gemini-3-pro-preview",
       "category": "Built-in",
       "order": 4,
-      "icon": "\ud83c\udf10"
-    },
-    "AgentCreator": {
-      "enabled": false,
-      "displayName": "Agent Creator",
-      "description": "An AI agent that helps you create other custom agents",
-      "category": "Built-in",
-      "order": 5,
-      "icon": "\ud83e\udde0"
-    },
-    "ClaudeAgentCreator": {
-      "enabled": false,
-      "displayName": "Claude Agent Creator",
-      "description": "An AI agent (Claude) that helps you create other custom agents",
-      "category": "Built-in",
-      "order": 3,
-      "icon": "\ud83e\udde0"
-    },
-    "OpenRouterAgentCreator": {
-      "enabled": false,
-      "displayName": "OpenRouter Agent Creator",
-      "description": "An AI agent (OpenRouter) that helps you create other custom agents",
-      "category": "Built-in",
-      "order": 4,
-      "icon": "\ud83c\udf10"
-    },
-    "KimiAgent": {
-      "enabled": true,
-      "displayName": "Kimi K2 Assistant",
-      "description": "General-purpose AI assistant powered by Moonshot's Kimi models",
-      "category": "Built-in",
-      "order": 5,
-      "icon": "\ud83c\udf19"
-    },
-    "OllamaAgent": {
-      "enabled": true,
-      "displayName": "Ollama Assistant",
-      "description": "Privacy-focused AI assistant using local Ollama models",
-      "category": "Built-in",
-      "order": 6,
-      "icon": "\ud83c\udfe0"
+      "modelName": "gemini-3-pro-preview"
     },
     "ZaiGlmAgent": {
       "enabled": true,
       "displayName": "Z.AI GLM 4.7",
       "description": "Top open-source coding agent with enhanced reasoning via Cerebras",
       "category": "Built-in",
-      "order": 7,
+      "order": 5,
       "icon": "🤖"
     },
     "GroqGptOssAgent": {
@@ -93,7 +46,7 @@
       "displayName": "Groq GPT OSS 120B",
       "description": "Fast coding agent powered by GPT OSS 120B via Groq's LPU",
       "category": "Built-in",
-      "order": 8,
+      "order": 6,
       "icon": "⚡"
     },
     "CerebrasGptOssAgent": {
@@ -101,16 +54,23 @@
       "displayName": "Cerebras GPT OSS 120B",
       "description": "Fast coding agent powered by GPT OSS 120B via Cerebras",
       "category": "Built-in",
-      "order": 9,
+      "order": 7,
       "icon": "🚀"
     },
-    "Qwen3CoderAgent": {
-      "enabled": false,
-      "displayName": "Qwen3CoderAgent",
-      "description": "Built-in agent: Qwen3CoderAgent",
+    "GroqKimiAgent": {
+      "enabled": true,
+      "displayName": "GroqKimiAgent",
+      "description": "Very fast coding agent",
       "category": "Built-in",
-      "order": 999,
-      "icon": "\ud83d\udcbb"
+      "order": 8
+    },
+    "OpenRouterAgent": {
+      "enabled": true,
+      "displayName": "OpenRouter",
+      "description": "Built-in agent: Multi-model AI agent via OpenRouter",
+      "category": "Built-in",
+      "order": 9,
+      "icon": "\ud83c\udf10"
     },
     "NanoBananaAgent": {
       "enabled": true,
@@ -120,6 +80,46 @@
       "order": 10,
       "icon": "\ud83c\udf4c",
       "modelName": "gemini-3-pro-image-preview"
+    },
+    "OllamaAgent": {
+      "enabled": true,
+      "displayName": "Ollama Assistant",
+      "description": "Privacy-focused AI assistant using local Ollama models",
+      "category": "Built-in",
+      "order": 11,
+      "icon": "\ud83c\udfe0"
+    },
+    "AgentCreator": {
+      "enabled": false,
+      "displayName": "Agent Creator",
+      "description": "An AI agent that helps you create other custom agents",
+      "category": "Built-in",
+      "order": 99,
+      "icon": "\ud83e\udde0"
+    },
+    "ClaudeAgentCreator": {
+      "enabled": false,
+      "displayName": "Claude Agent Creator",
+      "description": "An AI agent (Claude) that helps you create other custom agents",
+      "category": "Built-in",
+      "order": 99,
+      "icon": "\ud83e\udde0"
+    },
+    "OpenRouterAgentCreator": {
+      "enabled": false,
+      "displayName": "OpenRouter Agent Creator",
+      "description": "An AI agent (OpenRouter) that helps you create other custom agents",
+      "category": "Built-in",
+      "order": 999,
+      "icon": "\ud83c\udf10"
+    },
+    "Qwen3CoderAgent": {
+      "enabled": false,
+      "displayName": "Qwen3CoderAgent",
+      "description": "Built-in agent: Qwen3CoderAgent",
+      "category": "Built-in",
+      "order": 999,
+      "icon": "\ud83d\udcbb"
     },
     "OpenRouterNanoBananaAgent": {
       "enabled": true,
