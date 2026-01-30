@@ -158,8 +158,16 @@ class VideoResult(BaseModel):
     
     @property
     def is_processing(self) -> bool:
-        """Check if generation is still in progress."""
-        return self.status in (VideoStatus.CREATED, VideoStatus.QUEUED, VideoStatus.PROCESSING)
+        """Check if generation is still in progress.
+        
+        Note: Handles both VideoStatus enum and string values. See is_complete docstring.
+        """
+        status_val = self.status.value if isinstance(self.status, VideoStatus) else self.status
+        return status_val in (
+            VideoStatus.CREATED.value,
+            VideoStatus.QUEUED.value,
+            VideoStatus.PROCESSING.value,
+        )
     
     @property
     def video_url(self) -> Optional[str]:
@@ -220,4 +228,3 @@ class VideoResult(BaseModel):
                         if isinstance(item, str) and self._is_direct_file_url(item):
                             return item
         return None
-        return any(indicator in url for indicator in api_indicators)

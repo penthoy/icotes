@@ -8,12 +8,12 @@ Supports text-to-video and image-to-video models.
 import os
 import asyncio
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional
 from datetime import datetime, timedelta
 
 import httpx
 
-from .models import VideoGenerationRequest, VideoGenerationResponse, VideoResult, VideoStatus
+from .models import VideoGenerationRequest, VideoGenerationResponse, VideoResult
 from .exceptions import (
     AtlasCloudError,
     AtlasCloudAuthError,

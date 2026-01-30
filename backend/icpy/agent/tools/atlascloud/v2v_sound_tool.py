@@ -7,10 +7,9 @@ Supports workspace files and URLs.
 
 import os
 import logging
-import asyncio
 import urllib.parse
 from pathlib import Path
-from typing import Optional, Dict, Any, Tuple
+from typing import Optional, Tuple
 from datetime import datetime
 
 import httpx
@@ -20,7 +19,6 @@ from ..context_helpers import get_contextual_filesystem, get_current_context
 from .client import AtlasCloudClient
 from .exceptions import (
     AtlasCloudError,
-    AtlasCloudAuthError,
     AtlasCloudTimeoutError,
 )
 
@@ -503,7 +501,7 @@ class AtlasCloudVideoToVideoSoundTool(BaseTool):
             logger.info(f"[AtlasCloudV2VSound] Video generated: {video_url}")
             
             # Download video
-            logger.info(f"[AtlasCloudV2VSound] Downloading video...")
+            logger.info("[AtlasCloudV2VSound] Downloading video...")
             video_bytes = await self._download_video(video_url)
             logger.info(f"[AtlasCloudV2VSound] Downloaded {len(video_bytes)} bytes")
             

@@ -8,9 +8,8 @@ Supports workspace files, URLs, and base64 images.
 import os
 import base64
 import logging
-import asyncio
 from pathlib import Path
-from typing import Optional, Dict, Any, Tuple
+from typing import Optional, Tuple
 from datetime import datetime
 
 import httpx
@@ -415,8 +414,7 @@ class AtlasCloudImageToVideoTool(BaseTool):
                     if hasattr(filesystem_service, 'write_file_binary'):
                         await filesystem_service.write_file_binary(filepath, video_bytes)
                     else:
-                        # Fallback: base64 encode and write as text
-                        import base64
+                        # Fallback: base64 encode and write as text (base64 already imported at top)
                         encoded = base64.b64encode(video_bytes).decode('utf-8')
                         await filesystem_service.write_file(filepath, encoded)
                     
@@ -547,7 +545,7 @@ class AtlasCloudImageToVideoTool(BaseTool):
             logger.info(f"[AtlasCloudITV] Video generated: {video_url}")
             
             # Download video
-            logger.info(f"[AtlasCloudITV] Downloading video...")
+            logger.info("[AtlasCloudITV] Downloading video...")
             video_bytes = await self._download_video(video_url)
             logger.info(f"[AtlasCloudITV] Downloaded {len(video_bytes)} bytes")
             

@@ -17,8 +17,6 @@ from icpy.agent.tools.atlascloud.itv_tool import (
     IMAGE_TO_VIDEO_MODELS,
     ASPECT_RATIOS,
     MAX_IMAGE_SIZE_MB,
-    MIN_IMAGE_RESOLUTION,
-    MAX_IMAGE_RESOLUTION,
 )
 from icpy.agent.tools.atlascloud.models import VideoResult, VideoStatus
 from icpy.agent.tools.atlascloud.exceptions import (
@@ -443,7 +441,7 @@ class TestWorkspaceSaving:
                     )
         
         assert result is not None
-        relative_path, absolute_path = result
+        relative_path, _ = result
         assert relative_path.startswith("videos/")
         assert relative_path.endswith(".mp4")
         assert "photo" in relative_path
@@ -493,7 +491,7 @@ class TestWorkspaceSaving:
                         mock_file.side_effect = [OSError("Permission denied")]
                         
                         with patch('icpy.agent.tools.context_helpers.get_filesystem_service', return_value=mock_fs_service):
-                            result = await tool._save_video_to_workspace(
+                            await tool._save_video_to_workspace(
                                 video_bytes,
                                 "image.png",
                                 "bytedance/seedance-v1-lite-i2v-480p",

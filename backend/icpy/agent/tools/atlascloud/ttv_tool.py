@@ -17,9 +17,8 @@ from __future__ import annotations
 import os
 import re
 import logging
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Optional, Tuple
 from datetime import datetime
-import asyncio
 
 import httpx
 
@@ -207,21 +206,12 @@ class AtlasCloudTextToVideoTool(BaseTool):
             needs_auth = '/api/' in video_url or '/model/' in video_url or '/prediction/' in video_url
             
             if needs_auth:
-                # Use the authenticated client
-                client = await self._get_client()
-                # Access the underlying httpx client
-                if hasattr(client, '_client') and client._client:
-                    response = await client._client.get(video_url)
-                    response.raise_for_status()
-                    return response.content
-                else:
-                    # Fallback: create authenticated request manually
-                    api_key = os.environ.get("ATLASCLOUD_API_KEY")
-                    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
-                    async with httpx.AsyncClient(timeout=60.0, headers=headers) as http_client:
-                        response = await http_client.get(video_url)
-                        response.raise_for_status()
-                        return response.content
+                # Use the authenticated client - _get_client is synchronous
+                client = self._get_client()
+                await client._ensure_client()
+                response = await client._client.get(video_url)
+                response.raise_for_status()
+                return response.content
             else:
                 # Direct file URL, no auth needed
                 async with httpx.AsyncClient(timeout=60.0) as http_client:
@@ -447,7 +437,7 @@ class AtlasCloudTextToVideoTool(BaseTool):
             logger.info(f"[AtlasCloudTTV] Video generated: {video_url}")
             
             # Download video
-            logger.info(f"[AtlasCloudTTV] Downloading video...")
+            logger.info("[AtlasCloudTTV] Downloading video...")
             video_bytes = await self._download_video(video_url)
             logger.info(f"[AtlasCloudTTV] Downloaded {len(video_bytes)} bytes")
             

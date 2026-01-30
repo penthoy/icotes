@@ -6,13 +6,10 @@ file saving (local and hop), and error handling.
 """
 
 import pytest
-import asyncio
-from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch, mock_open
 import os
 
 from icpy.agent.tools.atlascloud.ttv_tool import AtlasCloudTextToVideoTool, TEXT_TO_VIDEO_MODELS
-from icpy.agent.tools.base_tool import ToolResult
 from icpy.agent.tools.atlascloud.models import VideoResult, VideoStatus
 from icpy.agent.tools.atlascloud.exceptions import (
     AtlasCloudError,
@@ -330,7 +327,7 @@ class TestWorkspaceSaving:
         with patch('icpy.agent.tools.context_helpers.get_current_context', return_value=mock_context), \
              patch('icpy.agent.tools.context_helpers.get_contextual_filesystem', return_value=mock_filesystem), \
              patch('os.makedirs'), \
-             patch('builtins.open', mock_open()) as mock_file:
+             patch('builtins.open', mock_open()):
             
             result = await tool._save_video_to_workspace(
                 mock_video_bytes,
@@ -446,7 +443,6 @@ async def test_real_api_generation():
     Integration test with real API (requires ATLASCLOUD_API_KEY).
     Marked as integration test - skip by default.
     """
-    import os
     api_key = os.getenv("ATLASCLOUD_API_KEY")
     
     if not api_key:
