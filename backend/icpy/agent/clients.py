@@ -183,3 +183,28 @@ def get_ollama_client():
     )
 
 
+def get_atlascloud_client():
+    """
+    Initializes and returns an OpenAI client configured for Atlas Cloud API.
+    
+    Atlas Cloud provides unified access to 300+ AI models including:
+    - LLMs (DeepSeek, Qwen, Kimi, Claude, etc.) via OpenAI-compatible API
+    - Video generation (Seedance, Kling, Veo, Sora, Wan, etc.)
+    - Image generation (Flux, Imagen, Ideogram, etc.)
+    
+    For video/image generation, use the atlascloud.client.AtlasCloudClient instead.
+    This client is specifically for LLM inference via chat completions.
+    """
+    atlascloud_api_key = os.getenv("ATLASCLOUD_API_KEY")
+    if not atlascloud_api_key:
+        raise ValueError(
+            "ATLASCLOUD_API_KEY environment variable is not set. "
+            "Get your API key from https://console.atlascloud.ai/settings"
+        )
+    
+    return OpenAI(
+        api_key=atlascloud_api_key,
+        base_url="https://api.atlascloud.ai/v1",
+    )
+
+

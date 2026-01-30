@@ -602,7 +602,8 @@ class OpenAIStreamingHandler:
     def stream_chat_with_tools(self, messages: List[Dict[str, Any]], 
                               max_tokens: int | None = None,
                               auto_continue: bool | None = None,
-                              max_continue_rounds: int | None = None) -> AsyncGenerator[str, None]:
+                              max_continue_rounds: int | None = None,
+                              extra_params: Dict[str, Any] | None = None) -> AsyncGenerator[str, None]:
         """
         Handle streaming chat with tool calls.
         
@@ -746,6 +747,11 @@ class OpenAIStreamingHandler:
                 # Add the appropriate token parameter
                 if max_tokens is not None:
                     api_params.update(get_openai_token_param(self.model_name, max_tokens))
+                
+                # Apply any extra parameters (e.g., thinking mode for Kimi K2.5)
+                # Use extra_body for custom parameters not in OpenAI SDK signature
+                if extra_params:
+                    api_params["extra_body"] = extra_params
                 
                 # Log API request to debug interceptor (non-blocking)
                 if self.debug_interceptor:
@@ -1109,9 +1115,11 @@ class OpenAIStreamingHandler:
         yield "\n\n🔧 **Executing tools...**\n"
         
         # Add assistant message with tool calls to conversation
+        # Per OpenAI API spec: when tool_calls are present, content should be null or empty
+        # Moonshot K2.5 strictly enforces this - content must not have text when tool_calls exist
         assistant_message = {
             "role": "assistant",
-            "content": "".join(collected_chunks),
+            "content": None,  # Must be null when tool_calls are present
             "tool_calls": tool_calls_list
         }
         messages.append(assistant_message)
@@ -1125,6 +1133,13 @@ class OpenAIStreamingHandler:
                 # Validate that we have a tool name
                 if not tool_name:
                     yield f"❌ **Error**: Tool name is empty\n"
+                    # Still add error response to conversation
+                    tool_message = {
+                        "role": "tool",
+                        "tool_call_id": tc.get('id', 'unknown'),
+                        "content": json.dumps({"error": "Tool name is empty"})
+                    }
+                    messages.append(tool_message)
                     continue
                 
                 # Parse arguments safely
@@ -1132,6 +1147,13 @@ class OpenAIStreamingHandler:
                     arguments = json.loads(arguments_str) if arguments_str else {}
                 except json.JSONDecodeError as e:
                     yield f"❌ **Error**: Invalid JSON arguments for {tool_name}: {str(e)}\n"
+                    # Still add error response to conversation
+                    tool_message = {
+                        "role": "tool",
+                        "tool_call_id": tc.get('id', 'unknown'),
+                        "content": json.dumps({"error": f"Invalid JSON arguments: {str(e)}"})
+                    }
+                    messages.append(tool_message)
                     continue
                 
                 # Debug logging for image generation tool calls

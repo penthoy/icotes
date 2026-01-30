@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 # Agent metadata
 AGENT_NAME = "KimiAgent"
 AGENT_DESCRIPTION = "General-purpose AI assistant powered by Moonshot's Kimi models"
-MODEL_NAME = "kimi-k2-0905-preview"  # Default Kimi model
+MODEL_NAME = "kimi-k2.5"  # Default Kimi model
 
 # Import required modules
 from icpy.agent.core.llm.moonshot_client import MoonshotClientAdapter
