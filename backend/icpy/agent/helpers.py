@@ -605,24 +605,18 @@ class OpenAIStreamingHandler:
                               max_continue_rounds: int | None = None,
                               extra_params: Dict[str, Any] | None = None) -> AsyncGenerator[str, None]:
         """
-        Handle streaming chat with tool calls.
-        
-        This method handles the complete flow:
-        1. Send messages to OpenAI with tools
-        2. Stream the response 
-        3. Handle tool calls if they occur
-        4. Execute tools and add results to conversation
-        5. Continue the conversation until completion
-        
-        Args:
-            messages: Conversation messages
-            max_tokens: Maximum tokens for completion (defaults from env AGENT_MAX_TOKENS or 3500)
-            auto_continue: When response stops due to token limit, automatically continue (env AGENT_AUTO_CONTINUE, default True)
-            max_continue_rounds: Maximum number of auto-continue follow-ups (env AGENT_MAX_CONTINUE_ROUNDS, default 3)
-            
-        Yields:
-            str: Response chunks for streaming
-        """
+                              Stream a chat conversation to the model, handle any model-initiated tool calls, execute those tools, and continue the interaction until completion.
+                              
+                              Parameters:
+                                  messages (List[Dict[str, Any]]): Conversation messages to send to the model (role/content dicts). User messages may contain rich parts (arrays of parts) which are preserved.
+                                  max_tokens (int | None): Maximum completion tokens to request; when omitted, an environment-derived default is used.
+                                  auto_continue (bool | None): If the model's response is truncated by token limits, automatically request continuation when True.
+                                  max_continue_rounds (int | None): Maximum number of automatic continuation rounds allowed.
+                                  extra_params (Dict[str, Any] | None): Optional additional request parameters to include in the API call body (passed via `extra_body`).
+                              
+                              Returns:
+                                  AsyncGenerator[str, None]: Yields streamed text chunks and short progress/status messages (including tool execution headers and continuation notices). On errors, yields a user-facing error message describing the failure.
+                              """
         try:
             # Resolve configuration with environment overrides
             if max_tokens is None:
@@ -1110,8 +1104,16 @@ class OpenAIStreamingHandler:
     def _handle_tool_calls(self, messages: List[Dict], collected_chunks: List[str], 
                           tool_calls_list: List[Dict]) -> AsyncGenerator[str, None]:
         """
-        Handle execution of tool calls and add results to conversation.
-        """
+                          Execute scheduled tool calls, stream user-facing progress, and append tool results to the conversation.
+                          
+                          Parameters:
+                              messages (List[Dict]): Conversation message list that will be mutated; an assistant message (with `content: None`) and subsequent tool messages are appended containing tool outputs or errors.
+                              collected_chunks (List[str]): Previously collected streamed chunks (not modified by this function).
+                              tool_calls_list (List[Dict]): Ordered list of tool call descriptors to execute; each entry should include an `id` and a `function` dict with `name` and `arguments`.
+                          
+                          Returns:
+                              AsyncGenerator[str, None]: Yields string fragments to stream to the user (progress headers, formatted tool outputs, chunked large results, and error notices).
+                          """
         yield "\n\n🔧 **Executing tools...**\n"
         
         # Add assistant message with tool calls to conversation

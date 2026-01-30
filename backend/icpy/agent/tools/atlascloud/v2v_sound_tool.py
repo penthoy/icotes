@@ -54,7 +54,15 @@ class AtlasCloudVideoToVideoSoundTool(BaseTool):
     """
     
     def __init__(self):
-        """Initialize video-to-video-with-sound tool."""
+        """
+        Initialize the tool and register its metadata and parameters for adding AI-generated sound to videos.
+        
+        Sets:
+        - name: tool identifier ("video_to_video_with_sound").
+        - description: user-facing summary of capability, supported durations, default model, and example prompts.
+        - parameters: JSON schema for inputs (`video`, `prompt`, optional `model`, `filename`, `hop_session`, `timeout`) with `video` and `prompt` required.
+        - _client: initialized to `None` (Atlas Cloud client will be created lazily).
+        """
         super().__init__()
         self.name = "video_to_video_with_sound"
         self.description = (
@@ -116,7 +124,15 @@ class AtlasCloudVideoToVideoSoundTool(BaseTool):
         self._client = None
     
     def _get_client(self) -> AtlasCloudClient:
-        """Get or create Atlas Cloud client."""
+        """
+        Return the cached AtlasCloudClient instance, creating and caching a new one if needed.
+        
+        Returns:
+            AtlasCloudClient: The initialized or previously cached Atlas Cloud client.
+        
+        Raises:
+            RuntimeError: If the `ATLASCLOUD_API_KEY` environment variable is not set.
+        """
         if self._client is not None:
             return self._client
         
@@ -133,20 +149,18 @@ class AtlasCloudVideoToVideoSoundTool(BaseTool):
     
     def _generate_download_url(self, file_path: str) -> str:
         """
-        Generate public download URL for workspace file.
+        Builds a public download URL for a workspace file path.
         
-        Uses icotes' /api/files/download endpoint to create publicly accessible URL.
+        Constructs a URL pointing to the /api/files/download endpoint using the SITE_URL and PORT
+        environment variables. `file_path` may be an absolute path or a namespaced path
+        (e.g., "local:/path/to/file"). SITE_URL must be a publicly reachable domain for
+        external services (like Atlas Cloud) to download the file.
         
-        IMPORTANT: The SITE_URL environment variable MUST be set to a publicly
-        accessible domain (e.g., wip.icotes.com) for AtlasCloud API to download
-        the video. LAN IPs (192.168.x.x) or localhost will cause "Unable to 
-        download or load video" errors because AtlasCloud servers cannot reach them.
+        Parameters:
+            file_path (str): Absolute or namespaced workspace file path to be URL-encoded.
         
-        Args:
-            file_path: Absolute path to file or namespaced path (e.g., local:/path/to/file)
-            
         Returns:
-            Public URL for file download
+            str: Public download URL for the given file that targets the /api/files/download endpoint.
         """
         # Get SITE_URL and PORT from environment
         site_url = os.getenv('SITE_URL', '127.0.0.1')
@@ -194,17 +208,17 @@ class AtlasCloudVideoToVideoSoundTool(BaseTool):
         hop_session: Optional[str] = None
     ) -> str:
         """
-        Process video input: workspace file → URL upload, URL → pass through.
+        Normalize a video input into a publicly accessible URL suitable for the Atlas Cloud API.
         
-        Args:
-            video: Video source (file path or URL)
-            hop_session: Optional hop session for remote file access
-            
+        Parameters:
+            video (str): Video source, either an HTTP/HTTPS URL or a workspace file path (may include a "local:" or context-prefixed path).
+            hop_session (Optional[str]): Optional hop session identifier used when resolving remote/workspace file paths.
+        
         Returns:
-            Video URL ready for API
-            
+            str: A URL that can be used by the API to access the video.
+        
         Raises:
-            ValueError: Invalid video format or size
+            ValueError: If the resolved file does not exist or its size exceeds the maximum allowed limit.
         """
         # If it's a URL, return as-is
         if video.startswith(("http://", "https://")):
@@ -270,7 +284,18 @@ class AtlasCloudVideoToVideoSoundTool(BaseTool):
         return download_url
     
     async def _download_video(self, video_url: str) -> bytes:
-        """Download video from URL."""
+        """
+        Download video bytes from the given URL, using an authenticated Atlas Cloud client for API/model/prediction endpoints when required.
+        
+        Parameters:
+            video_url (str): Public or API URL pointing to the video to download.
+        
+        Returns:
+            bytes: Raw binary content of the downloaded video.
+        
+        Raises:
+            AtlasCloudError: If the HTTP request fails or returns a non-success status.
+        """
         try:
             # Determine if URL needs authentication
             if any(pattern in video_url for pattern in ['/api/', '/model/', '/prediction/']):
@@ -299,17 +324,19 @@ class AtlasCloudVideoToVideoSoundTool(BaseTool):
         hop_session: Optional[str] = None
     ) -> Optional[Tuple[str, str]]:
         """
-        Save video to workspace videos/ directory.
+        Persist generated video bytes into the workspace's `videos/` directory and return the saved paths.
         
-        Args:
-            video_bytes: Video file content
-            original_video_name: Original video name for filename generation
-            model: Model name for filename generation
-            filename: Optional custom filename
-            hop_session: Optional hop session for remote saving
-            
+        If `filename` is not provided, a filename is constructed from `original_video_name`, `model`, and a timestamp and is ensured to end with `.mp4`. Saving is context-aware: in a local context the file is written to the local workspace; in a remote/hop context the contextual filesystem service is used to create the directory and write the file (falling back to a base64 text write if needed).
+        
+        Parameters:
+            video_bytes (bytes): Raw content of the generated video.
+            original_video_name (str): Source video name used to derive a default filename when `filename` is omitted.
+            model (str): Model identifier incorporated into the default filename when `filename` is omitted.
+            filename (Optional[str]): Optional custom filename; if omitted a timestamped `.mp4` filename is generated.
+            hop_session (Optional[str]): Optional hop/session identifier used for remote (hop) workspace operations; when omitted the current context determines local vs remote behavior.
+        
         Returns:
-            Tuple of (relative_path, absolute_path) or None on failure
+            Optional[Tuple[str, str]]: A tuple of `(relative_path, absolute_path)` for the saved file on success, or `None` if saving failed.
         """
         try:
             # Generate filename if not provided
@@ -403,18 +430,26 @@ class AtlasCloudVideoToVideoSoundTool(BaseTool):
     
     async def execute(self, **kwargs) -> ToolResult:
         """
-        Execute video-to-video-with-sound generation.
+        Run the video-to-video-with-sound generation workflow and return the result saved to the workspace.
         
-        Args:
-            video: Video source (required)
-            prompt: Audio description (required)
-            model: Video-to-video model (default: atlascloud/mmaudio-v2)
-            filename: Optional custom filename
-            hop_session: Optional hop session ID
-            timeout: Generation timeout (default: 600s)
-            
+        Parameters:
+            video (str): Source video location — either an HTTP/HTTPS URL or a workspace file path.
+            prompt (str): Text description of the desired audio to add to the video (max 2000 characters).
+            model (str, optional): Model identifier to use (default "atlascloud/mmaudio-v2").
+            filename (str, optional): Desired output filename (without or with .mp4); autogenerated if omitted.
+            hop_session (str, optional): Hop session ID for remote workspace operations.
+            timeout (int, optional): Maximum seconds to wait for generation to complete (default 600).
+        
         Returns:
-            ToolResult with video path and metadata
+            ToolResult: Success case includes `data` with keys:
+                - video_path: Relative workspace path to the saved output video.
+                - absolute_path: Absolute path to the saved output video.
+                - request_id: Atlas Cloud request/prediction identifier.
+                - model: Model used for generation.
+                - prompt: Truncated prompt (first 100 chars plus "..." if longer).
+                - cost_estimate: Human-readable estimated cost string.
+                - message: Human-readable success message.
+            On failure, `success` is False and `error` contains a descriptive message.
         """
         # Extract parameters
         video = kwargs.get("video")
