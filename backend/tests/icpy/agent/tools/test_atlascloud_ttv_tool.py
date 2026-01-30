@@ -22,7 +22,12 @@ from icpy.agent.tools.atlascloud.exceptions import (
 
 @pytest.fixture
 def tool():
-    """Create tool instance."""
+    """
+    Create an AtlasCloudTextToVideoTool instance.
+    
+    Returns:
+        AtlasCloudTextToVideoTool: The created tool instance.
+    """
     return AtlasCloudTextToVideoTool()
 
 
@@ -40,7 +45,14 @@ def mock_video_result():
 
 @pytest.fixture
 def mock_video_bytes():
-    """Mock video file bytes."""
+    """
+    Return deterministic fake video bytes for use in tests.
+    
+    Provides a reproducible binary blob that simulates video file contents for unit tests that require video data without performing I/O.
+    
+    Returns:
+        bytes: Binary data representing a fake video file.
+    """
     return b"FAKE_VIDEO_DATA_" * 1000  # Simulate video data
 
 
@@ -144,10 +156,32 @@ class TestVideoGeneration:
         
         # Mock download
         async def mock_download(url):
+            """
+            Simulated video download that returns predefined mock video bytes.
+            
+            Parameters:
+                url (str): The URL to download (ignored; present for interface compatibility).
+            
+            Returns:
+                bytes: The mock video content provided by the test (`mock_video_bytes`).
+            """
             return mock_video_bytes
         
         # Mock file save
         async def mock_save_video(video_bytes, prompt, model, filename=None):
+            """
+            Provide a deterministic mock that simulates saving a video and returns test file paths.
+            
+            Parameters:
+                video_bytes (bytes): Video content to save (ignored by this mock).
+                prompt (str): Prompt used to generate the video (ignored by this mock).
+                model (str): Model identifier used for generation (ignored by this mock).
+                filename (str | None): Optional filename to use (ignored by this mock).
+            
+            Returns:
+                tuple: A pair (relative_path, absolute_path) representing the mocked saved file paths,
+                       e.g. ("videos/test.mp4", "/workspace/videos/test.mp4").
+            """
             return ("videos/test.mp4", "/workspace/videos/test.mp4")
         
         with patch.object(tool, '_get_client', return_value=mock_client), \
@@ -177,9 +211,30 @@ class TestVideoGeneration:
         mock_client.generate_text_to_video.return_value = mock_video_result
         
         async def mock_download(url):
+            """
+            Simulated video download that returns predefined mock video bytes.
+            
+            Parameters:
+                url (str): The URL to download (ignored; present for interface compatibility).
+            
+            Returns:
+                bytes: The mock video content provided by the test (`mock_video_bytes`).
+            """
             return mock_video_bytes
         
         async def mock_save_video(video_bytes, prompt, model, filename=None):
+            """
+            Return fixed mock paths representing a saved video for use in tests.
+            
+            Parameters:
+                video_bytes (bytes): Video file content (unused by the mock).
+                prompt (str): The generation prompt associated with the video.
+                model (str): The model identifier used to generate the video.
+                filename (str | None): Optional filename to use when saving; ignored by this mock.
+            
+            Returns:
+                tuple[str, str]: A tuple (relative_path, absolute_path) where `relative_path` is the video's path relative to the workspace (e.g., "videos/custom.mp4") and `absolute_path` is the filesystem path under the workspace root (e.g., "/workspace/videos/custom.mp4").
+            """
             return ("videos/custom.mp4", "/workspace/videos/custom.mp4")
         
         with patch.object(tool, '_get_client', return_value=mock_client), \
@@ -443,8 +498,9 @@ class TestClientInitialization:
 @pytest.mark.asyncio
 async def test_real_api_generation():
     """
-    Integration test with real API (requires ATLASCLOUD_API_KEY).
-    Marked as integration test - skip by default.
+    Integration test that performs a real Atlas Cloud text-to-video generation when ATLASCLOUD_API_KEY is set in the environment.
+    
+    Skips the test if ATLASCLOUD_API_KEY is not present.
     """
     import os
     api_key = os.getenv("ATLASCLOUD_API_KEY")

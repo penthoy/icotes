@@ -56,12 +56,15 @@ class AtlasCloudClient:
         timeout: float = DEFAULT_TIMEOUT,
     ):
         """
-        Initialize Atlas Cloud client.
+        Create a configured AtlasCloudClient instance.
         
-        Args:
-            api_key: API key (defaults to ATLASCLOUD_API_KEY env var)
-            base_url: API base URL (defaults to https://api.atlascloud.ai)
-            timeout: Default request timeout in seconds
+        Parameters:
+            api_key (Optional[str]): API key to authenticate requests. If omitted, the `ATLASCLOUD_API_KEY` environment variable is used.
+            base_url (Optional[str]): API base URL; defaults to https://api.atlascloud.ai.
+            timeout (float): Default request timeout in seconds.
+        
+        Raises:
+            ValueError: If no API key is provided and `ATLASCLOUD_API_KEY` is not set.
         """
         self.api_key = api_key or os.getenv("ATLASCLOUD_API_KEY")
         if not self.api_key:
@@ -77,16 +80,29 @@ class AtlasCloudClient:
         self._client: Optional[httpx.AsyncClient] = None
     
     async def __aenter__(self):
-        """Async context manager entry."""
+        """
+        Ensure the internal HTTP client is created and return the client instance for use as an async context manager.
+        
+        Returns:
+            AtlasCloudClient: The client instance with an initialized HTTP client.
+        """
         await self._ensure_client()
         return self
     
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Async context manager exit."""
+        """
+        Close the client's underlying HTTP connection when exiting an async context.
+        
+        This ensures the internal HTTP client is closed if it was created.
+        """
         await self.close()
     
     async def _ensure_client(self):
-        """Ensure HTTP client is initialized."""
+        """
+        Ensure the internal HTTP client is created and configured for use.
+        
+        Creates and stores an AsyncClient configured with the client's base URL, authorization header, content type, and timeout if no client currently exists.
+        """
         if self._client is None:
             self._client = httpx.AsyncClient(
                 base_url=self.base_url,
@@ -98,24 +114,30 @@ class AtlasCloudClient:
             )
     
     async def close(self):
-        """Close the HTTP client."""
+        """
+        Close and clean up the underlying HTTP client if it exists.
+        
+        Closes the internal httpx.AsyncClient and clears the stored client reference so the client can be re-created later.
+        """
         if self._client is not None:
             await self._client.aclose()
             self._client = None
     
     def _handle_error_response(self, response: httpx.Response) -> None:
         """
-        Handle error responses and raise appropriate exceptions.
+        Raise a specific AtlasCloud* exception based on an HTTP error response.
         
-        Args:
-            response: HTTP response object
-            
+        Inspect the HTTP status and returned error payload to choose and raise the most specific AtlasCloud exception.
+        
+        Parameters:
+            response (httpx.Response): The HTTP response returned by the Atlas Cloud API.
+        
         Raises:
-            AtlasCloudAuthError: Authentication failed (401)
-            AtlasCloudRateLimitError: Rate limit exceeded (429)
-            AtlasCloudInsufficientCreditsError: Insufficient credits
-            AtlasCloudNSFWError: NSFW content rejected
-            AtlasCloudError: Other API errors
+            AtlasCloudAuthError: When the response status code is 401 (authentication failed).
+            AtlasCloudRateLimitError: When the response status code is 429 (rate limit exceeded).
+            AtlasCloudInsufficientCreditsError: When the error payload or message indicates insufficient credits.
+            AtlasCloudNSFWError: When the error payload or message indicates NSFW/content rejection.
+            AtlasCloudError: For all other API error responses.
         """
         status_code = response.status_code
         
@@ -171,28 +193,28 @@ class AtlasCloudClient:
         timeout: Optional[float] = None,
     ) -> VideoResult:
         """
-        Generate a video using Atlas Cloud API.
+        Start a video generation request with the specified model and inputs, and optionally wait until the request completes.
         
-        Args:
-            model: Model identifier (e.g., 'bytedance/seedance-v1-lite-t2v-480p')
-            prompt: Text prompt for generation (required for text-to-video)
-            image: Image URL or base64 (required for image-to-video)
-            video: Video URL (required for video-to-video models like mmaudio-v2)
-            duration: Video duration in seconds (5-10)
-            aspect_ratio: Video aspect ratio (16:9, 1:1, etc.)
-            seed: Random seed for reproducibility (-1 for random)
-            last_image: Optional end frame for interpolation
-            wait_for_completion: If True, poll until complete; if False, return immediately
-            poll_interval: Seconds between polling requests
-            timeout: Maximum wait time in seconds (defaults to client timeout)
-            
+        Parameters:
+            model (str): Model identifier to use for generation.
+            prompt (Optional[str]): Text prompt for text-to-video generation.
+            image (Optional[str]): Image URL or base64 input for image-to-video generation.
+            video (Optional[str]): Source video URL for video-to-video generation.
+            duration (int): Requested video duration in seconds.
+            aspect_ratio (str): Desired output aspect ratio (e.g., "16:9", "1:1").
+            seed (int): Random seed for reproducible results (-1 selects a random seed).
+            last_image (Optional[str]): Optional end-frame image for interpolation workflows.
+            wait_for_completion (bool): If True, poll until the generation completes and return the final result; if False, return the initial result immediately.
+            poll_interval (float): Seconds between polling attempts when waiting for completion.
+            timeout (Optional[float]): Maximum time in seconds to wait for completion (uses client timeout if omitted).
+        
         Returns:
-            VideoResult with status and output URLs (if complete)
-            
+            VideoResult: The current or final generation result, including status and output URLs (if available).
+        
         Raises:
-            ValueError: Invalid parameters
-            AtlasCloudTimeoutError: Generation timed out
-            AtlasCloudError: API error occurred
+            ValueError: If none of `prompt`, `image`, or `video` is provided.
+            AtlasCloudTimeoutError: If waiting for completion exceeds the provided timeout.
+            AtlasCloudError: For API errors or network failures.
         """
         # Validate inputs
         if not prompt and not image and not video:
@@ -258,16 +280,16 @@ class AtlasCloudClient:
     
     async def get_result(self, request_id: str) -> VideoResult:
         """
-        Get the current status/result of a video generation request.
+        Get the current status and outputs (if available) for a video generation request.
         
-        Args:
-            request_id: Unique request ID from initial generation response
-            
+        Parameters:
+            request_id (str): Request identifier returned by the generation endpoint.
+        
         Returns:
-            VideoResult with current status and outputs (if complete)
-            
+            VideoResult: Current status and any generated outputs.
+        
         Raises:
-            AtlasCloudError: API error occurred
+            AtlasCloudError: If the API returns an error or a network/HTTP error occurs.
         """
         await self._ensure_client()
         
@@ -303,19 +325,21 @@ class AtlasCloudClient:
         timeout: float = DEFAULT_TIMEOUT,
     ) -> VideoResult:
         """
-        Poll for video generation completion with exponential backoff.
+        Waits for a video generation request to finish by polling its status until completion or failure.
         
-        Args:
-            request_id: Request ID to poll
-            poll_interval: Initial seconds between polls
-            timeout: Maximum wait time in seconds
-            
+        Polls the server for the given request's status, starting with intervals of poll_interval seconds and increasing the delay by a factor of 1.2 between attempts (capped at 10 seconds), until the request completes, fails, or the total wait time exceeds timeout seconds.
+        
+        Parameters:
+            request_id (str): The ID of the generation request to poll.
+            poll_interval (float): Initial number of seconds to wait between polls.
+            timeout (float): Maximum total number of seconds to wait before giving up.
+        
         Returns:
-            VideoResult when complete
-            
+            VideoResult: The final result when the generation is complete.
+        
         Raises:
-            AtlasCloudTimeoutError: Exceeded timeout
-            AtlasCloudError: Generation failed
+            AtlasCloudTimeoutError: If the wait exceeds the specified timeout.
+            AtlasCloudError: If the generation finishes with a failure status.
         """
         start_time = datetime.now()
         max_wait = timedelta(seconds=timeout)
@@ -362,15 +386,15 @@ class AtlasCloudClient:
         **kwargs
     ) -> VideoResult:
         """
-        Convenience method for text-to-video generation.
+        Generate a video from a text prompt using the specified model.
         
-        Args:
-            prompt: Text description of video to generate
-            model: Video model to use (defaults to cheapest)
-            **kwargs: Additional parameters (duration, aspect_ratio, etc.)
-            
+        Parameters:
+            prompt (str): Text description of the video to generate.
+            model (str): Model identifier to use for generation (default "bytedance/seedance-v1-lite-t2v-480p").
+            **kwargs: Additional generation options (e.g., duration, aspect_ratio, seed, wait_for_completion, poll_interval, timeout).
+        
         Returns:
-            VideoResult with generated video
+            VideoResult: Result object representing the generated video or its current processing state.
         """
         return await self.generate_video(model=model, prompt=prompt, **kwargs)
     
@@ -408,16 +432,18 @@ class AtlasCloudClient:
         **kwargs
     ) -> VideoResult:
         """
-        Convenience method for video-to-video-with-sound generation.
+        Create a new video by adding generated audio to an existing video using the specified model.
         
-        Args:
-            video: Video URL to add sound to
-            prompt: Text description of audio to generate
-            model: Video-to-video model to use (defaults to mmaudio-v2)
-            **kwargs: Additional parameters (wait_for_completion, timeout, etc.)
-            
+        Submits a video-to-video request that synthesizes audio from `prompt` and merges it into `video` according to the provided model and options.
+        
+        Parameters:
+            video (str): URL or path of the source video to add sound to.
+            prompt (str): Text describing the desired audio to generate and apply to the video.
+            model (str): Model identifier to use; defaults to "atlascloud/mmaudio-v2".
+            **kwargs: Additional generation options such as `wait_for_completion`, `timeout`, and `poll_interval`.
+        
         Returns:
-            VideoResult with generated video with sound
+            VideoResult: Result object containing the generated video with the added audio and associated metadata.
         """
         return await self.generate_video(
             model=model,

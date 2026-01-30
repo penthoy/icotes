@@ -102,6 +102,15 @@ class AtlasCloudTextToVideoTool(BaseTool):
     """
     
     def __init__(self):
+        """
+        Initialize the text-to-video tool: set metadata, JSON parameters schema, and prepare lazy Atlas Cloud client.
+        
+        Sets:
+        - name to "text_to_video".
+        - a human-readable description including the default model and typical generation time.
+        - a JSON Schema for tool parameters (required: `prompt`; includes `model`, `duration` 5–10s, `aspect_ratio`, `seed`, optional `filename`, and `timeout` 60–600s).
+        - a lazily-initialized `_client` attribute for AtlasCloudClient (initially None).
+        """
         super().__init__()
         self.name = "text_to_video"
         self.description = (
@@ -174,7 +183,15 @@ class AtlasCloudTextToVideoTool(BaseTool):
         self._client: Optional[AtlasCloudClient] = None
     
     def _get_client(self) -> AtlasCloudClient:
-        """Get or create Atlas Cloud client lazily."""
+        """
+        Return the cached AtlasCloudClient, creating and caching a new client using the ATLASCLOUD_API_KEY environment variable if none exists.
+        
+        Returns:
+            AtlasCloudClient: Initialized client configured with the ATLASCLOUD_API_KEY.
+        
+        Raises:
+            RuntimeError: If ATLASCLOUD_API_KEY is not set in the environment.
+        """
         if self._client is not None:
             return self._client
         
@@ -191,16 +208,18 @@ class AtlasCloudTextToVideoTool(BaseTool):
     
     async def _download_video(self, video_url: str) -> bytes:
         """
-        Download video from URL.
+        Download video bytes from a given Atlas Cloud or public URL and return the raw bytes.
         
-        Args:
-            video_url: URL of the generated video
-            
+        This function handles both authenticated Atlas Cloud endpoints and public file URLs, using the tool's client when authentication is required.
+        
+        Parameters:
+            video_url (str): URL of the generated video to download.
+        
         Returns:
-            Video bytes
-            
+            bytes: Raw video file bytes.
+        
         Raises:
-            AtlasCloudError: Download failed
+            AtlasCloudError: If the download fails for any reason.
         """
         try:
             # Check if this is an API endpoint that needs authentication
@@ -240,16 +259,16 @@ class AtlasCloudTextToVideoTool(BaseTool):
         custom_filename: Optional[str] = None
     ) -> Optional[Tuple[str, str]]:
         """
-        Save video bytes to workspace folder (hop-aware).
+        Save video bytes into the current workspace, supporting both local and remote (hop) contexts.
         
-        Args:
-            video_bytes: Binary video data
-            prompt: Original prompt (used for auto-generated filename)
-            model: Model name (included in filename)
-            custom_filename: Optional custom filename (without extension)
-            
+        Parameters:
+            video_bytes (bytes): Binary video data to save.
+            prompt (str): Original prompt used to derive an auto-generated filename when no custom filename is provided.
+            model (str): Model identifier included in the generated filename.
+            custom_filename (Optional[str]): Optional custom filename without extension; when provided, it is sanitized and used.
+        
         Returns:
-            Tuple of (relative_path, absolute_path) if successful, None otherwise.
+            Optional[Tuple[str, str]]: A tuple (relative_path, absolute_path) pointing to the saved file if successful, or `None` on failure.
         """
         try:
             # Determine file extension (always .mp4 for video)
@@ -350,19 +369,32 @@ class AtlasCloudTextToVideoTool(BaseTool):
     
     async def execute(self, **kwargs: Any) -> ToolResult:
         """
-        Execute text-to-video generation.
+        Generate a video from a text prompt using Atlas Cloud and save it to the workspace.
         
-        Args:
-            prompt: Text description of video
-            model: Model to use (default: bytedance/seedance-v1-lite-t2v-480p)
-            duration: Video duration in seconds (default: 5)
-            aspect_ratio: Video aspect ratio (default: 16:9)
-            seed: Random seed (default: -1)
-            filename: Optional custom filename
-            timeout: Max wait time in seconds (default: 300)
-            
+        Validates inputs (prompt presence and length, model, aspect_ratio), estimates cost, requests generation with polling, downloads the resulting video, and persists it to the current workspace (local or remote). On success the returned ToolResult.data contains metadata and file paths; on failure ToolResult.error contains a human-readable message.
+        
+        Parameters:
+            kwargs:
+                prompt (str): Text description of the desired video (required, max 2000 chars).
+                model (str, optional): Model identifier to use. Defaults to the tool's default model.
+                duration (int, optional): Desired video duration in seconds (default 5).
+                aspect_ratio (str, optional): Aspect ratio for the video (default "16:9").
+                seed (int, optional): Seed for reproducible outputs (default -1).
+                filename (str, optional): Custom filename (without extension) to save the video.
+                timeout (int, optional): Maximum wait time in seconds for generation (default 300).
+        
         Returns:
-            ToolResult with video file path or error
+            ToolResult: On success, `data` is a dict with:
+                - file_path: relative path saved in the workspace
+                - absolute_path: absolute path to the saved file
+                - video_url: source URL of the generated video
+                - model: model used
+                - duration: duration in seconds
+                - aspect_ratio: aspect ratio used
+                - prompt: truncated prompt snippet
+                - estimated_cost: human-readable estimated cost (e.g. "$0.12")
+                - file_size_bytes: size of the saved video in bytes
+            On failure, `error` contains a descriptive message and `data` is None.
         """
         prompt = kwargs.get("prompt")
         if not prompt:

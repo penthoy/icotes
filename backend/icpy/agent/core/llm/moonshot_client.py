@@ -18,6 +18,23 @@ class MoonshotClientAdapter(BaseLLMClient):
         tools: Optional[List[Dict[str, Any]]] = None,
         max_tokens: Optional[int] = None,
     ) -> Iterable[str]:
+        """
+        Stream chat responses from the Moonshot (Kimi) API, optionally using tools and a token limit.
+        
+        If the provided `model` contains "k2.5" (case-insensitive) and `tools` is not empty, the adapter disables Kimi's thinking mode for compatibility when invoking the model.
+        
+        Parameters:
+            model (str): Model identifier to use for the chat.
+            messages (List[Dict[str, Any]]): Conversation messages formatted for the API.
+            tools (Optional[List[Dict[str, Any]]]): Optional tool specifications to enable tool-augmented responses.
+            max_tokens (Optional[int]): Optional maximum number of tokens to generate.
+        
+        Returns:
+            Iterable[str]: An iterable that yields streamed text chunks from the model response.
+        
+        Raises:
+            ProviderNotConfigured: If the Moonshot client cannot be obtained due to missing configuration.
+        """
         try:
             client = get_moonshot_client()
         except ValueError as e:

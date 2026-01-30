@@ -138,32 +138,50 @@ class VideoResult(BaseModel):
     
     @property
     def is_complete(self) -> bool:
-        """Check if generation is complete.
+        """
+        Determine whether the video generation job has completed.
         
-        Note: Handles both VideoStatus enum and string values due to Pydantic's
-        use_enum_values=True which may deserialize status as string "completed"
-        instead of VideoStatus.COMPLETED enum.
+        Handles status represented as either a VideoStatus enum or its string value.
+        
+        Returns:
+            `true` if status equals completed, `false` otherwise.
         """
         status_val = self.status.value if isinstance(self.status, VideoStatus) else self.status
         return status_val == VideoStatus.COMPLETED.value
     
     @property
     def is_failed(self) -> bool:
-        """Check if generation failed.
+        """
+        Indicates whether the video generation job failed.
         
-        Note: Handles both VideoStatus enum and string values. See is_complete docstring.
+        Handles status represented either as a VideoStatus enum or as its string value.
+        
+        Returns:
+            `true` if the status is "failed", `false` otherwise.
         """
         status_val = self.status.value if isinstance(self.status, VideoStatus) else self.status
         return status_val == VideoStatus.FAILED.value
     
     @property
     def is_processing(self) -> bool:
-        """Check if generation is still in progress."""
+        """
+        Determine whether the video generation job is currently in a processing state.
+        
+        Returns:
+            bool: `true` if status is CREATED, QUEUED, or PROCESSING, `false` otherwise.
+        """
         return self.status in (VideoStatus.CREATED, VideoStatus.QUEUED, VideoStatus.PROCESSING)
     
     @property
     def video_url(self) -> Optional[str]:
-        """Get the first direct video file URL, skipping API endpoints."""
+        """
+        Return the first direct video file URL found in the result, skipping API endpoint URLs.
+        
+        Searches common locations in this order: `outputs` (list), `output` (list), `video` (string), `prediction` (dict), then `urls` (dict), and returns the first value that appears to be a direct file URL.
+        
+        Returns:
+            str | None: The first direct video file URL if found, `None` otherwise.
+        """
         # Check common field names for video URLs (both singular and plural forms)
         url_fields = [
             self.outputs,  # Atlas Cloud uses 'outputs' (plural)
@@ -194,7 +212,17 @@ class VideoResult(BaseModel):
         return None
     
     def _is_direct_file_url(self, url: str) -> bool:
-        """Check if URL is a direct file URL (not an API endpoint)."""
+        """
+        Determine whether a URL appears to be a direct downloadable file URL rather than an API or metadata endpoint.
+        
+        Checks that the value is an HTTP/HTTPS URL, accepts common CDN domains as direct file URLs, and treats URLs containing common API indicators as non-direct.
+        
+        Parameters:
+            url (str): The URL string to evaluate.
+        
+        Returns:
+            `true` if the URL appears to be a direct file URL (HTTP/HTTPS and not an API endpoint), `false` otherwise.
+        """
         if not url or not isinstance(url, str):
             return False
         if not (url.startswith('http://') or url.startswith('https://')):
@@ -208,7 +236,18 @@ class VideoResult(BaseModel):
         return not any(indicator in url for indicator in api_indicators)
     
     def _extract_url_from_dict(self, data: Dict[str, Any]) -> Optional[str]:
-        """Extract first valid video URL from a dictionary."""
+        """
+        Extract the first direct video file URL from a dictionary of possible URL fields.
+        
+        Scans common keys in priority order ("download", "video_url", "file", "url", "output", "video")
+        and returns the first value that is a direct file URL (string or first string in a list).
+        
+        Parameters:
+            data (Dict[str, Any]): Dictionary that may contain video URL(s) under known keys.
+        
+        Returns:
+            Optional[str]: The first direct video file URL found, or `None` if none are present.
+        """
         priority_keys = ['download', 'video_url', 'file', 'url', 'output', 'video']
         for key in priority_keys:
             if key in data:

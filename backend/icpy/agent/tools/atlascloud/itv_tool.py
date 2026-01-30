@@ -90,7 +90,11 @@ class AtlasCloudImageToVideoTool(BaseTool):
     """
     
     def __init__(self):
-        """Initialize image-to-video tool."""
+        """
+        Create and configure the Atlas Cloud image-to-video tool instance.
+        
+        Sets the tool name, user-facing description, and JSON-schema parameters for image-to-video generation (including image source, prompt, model, duration, aspect_ratio, last_image, seed, filename, and timeout). Initializes the internal AtlasCloudClient cache to None and logs tool initialization.
+        """
         super().__init__()
         self.name = "image_to_video"
         self.description = (
@@ -163,7 +167,15 @@ class AtlasCloudImageToVideoTool(BaseTool):
         logger.info("Atlas Cloud Image-to-Video tool initialized")
     
     def _get_client(self) -> AtlasCloudClient:
-        """Get or create Atlas Cloud client."""
+        """
+        Return the cached AtlasCloudClient, creating it from ATLASCLOUD_API_KEY if necessary.
+        
+        Returns:
+            AtlasCloudClient: The initialized Atlas Cloud client instance.
+        
+        Raises:
+            AtlasCloudAuthError: If `ATLASCLOUD_API_KEY` is not set in the environment.
+        """
         if self._client is None:
             api_key = os.getenv("ATLASCLOUD_API_KEY")
             if not api_key:
@@ -180,17 +192,17 @@ class AtlasCloudImageToVideoTool(BaseTool):
         hop_session: Optional[str] = None
     ) -> str:
         """
-        Process image input: workspace file → base64, URL → pass through.
+        Convert an image input (workspace path, HTTP/HTTPS URL, or base64 data URL) into a form ready for the Atlas Cloud API.
         
-        Args:
-            image: Image source (file path, URL, or base64)
-            hop_session: Optional hop session for remote file access
-            
+        Parameters:
+            image (str): Image source; can be an HTTP/HTTPS URL, a `data:image/...;base64,...` data URL, or a workspace file path (optionally prefixed with `local:`).
+            hop_session (Optional[str]): Optional hop session identifier used for remote workspace file access.
+        
         Returns:
-            Image URL or base64 string ready for API
-            
+            str: Either the original HTTP/HTTPS URL or a `data:`-URL containing the image encoded as base64 suitable for API submission.
+        
         Raises:
-            ValueError: Invalid image format or size
+            ValueError: If the workspace file is not found, exceeds size limits, has unsupported format, or its resolution is outside allowed bounds; also raised for invalid base64 image data.
         """
         # If it's a URL, return as-is
         if image.startswith(("http://", "https://")):
@@ -285,7 +297,17 @@ class AtlasCloudImageToVideoTool(BaseTool):
         return data_url
     
     def _validate_base64_image(self, data_url: str):
-        """Validate base64 image data."""
+        """
+        Validate that a data URL contains a base64-encoded image and that the image meets minimum resolution requirements.
+        
+        This function expects a data URL containing ';base64,' and verifies the decoded image can be parsed and has width and height each greater than or equal to MIN_IMAGE_RESOLUTION.
+        
+        Parameters:
+            data_url (str): A data URL with a base64-encoded image (e.g., "data:image/png;base64,...").
+        
+        Raises:
+            ValueError: If the data URL is malformed, the base64 cannot be decoded or parsed as an image, or the image dimensions are smaller than MIN_IMAGE_RESOLUTION.
+        """
         try:
             # Extract base64 data
             if ';base64,' in data_url:
@@ -308,7 +330,15 @@ class AtlasCloudImageToVideoTool(BaseTool):
             raise ValueError(f"Invalid base64 image: {e}")
     
     async def _download_video(self, video_url: str) -> bytes:
-        """Download video from URL."""
+        """
+        Download video content from the given URL.
+        
+        Returns:
+            bytes: Raw video bytes downloaded from the URL.
+        
+        Raises:
+            AtlasCloudError: If the HTTP request fails or the response has an error status.
+        """
         try:
             # Determine if URL needs authentication
             if any(pattern in video_url for pattern in ['/api/', '/model/', '/prediction/']):
@@ -337,17 +367,17 @@ class AtlasCloudImageToVideoTool(BaseTool):
         hop_session: Optional[str] = None
     ) -> Optional[Tuple[str, str]]:
         """
-        Save video to workspace videos/ directory.
+        Save the provided video bytes into the workspace's videos/ directory and return its paths.
         
-        Args:
-            video_bytes: Video file content
-            image_name: Original image name for filename generation
-            model: Model name for filename generation
-            filename: Optional custom filename
-            hop_session: Optional hop session for remote saving
-            
+        Parameters:
+            video_bytes (bytes): Raw video file content to write.
+            image_name (str): Source image name or path used to generate a default filename when `filename` is not provided.
+            model (str): Model identifier used to include a short model name in the default filename.
+            filename (Optional[str]): Optional custom filename (with or without `.mp4` extension); if omitted a timestamped name is generated.
+            hop_session (Optional[str]): Optional hop/remote session identifier used when saving to a remote workspace context.
+        
         Returns:
-            Tuple of (relative_path, absolute_path) or None on failure
+            Optional[Tuple[str, str]]: Tuple (relative_path, absolute_path) on success, where `relative_path` is "videos/{filename}" and `absolute_path` is the saved file's full path; returns `None` on failure.
         """
         try:
             # Generate filename if not provided
@@ -441,22 +471,33 @@ class AtlasCloudImageToVideoTool(BaseTool):
     
     async def execute(self, **kwargs) -> ToolResult:
         """
-        Execute image-to-video generation.
+        Generate a video from an input image using Atlas Cloud and save the result to the workspace.
         
-        Args:
-            image: Image source (required)
-            prompt: Optional text prompt (max 2000 chars)
-            model: Video model (default: bytedance/seedance-v1-lite-i2v-480p)
-            duration: Video duration 5-10s (default: 5)
-            aspect_ratio: Video aspect ratio (default: 16:9)
-            last_image: Optional end frame
-            seed: Random seed
-            filename: Custom filename
-            timeout: Max wait time (default: 300s)
-            hop_session: Optional hop session
-            
+        Processes the provided image source (workspace path, HTTP/HTTPS URL, or base64 data URL), validates inputs, submits an image-to-video generation request to Atlas Cloud, waits for completion, downloads the resulting MP4, and writes it to the workspace (local or remote). Returns a structured ToolResult describing success or failure.
+        
+        Parameters:
+            image (str): Required image source (workspace path, http(s) URL, or data URL). Must be provided.
+            prompt (str, optional): Text prompt for generation (max 2000 characters).
+            model (str, optional): Model identifier (defaults to "bytedance/seedance-v1-lite-i2v-480p"); must be one of IMAGE_TO_VIDEO_MODELS keys.
+            duration (int, optional): Video duration in seconds (5–10, default 5).
+            aspect_ratio (str, optional): Aspect ratio (e.g., "16:9", default "16:9"); must be one of ASPECT_RATIOS.
+            last_image (str, optional): Optional end-frame image (same formats as `image`).
+            seed (int, optional): Optional randomness seed for generation.
+            filename (str, optional): Optional custom output filename (without extension); otherwise a name is generated.
+            timeout (int, optional): Maximum wait time in seconds for generation (default 300).
+            hop_session (str, optional): Optional hop/session identifier for remote workspace operations.
+        
         Returns:
-            ToolResult with video file path or error
+            ToolResult: On success, `data` contains keys:
+                - video_path: relative workspace path to the saved video (e.g., "videos/…").
+                - absolute_path: absolute path to the saved video in the current context.
+                - request_id: Atlas Cloud request identifier.
+                - model: model used.
+                - duration: duration in seconds.
+                - aspect_ratio: aspect ratio used.
+                - cost_estimate: human-readable estimated cost (e.g., "$0.25").
+                - message: success message.
+            On failure, `success` is False and `error` contains a descriptive message.
         """
         # Extract parameters
         image = kwargs.get("image")

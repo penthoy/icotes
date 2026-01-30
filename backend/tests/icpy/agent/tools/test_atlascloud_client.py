@@ -25,19 +25,49 @@ from icpy.agent.tools.atlascloud.exceptions import (
 
 @pytest.fixture
 def mock_api_key():
-    """Mock API key for testing."""
+    """
+    Provide a fixed mock API key for tests.
+    
+    Returns:
+        str: A fake API key string ("test-api-key-12345") used by tests.
+    """
     return "test-api-key-12345"
 
 
 @pytest.fixture
 def client(mock_api_key):
-    """Create client instance with mock API key."""
+    """
+    Create an AtlasCloudClient configured with the provided API key.
+    
+    Parameters:
+        mock_api_key (str): Fake API key string provided by the test fixture.
+    
+    Returns:
+        AtlasCloudClient: Client instance configured with `mock_api_key`.
+    """
     return AtlasCloudClient(api_key=mock_api_key)
 
 
 @pytest.fixture
 def mock_video_generation_response():
-    """Mock successful video generation response."""
+    """
+    Mock a queued video generation API response for use in tests.
+    
+    Returns:
+        dict: A simulated API response containing:
+            - id (str): The request identifier.
+            - status (str): Generation status, set to "queued".
+            - urls (dict): Endpoints related to the request:
+                - result (str): URL to fetch the generation result.
+                - cancel (str): URL to cancel the request.
+            - model (str): Model identifier used for generation.
+            - input (dict): Input parameters supplied to the generation request:
+                - model (str): Model identifier (repeated).
+                - prompt (str): Text prompt driving generation.
+                - duration (int): Requested video duration in seconds.
+                - aspect_ratio (str): Requested aspect ratio (e.g., "16:9").
+            - created_at (str): ISO 8601 timestamp of request creation.
+    """
     return {
         "id": "test-request-123",
         "status": "queued",
@@ -58,7 +88,19 @@ def mock_video_generation_response():
 
 @pytest.fixture
 def mock_video_result_complete():
-    """Mock completed video result."""
+    """
+    Return a mock payload representing a completed video generation result.
+    
+    Returns:
+        result (dict): A dictionary mimicking the API response for a finished video job with keys:
+            - id (str): The request identifier.
+            - status (str): Completion status, set to "completed".
+            - urls (dict): Contains API resource links; includes `result` pointing to the result endpoint.
+            - model (str): The model identifier used for generation.
+            - output (list[str]): List of generated video URLs (first element is the MP4 URL).
+            - has_nsfw_contents (list[bool]): Per-output flags indicating NSFW content presence.
+            - created_at (str): ISO 8601 timestamp of creation.
+    """
     return {
         "id": "test-request-123",
         "status": "completed",
@@ -76,7 +118,17 @@ def mock_video_result_complete():
 
 @pytest.fixture
 def mock_video_result_failed():
-    """Mock failed video result."""
+    """
+    Return a mock video result object representing a failed generation.
+    
+    Returns:
+        dict: A dictionary with shape of a failed video result:
+            - id (str): Request identifier.
+            - status (str): Always "failed".
+            - urls (dict): Mapping of asset types to URLs (empty for failures).
+            - logs (str): Failure message or diagnostic logs.
+            - created_at (str): ISO 8601 timestamp of creation.
+    """
     return {
         "id": "test-request-123",
         "status": "failed",
@@ -583,8 +635,9 @@ class TestVideoResultModel:
 @pytest.mark.asyncio
 async def test_real_api_text_to_video():
     """
-    Integration test with real API (requires ATLASCLOUD_API_KEY).
-    Marked as integration test - skip by default.
+    Integration test that performs a real text-to-video generation against the Atlas Cloud API.
+    
+    Skips the test if the `ATLASCLOUD_API_KEY` environment variable is not set. Verifies the generated result reaches a completed state and provides a valid HTTP-accessible video URL.
     """
     import os
     api_key = os.getenv("ATLASCLOUD_API_KEY")

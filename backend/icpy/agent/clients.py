@@ -169,9 +169,12 @@ def get_moonshot_client():
 
 def get_ollama_client():
     """
-    Initializes and returns an OpenAI client configured for Ollama's local API.
+    Create an OpenAI client configured to communicate with a local Ollama API.
     
-    Uses OLLAMA_URL environment variable
+    Reads the OLLAMA_URL environment variable and raises a ValueError with an example if it is not set.
+    
+    Returns:
+        OpenAI: An OpenAI client with api_key set to "ollama" and base_url set to the value of OLLAMA_URL.
     """
     ollama_url = os.getenv("OLLAMA_URL")
     if not ollama_url:
@@ -185,15 +188,12 @@ def get_ollama_client():
 
 def get_atlascloud_client():
     """
-    Initializes and returns an OpenAI client configured for Atlas Cloud API.
+    Create an OpenAI client configured to call Atlas Cloud's LLM API (chat completions).
     
-    Atlas Cloud provides unified access to 300+ AI models including:
-    - LLMs (DeepSeek, Qwen, Kimi, Claude, etc.) via OpenAI-compatible API
-    - Video generation (Seedance, Kling, Veo, Sora, Wan, etc.)
-    - Image generation (Flux, Imagen, Ideogram, etc.)
+    This client is intended for LLM inference via Atlas Cloud's OpenAI-compatible endpoint. Atlas Cloud also provides separate video and image generation services; use atlascloud.client.AtlasCloudClient for those workflows.
     
-    For video/image generation, use the atlascloud.client.AtlasCloudClient instead.
-    This client is specifically for LLM inference via chat completions.
+    Returns:
+        OpenAI: An OpenAI client configured with the ATLASCLOUD_API_KEY and base URL https://api.atlascloud.ai/v1
     """
     atlascloud_api_key = os.getenv("ATLASCLOUD_API_KEY")
     if not atlascloud_api_key:
@@ -206,5 +206,4 @@ def get_atlascloud_client():
         api_key=atlascloud_api_key,
         base_url="https://api.atlascloud.ai/v1",
     )
-
 

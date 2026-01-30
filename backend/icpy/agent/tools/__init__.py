@@ -48,7 +48,11 @@ __all__ = [
 
 # Auto-register all tools when module is imported
 def _register_default_tools():
-    """Register all default tools with the registry"""
+    """
+    Register the package's predefined tool instances with the global tool registry.
+    
+    This makes the module's default tools available for discovery and use by registering them with the global ToolRegistry.
+    """
     registry = get_tool_registry()
     
     # Register each tool
