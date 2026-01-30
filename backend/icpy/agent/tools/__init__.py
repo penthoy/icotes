@@ -18,6 +18,9 @@ from .elevenlabs_tts_tool import ElevenLabsTTSTool
 from .elevenlabs_stt_tool import ElevenLabsSTTTool
 from .elevenlabs_music_tool import ElevenLabsMusicTool
 from .elevenlabs_sfx_tool import ElevenLabsSoundEffectsTool
+from .atlascloud.ttv_tool import AtlasCloudTextToVideoTool
+from .atlascloud.itv_tool import AtlasCloudImageToVideoTool
+from .atlascloud.v2v_sound_tool import AtlasCloudVideoToVideoSoundTool
 
 __all__ = [
     "BaseTool",
@@ -38,6 +41,9 @@ __all__ = [
     "ElevenLabsSTTTool",
     "ElevenLabsMusicTool",
     "ElevenLabsSoundEffectsTool",
+    "AtlasCloudTextToVideoTool",
+    "AtlasCloudImageToVideoTool",
+    "AtlasCloudVideoToVideoSoundTool",
 ]
 
 # Auto-register all tools when module is imported
@@ -60,6 +66,9 @@ def _register_default_tools():
     registry.register(ElevenLabsSTTTool())
     registry.register(ElevenLabsMusicTool())
     registry.register(ElevenLabsSoundEffectsTool())
+    registry.register(AtlasCloudTextToVideoTool())
+    registry.register(AtlasCloudImageToVideoTool())
+    registry.register(AtlasCloudVideoToVideoSoundTool())
 
 # Register tools on import
 _register_default_tools() 
