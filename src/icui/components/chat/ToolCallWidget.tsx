@@ -9,8 +9,8 @@
  * - ICUI theme integration
  */
 
-import React, { useState, useCallback } from 'react';
-import { ChevronDown, ChevronRight, Clock, CheckCircle, XCircle, Wrench, Play } from 'lucide-react';
+import React, { useState, useCallback, useEffect } from 'react';
+import { ChevronDown, ChevronRight, Clock, CheckCircle, XCircle, Wrench } from 'lucide-react';
 
 import { ToolCallStatus, ToolCallCategory } from '../../types/chatTypes';
 
@@ -44,6 +44,20 @@ const ToolCallWidget: React.FC<ToolCallWidgetProps> = ({
   onRetry
 }) => {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
+  const [currentTime, setCurrentTime] = useState(Date.now());
+
+  // Update current time every second when tool is running
+  useEffect(() => {
+    if (toolCall.status === 'running' && toolCall.startTime) {
+      const interval = setInterval(() => {
+        setCurrentTime(Date.now());
+      }, 1000);
+      return () => clearInterval(interval);
+    } else if (toolCall.status !== 'running') {
+      // Update one final time when tool finishes to capture the final duration
+      setCurrentTime(Date.now());
+    }
+  }, [toolCall.status, toolCall.startTime]);
 
   // Toggle expansion
   const handleToggleExpansion = useCallback(() => {
@@ -66,7 +80,9 @@ const ToolCallWidget: React.FC<ToolCallWidgetProps> = ({
       case 'pending':
         return <Clock size={16} className="text-yellow-500" />;
       case 'running':
-        return <Play size={16} className="text-blue-500 animate-pulse" />;
+        return (
+          <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+        );
       case 'success':
         return <CheckCircle size={16} className="text-green-500" />;
       case 'error':
@@ -95,21 +111,25 @@ const ToolCallWidget: React.FC<ToolCallWidgetProps> = ({
 
   // Calculate execution time
   const getExecutionTime = () => {
-    if (toolCall.startTime && toolCall.endTime) {
-      const startTime = toolCall.startTime instanceof Date ? toolCall.startTime : new Date(toolCall.startTime);
+    if (!toolCall.startTime) return null;
+    
+    const startTime = toolCall.startTime instanceof Date ? toolCall.startTime : new Date(toolCall.startTime);
+    if (isNaN(startTime.getTime())) return null;
+    
+    // If tool has finished and endTime is set, use endTime
+    if (toolCall.endTime && toolCall.status !== 'running') {
       const endTime = toolCall.endTime instanceof Date ? toolCall.endTime : new Date(toolCall.endTime);
-      if (!isNaN(startTime.getTime()) && !isNaN(endTime.getTime())) {
+      if (!isNaN(endTime.getTime())) {
         const seconds = ((endTime.getTime() - startTime.getTime()) / 1000).toFixed(2);
         return `Duration: ${seconds}s`;
       }
-    } else if (toolCall.startTime) {
-      const startTime = toolCall.startTime instanceof Date ? toolCall.startTime : new Date(toolCall.startTime);
-      if (!isNaN(startTime.getTime())) {
-        const seconds = ((Date.now() - startTime.getTime()) / 1000).toFixed(2);
-        return `Duration: ${seconds}s`;
-      }
     }
-    return null;
+    
+    // If tool is running, use currentTime for live updates
+    // If tool is finished but endTime is invalid, use Date.now() (not stale currentTime)
+    const timeToUse = toolCall.status === 'running' ? currentTime : Date.now();
+    const seconds = ((timeToUse - startTime.getTime()) / 1000).toFixed(2);
+    return `Duration: ${seconds}s`;
   };
 
   return (

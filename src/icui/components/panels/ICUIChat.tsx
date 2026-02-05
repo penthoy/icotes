@@ -811,6 +811,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
                   message={message}
                   className=""
                   highlightQuery={search.isOpen ? search.query : ''}
+                  allMessages={messages}
                 />
               </div>
             ))}

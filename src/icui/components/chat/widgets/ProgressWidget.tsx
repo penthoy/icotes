@@ -4,7 +4,7 @@
  * Simple, clean progress indicator for tool execution
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { ChevronDown, ChevronRight, Loader2, CheckCircle, XCircle } from 'lucide-react';
 import { ToolCallData } from '../ToolCallWidget';
 
@@ -24,6 +24,20 @@ const ProgressWidget: React.FC<ProgressWidgetProps> = ({
   onRetry
 }) => {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
+  const [currentTime, setCurrentTime] = useState(Date.now());
+
+  // Update current time every second when tool is running
+  useEffect(() => {
+    if (toolCall.status === 'running' && toolCall.startTime) {
+      const interval = setInterval(() => {
+        setCurrentTime(Date.now());
+      }, 1000);
+      return () => clearInterval(interval);
+    } else if (toolCall.status !== 'running') {
+      // Update one final time when tool finishes to capture the final duration
+      setCurrentTime(Date.now());
+    }
+  }, [toolCall.status, toolCall.startTime]);
 
   // Toggle expansion
   const handleToggleExpansion = useCallback(() => {
@@ -31,6 +45,29 @@ const ProgressWidget: React.FC<ProgressWidgetProps> = ({
       setIsExpanded(prev => !prev);
     }
   }, [expandable]);
+
+  // Calculate execution time
+  const getExecutionTime = () => {
+    if (!toolCall.startTime) return null;
+    
+    const startTime = toolCall.startTime instanceof Date ? toolCall.startTime : new Date(toolCall.startTime);
+    if (isNaN(startTime.getTime())) return null;
+    
+    // If tool has finished and endTime is set, use endTime
+    if (toolCall.endTime && toolCall.status !== 'running') {
+      const endTime = toolCall.endTime instanceof Date ? toolCall.endTime : new Date(toolCall.endTime);
+      if (!isNaN(endTime.getTime())) {
+        const seconds = ((endTime.getTime() - startTime.getTime()) / 1000).toFixed(2);
+        return `${seconds}s`;
+      }
+    }
+    
+    // If tool is running, use currentTime for live updates
+    // If tool is finished but endTime is invalid, use Date.now() (not stale currentTime)
+    const timeToUse = toolCall.status === 'running' ? currentTime : Date.now();
+    const seconds = ((timeToUse - startTime.getTime()) / 1000).toFixed(2);
+    return `${seconds}s`;
+  };
 
   // Get status icon
   const getStatusIcon = () => {
@@ -74,12 +111,6 @@ const ProgressWidget: React.FC<ProgressWidgetProps> = ({
         <div className="flex-shrink-0">
           {getStatusIcon()}
         </div>
-
-        <div className="flex-1 min-w-0">
-          <span className="text-sm" style={{ color: 'var(--icui-text-primary)' }}>
-            {toolCall.status === 'running' ? 'Executing tools...' : 'Tool execution complete'}
-          </span>
-        </div>
       </div>
 
       {/* Simple expanded content */}
@@ -87,9 +118,9 @@ const ProgressWidget: React.FC<ProgressWidgetProps> = ({
         <div className="px-3 py-2">
           <div className="text-xs text-gray-600">
             Status: {toolCall.status}
-            {toolCall.startTime && toolCall.endTime && (
+            {getExecutionTime() && (
               <span className="ml-3">
-                Duration: {((toolCall.endTime.getTime() - toolCall.startTime.getTime()) / 1000).toFixed(2)}s
+                Duration: {getExecutionTime()}
               </span>
             )}
           </div>

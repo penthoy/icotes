@@ -19,7 +19,7 @@ import { ToolCallData } from '../ToolCallWidget';
 
 export interface ModelHelper {
   stripAllToolText(text: string): string;
-  parseToolCalls(content: string, message: ChatMessageType): { content: string; toolCalls: ToolCallData[] };
+  parseToolCalls(content: string, message: ChatMessageType, requestTimestamp?: string): { content: string; toolCalls: ToolCallData[] };
   tryParseArgs(text: string): any;
   mapToolNameToCategory(toolName: string): { category: 'file' | 'code' | 'data' | 'network' | 'custom'; mappedName: string };
   parseFileEditData(toolCall: ToolCallData): any;
@@ -28,6 +28,12 @@ export interface ModelHelper {
 }
 
 export class GenericModelHelper implements ModelHelper {
+  private normalizeDate(value: any): Date | undefined {
+    if (!value) return undefined;
+    const d = value instanceof Date ? value : new Date(value);
+    return isNaN(d.getTime()) ? undefined : d;
+  }
+
   
   /**
    * Remove model-specific tool execution text blocks and executing indicators
@@ -146,24 +152,63 @@ export class GenericModelHelper implements ModelHelper {
 
   /**
    * Parse tool calls from message content
+   * @param requestTimestamp - Optional timestamp from the original user request for accurate duration calculation
    */
-  parseToolCalls(content: string, message: ChatMessageType): { content: string; toolCalls: ToolCallData[] } {
+  parseToolCalls(content: string, message: ChatMessageType, requestTimestamp?: string): { content: string; toolCalls: ToolCallData[] } {
+    // Calculate the effective start time for tools from:
+    // 1. requestTimestamp (user message timestamp - most accurate for completed tools)
+    // 2. message.timestamp (AI message timestamp - fallback)
+    const effectiveStartTime = this.normalizeDate(requestTimestamp) || this.normalizeDate(message.timestamp);
+    const responseTime = this.normalizeDate(message.timestamp);
+    
     // Prefer toolCalls provided by backend in metadata
     const metaToolCalls: ToolCallMeta[] | undefined = message.metadata?.toolCalls;
     if (metaToolCalls && metaToolCalls.length > 0) {
-      const toolCalls: ToolCallData[] = metaToolCalls.map(tc => ({
-        id: tc.id,
-        toolName: tc.toolName,
-        category: (tc.category as any) || 'custom',
-        status: (tc.status as any) || 'running',
-        progress: typeof tc.progress === 'number' ? tc.progress : undefined,
-        input: tc.input,
-        output: tc.output,
-        error: tc.error,
-        startTime: tc.startedAt ? new Date(tc.startedAt) : undefined,
-        endTime: tc.endedAt ? new Date(tc.endedAt) : undefined,
-        metadata: tc.metadata
-      }));
+      const toolCalls: ToolCallData[] = metaToolCalls.map(tc => {
+        const status = (tc.status as any) || 'running';
+        const startedAt = this.normalizeDate(tc.startedAt);
+        const endedAt = this.normalizeDate(tc.endedAt);
+
+        // Duration calculation priority:
+        // 1. Backend startedAt/endedAt if provided
+        // 2. requestTimestamp -> message.timestamp for completed tools
+        // 3. Client-side cache for running tools
+        let startTime: Date | undefined;
+        let endTime: Date | undefined;
+
+        if (startedAt) {
+          // Backend provided a start time - use it directly
+          startTime = startedAt;
+        } else if (effectiveStartTime) {
+          // Use requestTimestamp (user message time) as start time
+          startTime = effectiveStartTime;
+        } else {
+          // Fallback to current time if no timing info available
+          startTime = new Date();
+        }
+
+        if (endedAt) {
+          // Backend provided end time - use it directly
+          endTime = endedAt;
+        } else if (status !== 'running') {
+          // Tool finished - use response time (AI message timestamp) as end time
+          endTime = responseTime || new Date();
+        }
+
+        return {
+          id: tc.id,
+          toolName: tc.toolName,
+          category: (tc.category as any) || 'custom',
+          status,
+          progress: typeof tc.progress === 'number' ? tc.progress : undefined,
+          input: tc.input,
+          output: tc.output,
+          error: tc.error,
+          startTime,
+          endTime,
+          metadata: tc.metadata
+        };
+      });
       return { content: this.stripAllToolText(content), toolCalls };
     }
 
@@ -331,6 +376,11 @@ export class GenericModelHelper implements ModelHelper {
         createdNames.add(sanitizedName);
     const indexInBlock = innerToolIndex; // capture before increment for metadata
     innerToolIndex++; // Increment inner tool index for uniqueness
+        
+        // Use requestTimestamp (user message time) as start, responseTime (AI message time) as end
+        const startTime = effectiveStartTime || new Date();
+        const endTime = responseTime || new Date();
+
         const toolCall: ToolCallData = {
           id: idBase,
           toolName: mappedName,
@@ -340,8 +390,8 @@ export class GenericModelHelper implements ModelHelper {
           input,
           output: parsedOutput,
           error: parsedError,
-          startTime: message.timestamp ? new Date(message.timestamp) : new Date(),
-          endTime: message.timestamp ? new Date(message.timestamp) : new Date(),
+          startTime,
+          endTime,
           metadata: {
             originalToolName: toolName,
       executionBlock: toolBlock.trim(),
@@ -379,8 +429,12 @@ export class GenericModelHelper implements ModelHelper {
             const input: any = headerArgsText ? this.tryParseArgs(headerArgsText) : {};
             const { category, mappedName } = this.mapToolNameToCategory(headerToolName);
 
+            const runningId = `${toolId}-${innerToolIndex}-${headerToolKey}`;
+            // Use effectiveStartTime (requestTimestamp) for running tools
+            const runningStartTime = effectiveStartTime || new Date();
+
             toolCalls.push({
-              id: `${toolId}-${headerToolKey}-running`,
+              id: runningId,
               toolName: mappedName,
               category,
               status: 'running',
@@ -388,7 +442,7 @@ export class GenericModelHelper implements ModelHelper {
               input,
               output: undefined,
               error: undefined,
-              startTime: message.timestamp ? new Date(message.timestamp) : new Date(),
+              startTime: runningStartTime,
               metadata: {
                 originalToolName: headerToolName,
                 executionBlock: toolBlock.trim(),
@@ -434,7 +488,7 @@ export class GenericModelHelper implements ModelHelper {
             input,
             output: undefined,
             error: undefined,
-            startTime: message.timestamp ? new Date(message.timestamp) : new Date(),
+            startTime: effectiveStartTime || new Date(),
             metadata: {
               originalToolName: toolName,
               incomplete: true,
@@ -457,7 +511,7 @@ export class GenericModelHelper implements ModelHelper {
         progress: undefined,
         input: { action: 'Executing tools...' },
         output: undefined,
-        startTime: message.timestamp ? new Date(message.timestamp) : new Date(),
+        startTime: effectiveStartTime || new Date(),
         endTime: undefined,
         metadata: {
           isProgress: true
