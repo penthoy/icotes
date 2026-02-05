@@ -209,18 +209,26 @@ class WriteDocTool(BaseTool):
                 )
             
             # Write file
-            success = await self._write_file_bytes(abs_path, file_bytes, ctx_id)
+            write_result = await self._write_file_bytes(abs_path, file_bytes, ctx_id)
             
-            if not success:
+            if not write_result.get("success"):
                 return ToolResult(
                     success=False,
-                    error=f"Failed to write file: {abs_path}"
+                    error=write_result.get("error", f"Failed to write file: {abs_path}")
+                )
+            
+            # Verify file exists on disk
+            verification = await self._verify_file_exists(abs_path, ctx_id)
+            if not verification.get("exists"):
+                return ToolResult(
+                    success=False,
+                    error=f"File verification failed: {abs_path} - {verification.get('error', 'file not found on disk after write')}"
                 )
             
             # Build response
             response_data = {
                 "format": doc_format.value,
-                "size": len(file_bytes),
+                "size": verification.get("size", len(file_bytes)),
                 "message": f"Successfully created {doc_format.value.upper()} document"
             }
             
@@ -280,15 +288,65 @@ class WriteDocTool(BaseTool):
             logger.warning(f"[WriteDocTool] Could not create directories: {e}")
             return False
     
-    async def _write_file_bytes(self, file_path: str, data: bytes, ctx_id: str) -> bool:
+    async def _write_file_bytes(self, file_path: str, data: bytes, ctx_id: str) -> Dict[str, Any]:
         """
         Write bytes to file.
         
         Handles both local and hop contexts.
+        Returns dict with 'success' and 'error' keys.
         """
         try:
             filesystem_service = None
             
+            try:
+                from icpy.services.context_router import get_context_router as _get_cr
+                router = await _get_cr()
+                filesystem_service = await router.get_filesystem_for_namespace(ctx_id)
+            except Exception as e:
+                logger.debug(f"[WriteDocTool] Context router not available: {e}")
+            
+            if filesystem_service is None:
+                filesystem_service = await get_filesystem_service()
+            
+            # Try binary write first (preferred for all document types)
+            if hasattr(filesystem_service, 'write_file_binary'):
+                result = await filesystem_service.write_file_binary(file_path, data)
+                if result:
+                    return {"success": True}
+                else:
+                    return {"success": False, "error": "write_file_binary returned False"}
+            
+            # Fallback to direct file write for local contexts
+            # Note: Don't use write_file() as it's for text content, not binary
+            logger.debug(f"[WriteDocTool] Using direct file write for: {file_path}")
+            with open(file_path, 'wb') as f:
+                f.write(data)
+            return {"success": True}
+            
+        except Exception as e:
+            logger.error(f"[WriteDocTool] Failed to write file: {e}")
+            return {"success": False, "error": str(e)}
+
+    async def _verify_file_exists(self, file_path: str, ctx_id: str) -> Dict[str, Any]:
+        """
+        Verify that the file was actually created on disk.
+        
+        Returns dict with 'exists', 'size', and optionally 'error' keys.
+        """
+        try:
+            # For local context, use os.path directly
+            if ctx_id == "local":
+                if os.path.exists(file_path):
+                    size = os.path.getsize(file_path)
+                    if size > 0:
+                        return {"exists": True, "size": size}
+                    else:
+                        return {"exists": False, "error": "file created but is empty (0 bytes)"}
+                else:
+                    return {"exists": False, "error": "file not found on disk after write"}
+            
+            # For remote contexts, use filesystem service
+            filesystem_service = None
             try:
                 from icpy.services.context_router import get_context_router as _get_cr
                 router = await _get_cr()
@@ -299,21 +357,24 @@ class WriteDocTool(BaseTool):
             if filesystem_service is None:
                 filesystem_service = await get_filesystem_service()
             
-            # Try binary write first
-            if hasattr(filesystem_service, 'write_file_binary'):
-                await filesystem_service.write_file_binary(file_path, data)
-                return True
+            # Check if file exists via service
+            if hasattr(filesystem_service, 'get_file_info'):
+                file_info = await filesystem_service.get_file_info(file_path)
+                if file_info:
+                    size = getattr(file_info, 'size', 0) if hasattr(file_info, 'size') else file_info.get('size', 0)
+                    return {"exists": True, "size": size}
             
-            # Try regular write_file with content
-            if hasattr(filesystem_service, 'write_file'):
-                await filesystem_service.write_file(file_path, data)
-                return True
+            if hasattr(filesystem_service, 'file_exists'):
+                exists = await filesystem_service.file_exists(file_path)
+                if exists:
+                    return {"exists": True, "size": 0}
             
-            # Fallback to direct file write for local
-            with open(file_path, 'wb') as f:
-                f.write(data)
-            return True
+            # Final fallback to os check
+            if os.path.exists(file_path):
+                return {"exists": True, "size": os.path.getsize(file_path)}
+            
+            return {"exists": False, "error": "file not found via any verification method"}
             
         except Exception as e:
-            logger.error(f"[WriteDocTool] Failed to write file: {e}")
-            return False
+            logger.error(f"[WriteDocTool] File verification error: {e}")
+            return {"exists": False, "error": f"verification error: {str(e)}"}

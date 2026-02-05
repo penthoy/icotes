@@ -844,10 +844,12 @@ class ChatService:
                     full_content += error_content
                     
                     # End the stream and store the message
+                    end_ts = datetime.now(timezone.utc).isoformat()
                     await self._send_streaming_end(
                         chat_session_id,
                         message_id,
-                        reply_to_id
+                        reply_to_id,
+                        timestamp=end_ts
                     )
                     
                     # Store the final error message for persistence
@@ -855,7 +857,7 @@ class ChatService:
                         id=message_id,
                         content=full_content,
                         sender=MessageSender.AI,
-                        timestamp=datetime.now(timezone.utc).isoformat(),
+                        timestamp=end_ts,
                         agent_id=self.config.agent_id,
                         session_id=chat_session_id,
                         metadata={'reply_to': reply_to_id, 'streaming_complete': True, 'has_error': True}
@@ -871,10 +873,12 @@ class ChatService:
                     full_content += batched
                 buffer.clear()
             # Send stream end
+            end_ts = datetime.now(timezone.utc).isoformat()
             await self._send_streaming_end(
                 chat_session_id,
                 message_id,
-                reply_to_id
+                reply_to_id,
+                timestamp=end_ts
             )
             
             # Store the final complete message for persistence (do not broadcast)
@@ -883,7 +887,7 @@ class ChatService:
                 id=message_id,
                 content=full_content,
                 sender=MessageSender.AI,
-                timestamp=datetime.now(timezone.utc).isoformat(),
+                timestamp=end_ts,
                 agent_id=self.config.agent_id,
                 session_id=chat_session_id,
                 metadata={'reply_to': reply_to_id, 'streaming_complete': True}
@@ -919,10 +923,12 @@ class ChatService:
                 )
                 
                 # End the stream
+                end_ts = datetime.now(timezone.utc).isoformat()
                 await self._send_streaming_end(
                     chat_session_id,
                     message_id,
-                    reply_to_id
+                    reply_to_id,
+                    timestamp=end_ts
                 )
                 
                 # Store the error message for persistence
@@ -930,7 +936,7 @@ class ChatService:
                     id=message_id,
                     content=error_content,
                     sender=MessageSender.AI,
-                    timestamp=datetime.now(timezone.utc).isoformat(),
+                    timestamp=end_ts,
                     agent_id=self.config.agent_id,
                     session_id=chat_session_id,
                     metadata={'reply_to': reply_to_id, 'streaming_complete': True, 'has_error': True}
@@ -1292,13 +1298,15 @@ class ChatService:
                 # Continue to store what we have
 
             # Send stream end
+            end_ts = datetime.now(timezone.utc).isoformat()
             await self._send_streaming_end(
                 user_message.session_id,
                 message_id,
                 user_message.id,
                 agent_type=agent_type,
                 agent_id=agent_type,
-                agent_name=agent_type.title()
+                agent_name=agent_type.title(),
+                timestamp=end_ts
             )
             
             # Store the final complete message for persistence
@@ -1318,7 +1326,7 @@ class ChatService:
                     id=message_id,
                     content=full_content,
                     sender=MessageSender.AI,
-                    timestamp=datetime.now(timezone.utc).isoformat(),
+                    timestamp=end_ts,
                     agent_id=agent_type,
                     session_id=user_message.session_id,
                     metadata={'reply_to': user_message.id, 'streaming_complete': True, 'agentType': agent_type},
@@ -1421,7 +1429,7 @@ class ChatService:
         except Exception as e:
             logger.error(f"Failed to send streaming chunk: {e}")
 
-    async def _send_streaming_end(self, session_id: str, message_id: str, reply_to_id: str = None, agent_type: str = None, agent_id: str = None, agent_name: str = None):
+    async def _send_streaming_end(self, session_id: str, message_id: str, reply_to_id: str = None, agent_type: str = None, agent_id: str = None, agent_name: str = None, timestamp: str = None):
         """Send streaming end message"""
         try:
             # Use provided agent info or fall back to default OpenAI config
@@ -1431,11 +1439,13 @@ class ChatService:
             
             logger.debug(f"[STREAM-DEBUG] _send_streaming_end called for session {session_id}, agent_type={final_agent_type}")
             
+            end_ts = timestamp or datetime.now(timezone.utc).isoformat()
+
             streaming_message = {
                 'type': 'message_stream',
                 'id': message_id,
                 'sender': MessageSender.AI.value,
-                'timestamp': datetime.now(timezone.utc).isoformat(),
+                'timestamp': end_ts,
                 'agentId': final_agent_id,
                 'agentName': final_agent_name,
                 'agentType': final_agent_type,

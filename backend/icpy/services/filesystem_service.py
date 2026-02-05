@@ -911,6 +911,69 @@ class FileSystemService:
             logger.error(f"Error writing file {file_path}: {e}")
             return False
 
+    async def write_file_binary(self, file_path: str, content: bytes, create_dirs: bool = True) -> bool:
+        """Write binary content to file.
+        
+        Args:
+            file_path: Path to the file to write
+            content: Binary content to write
+            create_dirs: Whether to create parent directories if they don't exist
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Create parent directories if needed
+            if create_dirs:
+                dir_path = os.path.dirname(file_path)
+                if dir_path:
+                    os.makedirs(dir_path, exist_ok=True)
+            
+            # Check if file exists for operation tracking
+            file_exists = os.path.exists(file_path)
+            
+            # Write binary content
+            async with aiofiles.open(file_path, 'wb') as f:
+                await f.write(content)
+            
+            # Verify file was written
+            if not os.path.exists(file_path):
+                logger.error(f"File verification failed: {file_path} does not exist after write")
+                return False
+            
+            # Update file index
+            file_info = await self.get_file_info(file_path)
+            if file_info:
+                self.file_index[file_path] = file_info
+            
+            # Update statistics
+            if file_exists:
+                self.stats['files_written'] += 1
+            else:
+                self.stats['files_created'] += 1
+            
+            self.stats['total_bytes_written'] += len(content)
+            
+            # Invalidate caches
+            self._info_cache.pop(file_path, None)
+            self._read_cache.pop(file_path, None)
+
+            # Publish event (buffered)
+            await self._publish_or_buffer('fs.file_written', {
+                'file_path': file_path,
+                'size': len(content),
+                'binary': True,
+                'created': not file_exists,
+                'timestamp': time.time()
+            })
+            
+            logger.info(f"Binary file written successfully: {file_path} ({len(content)} bytes)")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error writing binary file {file_path}: {e}")
+            return False
+
     async def create_directory(self, dir_path: str, parents: bool = True) -> bool:
         """Create a directory.
         

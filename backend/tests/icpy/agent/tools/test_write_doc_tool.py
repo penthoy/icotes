@@ -81,8 +81,9 @@ class TestWriteDocTool:
         
         with patch.object(tool, '_parse_path_parameter', return_value=("local", "/workspace/output.csv")):
             with patch.object(tool, '_ensure_directories', return_value=True):
-                with patch.object(tool, '_write_file_bytes', return_value=True) as mock_write:
-                    result = await tool.execute(filePath="output.csv", content=content)
+                with patch.object(tool, '_write_file_bytes', return_value={"success": True}) as mock_write:
+                    with patch.object(tool, '_verify_file_exists', return_value={"exists": True, "size": 100}):
+                        result = await tool.execute(filePath="output.csv", content=content)
         
         assert result.success is True
         assert result.data["format"] == "csv"
@@ -104,8 +105,9 @@ class TestWriteDocTool:
         
         with patch.object(tool, '_parse_path_parameter', return_value=("local", "/workspace/output.csv")):
             with patch.object(tool, '_ensure_directories', return_value=True):
-                with patch.object(tool, '_write_file_bytes', return_value=True) as mock_write:
-                    result = await tool.execute(filePath="output.csv", content=content)
+                with patch.object(tool, '_write_file_bytes', return_value={"success": True}) as mock_write:
+                    with patch.object(tool, '_verify_file_exists', return_value={"exists": True, "size": 50}):
+                        result = await tool.execute(filePath="output.csv", content=content)
         
         assert result.success is True
         written_bytes = mock_write.call_args[0][1]
@@ -120,8 +122,9 @@ class TestWriteDocTool:
         
         with patch.object(tool, '_parse_path_parameter', return_value=("local", "/workspace/output.tsv")):
             with patch.object(tool, '_ensure_directories', return_value=True):
-                with patch.object(tool, '_write_file_bytes', return_value=True) as mock_write:
-                    result = await tool.execute(filePath="output.tsv", content=content)
+                with patch.object(tool, '_write_file_bytes', return_value={"success": True}) as mock_write:
+                    with patch.object(tool, '_verify_file_exists', return_value={"exists": True, "size": 30}):
+                        result = await tool.execute(filePath="output.tsv", content=content)
         
         assert result.success is True
         assert result.data["format"] == "tsv"
@@ -140,11 +143,11 @@ class TestWriteDocTool:
         
         with patch.object(tool, '_parse_path_parameter', return_value=("local", "/workspace/test.csv")):
             with patch.object(tool, '_ensure_directories', return_value=True):
-                with patch.object(tool, '_write_file_bytes', return_value=False):
+                with patch.object(tool, '_write_file_bytes', return_value={"success": False, "error": "disk full"}):
                     result = await tool.execute(filePath="test.csv", content=content)
         
         assert result.success is False
-        assert "Failed to write file" in result.error
+        assert "disk full" in result.error
     
     @pytest.mark.asyncio
     async def test_return_full_data(self):
@@ -155,16 +158,17 @@ class TestWriteDocTool:
         
         with patch.object(tool, '_parse_path_parameter', return_value=("local", "/workspace/output.csv")):
             with patch.object(tool, '_ensure_directories', return_value=True):
-                with patch.object(tool, '_write_file_bytes', return_value=True):
-                    with patch.object(tool, '_format_path_info', return_value={
-                        "formatted_path": "local:/workspace/output.csv",
-                        "namespace": "local",
-                    }):
-                        result = await tool.execute(
-                            filePath="output.csv",
-                            content=content,
-                            returnFullData=True
-                        )
+                with patch.object(tool, '_write_file_bytes', return_value={"success": True}):
+                    with patch.object(tool, '_verify_file_exists', return_value={"exists": True, "size": 50}):
+                        with patch.object(tool, '_format_path_info', return_value={
+                            "formatted_path": "local:/workspace/output.csv",
+                            "namespace": "local",
+                        }):
+                            result = await tool.execute(
+                                filePath="output.csv",
+                                content=content,
+                                returnFullData=True
+                            )
         
         assert result.success is True
         assert "filePath" in result.data
@@ -180,12 +184,13 @@ class TestWriteDocTool:
         
         with patch.object(tool, '_parse_path_parameter', return_value=("local", "/workspace/new/dir/output.csv")):
             with patch.object(tool, '_ensure_directories', return_value=True) as mock_ensure:
-                with patch.object(tool, '_write_file_bytes', return_value=True):
-                    result = await tool.execute(
-                        filePath="new/dir/output.csv",
-                        content=content,
-                        createDirectories=True
-                    )
+                with patch.object(tool, '_write_file_bytes', return_value={"success": True}):
+                    with patch.object(tool, '_verify_file_exists', return_value={"exists": True, "size": 30}):
+                        result = await tool.execute(
+                            filePath="new/dir/output.csv",
+                            content=content,
+                            createDirectories=True
+                        )
         
         assert result.success is True
         mock_ensure.assert_called_once()
@@ -199,12 +204,13 @@ class TestWriteDocTool:
         
         with patch.object(tool, '_parse_path_parameter', return_value=("local", "/workspace/output.csv")):
             with patch.object(tool, '_ensure_directories', return_value=True):
-                with patch.object(tool, '_write_file_bytes', return_value=True) as mock_write:
-                    result = await tool.execute(
-                        filePath="output.csv",
-                        content=content,
-                        options={"delimiter": ";"}
-                    )
+                with patch.object(tool, '_write_file_bytes', return_value={"success": True}) as mock_write:
+                    with patch.object(tool, '_verify_file_exists', return_value={"exists": True, "size": 20}):
+                        result = await tool.execute(
+                            filePath="output.csv",
+                            content=content,
+                            options={"delimiter": ";"}
+                        )
         
         assert result.success is True
         # With custom delimiter, content should use semicolons
@@ -228,8 +234,9 @@ class TestWriteDocToolExcel:
         
         with patch.object(tool, '_parse_path_parameter', return_value=("local", "/workspace/output.xlsx")):
             with patch.object(tool, '_ensure_directories', return_value=True):
-                with patch.object(tool, '_write_file_bytes', return_value=True) as mock_write:
-                    result = await tool.execute(filePath="output.xlsx", content=content)
+                with patch.object(tool, '_write_file_bytes', return_value={"success": True}) as mock_write:
+                    with patch.object(tool, '_verify_file_exists', return_value={"exists": True, "size": 5000}):
+                        result = await tool.execute(filePath="output.xlsx", content=content)
         
         assert result.success is True
         assert result.data["format"] == "xlsx"
@@ -251,8 +258,9 @@ class TestWriteDocToolWord:
         
         with patch.object(tool, '_parse_path_parameter', return_value=("local", "/workspace/output.docx")):
             with patch.object(tool, '_ensure_directories', return_value=True):
-                with patch.object(tool, '_write_file_bytes', return_value=True) as mock_write:
-                    result = await tool.execute(filePath="output.docx", content=content)
+                with patch.object(tool, '_write_file_bytes', return_value={"success": True}) as mock_write:
+                    with patch.object(tool, '_verify_file_exists', return_value={"exists": True, "size": 3000}):
+                        result = await tool.execute(filePath="output.docx", content=content)
         
         assert result.success is True
         assert result.data["format"] == "docx"
@@ -279,8 +287,9 @@ class TestWriteDocToolPowerPoint:
         
         with patch.object(tool, '_parse_path_parameter', return_value=("local", "/workspace/presentation.pptx")):
             with patch.object(tool, '_ensure_directories', return_value=True):
-                with patch.object(tool, '_write_file_bytes', return_value=True) as mock_write:
-                    result = await tool.execute(filePath="presentation.pptx", content=content)
+                with patch.object(tool, '_write_file_bytes', return_value={"success": True}) as mock_write:
+                    with patch.object(tool, '_verify_file_exists', return_value={"exists": True, "size": 8000}):
+                        result = await tool.execute(filePath="presentation.pptx", content=content)
         
         assert result.success is True
         assert result.data["format"] == "pptx"
