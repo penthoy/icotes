@@ -39,6 +39,8 @@ const API_KEY_GROUPS = {
     { key: 'OLLAMA_URL', label: 'Ollama URL', placeholder: 'http://localhost:11434/v1', description: 'URL endpoint for Ollama local AI models' },
   ],
   'Services': [
+    { key: 'ELEVENLABS_API_KEY', label: 'ElevenLabs API Key', placeholder: 'sk-...', description: 'For text-to-speech audio generation' },
+    { key: 'ATLASCLOUD_API_KEY', label: 'AtlasCloud API Key', placeholder: 'sk-...', description: 'For video/image generation via AtlasCloud' },
     { key: 'MAILERSEND_API_KEY', label: 'MailerSend API Key', placeholder: 'mlsn...', description: 'For email notifications' },
     { key: 'PUSHOVER_USER', label: 'Pushover User Key', placeholder: 'u...', description: 'Pushover user key for notifications' },
     { key: 'PUSHOVER_TOKEN', label: 'Pushover App Token', placeholder: 'a...', description: 'Pushover application token' },
