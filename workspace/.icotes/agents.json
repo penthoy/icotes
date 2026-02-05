@@ -149,7 +149,7 @@
   "settings": {
     "showCategories": true,
     "showDescriptions": true,
-    "defaultAgent": "GeminiAgent",
+    "defaultAgent": "KimiAgent",
     "autoReloadOnChange": true
   }
 }
