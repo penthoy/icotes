@@ -1,5 +1,5 @@
 """
-Tests for ImagenTool with Phase 7 updates (hop support, resolution control, custom filenames)
+Tests for ImagenTool with Phase 9 updates (google-genai SDK with native aspect_ratio)
 """
 import pytest
 import base64
@@ -13,18 +13,48 @@ from icpy.agent.tools.base_tool import ToolResult
 
 
 @pytest.fixture
-def mock_genai():
-    """Mock Google Generative AI SDK"""
-    with patch('icpy.agent.tools.imagen_tool.genai') as mock:
-        yield mock
+def mock_genai_client():
+    """Mock Google Gen AI SDK client (v1.60+)"""
+    # Create a mock response with image parts
+    mock_response = MagicMock()
+    mock_part = MagicMock()
+    mock_inline_data = MagicMock()
+    
+    # Create a minimal PNG for the mock response
+    try:
+        from PIL import Image
+        img = Image.new('RGB', (10, 10), color='blue')
+        buffer = BytesIO()
+        img.save(buffer, format='PNG')
+        mock_inline_data.data = buffer.getvalue()
+    except ImportError:
+        mock_inline_data.data = base64.b64decode(
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
+        )
+    
+    mock_inline_data.mime_type = 'image/png'
+    mock_part.inline_data = mock_inline_data
+    mock_response.parts = [mock_part]
+    mock_response.text = None
+    
+    mock_client = MagicMock()
+    mock_client.models.generate_content.return_value = mock_response
+    
+    # Patch both the client and the provider
+    with patch('icpy.agent.tools.imagen_tool.GENAI_PROVIDER', 'google-genai'), \
+         patch('icpy.agent.tools.imagen_tool.GENAI_AVAILABLE', True):
+        yield mock_client
 
 
 @pytest.fixture
-def mock_filesystem():
-    """Mock contextual filesystem"""
+def mock_filesystem(tmp_path):
+    """Mock contextual filesystem with proper root_path pointing to tmp_path for cleanup"""
     fs = AsyncMock()
     fs.write_file = AsyncMock()
     fs.read_file = AsyncMock()
+    # Set root_path to tmp_path so files are written to pytest's temp directory
+    # This ensures automatic cleanup after tests
+    fs.root_path = str(tmp_path)
     return fs
 
 
@@ -55,10 +85,11 @@ def sample_image_bytes():
 
 
 @pytest.fixture
-def imagen_tool(mock_genai):
-    """Create ImagenTool instance with mocked environment"""
+def imagen_tool(mock_genai_client):
+    """Create ImagenTool instance with mocked environment and SDK"""
     with patch.dict(os.environ, {'GOOGLE_API_KEY': 'test-key'}):
         tool = ImagenTool()
+        tool._genai_client = mock_genai_client
         return tool
 
 
@@ -70,7 +101,6 @@ class TestImagenToolBasic:
         assert imagen_tool.name == "generate_image"
         assert "custom filenames" in imagen_tool.description
         assert "hop contexts" in imagen_tool.description
-        assert "resolution" in imagen_tool.description
         
         # Check new parameters
         assert "filename" in imagen_tool.parameters["properties"]
@@ -520,7 +550,7 @@ class TestImagenToolIntegration:
     @pytest.mark.asyncio
     async def test_full_generation_workflow(self, imagen_tool, mock_filesystem, mock_context, sample_image_bytes):
         """Test complete image generation workflow"""
-        # Mock the Gemini model response
+        # Mock the Google Gen AI SDK response
         mock_response = Mock()
         mock_part = Mock()
         mock_inline = Mock()
@@ -528,11 +558,17 @@ class TestImagenToolIntegration:
         mock_inline.mime_type = 'image/png'
         mock_part.inline_data = mock_inline
         mock_response.parts = [mock_part]
+        mock_response.text = None
         
-        mock_model = Mock()
-        mock_model.generate_content.return_value = mock_response
+        # Create mock client
+        mock_client = MagicMock()
+        mock_client.models.generate_content.return_value = mock_response
         
-        with patch('icpy.agent.tools.imagen_tool.genai.GenerativeModel', return_value=mock_model), \
+        # Inject the mock client directly
+        imagen_tool._genai_client = mock_client
+        
+        with patch.dict(os.environ, {'GOOGLE_API_KEY': 'test-key'}), \
+             patch('icpy.agent.tools.imagen_tool.GENAI_PROVIDER', 'google-genai'), \
              patch('icpy.agent.tools.imagen_tool.get_contextual_filesystem', return_value=mock_filesystem), \
              patch('icpy.agent.tools.imagen_tool.get_current_context', return_value=mock_context):
             
@@ -547,10 +583,8 @@ class TestImagenToolIntegration:
             # Should succeed
             assert result.success
             assert result.data is not None
-            assert 'imageData' in result.data
             assert 'filePath' in result.data
             assert result.data['filePath'] == 'test_output.png'
-            assert 'resizedTo' in result.data
 
     @pytest.mark.asyncio
     async def test_edit_workflow_with_file_path(self, imagen_tool, mock_filesystem, mock_context, sample_image_bytes, tmp_path):
@@ -559,7 +593,7 @@ class TestImagenToolIntegration:
         test_file = tmp_path / "input.png"
         test_file.write_bytes(sample_image_bytes)
         
-        # Mock the Gemini model response
+        # Mock the Google Gen AI SDK response
         mock_response = Mock()
         mock_part = Mock()
         mock_inline = Mock()
@@ -567,14 +601,21 @@ class TestImagenToolIntegration:
         mock_inline.mime_type = 'image/png'
         mock_part.inline_data = mock_inline
         mock_response.parts = [mock_part]
+        mock_response.text = None
         
-        mock_model = Mock()
-        mock_model.generate_content.return_value = mock_response
+        # Create mock client
+        mock_client = MagicMock()
+        mock_client.models.generate_content.return_value = mock_response
         
-        # Mock filesystem for saving output
+        # Inject the mock client directly
+        imagen_tool._genai_client = mock_client
+        
+        # Mock filesystem for saving output - configure read_file_binary to return actual bytes
+        mock_filesystem.read_file_binary = AsyncMock(return_value=sample_image_bytes)
         mock_filesystem.write_file = AsyncMock()
         
-        with patch('icpy.agent.tools.imagen_tool.genai.GenerativeModel', return_value=mock_model), \
+        with patch.dict(os.environ, {'GOOGLE_API_KEY': 'test-key'}), \
+             patch('icpy.agent.tools.imagen_tool.GENAI_PROVIDER', 'google-genai'), \
              patch('icpy.agent.tools.imagen_tool.get_contextual_filesystem', return_value=mock_filesystem), \
              patch('icpy.agent.tools.imagen_tool.get_current_context', return_value=mock_context):
             
@@ -589,8 +630,8 @@ class TestImagenToolIntegration:
             assert result.success
             assert result.data is not None
             assert result.data.get('mode') == 'edit'
-            # Should have loaded the input file
-            assert mock_model.generate_content.called
+            # Should have called the mock client
+            assert mock_client.models.generate_content.called
 
     @pytest.mark.asyncio
     async def test_generation_in_remote_context(self, imagen_tool, sample_image_bytes):
@@ -608,7 +649,7 @@ class TestImagenToolIntegration:
         mock_filesystem.write_file_binary = AsyncMock(return_value=True)
         mock_filesystem.write_file = AsyncMock()
         
-        # Mock the Gemini model response
+        # Mock the Google Gen AI SDK response
         mock_response = Mock()
         mock_part = Mock()
         mock_inline = Mock()
@@ -616,11 +657,17 @@ class TestImagenToolIntegration:
         mock_inline.mime_type = 'image/png'
         mock_part.inline_data = mock_inline
         mock_response.parts = [mock_part]
+        mock_response.text = None
         
-        mock_model = Mock()
-        mock_model.generate_content.return_value = mock_response
+        # Create mock client
+        mock_client = MagicMock()
+        mock_client.models.generate_content.return_value = mock_response
         
-        with patch('icpy.agent.tools.imagen_tool.genai.GenerativeModel', return_value=mock_model), \
+        # Inject the mock client directly
+        imagen_tool._genai_client = mock_client
+        
+        with patch.dict(os.environ, {'GOOGLE_API_KEY': 'test-key'}), \
+             patch('icpy.agent.tools.imagen_tool.GENAI_PROVIDER', 'google-genai'), \
              patch('icpy.agent.tools.imagen_tool.get_contextual_filesystem', return_value=mock_filesystem), \
              patch('icpy.agent.tools.imagen_tool.get_current_context', return_value=remote_context):
             
@@ -633,6 +680,83 @@ class TestImagenToolIntegration:
             assert result.success
             # Should have attempted remote write via write_file_binary
             assert mock_filesystem.write_file_binary.called
+
+
+class TestImagenToolEditContentsStructure:
+    """Tests specifically for verifying edit mode API call structure"""
+    
+    @pytest.mark.asyncio
+    async def test_edit_mode_contents_structure(self, imagen_tool, mock_filesystem, mock_context, sample_image_bytes, tmp_path):
+        """
+        Verify that edit mode sends [image_part, text_instruction] to the API.
+        
+        This test ensures the fix for the edit mode bug where the API was receiving
+        malformed contents structure.
+        """
+        # Create a real test file
+        test_file = tmp_path / "input.png"
+        test_file.write_bytes(sample_image_bytes)
+        
+        # Mock the Google Gen AI SDK response
+        mock_response = Mock()
+        mock_part = Mock()
+        mock_inline = Mock()
+        # Return DIFFERENT bytes to prove a new image was generated
+        edited_image = sample_image_bytes + b'EDITED'
+        mock_inline.data = edited_image
+        mock_inline.mime_type = 'image/png'
+        mock_part.inline_data = mock_inline
+        mock_response.parts = [mock_part]
+        mock_response.text = None
+        
+        # Create mock client that captures the call args
+        mock_client = MagicMock()
+        mock_client.models.generate_content.return_value = mock_response
+        
+        # Inject the mock client
+        imagen_tool._genai_client = mock_client
+        
+        # Mock filesystem
+        mock_filesystem.read_file_binary = AsyncMock(return_value=sample_image_bytes)
+        mock_filesystem.write_file = AsyncMock()
+        
+        with patch.dict(os.environ, {'GOOGLE_API_KEY': 'test-key'}), \
+             patch('icpy.agent.tools.imagen_tool.GENAI_PROVIDER', 'google-genai'), \
+             patch('icpy.agent.tools.imagen_tool.get_contextual_filesystem', return_value=mock_filesystem), \
+             patch('icpy.agent.tools.imagen_tool.get_current_context', return_value=mock_context):
+            
+            result = await imagen_tool.execute(
+                prompt="make it brighter",
+                image_data=f"file://{test_file}",
+                mode="edit",
+                save_to_workspace=True
+            )
+            
+            # Should succeed
+            assert result.success
+            assert result.data.get('mode') == 'edit'
+            
+            # Verify the API was called
+            assert mock_client.models.generate_content.called
+            
+            # Get the call arguments
+            call_kwargs = mock_client.models.generate_content.call_args
+            contents = call_kwargs.kwargs.get('contents')
+            
+            # Contents should be a list with exactly 2 elements: [Part, string]
+            assert contents is not None
+            assert isinstance(contents, list), f"Expected list, got {type(contents)}"
+            assert len(contents) == 2, f"Expected 2 elements, got {len(contents)}"
+            
+            # First element should be Part.from_bytes (not a raw dict)
+            image_element = contents[0]
+            assert hasattr(image_element, 'inline_data') or hasattr(image_element, 'data'), \
+                f"First element should be a Part object, got {type(image_element)}"
+            
+            # Second element should be the instruction string
+            text_element = contents[1]
+            assert isinstance(text_element, str), f"Second element should be string, got {type(text_element)}"
+            assert "make it brighter" in text_element
 
 
 if __name__ == '__main__':

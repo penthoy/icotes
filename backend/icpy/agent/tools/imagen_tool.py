@@ -8,6 +8,7 @@ Requires: GOOGLE_API_KEY environment variable
 
 Phase 7 Update: Added hop support, resolution control, and custom filenames
 Phase 8 Update: Added aspect ratio presets and parameter support
+Phase 9 Update: Upgraded to google-genai SDK 1.60+ with native aspect_ratio support
 """
 from __future__ import annotations
 
@@ -29,34 +30,36 @@ try:
 except ImportError:
     _friendly_namespace_for_context = None  # Graceful fallback
 
-# Import native Google SDK for image generation (robust import)
-# Prefer legacy google-generativeai for Gemini image preview flow; fallback to google-genai if needed
+# Import Google Gen AI SDK (v1.60+) for image generation with native aspect_ratio support
 GENAI_AVAILABLE = False
 GENAI_PROVIDER = None
-genai = None  # type: ignore
-try:  # Prefer legacy package that supports GenerativeModel.generate_content image parts
-    import google.generativeai as genai  # type: ignore
+genai_client = None  # type: ignore
+genai_types = None  # type: ignore
+try:
+    from google import genai as google_genai  # type: ignore
+    from google.genai import types as google_genai_types  # type: ignore
     GENAI_AVAILABLE = True
-    GENAI_PROVIDER = 'google-generativeai'
+    GENAI_PROVIDER = 'google-genai'
+    genai_types = google_genai_types
 except Exception as _e1:
+    # Fallback to legacy SDK if new one not available
     try:
-        import google.genai as genai  # type: ignore
+        import google.generativeai as legacy_genai  # type: ignore
         GENAI_AVAILABLE = True
-        GENAI_PROVIDER = 'google-genai'
+        GENAI_PROVIDER = 'google-generativeai-legacy'
     except Exception as _e2:
-        # Keep tool importable; we'll error at execute() with a clear message
         GENAI_AVAILABLE = False
         GENAI_PROVIDER = None
         _GENAI_IMPORT_ERROR = _e2
 
-# Import PIL for image resizing
+# Import PIL for image resizing (only used for custom dimensions not covered by API presets)
 try:
     from PIL import Image
     import io
     PIL_AVAILABLE = True
 except ImportError:
     PIL_AVAILABLE = False
-    logging.warning("PIL (Pillow) not available - resolution control disabled")
+    logging.warning("PIL (Pillow) not available - custom dimension resize disabled")
 
 logger = logging.getLogger(__name__)
 
@@ -77,11 +80,13 @@ class ImagenTool(BaseTool):
         self.name = "generate_image"
         self.description = (
             "Generate or edit images using Google's Gemini models. "
-            "Supports custom filenames, arbitrary resolutions, aspect ratios, and hop contexts (remote servers). "
+            "Supports custom filenames, aspect ratios, and hop contexts (remote servers). "
             "If image_data is supplied the prompt is treated as edit instructions. "
             "IMPORTANT: When editing images, use the file:// path from previous generation results (e.g., imageUrl field). "
             "The tool automatically loads the file from the current context (local or remote hop). "
-            "Use 'aspect_ratio' (e.g., 16:9, 9:16, 1:1, 4:3, 21:9) for common sizes or 'width'/'height' for explicit pixels. "
+            "ASPECT RATIOS: Use 'aspect_ratio' parameter with supported presets: "
+            "1:1 (square), 2:3, 3:2, 3:4, 4:3, 4:5, 5:4, 9:16 (vertical/phone), 16:9 (widescreen/film), 21:9 (ultrawide/cinematic). "
+            "Images are cropped and resized to the correct aspect ratio without stretching or distortion. "
             "Use 'filename' parameter to specify a custom filename (without extension)."
         )
         self.parameters = {
@@ -94,7 +99,13 @@ class ImagenTool(BaseTool):
                 "aspect_ratio": {
                     "type": "string",
                     "enum": list(ASPECT_RATIO_SPECS.keys()),
-                    "description": "Optional aspect ratio preset (e.g., 16:9, 9:16, 1:1). If provided without width/height, a recommended resolution is used."
+                    "description": (
+                        "Aspect ratio preset for image generation. Supported values: "
+                        "1:1 (1024x1024, square), 2:3 (832x1248, portrait), 3:2 (1248x832, landscape), "
+                        "3:4 (864x1184), 4:3 (1184x864), 4:5 (896x1152), 5:4 (1152x896), "
+                        "9:16 (768x1344, vertical/phone), 16:9 (1344x768, widescreen), 21:9 (1536x672, ultrawide). "
+                        "Images are generated natively at the correct ratio by the API."
+                    )
                 },
                 "image_data": {
                     "type": "string",
@@ -119,11 +130,19 @@ class ImagenTool(BaseTool):
                 },
                 "width": {
                     "type": "integer",
-                    "description": "Desired image width in pixels (requires Pillow). Generated image will be resized to this width maintaining aspect ratio"
+                    "description": (
+                        "Custom width in pixels for post-generation resize. "
+                        "PREFER using 'aspect_ratio' instead for native API generation. "
+                        "Only use width/height for custom sizes not covered by aspect_ratio presets."
+                    )
                 },
                 "height": {
                     "type": "integer",
-                    "description": "Desired image height in pixels (requires Pillow). Generated image will be resized to this height maintaining aspect ratio"
+                    "description": (
+                        "Custom height in pixels for post-generation resize. "
+                        "PREFER using 'aspect_ratio' instead for native API generation. "
+                        "Only use width/height for custom sizes not covered by aspect_ratio presets."
+                    )
                 }
             },
             "required": ["prompt"]
@@ -137,12 +156,12 @@ class ImagenTool(BaseTool):
         ]
         self._model = self._primary_model
         
-        # Configure native Google SDK (allow tests to run without key)
+        # Configure Google Gen AI SDK (v1.60+) with native aspect ratio support
         api_key = os.environ.get("GOOGLE_API_KEY")
         self._genai_client = None
         if not GENAI_AVAILABLE:
             logger.warning(
-                "Google SDK not available (install 'google-genai' or 'google-generativeai'). "
+                "Google SDK not available (install 'google-genai>=1.60.0'). "
                 "ImagenTool will return a clear error at execute() if invoked."
             )
         elif not api_key:
@@ -152,18 +171,16 @@ class ImagenTool(BaseTool):
         else:
             try:
                 if GENAI_PROVIDER == 'google-genai':
-                    # New SDK detected, but this tool currently targets the legacy Gemini content API for image parts.
-                    # We'll initialize a client for feature detection, but generation path is not enabled.
-                    try:
-                        from google import genai as _genai  # type: ignore
-                        self._genai_client = _genai.Client(api_key=api_key)  # type: ignore[attr-defined]
-                        logger.info("ImagenTool detected google-genai; client initialized (image generation via this SDK not enabled)")
-                    except Exception as ce:
-                        logger.warning(f"google-genai client init failed: {ce}")
+                    # New SDK (v1.60+) with native aspect_ratio support
+                    from google import genai as _genai  # type: ignore
+                    self._genai_client = _genai.Client(api_key=api_key)  # type: ignore[attr-defined]
+                    logger.info("ImagenTool initialized with google-genai SDK (native aspect_ratio support enabled)")
                 else:
-                    # Legacy SDK uses module-level configure + GenerativeModel
-                    genai.configure(api_key=api_key)  # type: ignore[attr-defined]
-                    logger.info("ImagenTool initialized with google-generativeai module")
+                    # Legacy SDK fallback (no native aspect_ratio)
+                    import google.generativeai as legacy_genai  # type: ignore
+                    legacy_genai.configure(api_key=api_key)  # type: ignore[attr-defined]
+                    self._legacy_genai = legacy_genai
+                    logger.info("ImagenTool initialized with legacy google-generativeai module (no native aspect_ratio)")
                 logger.info(
                     f"ImagenTool ready; provider={GENAI_PROVIDER}, model={self._model}"
                 )
@@ -172,10 +189,10 @@ class ImagenTool(BaseTool):
 
     def _extract_image_from_native_response(self, response) -> Tuple[Optional[bytes], Optional[str]]:
         """
-        Extract binary image data from native Google SDK response.
+        Extract binary image data from Google SDK response.
         
-        Native SDK returns images in response.parts with inline_data containing
-        binary image bytes (not base64 encoded).
+        For google-genai SDK: Images are in response.parts with inline_data
+        For legacy SDK: Same structure via GenerativeModel.generate_content
         
         Returns: tuple of (image_bytes, mime_type) or (None, None)
         """
@@ -508,7 +525,8 @@ class ImagenTool(BaseTool):
         self, 
         image_bytes: bytes, 
         width: Optional[int] = None, 
-        height: Optional[int] = None
+        height: Optional[int] = None,
+        crop_to_aspect: bool = False
     ) -> Tuple[bytes, str]:
         """
         Resize image to specified dimensions.
@@ -517,12 +535,15 @@ class ImagenTool(BaseTool):
             image_bytes: Original image bytes
             width: Target width (optional)
             height: Target height (optional)
+            crop_to_aspect: If True, crop to target aspect ratio first, then resize.
+                           This prevents stretching/distortion. (Default: False for backward compat)
             
         Returns:
             Tuple of (resized_image_bytes, mime_type)
             
         Note: If only one dimension is provided, maintains aspect ratio.
-              If both provided, resizes to exact dimensions.
+              If both provided and crop_to_aspect=True, crops to match aspect ratio then resizes.
+              If both provided and crop_to_aspect=False, resizes to exact dimensions (may distort).
         """
         if not PIL_AVAILABLE:
             logger.warning("PIL not available, returning original image")
@@ -538,6 +559,26 @@ class ImagenTool(BaseTool):
             
             # Calculate target dimensions
             if width and height:
+                if crop_to_aspect:
+                    # Crop to target aspect ratio first, then resize
+                    # This prevents stretching/distortion
+                    target_ratio = width / height
+                    original_ratio = original_width / original_height
+                    
+                    if original_ratio > target_ratio:
+                        # Original is wider - crop width
+                        new_width = int(original_height * target_ratio)
+                        left = (original_width - new_width) // 2
+                        img = img.crop((left, 0, left + new_width, original_height))
+                        logger.info(f"Cropped width: {original_width} -> {new_width} (centered)")
+                    elif original_ratio < target_ratio:
+                        # Original is taller - crop height
+                        new_height = int(original_width / target_ratio)
+                        top = (original_height - new_height) // 2
+                        img = img.crop((0, top, original_width, top + new_height))
+                        logger.info(f"Cropped height: {original_height} -> {new_height} (centered)")
+                    # else: ratios match, no crop needed
+                
                 # Both dimensions specified - resize to exact
                 target_size = (width, height)
             elif width:
@@ -568,41 +609,100 @@ class ImagenTool(BaseTool):
             # Return original on error
             return image_bytes, "image/png"
 
-    def _build_content(self, prompt: str, image_part: Optional[Dict[str, Any]]) -> Any:
+    def _build_content(self, prompt: str, image_part: Optional[Dict[str, Any]]) -> str:
+        """Build the text prompt/instruction for the API call.
+        
+        Note: This now returns only the text instruction. The image_part is handled
+        separately in _attempt() using proper SDK Part.from_bytes() conversion.
+        """
         if image_part:
-            instruction = (
+            return (
                 f"Edit the provided image according to these instructions: {prompt}. "
                 "Preserve original style and quality unless requested otherwise."
             )
-            return [image_part, instruction]
         return f"Generate an image: {prompt}"
 
-    def _attempt(self, content: Any, model_name: str):
+    def _attempt(self, content: str, model_name: str, aspect_ratio: Optional[str] = None, image_part: Optional[Dict] = None):
+        """
+        Attempt to generate content with the specified model.
+        
+        Uses google-genai SDK (v1.60+) with native aspect_ratio support via image_config.
+        
+        Args:
+            content: The text prompt/instruction (string only)
+            model_name: The model to use
+            aspect_ratio: Optional aspect ratio (e.g., "16:9") for native API support
+            image_part: Optional decoded image dict {'data': bytes, 'mime_type': str} for editing mode
+            
+        Returns:
+            Tuple of (response, error_message)
+        """
         try:
-            if GENAI_PROVIDER == 'google-genai':
-                return None, (
-                    "google-genai SDK detected, but ImagenTool currently requires 'google-generativeai' for the"
-                    " Gemini image preview flow. Please install 'google-generativeai' in the backend environment."
+            if GENAI_PROVIDER == 'google-genai' and self._genai_client:
+                # New SDK path with native aspect_ratio support
+                from google.genai import types as gtypes  # type: ignore
+                
+                # Build contents - handle both generation and editing
+                if image_part:
+                    # Edit mode: image FIRST, then text instruction
+                    # The order matters for edit operations
+                    image_sdk_part = gtypes.Part.from_bytes(
+                        data=image_part['data'],
+                        mime_type=image_part['mime_type']
+                    )
+                    contents = [image_sdk_part, content]
+                    logger.info(f"[ImagenTool] Edit mode: image_part ({len(image_part['data'])} bytes, {image_part['mime_type']}) + instruction")
+                else:
+                    # Generation mode: just the prompt
+                    contents = content
+                
+                # Build config with native aspect_ratio support
+                config_dict: Dict[str, Any] = {
+                    "response_modalities": ["IMAGE", "TEXT"],
+                }
+                
+                # Add image_config with aspect_ratio if provided
+                if aspect_ratio and aspect_ratio in ASPECT_RATIO_SPECS:
+                    config_dict["image_config"] = gtypes.ImageConfig(
+                        aspect_ratio=aspect_ratio,
+                    )
+                    logger.info(f"[ImagenTool] Using NATIVE aspect_ratio={aspect_ratio} via image_config")
+                
+                config = gtypes.GenerateContentConfig(**config_dict)
+                
+                response = self._genai_client.models.generate_content(
+                    model=model_name,
+                    contents=contents,
+                    config=config,
                 )
-            else:
-                # Legacy SDK path (preferred)
-                model = genai.GenerativeModel(model_name)  # type: ignore[attr-defined]
+                return response, None
+                
+            elif GENAI_PROVIDER == 'google-generativeai-legacy':
+                # Legacy SDK path (no native aspect_ratio support)
+                model = self._legacy_genai.GenerativeModel(model_name)  # type: ignore[attr-defined]
+                logger.warning("[ImagenTool] Using legacy SDK - aspect_ratio will be handled via post-resize")
                 return model.generate_content(content), None
+            else:
+                return None, f"No valid Google SDK provider available (got: {GENAI_PROVIDER})"
+                
         except Exception as e:
+            logger.error(f"[ImagenTool] _attempt error: {e}")
             return None, str(e)
 
     async def execute(self, **kwargs) -> ToolResult:
         """
-        Execute image generation using native Google SDK.
+        Execute image generation using Google Gen AI SDK.
         
-        Phase 7 Update: Added hop support, resolution control, and custom filenames.
+        Phase 9 Update: Uses google-genai SDK (v1.60+) with native aspect_ratio support.
+        Images are generated at the correct aspect ratio by the API, no post-resize needed.
         
         Args:
             prompt: Text description of image to generate
             save_to_workspace: Whether to save image to workspace (default: True)
             filename: Optional custom filename (without extension)
-            width: Optional target width in pixels
-            height: Optional target height in pixels
+            aspect_ratio: Aspect ratio preset (1:1, 16:9, 9:16, etc.)
+            width: Optional custom width (triggers post-resize if not matching API presets)
+            height: Optional custom height (triggers post-resize if not matching API presets)
             
         Returns:
             ToolResult with image data
@@ -647,17 +747,23 @@ class ImagenTool(BaseTool):
             input_image_mime = kwargs.get("image_mime_type")
             mode = kwargs.get("mode", "auto")
             custom_filename = kwargs.get("filename")
+            aspect_ratio_label = kwargs.get("aspect_ratio")
+            explicit_width = kwargs.get("width")
+            explicit_height = kwargs.get("height")
+            
             # Resolve target size with helper: simpler and unit-testable
             target_width, target_height = resolve_dimensions(
-                width=kwargs.get("width"),
-                height=kwargs.get("height"),
-                aspect_ratio_label=kwargs.get("aspect_ratio"),
+                width=explicit_width,
+                height=explicit_height,
+                aspect_ratio_label=aspect_ratio_label,
                 has_input_image=bool(kwargs.get("image_data")),
             )
-            if target_width or target_height:
-                logger.info(
-                    f"Resolved target dimensions: {target_width or 'auto'}x{target_height or 'auto'}"
-                )
+            
+            # Log resolved dimensions
+            if aspect_ratio_label:
+                logger.info(f"Aspect ratio '{aspect_ratio_label}' requested -> target: {target_width}x{target_height}")
+            elif target_width or target_height:
+                logger.info(f"Resolved target dimensions: {target_width or 'auto'}x{target_height or 'auto'}")
 
             image_part = None
             if (mode in ("auto", "edit")) and input_image_data:
@@ -671,14 +777,26 @@ class ImagenTool(BaseTool):
             logger.info(f"ImagenTool mode={effective_mode} prompt_len={len(prompt)} model={self._primary_model}")
             content = self._build_content(prompt, image_part)
 
+            # Determine if we should use native aspect ratio (only for presets, not custom dimensions)
+            use_native_aspect_ratio = (
+                aspect_ratio_label in ASPECT_RATIO_SPECS 
+                and not explicit_width 
+                and not explicit_height
+                and GENAI_PROVIDER == 'google-genai'
+            )
+            api_aspect_ratio = aspect_ratio_label if use_native_aspect_ratio else None
+            
+            if use_native_aspect_ratio:
+                logger.info(f"[ImagenTool] Using NATIVE API aspect_ratio={aspect_ratio_label}")
+            
             attempted = []
-            response, err = self._attempt(content, self._primary_model)
+            response, err = self._attempt(content, self._primary_model, aspect_ratio=api_aspect_ratio, image_part=image_part)
             attempted.append({"model": self._primary_model, "error": err})
             mime_err_sig = "Unhandled generated data mime type"
             if err and mime_err_sig in err:
                 logger.warning(f"Mime type error on primary model, trying fallbacks: {err}")
                 for fb in self._fallback_models:
-                    r, e = self._attempt(content, fb)
+                    r, e = self._attempt(content, fb, aspect_ratio=api_aspect_ratio, image_part=image_part)
                     attempted.append({"model": fb, "error": e})
                     if r and not e:
                         response = r
@@ -691,7 +809,7 @@ class ImagenTool(BaseTool):
             if response is None:
                 return ToolResult(success=False, error=f"Image generation API call failed: {err}", data={"attemptedModels": attempted})
             
-            # Extract image data from native response
+            # Extract image data from response
             image_bytes, mime_type = self._extract_image_from_native_response(response)
             
             if not image_bytes:
@@ -710,10 +828,27 @@ class ImagenTool(BaseTool):
             
             logger.info(f"Successfully extracted image data ({len(image_bytes)} bytes, {mime_type})")
             
-            # Resize image if dimensions specified (either explicit or derived from aspect ratio)
-            if target_width or target_height:
+            # Resize logic (Phase 9 update):
+            # 1. If using native API aspect_ratio, NO resize needed - API generates correct ratio
+            # 2. If explicit width/height specified, resize to those dimensions
+            # 3. If aspect_ratio preset but legacy SDK, crop+resize from API output
+            should_resize = False
+            
+            if use_native_aspect_ratio:
+                # API generated at correct aspect ratio - no resize needed
+                logger.info(f"[ImagenTool] Native aspect_ratio={aspect_ratio_label} used - NO post-resize needed")
+            elif (explicit_width or explicit_height) and (target_width or target_height):
+                # Explicit custom dimensions - resize to those
+                should_resize = True
                 image_bytes, mime_type = self._resize_image(image_bytes, target_width, target_height)
-                logger.info(f"Image resized to {target_width or 'auto'}x{target_height or 'auto'}")
+                logger.info(f"Image resized to custom dimensions {target_width or 'auto'}x{target_height or 'auto'}")
+            elif aspect_ratio_label in ASPECT_RATIO_SPECS and GENAI_PROVIDER != 'google-genai':
+                # Legacy SDK without native aspect_ratio - crop+resize
+                should_resize = True
+                image_bytes, mime_type = self._resize_image(
+                    image_bytes, target_width, target_height, crop_to_aspect=True
+                )
+                logger.info(f"[Legacy SDK] Image cropped and resized to {target_width}x{target_height} (aspect ratio: {aspect_ratio_label})")
             
             # Get actual image dimensions for widget display
             actual_dimensions = self._get_image_dimensions(image_bytes)
@@ -834,8 +969,13 @@ class ImagenTool(BaseTool):
             if image_part:
                 result_data["sourceImageProvided"] = True
             
-            if target_width or target_height:
+            # Track aspect ratio and resize information
+            if use_native_aspect_ratio:
+                result_data["aspectRatio"] = aspect_ratio_label
+                result_data["nativeAspectRatio"] = True
+            elif should_resize and (target_width or target_height):
                 result_data["resizedTo"] = f"{target_width or 'auto'}x{target_height or 'auto'}"
+                result_data["nativeAspectRatio"] = False
             
             if saved_path:
                 result_data["filePath"] = saved_path
