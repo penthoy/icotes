@@ -215,7 +215,7 @@ class TestImageProcessing:
         mock_ws_service = AsyncMock()
         mock_ws_service.get_workspace_path.return_value = "/tmp/workspace"
         
-        with patch('icpy.agent.tools.context_helpers.get_workspace_service', return_value=mock_ws_service):
+        with patch('icpy.agent.tools.context_helpers.get_workspace_service', return_value=mock_ws_service, create=True):
             with patch('pathlib.Path.exists', return_value=False):
                 with pytest.raises(ValueError, match="not found"):
                     await tool._process_image("images/missing.jpg")
@@ -231,7 +231,7 @@ class TestImageProcessing:
         # Mock file size > MAX_IMAGE_SIZE_MB
         large_size = (MAX_IMAGE_SIZE_MB + 1) * 1024 * 1024
         
-        with patch('icpy.agent.tools.context_helpers.get_workspace_service', return_value=mock_ws_service):
+        with patch('icpy.agent.tools.context_helpers.get_workspace_service', return_value=mock_ws_service, create=True):
             with patch('pathlib.Path.exists', return_value=True):
                 with patch('pathlib.Path.stat') as mock_stat:
                     mock_stat.return_value.st_size = large_size
@@ -263,10 +263,11 @@ class TestVideoGeneration:
             with patch.object(tool, '_get_client', return_value=mock_client):
                 with patch.object(tool, '_download_video', return_value=video_bytes):
                     with patch.object(tool, '_save_video_to_workspace', return_value=("videos/test.mp4", "/tmp/test.mp4")):
-                        result = await tool.execute(
-                            image="https://example.com/image.jpg",
-                            prompt="dancing cat"
-                        )
+                        with patch('icpy.agent.tools.atlascloud.itv_tool.verify_output_file', new=AsyncMock(return_value=(True, {}))):
+                            result = await tool.execute(
+                                image="https://example.com/image.jpg",
+                                prompt="dancing cat"
+                            )
         
         assert result.success
         assert "video_path" in result.data
@@ -289,14 +290,15 @@ class TestVideoGeneration:
             with patch.object(tool, '_get_client', return_value=mock_client):
                 with patch.object(tool, '_download_video', return_value=b"data"):
                     with patch.object(tool, '_save_video_to_workspace', return_value=("videos/custom.mp4", "/tmp/custom.mp4")):
-                        result = await tool.execute(
-                            image="https://example.com/photo.png",
-                            prompt="sunset",
-                            model="bytedance/seedance-v1-pro-i2v-720p",
-                            duration=8,
-                            aspect_ratio="9:16",
-                            seed=42
-                        )
+                        with patch('icpy.agent.tools.atlascloud.itv_tool.verify_output_file', new=AsyncMock(return_value=(True, {}))):
+                            result = await tool.execute(
+                                image="https://example.com/photo.png",
+                                prompt="sunset",
+                                model="bytedance/seedance-v1-pro-i2v-720p",
+                                duration=8,
+                                aspect_ratio="9:16",
+                                seed=42
+                            )
         
         # Verify client was called with correct parameters
         assert mock_client.generate_image_to_video.called
@@ -431,7 +433,7 @@ class TestWorkspaceSaving:
         mock_ws_service = AsyncMock()
         mock_ws_service.get_workspace_path.return_value = "/tmp/workspace"
         
-        with patch('icpy.agent.tools.context_helpers.get_workspace_service', return_value=mock_ws_service):
+        with patch('icpy.agent.tools.context_helpers.get_workspace_service', return_value=mock_ws_service, create=True):
             with patch('pathlib.Path.mkdir'):
                 with patch('builtins.open', mock_open()) as mock_file:
                     result = await tool._save_video_to_workspace(
@@ -456,7 +458,7 @@ class TestWorkspaceSaving:
         mock_ws_service = AsyncMock()
         mock_ws_service.get_workspace_path.return_value = "/tmp/workspace"
         
-        with patch('icpy.agent.tools.context_helpers.get_workspace_service', return_value=mock_ws_service):
+        with patch('icpy.agent.tools.context_helpers.get_workspace_service', return_value=mock_ws_service, create=True):
             with patch('pathlib.Path.mkdir'):
                 with patch('builtins.open', mock_open()):
                     result = await tool._save_video_to_workspace(
@@ -474,32 +476,38 @@ class TestWorkspaceSaving:
         """Should save video via hop for remote sessions."""
         tool = AtlasCloudImageToVideoTool()
         video_bytes = b"test-video-data"
-        
-        mock_ws_service = AsyncMock()
-        mock_ws_service.get_workspace_path.return_value = "/remote/workspace"
-        
-        mock_hop_service = AsyncMock()
-        mock_hop_service.get_hop.return_value = {"activeNamespace": "remote-ns"}
-        
+
         mock_fs_service = AsyncMock()
-        
-        with patch('icpy.agent.tools.context_helpers.get_workspace_service', return_value=mock_ws_service):
-            with patch('icpy.agent.tools.context_helpers.get_hop_service', return_value=mock_hop_service):
-                with patch('pathlib.Path.mkdir'):
-                    with patch('builtins.open', mock_open()) as mock_file:
-                        # Simulate local write failure, then remote success
-                        mock_file.side_effect = [OSError("Permission denied")]
-                        
-                        with patch('icpy.agent.tools.context_helpers.get_filesystem_service', return_value=mock_fs_service):
-                            await tool._save_video_to_workspace(
-                                video_bytes,
-                                "image.png",
-                                "bytedance/seedance-v1-lite-i2v-480p",
-                                hop_session="hop-123"
-                            )
-        
+
+        # Remote context is determined by get_current_context(); hop_session is currently unused.
+        with patch(
+            'icpy.agent.tools.atlascloud.itv_tool.get_current_context',
+            return_value={
+                "contextId": "remote-ns",
+                "username": "remote-user",
+                "workspaceRoot": "/remote/workspace",
+                "cwd": "/remote/workspace",
+            },
+        ):
+            with patch(
+                'icpy.agent.tools.atlascloud.itv_tool.get_contextual_filesystem',
+                return_value=mock_fs_service,
+            ):
+                result = await tool._save_video_to_workspace(
+                    video_bytes,
+                    "image.png",
+                    "bytedance/seedance-v1-lite-i2v-480p",
+                    hop_session="hop-123",
+                )
+
+        assert result is not None
         # Should have attempted remote write
-        assert mock_fs_service.write_file.called
+        assert mock_fs_service.create_directory.called
+        assert mock_fs_service.write_file_binary.called
+
+        written_path = mock_fs_service.write_file_binary.call_args[0][0]
+        assert written_path.startswith("/remote/workspace/videos/")
+        assert written_path.endswith(".mp4")
 
 
 class TestClientInitialization:

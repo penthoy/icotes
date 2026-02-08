@@ -1,9 +1,13 @@
 """
 Integration tests for LSP Service
 Tests basic LSP service functionality with existing API
+
+SKIPPED: LSP service is deprecated — not wired into app lifecycle.
 """
 
 import pytest
+
+# NOTE: skip + asyncio markers are set below after imports (pytestmark list).
 import pytest_asyncio
 import asyncio
 import os
@@ -22,7 +26,10 @@ from icpy.services.lsp_service import (
 from icpy.core.message_broker import get_message_broker, shutdown_message_broker
 
 # Mark all test methods as asyncio
-pytestmark = pytest.mark.asyncio
+pytestmark = [
+    pytest.mark.skip(reason="LSP service is deprecated and not actively used"),
+    pytest.mark.asyncio,
+]
 
 
 class TestLSPServiceBasic:

@@ -22,6 +22,7 @@ from datetime import datetime
 
 from .base_tool import BaseTool, ToolResult
 from .context_helpers import get_contextual_filesystem, get_current_context
+from .generation_output_checks import verify_output_file
 from .imagen_utils import ASPECT_RATIO_SPECS, resolve_dimensions, guess_mime_from_ext
 
 # Import path utilities for friendly namespace names
@@ -866,11 +867,35 @@ class ImagenTool(BaseTool):
             # Optionally save to workspace (hop-aware)
             saved_path = None
             saved_absolute_path = None
+            save_debug = None
             if save_to_workspace:
                 save_result = await self._save_image_to_workspace(image_bytes, str(prompt), custom_filename or image_id)
                 if save_result:
                     saved_path, saved_absolute_path = save_result
                     logger.info(f"[ImagenTool] _save_image_to_workspace returned: saved_path={saved_path}, saved_absolute_path={saved_absolute_path}")
+
+                    # Verify file really exists (local or remote) before reporting savedToWorkspace
+                    try:
+                        filesystem_service = await get_contextual_filesystem()
+                        ok, debug = await verify_output_file(
+                            filesystem_service,
+                            saved_absolute_path,
+                            expected_size=len(image_bytes),
+                            min_size=1,
+                        )
+                    except Exception as e:
+                        ok = False
+                        debug = {"exception": f"{type(e).__name__}: {e}", "absolute_path": saved_absolute_path}
+
+                    if not ok:
+                        logger.error(
+                            "[ImagenTool] Save verification failed for %s | debug=%s",
+                            saved_absolute_path,
+                            debug,
+                        )
+                        save_debug = debug
+                        saved_path = None
+                        saved_absolute_path = None
                 else:
                     logger.warning(f"[ImagenTool] _save_image_to_workspace returned None")
             
@@ -990,6 +1015,10 @@ class ImagenTool(BaseTool):
             else:
                 result_data["savedToWorkspace"] = False
                 result_data["message"] = "Image generated successfully (available via fullImageUrl)"
+
+            if save_debug is not None:
+                # Provide debug info when a save was attempted but file isn't present
+                result_data["saveDebug"] = save_debug
             
             # Emit a concise diagnostic to help track any path mismatches across agents/tools
             try:

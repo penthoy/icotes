@@ -16,6 +16,7 @@ import httpx
 
 from ..base_tool import BaseTool, ToolResult
 from ..context_helpers import get_contextual_filesystem, get_current_context
+from ..generation_output_checks import verify_output_file
 from .client import AtlasCloudClient
 from .exceptions import (
     AtlasCloudError,
@@ -522,6 +523,39 @@ class AtlasCloudVideoToVideoSoundTool(BaseTool):
                 )
             
             relative_path, absolute_path = paths
+
+            # Verify file really exists (local or remote) before claiming success
+            try:
+                filesystem_service = await get_contextual_filesystem()
+                ok, debug = await verify_output_file(
+                    filesystem_service,
+                    absolute_path,
+                    expected_size=len(video_bytes),
+                    min_size=1,
+                )
+            except Exception as e:
+                ok = False
+                debug = {"exception": f"{type(e).__name__}: {e}", "absolute_path": absolute_path}
+
+            if not ok:
+                logger.error(
+                    "[AtlasCloudV2VSound] Save verification failed for %s | debug=%s",
+                    absolute_path,
+                    debug,
+                )
+                return ToolResult(
+                    success=False,
+                    data={
+                        "video_path": relative_path,
+                        "absolute_path": absolute_path,
+                        "request_id": result.id,
+                        "model": model,
+                        "prompt": prompt[:100] + "..." if len(prompt) > 100 else prompt,
+                        "downloaded_bytes": len(video_bytes),
+                        "save_debug": debug,
+                    },
+                    error="Output file verification failed: video file missing/empty after save",
+                )
             
             # Build success response
             return ToolResult(

@@ -18,7 +18,8 @@ import weakref
 from ..core.message_broker import MessageBroker, Message, MessageType, get_message_broker
 from .filesystem_service import FileSystemService
 from .code_execution_service import CodeExecutionService, Language, ExecutionStatus
-from .lsp_service import LSPService
+# LSP service is deprecated and not started in the app lifecycle (see lsp_service.py)
+# from .lsp_service import LSPService
 from .terminal_service import TerminalService
 from .workspace_service import WorkspaceService
 from .clipboard_service import ClipboardService
@@ -118,7 +119,7 @@ class AIAgentService:
         # Service references
         self._filesystem_service: Optional[FileSystemService] = None
         self._code_execution_service: Optional[CodeExecutionService] = None
-        self._lsp_service: Optional[LSPService] = None
+        self._lsp_service: Optional[Any] = None  # Deprecated: LSP service is not active
         self._terminal_service: Optional[TerminalService] = None
         self._workspace_service: Optional[WorkspaceService] = None
         self._clipboard_service: Optional[ClipboardService] = None
@@ -296,7 +297,7 @@ class AIAgentService:
         
         lsp_service = await self._get_lsp_service()
         if not lsp_service:
-            return {"error": "LSP service not available"}
+            return {"error": "LSP service is deprecated and not available"}
         
         result = {}
         
@@ -423,15 +424,15 @@ class AIAgentService:
                 logger.error(f"Could not initialize code execution service: {e}")
         return self._code_execution_service
 
-    async def _get_lsp_service(self) -> Optional[LSPService]:
-        """Get LSP service instance"""
-        if self._lsp_service is None:
-            try:
-                from .lsp_service import LSPService
-                self._lsp_service = LSPService()  # No parameters
-            except Exception as e:
-                logger.error(f"Could not initialize LSP service: {e}")
-        return self._lsp_service
+    async def _get_lsp_service(self) -> Optional[Any]:
+        """Get LSP service instance.
+
+        .. deprecated::
+            LSP service is not wired into the app lifecycle and has no
+            frontend integration.  All LSP action types will return None.
+        """
+        logger.debug("LSP service is deprecated and not available")
+        return None
 
     async def _get_terminal_service(self) -> Optional[TerminalService]:
         """Get terminal service instance"""

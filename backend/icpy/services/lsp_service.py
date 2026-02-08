@@ -1,6 +1,14 @@
 """
 Language Server Protocol (LSP) Integration Service for icpy Backend
 Provides code intelligence features through LSP client implementation
+
+.. deprecated::
+    This module is NOT actively used.  It is never started in the app
+    lifecycle (main.py), has no API endpoints, and has no frontend
+    integration.  It is kept for potential future use but is considered
+    dead code.  The test_lsp_service.py test suite contains a known
+    OOM-causing infinite-loop bug (test_server_startup_mock) and is
+    skipped by default.
 """
 
 import asyncio

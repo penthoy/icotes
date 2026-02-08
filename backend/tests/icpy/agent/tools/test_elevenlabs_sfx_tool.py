@@ -92,11 +92,12 @@ class TestSoundEffectsGeneration:
                             with patch('builtins.open', create=True) as mock_open:
                                 mock_open.return_value.__enter__ = Mock(return_value=Mock(write=Mock()))
                                 mock_open.return_value.__exit__ = Mock(return_value=False)
-                                
-                                result = await sfx_tool.execute(
-                                    text="Dog barking loudly",
-                                    duration_seconds=2.0
-                                )
+
+                                with patch('icpy.agent.tools.elevenlabs_sfx_tool.verify_output_file', new=AsyncMock(return_value=(True, {}))):
+                                    result = await sfx_tool.execute(
+                                        text="Dog barking loudly",
+                                        duration_seconds=2.0
+                                    )
         
         assert result.success is True
         assert result.data['text'] == "Dog barking loudly"
@@ -114,12 +115,13 @@ class TestSoundEffectsGeneration:
                             with patch('builtins.open', create=True) as mock_open:
                                 mock_open.return_value.__enter__ = Mock(return_value=Mock(write=Mock()))
                                 mock_open.return_value.__exit__ = Mock(return_value=False)
-                                
-                                result = await sfx_tool.execute(
-                                    text="Ambient forest sounds",
-                                    duration_seconds=3.0,
-                                    loop=True
-                                )
+
+                                with patch('icpy.agent.tools.elevenlabs_sfx_tool.verify_output_file', new=AsyncMock(return_value=(True, {}))):
+                                    result = await sfx_tool.execute(
+                                        text="Ambient forest sounds",
+                                        duration_seconds=3.0,
+                                        loop=True
+                                    )
         
         assert result.success is True
         assert result.data['loop'] is True
@@ -140,12 +142,13 @@ class TestSoundEffectsGeneration:
                             with patch('builtins.open', create=True) as mock_open:
                                 mock_open.return_value.__enter__ = Mock(return_value=Mock(write=Mock()))
                                 mock_open.return_value.__exit__ = Mock(return_value=False)
-                                
-                                result = await sfx_tool.execute(
-                                    text="Glass breaking",
-                                    duration_seconds=1.5,
-                                    prompt_influence=0.7
-                                )
+
+                                with patch('icpy.agent.tools.elevenlabs_sfx_tool.verify_output_file', new=AsyncMock(return_value=(True, {}))):
+                                    result = await sfx_tool.execute(
+                                        text="Glass breaking",
+                                        duration_seconds=1.5,
+                                        prompt_influence=0.7
+                                    )
         
         assert result.success is True
         assert result.data['prompt_influence'] == 0.7
@@ -166,11 +169,12 @@ class TestSoundEffectsGeneration:
                             with patch('builtins.open', create=True) as mock_open:
                                 mock_open.return_value.__enter__ = Mock(return_value=Mock(write=Mock()))
                                 mock_open.return_value.__exit__ = Mock(return_value=False)
-                                
-                                result = await sfx_tool.execute(
-                                    text="Short beep",
-                                    duration_seconds=0.5
-                                )
+
+                                with patch('icpy.agent.tools.elevenlabs_sfx_tool.verify_output_file', new=AsyncMock(return_value=(True, {}))):
+                                    result = await sfx_tool.execute(
+                                        text="Short beep",
+                                        duration_seconds=0.5
+                                    )
         
         assert result.success is True
         assert result.data['duration_seconds'] == 0.5
@@ -280,12 +284,13 @@ class TestFileSaving:
                                 mock_file = Mock()
                                 mock_open.return_value.__enter__ = Mock(return_value=mock_file)
                                 mock_open.return_value.__exit__ = Mock(return_value=False)
-                                
-                                result = await sfx_tool.execute(
-                                    text="Test sound",
-                                    duration_seconds=1.0,
-                                    filename="my_custom_sfx"
-                                )
+
+                                with patch('icpy.agent.tools.elevenlabs_sfx_tool.verify_output_file', new=AsyncMock(return_value=(True, {}))):
+                                    result = await sfx_tool.execute(
+                                        text="Test sound",
+                                        duration_seconds=1.0,
+                                        filename="my_custom_sfx"
+                                    )
         
         assert result.success is True
         assert result.data['saved'] is True
@@ -303,11 +308,12 @@ class TestFileSaving:
                                 mock_file = Mock()
                                 mock_open.return_value.__enter__ = Mock(return_value=mock_file)
                                 mock_open.return_value.__exit__ = Mock(return_value=False)
-                                
-                                result = await sfx_tool.execute(
-                                    text="Dog barking loudly in the distance",
-                                    duration_seconds=2.0
-                                )
+
+                                with patch('icpy.agent.tools.elevenlabs_sfx_tool.verify_output_file', new=AsyncMock(return_value=(True, {}))):
+                                    result = await sfx_tool.execute(
+                                        text="Dog barking loudly in the distance",
+                                        duration_seconds=2.0
+                                    )
         
         assert result.success is True
         assert result.data['saved'] is True
@@ -326,12 +332,13 @@ class TestFileSaving:
                                 mock_file = Mock()
                                 mock_open.return_value.__enter__ = Mock(return_value=mock_file)
                                 mock_open.return_value.__exit__ = Mock(return_value=False)
-                                
-                                result = await sfx_tool.execute(
-                                    text="Test! Sound@ #$%^",
-                                    duration_seconds=1.0,
-                                    filename="special!@#chars"
-                                )
+
+                                with patch('icpy.agent.tools.elevenlabs_sfx_tool.verify_output_file', new=AsyncMock(return_value=(True, {}))):
+                                    result = await sfx_tool.execute(
+                                        text="Test! Sound@ #$%^",
+                                        duration_seconds=1.0,
+                                        filename="special!@#chars"
+                                    )
         
         assert result.success is True
         # Should sanitize special characters
@@ -415,11 +422,12 @@ class TestHopAwareSaving:
                                 mock_file = Mock()
                                 mock_open.return_value.__enter__ = Mock(return_value=mock_file)
                                 mock_open.return_value.__exit__ = Mock(return_value=False)
-                                
-                                result = await sfx_tool.execute(
-                                    text="Local sound",
-                                    duration_seconds=1.0
-                                )
+
+                                with patch('icpy.agent.tools.elevenlabs_sfx_tool.verify_output_file', new=AsyncMock(return_value=(True, {}))):
+                                    result = await sfx_tool.execute(
+                                        text="Local sound",
+                                        duration_seconds=1.0
+                                    )
         
         assert result.success is True
         assert result.data['saved'] is True
@@ -432,10 +440,11 @@ class TestHopAwareSaving:
             with patch('icpy.agent.tools.elevenlabs_sfx_tool.ElevenLabs', return_value=mock_elevenlabs_client):
                 with patch('icpy.agent.tools.elevenlabs_sfx_tool.get_current_context', return_value=mock_context_remote):
                     with patch('icpy.agent.tools.elevenlabs_sfx_tool.get_contextual_filesystem', return_value=mock_filesystem_service):
-                        result = await sfx_tool.execute(
-                            text="Remote sound",
-                            duration_seconds=1.0
-                        )
+                        with patch('icpy.agent.tools.elevenlabs_sfx_tool.verify_output_file', new=AsyncMock(return_value=(True, {}))):
+                            result = await sfx_tool.execute(
+                                text="Remote sound",
+                                duration_seconds=1.0
+                            )
         
         assert result.success is True
         assert result.data['saved'] is True
