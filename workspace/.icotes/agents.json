@@ -4,7 +4,7 @@
     "OpenAIAgent": {
       "enabled": true,
       "displayName": "OpenAIAgent",
-      "description": "OpenAI agent gpt-5.2",
+      "description": "gpt-5.2 ",
       "category": "Built-in",
       "order": 2,
       "modelName": "gpt-5.2"
@@ -12,7 +12,7 @@
     "KimiAgent": {
       "enabled": true,
       "displayName": "Kimi K2.5",
-      "description": "SOTA AI assistant powered by Moonshot's Kimi models",
+      "description": "Very Cheap and powerful model",
       "category": "Built-in",
       "order": 1,
       "icon": "\ud83c\udf19"
@@ -36,7 +36,7 @@
     "ZaiGlmAgent": {
       "enabled": true,
       "displayName": "Z.AI GLM 4.7",
-      "description": "Top open-source coding agent with enhanced reasoning via Cerebras",
+      "description": "Cheap and powerful and fast inference via Cerebras",
       "category": "Built-in",
       "order": 5,
       "icon": "🤖"
@@ -47,7 +47,7 @@
       "description": "Fast coding agent powered by GPT OSS 120B via Groq's LPU",
       "category": "Built-in",
       "order": 6,
-      "icon": "⚡"
+      "icon": "🐧"
     },
     "CerebrasGptOssAgent": {
       "enabled": true,
@@ -132,19 +132,24 @@
       "enabled": true,
       "displayName": "PersonalAgent",
       "description": "Auto-discovered agent: PersonalAgent",
-      "category": "General",
+      "category": "Built-in",
       "order": 999
     }
   },
   "categories": {
     "Custom Agents": {
       "icon": "\ud83d\udee0\ufe0f",
-      "order": 2
+      "order": 3
     },
     "Built-in": {
       "icon": "\ud83e\udde0",
-      "order": 3
+      "order": 2
+    },
+    "Recommended": {
+      "icon": "\ud83e\udde0",
+      "order": 1
     }
+
   },
   "settings": {
     "showCategories": true,
