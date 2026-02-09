@@ -311,10 +311,13 @@ class WriteDocTool(BaseTool):
             # Try binary write first (preferred for all document types)
             if hasattr(filesystem_service, 'write_file_binary'):
                 result = await filesystem_service.write_file_binary(file_path, data)
+                if isinstance(result, dict):
+                    if result.get("success") is True:
+                        return {"success": True}
+                    return {"success": False, "error": result.get("error") or "write_file_binary failed"}
                 if result:
                     return {"success": True}
-                else:
-                    return {"success": False, "error": "write_file_binary returned False"}
+                return {"success": False, "error": "write_file_binary returned False"}
             
             # Fallback to direct file write for local contexts
             # Note: Don't use write_file() as it's for text content, not binary
@@ -351,8 +354,13 @@ class WriteDocTool(BaseTool):
                 from icpy.services.context_router import get_context_router as _get_cr
                 router = await _get_cr()
                 filesystem_service = await router.get_filesystem_for_namespace(ctx_id)
-            except Exception:
-                pass
+            except Exception as e:
+                # Best-effort: if context router is unavailable or fails, fall back to default filesystem service
+                logger.debug(
+                    "[WriteDocTool] Context router unavailable for ctx_id '%s': %s",
+                    ctx_id,
+                    e,
+                )
             
             if filesystem_service is None:
                 filesystem_service = await get_filesystem_service()

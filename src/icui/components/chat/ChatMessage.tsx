@@ -28,6 +28,7 @@ interface ChatMessageProps {
   message: ChatMessageType;
   className?: string;
   highlightQuery?: string;
+  requestTimestamp?: string; // Optional: precomputed request timestamp for tool durations
   allMessages?: ChatMessageType[];  // Optional: for calculating tool duration from reply_to
 }
 
@@ -37,13 +38,14 @@ interface CodeBlockProps {
   inline?: boolean;
 }
 
-const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', highlightQuery = '', allMessages }) => {
+const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', highlightQuery = '', allMessages, requestTimestamp: requestTimestampOverride }) => {
   const { isDark } = useTheme();
   const [copiedStates, setCopiedStates] = useState<Record<string, boolean>>({});
 
   // Calculate request timestamp from reply_to message for accurate tool duration
   // Returns string timestamp for consistency with message.timestamp format
   const requestTimestamp = useMemo((): string | undefined => {
+    if (requestTimestampOverride) return requestTimestampOverride;
     if (!allMessages || message.sender === 'user') return undefined;
 
     const normalizeTimestamp = (ts: unknown): string | undefined => {
@@ -71,7 +73,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', high
     }
 
     return undefined;
-  }, [allMessages, message.id, message.sender, message.metadata?.reply_to]);
+  }, [requestTimestampOverride, allMessages, message.id, message.sender, message.metadata?.reply_to]);
   
   // Simple highlighter for plain text (user messages)
   const renderHighlightedPlainText = useCallback((text: string, query: string) => {

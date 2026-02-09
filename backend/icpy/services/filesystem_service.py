@@ -911,7 +911,7 @@ class FileSystemService:
             logger.error(f"Error writing file {file_path}: {e}")
             return False
 
-    async def write_file_binary(self, file_path: str, content: bytes, create_dirs: bool = True) -> bool:
+    async def write_file_binary(self, file_path: str, content: bytes, create_dirs: bool = True) -> Dict[str, Any]:
         """Write binary content to file.
         
         Args:
@@ -920,7 +920,7 @@ class FileSystemService:
             create_dirs: Whether to create parent directories if they don't exist
             
         Returns:
-            True if successful, False otherwise
+            Standard service response dict: {"success": bool, "data": any, "error": str | None}
         """
         try:
             # Create parent directories if needed
@@ -939,7 +939,7 @@ class FileSystemService:
             # Verify file was written
             if not os.path.exists(file_path):
                 logger.error(f"File verification failed: {file_path} does not exist after write")
-                return False
+                return {"success": False, "data": None, "error": "file does not exist after write"}
             
             # Update file index
             file_info = await self.get_file_info(file_path)
@@ -968,11 +968,15 @@ class FileSystemService:
             })
             
             logger.info(f"Binary file written successfully: {file_path} ({len(content)} bytes)")
-            return True
+            return {
+                "success": True,
+                "data": {"file_path": file_path, "created": not file_exists, "size": len(content)},
+                "error": None,
+            }
             
         except Exception as e:
-            logger.error(f"Error writing binary file {file_path}: {e}")
-            return False
+            logger.exception("Error writing binary file %s", file_path)
+            return {"success": False, "data": None, "error": str(e)}
 
     async def create_directory(self, dir_path: str, parents: bool = True) -> bool:
         """Create a directory.

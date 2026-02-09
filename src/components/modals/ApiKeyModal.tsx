@@ -236,12 +236,16 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose }) => 
 
     // Compute what to show in the input box
     // - If the user typed something, respect that (always editable)
-    // - If nothing typed but key is set and visible, show revealed/masked value (still editable to allow updates)
+    // - For site settings: show the current value when available
+    // - For secret keys: never put masked values into the editable input (prevents saving masked text back)
+    //   - If reveal is enabled and the value was fetched, show the revealed value when visible
     // - Otherwise, keep empty and rely on placeholder
     let effectiveValue = currentValue;
     if (!currentValue && status?.is_set) {
-      if (isVisible || isSiteSettingKey) {
+      if (isSiteSettingKey) {
         effectiveValue = revealedValues[key] ?? status.masked_value ?? '';
+      } else if (isVisible) {
+        effectiveValue = revealedValues[key] ?? '';
       } else {
         effectiveValue = '';
       }

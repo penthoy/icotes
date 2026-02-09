@@ -38,7 +38,7 @@ async def demo_download(url: str, quality: str = 'medium'):
         return
     
     print(f"\n{'='*70}")
-    print(f"  YouTube Download Tool - Demo")
+    print("  YouTube Download Tool - Demo")
     print(f"{'='*70}\n")
     
     # Create tool instance
@@ -72,18 +72,18 @@ async def demo_download(url: str, quality: str = 'medium'):
     
     # Confirm download
     print(f"\n{'='*70}")
-    print(f"⚠️  This will download the video to your workspace/videos/ directory.")
+    print("⚠️  This will download the video to your workspace/videos/ directory.")
     
     if quality == 'high':
-        print(f"⚠️  High quality can be 50-200MB. Consider using 'medium' or 'low'.")
+        print("⚠️  High quality can be 50-200MB. Consider using 'medium' or 'low'.")
     
-    response = input(f"\nProceed with download? [y/N]: ")
+    response = input("\nProceed with download? [y/N]: ")
     
     if response.lower() != 'y':
         print("❌ Download cancelled.")
         return
     
-    print(f"\n⏳ Starting download...")
+    print("\n⏳ Starting download...")
     print(f"{'='*70}\n")
     
     # Execute download
@@ -100,7 +100,7 @@ async def demo_download(url: str, quality: str = 'medium'):
         print(f"   Format: {result.data['format']}")
         print(f"{'='*70}\n")
     else:
-        print(f"\n❌ Download Failed!")
+        print("\n❌ Download Failed!")
         print(f"{'='*70}")
         print(f"Error: {result.error}")
         print(f"{'='*70}\n")
@@ -111,14 +111,14 @@ async def demo_tool_info():
     tool = YouTubeDownloadTool()
     
     print(f"\n{'='*70}")
-    print(f"  YouTube Download Tool - Information")
+    print("  YouTube Download Tool - Information")
     print(f"{'='*70}\n")
     
     print(f"Tool Name: {tool.name}")
-    print(f"\nDescription:")
+    print("\nDescription:")
     print(f"  {tool.description}\n")
     
-    print(f"Parameters:")
+    print("Parameters:")
     for param, details in tool.parameters['properties'].items():
         required = "✓" if param in tool.parameters.get('required', []) else " "
         print(f"  [{required}] {param}")
@@ -131,7 +131,7 @@ async def demo_tool_info():
                 print(f"      {line.strip()}")
         print()
     
-    print(f"Quality Presets:")
+    print("Quality Presets:")
     from icpy.agent.tools.youtube_download_tool import QUALITY_PRESETS
     for quality, preset in QUALITY_PRESETS.items():
         print(f"  • {quality}: {preset['description']}")

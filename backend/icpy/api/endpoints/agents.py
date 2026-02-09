@@ -240,14 +240,20 @@ async def update_api_keys_endpoint(request: Request):
         
         # Persist to .env file for Docker/production persistence
         try:
-            backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-            repo_root = os.path.dirname(backend_dir)
+            # agents.py lives at: backend/icpy/api/endpoints/agents.py
+            # parents[3] => backend/, parents[4] => repo root
+            from pathlib import Path
+
+            this_file = Path(__file__).resolve()
+            backend_dir = str(this_file.parents[3])
+            repo_root = str(this_file.parents[4])
+
             candidate_paths = [
-                os.path.join(backend_dir, '.env'),
-                os.path.join(repo_root, '.env'),
+                os.path.join(backend_dir, ".env"),
+                os.path.join(repo_root, ".env"),
             ]
 
-            env_file_path = next((p for p in candidate_paths if os.path.exists(p)), candidate_paths[-1])
+            env_file_path = next((p for p in candidate_paths if os.path.exists(p)), os.path.join(repo_root, ".env"))
 
             existing_lines: list[str] = []
             if os.path.exists(env_file_path):

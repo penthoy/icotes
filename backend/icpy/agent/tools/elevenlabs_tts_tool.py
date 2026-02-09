@@ -509,7 +509,6 @@ class ElevenLabsTTSTool(BaseTool):
                         ok, debug = await verify_output_file(
                             filesystem_service,
                             absolute_path,
-                            expected_size=len(audio_bytes),
                             min_size=1,
                         )
                     except Exception as e:

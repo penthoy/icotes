@@ -4,7 +4,7 @@
     "OpenAIAgent": {
       "enabled": true,
       "displayName": "OpenAIAgent",
-      "description": "gpt-5.2 ",
+      "description": "gpt-5.2",
       "category": "Built-in",
       "order": 2,
       "modelName": "gpt-5.2"
@@ -149,7 +149,6 @@
       "icon": "\ud83e\udde0",
       "order": 1
     }
-
   },
   "settings": {
     "showCategories": true,

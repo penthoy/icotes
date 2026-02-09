@@ -197,7 +197,7 @@ class TestImageProcessing:
         mock_fs = AsyncMock()
         mock_fs.resolve_path.return_value = "/tmp/workspace/images/test.jpg"
         
-        with patch('icpy.agent.tools.context_helpers.get_contextual_filesystem', return_value=mock_fs):
+        with patch('icpy.agent.tools.atlascloud.itv_tool.get_contextual_filesystem', return_value=mock_fs):
             with patch('pathlib.Path.exists', return_value=True):
                 with patch('pathlib.Path.stat') as mock_stat:
                     mock_stat.return_value.st_size = len(img_bytes)
@@ -211,32 +211,24 @@ class TestImageProcessing:
     async def test_process_image_file_not_found(self):
         """Should fail if workspace file doesn't exist."""
         tool = AtlasCloudImageToVideoTool()
-        
-        mock_ws_service = AsyncMock()
-        mock_ws_service.get_workspace_path.return_value = "/tmp/workspace"
-        
-        with patch('icpy.agent.tools.context_helpers.get_workspace_service', return_value=mock_ws_service, create=True):
-            with patch('pathlib.Path.exists', return_value=False):
-                with pytest.raises(ValueError, match="not found"):
-                    await tool._process_image("images/missing.jpg")
+
+        with patch('pathlib.Path.exists', return_value=False):
+            with pytest.raises(ValueError, match="not found"):
+                await tool._process_image("images/missing.jpg")
     
     @pytest.mark.asyncio
     async def test_process_image_file_too_large(self):
         """Should fail if file exceeds MAX_IMAGE_SIZE_MB."""
         tool = AtlasCloudImageToVideoTool()
         
-        mock_ws_service = AsyncMock()
-        mock_ws_service.get_workspace_path.return_value = "/tmp/workspace"
-        
         # Mock file size > MAX_IMAGE_SIZE_MB
         large_size = (MAX_IMAGE_SIZE_MB + 1) * 1024 * 1024
         
-        with patch('icpy.agent.tools.context_helpers.get_workspace_service', return_value=mock_ws_service, create=True):
-            with patch('pathlib.Path.exists', return_value=True):
-                with patch('pathlib.Path.stat') as mock_stat:
-                    mock_stat.return_value.st_size = large_size
-                    with pytest.raises(ValueError, match="too large"):
-                        await tool._process_image("images/huge.jpg")
+        with patch('pathlib.Path.exists', return_value=True):
+            with patch('pathlib.Path.stat') as mock_stat:
+                mock_stat.return_value.st_size = large_size
+                with pytest.raises(ValueError, match="too large"):
+                    await tool._process_image("images/huge.jpg")
 
 
 class TestVideoGeneration:
@@ -429,18 +421,19 @@ class TestWorkspaceSaving:
         """Should save video to local workspace."""
         tool = AtlasCloudImageToVideoTool()
         video_bytes = b"test-video-data"
-        
-        mock_ws_service = AsyncMock()
-        mock_ws_service.get_workspace_path.return_value = "/tmp/workspace"
-        
-        with patch('icpy.agent.tools.context_helpers.get_workspace_service', return_value=mock_ws_service, create=True):
-            with patch('pathlib.Path.mkdir'):
-                with patch('builtins.open', mock_open()) as mock_file:
-                    result = await tool._save_video_to_workspace(
-                        video_bytes,
-                        "photo.jpg",
-                        "bytedance/seedance-v1-lite-i2v-480p"
-                    )
+
+        mock_fs = AsyncMock()
+        mock_fs.root_path = "/tmp/workspace"
+
+        with patch('icpy.agent.tools.atlascloud.itv_tool.get_current_context', return_value={'contextId': 'local'}):
+            with patch('icpy.agent.tools.atlascloud.itv_tool.get_contextual_filesystem', return_value=mock_fs):
+                with patch('os.makedirs'):
+                    with patch('builtins.open', mock_open()) as mock_file:
+                        result = await tool._save_video_to_workspace(
+                            video_bytes,
+                            "photo.jpg",
+                            "bytedance/seedance-v1-lite-i2v-480p"
+                        )
         
         assert result is not None
         relative_path, _ = result
@@ -454,19 +447,20 @@ class TestWorkspaceSaving:
         """Should use custom filename when provided."""
         tool = AtlasCloudImageToVideoTool()
         video_bytes = b"test-video-data"
-        
-        mock_ws_service = AsyncMock()
-        mock_ws_service.get_workspace_path.return_value = "/tmp/workspace"
-        
-        with patch('icpy.agent.tools.context_helpers.get_workspace_service', return_value=mock_ws_service, create=True):
-            with patch('pathlib.Path.mkdir'):
-                with patch('builtins.open', mock_open()):
-                    result = await tool._save_video_to_workspace(
-                        video_bytes,
-                        "image.jpg",
-                        "bytedance/seedance-v1-lite-i2v-480p",
-                        filename="my_custom_video"
-                    )
+
+        mock_fs = AsyncMock()
+        mock_fs.root_path = "/tmp/workspace"
+
+        with patch('icpy.agent.tools.atlascloud.itv_tool.get_current_context', return_value={'contextId': 'local'}):
+            with patch('icpy.agent.tools.atlascloud.itv_tool.get_contextual_filesystem', return_value=mock_fs):
+                with patch('os.makedirs'):
+                    with patch('builtins.open', mock_open()):
+                        result = await tool._save_video_to_workspace(
+                            video_bytes,
+                            "image.jpg",
+                            "bytedance/seedance-v1-lite-i2v-480p",
+                            filename="my_custom_video"
+                        )
         
         relative_path, _ = result
         assert "my_custom_video.mp4" in relative_path

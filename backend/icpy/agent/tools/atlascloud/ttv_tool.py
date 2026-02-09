@@ -465,7 +465,6 @@ class AtlasCloudTextToVideoTool(BaseTool):
                 ok, debug = await verify_output_file(
                     filesystem_service,
                     absolute_path,
-                    expected_size=len(video_bytes),
                     min_size=1,
                 )
             except Exception as e:

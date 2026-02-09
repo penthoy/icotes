@@ -5,8 +5,6 @@ Basic tests for the YouTube downloader tool.
 """
 
 import pytest
-import asyncio
-from pathlib import Path
 from icpy.agent.tools.youtube_download_tool import YouTubeDownloadTool, YT_DLP_AVAILABLE
 
 # Skip all tests if yt-dlp is not available
@@ -89,18 +87,21 @@ class TestYouTubeDownloadTool:
         
         # Clear tracker
         _rate_limit_tracker.clear()
-        
-        # First 3 requests should succeed
-        for i in range(3):
+
+        try:
+            # First 3 requests should succeed
+            for _ in range(3):
+                allowed, error = tool._check_rate_limit()
+                assert allowed is True
+                assert error is None
+
+            # 4th request should fail
             allowed, error = tool._check_rate_limit()
-            assert allowed is True
-            assert error is None
-        
-        # 4th request should fail
-        allowed, error = tool._check_rate_limit()
-        assert allowed is False
-        assert error is not None
-        assert "Rate limit exceeded" in error
+            assert allowed is False
+            assert error is not None
+            assert "Rate limit exceeded" in error
+        finally:
+            _rate_limit_tracker.clear()
     
     @pytest.mark.asyncio
     async def test_execute_missing_url(self, tool):

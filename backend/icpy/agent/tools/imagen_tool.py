@@ -34,18 +34,14 @@ except ImportError:
 # Import Google Gen AI SDK (v1.60+) for image generation with native aspect_ratio support
 GENAI_AVAILABLE = False
 GENAI_PROVIDER = None
-genai_client = None  # type: ignore
-genai_types = None  # type: ignore
 try:
-    from google import genai as google_genai  # type: ignore
-    from google.genai import types as google_genai_types  # type: ignore
+    from google import genai as _genai  # type: ignore  # noqa: F401
     GENAI_AVAILABLE = True
     GENAI_PROVIDER = 'google-genai'
-    genai_types = google_genai_types
 except Exception as _e1:
     # Fallback to legacy SDK if new one not available
     try:
-        import google.generativeai as legacy_genai  # type: ignore
+        import google.generativeai as _legacy_genai  # type: ignore  # noqa: F401
         GENAI_AVAILABLE = True
         GENAI_PROVIDER = 'google-generativeai-legacy'
     except Exception as _e2:
@@ -368,11 +364,16 @@ class ImagenTool(BaseTool):
                 # Remote context: Write to remote server via SFTP using write_file_binary
                 try:
                     if hasattr(filesystem_service, 'write_file_binary'):
-                        success = await filesystem_service.write_file_binary(filepath, image_bytes)
-                        if success:
+                        write_result = await filesystem_service.write_file_binary(filepath, image_bytes)
+                        ok = (
+                            (isinstance(write_result, dict) and write_result.get('success') is True)
+                            or (not isinstance(write_result, dict) and bool(write_result))
+                        )
+                        if ok:
                             logger.info(f"[ImagenTool] Saved image via write_file_binary to {filepath} ({len(image_bytes)} bytes) on context: {context_name}")
                         else:
-                            logger.error(f"[ImagenTool] write_file_binary returned False for {filepath}")
+                            err = write_result.get('error') if isinstance(write_result, dict) else None
+                            logger.error(f"[ImagenTool] write_file_binary failed for {filepath}: {err}")
                             return None
                     else:
                         logger.error(f"[ImagenTool] write_file_binary method not available on filesystem service")
@@ -880,7 +881,6 @@ class ImagenTool(BaseTool):
                         ok, debug = await verify_output_file(
                             filesystem_service,
                             saved_absolute_path,
-                            expected_size=len(image_bytes),
                             min_size=1,
                         )
                     except Exception as e:

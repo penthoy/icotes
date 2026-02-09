@@ -66,7 +66,7 @@ const defaultLayout: ICUILayoutConfig = {
   splitConfig: { 
     mainHorizontalSplit: 20, 
     // In h-layout, `rightVerticalSplit` is the % width of the center area within the (center+right) region.
-    // Setting it to 60 makes the right sidebar ~40% by default.
+    // Setting it to 50 makes the right sidebar ~50% by default.
     rightVerticalSplit: 50, 
     // In h-layout, `centerVerticalSplit` is the % height of the top (editor) region.
     // Increase this to move the divider down (more editor space).

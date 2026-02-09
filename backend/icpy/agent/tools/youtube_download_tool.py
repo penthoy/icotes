@@ -21,11 +21,13 @@ from __future__ import annotations
 import os
 import re
 import logging
-import hashlib
 from typing import Any, Optional, Tuple, Dict
 from datetime import datetime, timedelta
 from pathlib import Path
 import asyncio
+import tempfile
+import posixpath
+from pathlib import PurePosixPath
 
 from .base_tool import BaseTool, ToolResult
 from .context_helpers import get_contextual_filesystem, get_current_context
@@ -209,7 +211,7 @@ class YouTubeDownloadTool(BaseTool):
                 return True, metadata, None
         
         if not YT_DLP_AVAILABLE:
-            return False, None, "yt-dlp library not available. Please install: pip install yt-dlp"
+            return False, None, "yt-dlp library not available. Install via: uv add yt-dlp (or run uv sync)"
         
         try:
             ydl_opts = {
@@ -219,7 +221,7 @@ class YouTubeDownloadTool(BaseTool):
             }
             
             # Run in executor to avoid blocking
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             
             def extract_info():
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -280,7 +282,7 @@ class YouTubeDownloadTool(BaseTool):
             (success, file_path_or_error, error_message)
         """
         if not YT_DLP_AVAILABLE:
-            return False, None, "yt-dlp library not available. Please install: pip install yt-dlp"
+            return False, None, "yt-dlp library not available. Install via: uv add yt-dlp (or run uv sync)"
         
         try:
             # Get quality preset
@@ -332,7 +334,7 @@ class YouTubeDownloadTool(BaseTool):
             ydl_opts['progress_hooks'] = [progress_hook]
             
             # Run download in executor
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             
             def download():
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -350,8 +352,8 @@ class YouTubeDownloadTool(BaseTool):
             if not downloaded_files:
                 return False, None, "Download completed but file not found"
             
-            # Use the first (most recent) file
-            downloaded_file = downloaded_files[0]
+            # Use the most recently modified matching file to avoid picking an older download
+            downloaded_file = max(downloaded_files, key=lambda p: p.stat().st_mtime)
             
             logger.info(f"Successfully downloaded: {downloaded_file}")
             return True, str(downloaded_file), None
@@ -420,62 +422,109 @@ class YouTubeDownloadTool(BaseTool):
         context = await get_current_context()
         context_id = context.get('contextId', 'local')
         
-        # Determine workspace root based on context
         if context_id == 'local':
+            # Local context: download directly into workspace
             workspace_root = getattr(fs, 'root_path', None)
             if not workspace_root:
                 workspace_root = os.environ.get('WORKSPACE_ROOT') or os.getcwd()
+
+            output_dir = Path(workspace_root) / self.DEFAULT_OUTPUT_DIR
+            try:
+                output_dir.mkdir(parents=True, exist_ok=True)
+            except Exception as e:
+                return ToolResult(
+                    success=False,
+                    error=f"Failed to create output directory: {str(e)}",
+                )
+
+            logger.info(f"Starting download: {url} (quality: {quality}, format: {output_format})")
+            success, file_path, error = await self._download_video(
+                url, video_id, quality, output_format, output_dir, filename
+            )
+
+            if not success:
+                return ToolResult(success=False, error=error or "Download failed")
+
+            try:
+                file_size = os.path.getsize(file_path)
+                file_path_obj = Path(file_path)
+                relative_path = file_path_obj.relative_to(workspace_root)
+                absolute_path = file_path
+            except Exception as e:
+                logger.error(f"Error verifying output file: {e}")
+                return ToolResult(
+                    success=False,
+                    error=f"Download completed but file verification failed: {str(e)}",
+                )
         else:
-            # Remote context via hop
-            import posixpath
+            # Remote context via hop: download locally to a temp dir, then transfer to remote workspace
             remote_user = context.get('username') or os.getenv('USER', 'user')
-            workspace_root = (
+            remote_workspace_root = (
                 context.get('workspaceRoot')
                 or context.get('cwd')
                 or os.environ.get('HOP_REMOTE_WORKSPACE_ROOT')
                 or posixpath.join('/home', remote_user, 'icotes')
             )
-        
-        # Determine output directory
-        output_dir = Path(workspace_root) / self.DEFAULT_OUTPUT_DIR
-        
-        # Create output directory if it doesn't exist
-        try:
-            output_dir.mkdir(parents=True, exist_ok=True)
-        except Exception as e:
-            return ToolResult(
-                success=False,
-                error=f"Failed to create output directory: {str(e)}"
-            )
-        
-        # Download the video
-        logger.info(f"Starting download: {url} (quality: {quality}, format: {output_format})")
-        success, file_path, error = await self._download_video(
-            url, video_id, quality, output_format, output_dir, filename
-        )
-        
-        if not success:
-            return ToolResult(
-                success=False,
-                error=error or "Download failed"
-            )
-        
-        # Verify the output file
-        try:
-            file_size = os.path.getsize(file_path)
-            file_path_obj = Path(file_path)
-            relative_path = file_path_obj.relative_to(workspace_root)
-        except Exception as e:
-            logger.error(f"Error verifying output file: {e}")
-            return ToolResult(
-                success=False,
-                error=f"Download completed but file verification failed: {str(e)}"
-            )
+
+            remote_output_dir = posixpath.join(remote_workspace_root, self.DEFAULT_OUTPUT_DIR)
+            with tempfile.TemporaryDirectory(prefix="icotes_ytdlp_") as tmp_dir:
+                local_output_dir = Path(tmp_dir) / self.DEFAULT_OUTPUT_DIR
+                local_output_dir.mkdir(parents=True, exist_ok=True)
+
+                logger.info(
+                    "Starting download (remote ctx=%s): %s (quality: %s, format: %s)",
+                    context_id,
+                    url,
+                    quality,
+                    output_format,
+                )
+                success, local_file_path, error = await self._download_video(
+                    url, video_id, quality, output_format, local_output_dir, filename
+                )
+                if not success:
+                    return ToolResult(success=False, error=error or "Download failed")
+
+                try:
+                    local_path_obj = Path(local_file_path)
+                    file_bytes = local_path_obj.read_bytes()
+                    file_size = len(file_bytes)
+                except Exception as e:
+                    return ToolResult(
+                        success=False,
+                        error=f"Downloaded locally but failed to read bytes for transfer: {type(e).__name__}: {e}",
+                    )
+
+                remote_abs_path = posixpath.join(remote_output_dir, local_path_obj.name)
+                write_result = None
+                if hasattr(fs, "write_file_binary"):
+                    write_result = await fs.write_file_binary(remote_abs_path, file_bytes, create_dirs=True)
+                if not isinstance(write_result, dict) or write_result.get("success") is not True:
+                    err = None
+                    if isinstance(write_result, dict):
+                        err = write_result.get("error")
+                    return ToolResult(
+                        success=False,
+                        error=err or f"Failed to transfer downloaded file to remote workspace: {remote_abs_path}",
+                    )
+
+                ok, debug = await verify_output_file(fs, remote_abs_path, min_size=1)
+                if not ok:
+                    return ToolResult(
+                        success=False,
+                        error=f"Remote file verification failed after transfer: {debug}",
+                    )
+
+                try:
+                    relative_path = PurePosixPath(remote_abs_path).relative_to(remote_workspace_root)
+                except Exception:
+                    relative_path = PurePosixPath(remote_abs_path.lstrip('/'))
+
+                absolute_path = remote_abs_path
         
         # Build result data
         result_data = {
             'file_path': str(relative_path),
-            'absolute_path': file_path,
+            'absolute_path': absolute_path,
             'file_size_mb': round(file_size / (1024 * 1024), 2),
             'file_size_bytes': file_size,
             'quality': quality,
@@ -496,10 +545,13 @@ class YouTubeDownloadTool(BaseTool):
             f"👤 Uploader: {metadata.get('uploader', 'Unknown')}"
         )
         
-        logger.info(f"Download successful: {file_path}")
-        
+        logger.info("Download successful: %s", absolute_path)
+
+        # Attach human-readable success message to data payload
+        result_data["message"] = message
+
         return ToolResult(
             success=True,
             data=result_data,
-            error=message  # Using error field for success message (convention in other tools)
+            error=None,
         )
