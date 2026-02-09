@@ -525,6 +525,9 @@ class AtlasCloudVideoToVideoSoundTool(BaseTool):
             relative_path, absolute_path = paths
 
             # Verify file really exists (local or remote) before claiming success
+            context = await get_current_context()
+            context_name = context.get('contextId', 'local')
+            
             try:
                 filesystem_service = await get_contextual_filesystem()
                 ok, debug = await verify_output_file(
@@ -533,14 +536,26 @@ class AtlasCloudVideoToVideoSoundTool(BaseTool):
                     expected_size=len(video_bytes),
                     min_size=1,
                 )
+                
+                # Extra paranoid check for local context: direct file existence
+                if ok and context_name == 'local':
+                    if not os.path.isfile(absolute_path):
+                        logger.warning(
+                            "[AtlasCloudV2VSound] Verification passed but direct file check failed: %s",
+                            absolute_path
+                        )
+                        ok = False
+                        debug["direct_check_failed"] = True
+                        
             except Exception as e:
                 ok = False
-                debug = {"exception": f"{type(e).__name__}: {e}", "absolute_path": absolute_path}
+                debug = {"exception": f"{type(e).__name__}: {e}", "absolute_path": absolute_path, "context": context_name}
 
             if not ok:
                 logger.error(
-                    "[AtlasCloudV2VSound] Save verification failed for %s | debug=%s",
+                    "[AtlasCloudV2VSound] Save verification failed for %s (context=%s) | debug=%s",
                     absolute_path,
+                    context_name,
                     debug,
                 )
                 return ToolResult(
@@ -553,8 +568,9 @@ class AtlasCloudVideoToVideoSoundTool(BaseTool):
                         "prompt": prompt[:100] + "..." if len(prompt) > 100 else prompt,
                         "downloaded_bytes": len(video_bytes),
                         "save_debug": debug,
+                        "context": context_name,
                     },
-                    error="Output file verification failed: video file missing/empty after save",
+                    error=f"Output file verification failed: video file missing/empty after save (context: {context_name})",
                 )
             
             # Build success response

@@ -13,16 +13,6 @@ if str(BACKEND_ROOT) not in sys.path:
 from icpy.api.rest_api import RestAPI
 
 
-def _find_repo_workspace_dir() -> Path:
-    """Find the repo's workspace/ directory by walking upward from this file."""
-    current = Path(__file__).resolve()
-    for parent in current.parents:
-        candidate = parent / 'workspace'
-        if candidate.is_dir():
-            return candidate
-    raise RuntimeError("Could not locate repo workspace/ directory")
-
-
 @pytest.fixture()
 def client():
     app = FastAPI(title="Test RestAPI Raw")
@@ -33,12 +23,9 @@ def client():
 
 
 class TestFilesRawRange:
-    def test_files_raw_serves_full_file_with_accept_ranges(self, client):
-        workspace_dir = _find_repo_workspace_dir()
-        tmp_dir = workspace_dir / '.icotes_tmp_range_test'
-        tmp_dir.mkdir(parents=True, exist_ok=True)
-
-        test_file = tmp_dir / 'range_test.bin'
+    def test_files_raw_serves_full_file_with_accept_ranges(self, client, tmp_path: Path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        test_file = tmp_path / 'range_test.bin'
         payload = b'0123456789ABCDEFGHIJ'  # 20 bytes
         test_file.write_bytes(payload)
 
@@ -47,12 +34,9 @@ class TestFilesRawRange:
         assert r.headers.get('accept-ranges') == 'bytes'
         assert r.content == payload
 
-    def test_files_raw_range_header_returns_206(self, client):
-        workspace_dir = _find_repo_workspace_dir()
-        tmp_dir = workspace_dir / '.icotes_tmp_range_test'
-        tmp_dir.mkdir(parents=True, exist_ok=True)
-
-        test_file = tmp_dir / 'range_test_206.bin'
+    def test_files_raw_range_header_returns_206(self, client, tmp_path: Path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        test_file = tmp_path / 'range_test_206.bin'
         payload = b'0123456789ABCDEFGHIJ'  # 20 bytes
         test_file.write_bytes(payload)
 
@@ -68,12 +52,9 @@ class TestFilesRawRange:
         assert r.headers.get('content-length') == '10'
         assert r.content == payload[:10]
 
-    def test_files_raw_suffix_range_header(self, client):
-        workspace_dir = _find_repo_workspace_dir()
-        tmp_dir = workspace_dir / '.icotes_tmp_range_test'
-        tmp_dir.mkdir(parents=True, exist_ok=True)
-
-        test_file = tmp_dir / 'range_test_suffix.bin'
+    def test_files_raw_suffix_range_header(self, client, tmp_path: Path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        test_file = tmp_path / 'range_test_suffix.bin'
         payload = b'0123456789ABCDEFGHIJ'  # 20 bytes
         test_file.write_bytes(payload)
 

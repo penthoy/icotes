@@ -87,6 +87,12 @@ class AtlasCloudClient:
     
     async def _ensure_client(self):
         """Ensure HTTP client is initialized."""
+        if self._client is not None:
+            # httpx.AsyncClient exposes is_closed; tolerate mocks in tests.
+            is_closed = getattr(self._client, "is_closed", False)
+            if isinstance(is_closed, bool) and is_closed:
+                self._client = None
+
         if self._client is None:
             self._client = httpx.AsyncClient(
                 base_url=self.base_url,
@@ -96,6 +102,58 @@ class AtlasCloudClient:
                 },
                 timeout=self.timeout,
             )
+
+    @staticmethod
+    def _is_transient_transport_error(exc: Exception) -> bool:
+        """Return True for errors that are often fixed by recreating the HTTP client and retrying.
+
+        In practice we see intermittent asyncio/httpx transport issues like:
+        - "unable to perform operation on <TCPTransport ...>; the handler is closed"
+        These can happen when a pooled connection/transport is left in a bad state.
+        """
+        if isinstance(exc, httpx.TransportError):
+            return True
+        if isinstance(exc, RuntimeError):
+            msg = str(exc).lower()
+            if "handler is closed" in msg or "tcptransport" in msg or "event loop is closed" in msg:
+                return True
+        return False
+
+    async def _request_with_retry(self, method: str, url: str, **kwargs) -> httpx.Response:
+        """Make an HTTP request with a small retry budget for transient transport failures."""
+        last_exc: Exception | None = None
+        # Keep this tight: we only want to smooth over known flaky transport closures.
+        for attempt in range(3):
+            await self._ensure_client()
+            try:
+                assert self._client is not None
+                # Prefer verb-specific methods when available (works with both httpx.AsyncClient
+                # and existing unit tests that mock .get/.post).
+                verb = method.strip().lower()
+                verb_fn = getattr(self._client, verb, None)
+                if callable(verb_fn):
+                    return await verb_fn(url, **kwargs)
+                return await self._client.request(method, url, **kwargs)
+            except Exception as e:
+                last_exc = e
+                if not self._is_transient_transport_error(e) or attempt == 2:
+                    raise
+
+                logger.warning(
+                    "Transient transport error (attempt %s/3). Resetting client and retrying: %s",
+                    attempt + 1,
+                    e,
+                )
+                # Reset pooled connections/transport and retry.
+                try:
+                    await self.close()
+                except Exception:
+                    # Best effort; we are already in an error path.
+                    self._client = None
+                await asyncio.sleep(0.25 * (attempt + 1))
+
+        assert last_exc is not None
+        raise last_exc
     
     async def close(self):
         """Close the HTTP client."""
@@ -216,7 +274,8 @@ class AtlasCloudClient:
         logger.info(f"Submitting video generation request: model={model}, prompt={prompt[:50] if prompt else 'N/A'}...")
         
         try:
-            response = await self._client.post(
+            response = await self._request_with_retry(
+                "POST",
                 "/api/v1/model/generateVideo",
                 json=request_data.model_dump(exclude_none=True),
             )
@@ -272,7 +331,10 @@ class AtlasCloudClient:
         await self._ensure_client()
         
         try:
-            response = await self._client.get(f"/api/v1/model/result/{request_id}")
+            response = await self._request_with_retry(
+                "GET",
+                f"/api/v1/model/result/{request_id}",
+            )
             
             if response.status_code != 200:
                 self._handle_error_response(response)
@@ -343,10 +405,27 @@ class AtlasCloudClient:
                 # Common failure: "Unable to download or load video" when SITE_URL is not publicly accessible
                 error_msg = result.logs or result.error or "Unknown error"
                 logger.error(f"Video generation failed for {request_id}: {error_msg}")
-                raise AtlasCloudError(
-                    f"Video generation failed: {error_msg}",
-                    response={"request_id": request_id, "status": result.status}
-                )
+                
+                # Provide helpful guidance if the error is about accessing video/image URLs
+                if "unable to download or load" in error_msg.lower():
+                    helpful_msg = (
+                        f"Video generation failed: {error_msg}\n\n"
+                        "⚠️ This error typically means the cloud provider cannot access your video/image URL from the internet. "
+                        "To use video conversion tools, please ensure:\n"
+                        "1. SITE_URL environment variable is set to your public domain/IP (check Environment settings)\n"
+                        "2. Your webapp is accessible from external sources (use port forwarding or tunneling service like ngrok/cloudflare tunnel)\n"
+                        "3. Test accessibility: Try visiting your SITE_URL from a different network or use online tools to verify\n"
+                        "4. If using Docker, ensure SITE_URL is set to the host's public IP/domain, not localhost or 127.0.0.1"
+                    )
+                    raise AtlasCloudError(
+                        helpful_msg,
+                        response={"request_id": request_id, "status": result.status}
+                    )
+                else:
+                    raise AtlasCloudError(
+                        f"Video generation failed: {error_msg}",
+                        response={"request_id": request_id, "status": result.status}
+                    )
             
             # Still processing - wait and retry
             logger.debug(f"Video generation {request_id} status: {result.status}, waiting {current_interval}s...")

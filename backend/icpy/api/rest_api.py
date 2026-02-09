@@ -587,7 +587,9 @@ class RestAPI:
             Security: Only serves files inside the configured filesystem root or workspace root.
             """
             try:
-                import os, mimetypes, aiofiles
+                import os
+                import mimetypes
+                import aiofiles
                 from pathlib import Path
                 from fastapi.responses import StreamingResponse, Response, FileResponse
                 from typing import AsyncIterator
@@ -645,7 +647,15 @@ class RestAPI:
                 if abs_path is not None:
                     logger.info(f"[REST][raw] Using local streaming path abs={abs_path}")
                     # Security: ensure selected path is inside either fs_root or workspace_root
-                    if not (abs_path.startswith(fs_root) or abs_path.startswith(workspace_root)):
+                    try:
+                        abs_path_obj = Path(abs_path).resolve()
+                        fs_root_obj = Path(fs_root).resolve()
+                        workspace_root_obj = Path(workspace_root).resolve()
+                        try:
+                            abs_path_obj.relative_to(fs_root_obj)
+                        except Exception:
+                            abs_path_obj.relative_to(workspace_root_obj)
+                    except Exception:
                         raise HTTPException(status_code=400, detail="Path outside workspace root")
 
                     # Best-effort mime detection
