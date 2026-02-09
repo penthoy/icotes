@@ -28,6 +28,7 @@ import asyncio
 import tempfile
 import posixpath
 from pathlib import PurePosixPath
+from urllib.parse import urlparse
 
 from .base_tool import BaseTool, ToolResult
 from .context_helpers import get_contextual_filesystem, get_current_context
@@ -156,8 +157,15 @@ class YouTubeDownloadTool(BaseTool):
     
     def _extract_video_id(self, url: str) -> Optional[str]:
         """Extract YouTube video ID from various URL formats."""
-        # Only process YouTube URLs
-        if 'youtube.com' not in url and 'youtu.be' not in url:
+        try:
+            parsed = urlparse(url)
+            hostname = (parsed.hostname or '').lower()
+        except Exception:
+            return None
+
+        # Only process actual YouTube hostnames (avoid substring bypasses like evil.com/youtube.com?...)
+        is_allowed = hostname in {'youtu.be', 'youtube.com'} or hostname.endswith('.youtube.com')
+        if not is_allowed:
             return None
         
         patterns = [

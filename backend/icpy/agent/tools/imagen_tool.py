@@ -17,6 +17,7 @@ import base64
 import re
 import logging
 import uuid
+import asyncio
 from typing import Any, Dict, Optional, Tuple
 from datetime import datetime
 
@@ -624,7 +625,7 @@ class ImagenTool(BaseTool):
             )
         return f"Generate an image: {prompt}"
 
-    def _attempt(self, content: str, model_name: str, aspect_ratio: Optional[str] = None, image_part: Optional[Dict] = None):
+    async def _attempt(self, content: str, model_name: str, aspect_ratio: Optional[str] = None, image_part: Optional[Dict] = None):
         """
         Attempt to generate content with the specified model.
         
@@ -672,7 +673,8 @@ class ImagenTool(BaseTool):
                 
                 config = gtypes.GenerateContentConfig(**config_dict)
                 
-                response = self._genai_client.models.generate_content(
+                response = await asyncio.to_thread(
+                    self._genai_client.models.generate_content,
                     model=model_name,
                     contents=contents,
                     config=config,
@@ -683,12 +685,19 @@ class ImagenTool(BaseTool):
                 # Legacy SDK path (no native aspect_ratio support)
                 model = self._legacy_genai.GenerativeModel(model_name)  # type: ignore[attr-defined]
                 logger.warning("[ImagenTool] Using legacy SDK - aspect_ratio will be handled via post-resize")
-                return model.generate_content(content), None
+                if image_part:
+                    legacy_image = {
+                        "mime_type": image_part.get("mime_type"),
+                        "data": image_part.get("data"),
+                    }
+                    legacy_contents = [legacy_image, content]
+                    return await asyncio.to_thread(model.generate_content, legacy_contents), None
+                return await asyncio.to_thread(model.generate_content, content), None
             else:
                 return None, f"No valid Google SDK provider available (got: {GENAI_PROVIDER})"
                 
         except Exception as e:
-            logger.error(f"[ImagenTool] _attempt error: {e}")
+            logger.exception("[ImagenTool] _attempt error: %s", e)
             return None, str(e)
 
     async def execute(self, **kwargs) -> ToolResult:
@@ -792,13 +801,13 @@ class ImagenTool(BaseTool):
                 logger.info(f"[ImagenTool] Using NATIVE API aspect_ratio={aspect_ratio_label}")
             
             attempted = []
-            response, err = self._attempt(content, self._primary_model, aspect_ratio=api_aspect_ratio, image_part=image_part)
+            response, err = await self._attempt(content, self._primary_model, aspect_ratio=api_aspect_ratio, image_part=image_part)
             attempted.append({"model": self._primary_model, "error": err})
             mime_err_sig = "Unhandled generated data mime type"
             if err and mime_err_sig in err:
                 logger.warning(f"Mime type error on primary model, trying fallbacks: {err}")
                 for fb in self._fallback_models:
-                    r, e = self._attempt(content, fb, aspect_ratio=api_aspect_ratio, image_part=image_part)
+                    r, e = await self._attempt(content, fb, aspect_ratio=api_aspect_ratio, image_part=image_part)
                     attempted.append({"model": fb, "error": e})
                     if r and not e:
                         response = r
@@ -820,7 +829,7 @@ class ImagenTool(BaseTool):
                 try:
                     if hasattr(response, 'text') and response.text:
                         text_content = response.text
-                except:
+                except Exception:
                     pass
                 
                 return ToolResult(
@@ -851,6 +860,12 @@ class ImagenTool(BaseTool):
                     image_bytes, target_width, target_height, crop_to_aspect=True
                 )
                 logger.info(f"[Legacy SDK] Image cropped and resized to {target_width}x{target_height} (aspect ratio: {aspect_ratio_label})")
+            elif effective_mode == "generate" and target_width and target_height:
+                # No explicit size hints were provided, but resolve_dimensions() selected defaults.
+                # Keep output deterministic (and aligned with UI expectations/tests) by resizing.
+                should_resize = True
+                image_bytes, mime_type = self._resize_image(image_bytes, target_width, target_height)
+                logger.info(f"Image resized to default dimensions {target_width}x{target_height}")
             
             # Get actual image dimensions for widget display
             actual_dimensions = self._get_image_dimensions(image_bytes)

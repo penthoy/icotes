@@ -46,6 +46,7 @@ class DummyModel:
 async def test_generate_image_defaults_square(monkeypatch, tmp_path):
     # Ensure workspace is isolated
     os.environ['WORKSPACE_ROOT'] = str(tmp_path)
+    monkeypatch.setenv('GOOGLE_API_KEY', 'test-key')
 
     # Mock Google SDK model
     import google.generativeai as genai
@@ -64,6 +65,7 @@ async def test_generate_image_defaults_square(monkeypatch, tmp_path):
         return FS()
 
     import icpy.agent.tools.imagen_tool as mod
+    monkeypatch.setattr(mod, 'GENAI_PROVIDER', 'google-generativeai-legacy')
     monkeypatch.setattr(mod, 'get_current_context', fake_get_current_context)
     monkeypatch.setattr(mod, 'get_contextual_filesystem', fake_get_contextual_filesystem)
 
@@ -98,6 +100,7 @@ async def test_edit_image_preserve_size_when_no_hints(monkeypatch, tmp_path):
         f.write(input_bytes)
 
     os.environ['WORKSPACE_ROOT'] = str(tmp_path)
+    monkeypatch.setenv('GOOGLE_API_KEY', 'test-key')
 
     # Model returns a new image but we won't resize since no width/height/aspect_ratio
     import google.generativeai as genai
@@ -118,6 +121,7 @@ async def test_edit_image_preserve_size_when_no_hints(monkeypatch, tmp_path):
         return FS()
 
     import icpy.agent.tools.imagen_tool as mod
+    monkeypatch.setattr(mod, 'GENAI_PROVIDER', 'google-generativeai-legacy')
     monkeypatch.setattr(mod, 'get_current_context', fake_get_current_context)
     monkeypatch.setattr(mod, 'get_contextual_filesystem', fake_get_contextual_filesystem)
 

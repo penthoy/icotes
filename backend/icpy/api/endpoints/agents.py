@@ -9,6 +9,7 @@ import re
 import logging
 import time
 import tempfile
+import contextlib
 from typing import Dict, Any
 
 from fastapi import Request, HTTPException
@@ -263,6 +264,11 @@ async def update_api_keys_endpoint(request: Request):
             # Replace in-place while preserving comments/blank lines.
             # Supports lines like: KEY=..., export KEY=..., with arbitrary whitespace.
             updates = {k: _sanitize_env_value(v.strip()) for k, v in api_keys.items() if v and v.strip()}
+
+            def _quote_env_value(v: str) -> str:
+                escaped = v.replace('\\', '\\\\').replace('"', '\\"')
+                return f'"{escaped}"'
+
             key_to_index: dict[str, int] = {}
             export_prefix: dict[str, str] = {}
             pattern = re.compile(r'^\s*(export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=')
@@ -277,7 +283,7 @@ async def update_api_keys_endpoint(request: Request):
 
             new_lines = list(existing_lines)
             for k, v in updates.items():
-                new_line = f"{export_prefix.get(k, '')}{k}={v}\n"
+                new_line = f"{export_prefix.get(k, '')}{k}={_quote_env_value(v)}\n"
                 if k in key_to_index:
                     new_lines[key_to_index[k]] = new_line
                 else:
@@ -290,7 +296,12 @@ async def update_api_keys_endpoint(request: Request):
             with tempfile.NamedTemporaryFile('w', delete=False, encoding='utf-8', dir=os.path.dirname(env_file_path) or None) as tmp:
                 tmp.writelines(new_lines)
                 tmp_path = tmp.name
-            os.replace(tmp_path, env_file_path)
+            try:
+                os.replace(tmp_path, env_file_path)
+            except BaseException:
+                with contextlib.suppress(OSError):
+                    os.unlink(tmp_path)
+                raise
 
             logger.info(f"Persisted {len(updated_keys)} settings to {env_file_path}")
         except Exception as persist_error:

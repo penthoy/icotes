@@ -722,6 +722,10 @@ function areEqual(prev: ChatMessageProps, next: ChatMessageProps) {
   if (fp(a) !== fp(b)) return false;
   // Highlight query affects rendering
   if (prev.highlightQuery !== next.highlightQuery) return false;
+  // Timestamp override for tool duration
+  if (prev.requestTimestamp !== next.requestTimestamp) return false;
+  // allMessages reference (used for reply_to resolution when requestTimestamp is not provided)
+  if (prev.allMessages !== next.allMessages) return false;
   return true;
 }
 

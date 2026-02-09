@@ -38,6 +38,8 @@ const SITE_SETTINGS_GROUP = [
   { key: 'PORT', label: 'Server Port', placeholder: '8000', description: 'Port number for backend server' },
 ];
 
+const SITE_SETTING_KEYS = new Set(SITE_SETTINGS_GROUP.map(k => k.key));
+
 const API_KEY_GROUPS: Record<string, KeyConfig[]> = {
   'AI Models': [
     { key: 'OPENROUTER_API_KEY', label: 'OpenRouter API Key', placeholder: 'sk-or-...', description: 'Access multiple AI models via OpenRouter' },
@@ -210,7 +212,7 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose }) => 
         await loadApiKeyStatus();
         
       } else {
-        throw new Error(data.error || 'Failed to update API keys');
+        throw new Error(data.error || 'Failed to update environment settings');
       }
     } catch (error) {
       console.error('❌ Failed to update environment settings:', error);
@@ -232,7 +234,7 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose }) => 
     const isVisible = showKeys[key] || false;
 
     // Site settings keys (SITE_URL, WORKSPACE_ROOT, PORT) are plain text fields
-    const isSiteSettingKey = ['SITE_URL', 'WORKSPACE_ROOT', 'PORT'].includes(key);
+    const isSiteSettingKey = SITE_SETTING_KEYS.has(key);
 
     // Compute what to show in the input box
     // - If the user typed something, respect that (always editable)
