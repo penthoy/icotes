@@ -37,6 +37,7 @@ dependencies = [
     "markdownify>=0.11.0",
     "lxml>=4.9.0",
     "youtube-transcript-api>=0.6.0",
+    "yt-dlp>=2024.0.0",
     # Document processing dependencies
     "openpyxl>=3.1.0",
     "python-docx>=1.1.0",
