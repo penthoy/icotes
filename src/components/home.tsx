@@ -51,19 +51,26 @@ const THEME_OPTIONS = [
 
 // Remove default files - let ICUIEditor handle file loading from backend
 
+// Layout version - increment this when you want to force a layout reset
+const LAYOUT_VERSION = 2;
+
 // Default layout configuration
 const defaultLayout: ICUILayoutConfig = {
   layoutMode: 'h-layout',
   areas: {
     left: { id: 'left', name: 'Explorer', panelIds: ['explorer', 'git'], activePanelId: 'explorer', size: 20, visible: true },
-    center: { id: 'center', name: 'Editor', panelIds: ['editor', 'preview', 'hop'], activePanelId: 'editor', size: 50 },
-    right: { id: 'right', name: 'Assistant', panelIds: ['chat', 'chat-history'], activePanelId: 'chat', size: 30, visible: true },
+    center: { id: 'center', name: 'Editor', panelIds: ['editor', 'preview', 'hop', 'chat-history'], activePanelId: 'editor', size: 40 },
+    right: { id: 'right', name: 'Assistant', panelIds: ['chat'], activePanelId: 'chat', size: 40, visible: true },
     bottom: { id: 'bottom', name: 'Terminal', panelIds: ['terminal'], activePanelId: 'terminal', size: 40 },
   },
   splitConfig: { 
-    mainHorizontalSplit: 25, 
-    rightVerticalSplit: 75, 
-    centerVerticalSplit: 65 
+    mainHorizontalSplit: 20, 
+    // In h-layout, `rightVerticalSplit` is the % width of the center area within the (center+right) region.
+    // Setting it to 60 makes the right sidebar ~40% by default.
+    rightVerticalSplit: 50, 
+    // In h-layout, `centerVerticalSplit` is the % height of the top (editor) region.
+    // Increase this to move the divider down (more editor space).
+    centerVerticalSplit: 70 
   }
 };
 
@@ -598,14 +605,14 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
       layoutMode: 'h-layout',
       areas: {
         left: { id: 'left', name: 'Explorer', panelIds: ['explorer', 'git'], activePanelId: 'explorer', size: 25, visible: true },
-        center: { id: 'center', name: 'Editor', panelIds: ['editor', 'preview', 'hop'], activePanelId: 'editor', size: 50 },
-        right: { id: 'right', name: 'Assistant', panelIds: ['chat', 'chat-history'], activePanelId: 'chat', size: 25, visible: true },
+        center: { id: 'center', name: 'Editor', panelIds: ['editor', 'preview', 'hop'], activePanelId: 'editor', size: 40 },
+        right: { id: 'right', name: 'Assistant', panelIds: ['chat', 'chat-history'], activePanelId: 'chat-history', size: 40, visible: true },
         bottom: { id: 'bottom', name: 'Terminal', panelIds: ['terminal'], activePanelId: 'terminal', size: 40 },
       },
       splitConfig: { 
         mainHorizontalSplit: 25, 
-        rightVerticalSplit: 75, 
-        centerVerticalSplit: 65 
+        rightVerticalSplit: 60, 
+        centerVerticalSplit: 70 
       }
     });
   }, []);
@@ -677,7 +684,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
           onLayoutChange={setLayout}
           enableDragDrop={true}
           persistLayout={true}
-          layoutKey="icotes"
+          layoutKey={`icotes-v${LAYOUT_VERSION}`}
           className="h-full w-full"
           availablePanelTypes={availablePanelTypes}
           onPanelAdd={handlePanelAdd}

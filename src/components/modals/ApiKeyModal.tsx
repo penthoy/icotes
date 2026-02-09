@@ -25,7 +25,20 @@ interface ApiKeyModalProps {
   onClose: () => void;
 }
 
-const API_KEY_GROUPS = {
+interface KeyConfig {
+  key: string;
+  label: string;
+  placeholder: string;
+  description: string;
+}
+
+const SITE_SETTINGS_GROUP = [
+  { key: 'SITE_URL', label: 'Site URL', placeholder: 'wip.icotes.com', description: 'Domain/IP for the application (used for callbacks, webhooks, Docker deployments)' },
+  { key: 'WORKSPACE_ROOT', label: 'Workspace Root', placeholder: '/app/workspace', description: 'Absolute path to workspace directory' },
+  { key: 'PORT', label: 'Server Port', placeholder: '8000', description: 'Port number for backend server' },
+];
+
+const API_KEY_GROUPS: Record<string, KeyConfig[]> = {
   'AI Models': [
     { key: 'OPENROUTER_API_KEY', label: 'OpenRouter API Key', placeholder: 'sk-or-...', description: 'Access multiple AI models via OpenRouter' },
     { key: 'OPENAI_API_KEY', label: 'OpenAI API Key', placeholder: 'sk-...', description: 'Required for OpenAI GPT models' },
@@ -61,7 +74,8 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose }) => 
   const getAllCanonicalKeys = (): string[] => {
     const aiKeys = API_KEY_GROUPS['AI Models'].map(k => k.key);
     const svcKeys = API_KEY_GROUPS['Services'].map(k => k.key);
-    return [...aiKeys, ...svcKeys];
+    const siteKeys = SITE_SETTINGS_GROUP.map(k => k.key);
+    return [...aiKeys, ...svcKeys, ...siteKeys];
   };
 
   useEffect(() => {
@@ -71,7 +85,7 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose }) => 
     // Cleanup revealed values when modal closes
     return () => {
       setRevealedValues({});
-  setShowKeys({});
+      setShowKeys({});
     };
   }, [isOpen]);
 
@@ -90,13 +104,13 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose }) => 
         setKeyStatus(data.keys);
         setRevealedValues({});
       } else {
-        throw new Error(data.error || 'Failed to load API key status');
+        throw new Error(data.error || 'Failed to load environment settings status');
       }
     } catch (error) {
-      console.error('❌ Failed to load API key status:', error);
+      console.error('❌ Failed to load environment settings status:', error);
       toast({
         title: "Error",
-        description: `Failed to load API key status: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        description: `Failed to load environment settings status: ${error instanceof Error ? error.message : 'Unknown error'}`,
         variant: "destructive",
         duration: 5000,
       });
@@ -161,7 +175,7 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose }) => 
       if (Object.keys(keysToUpdate).length === 0) {
         toast({
           title: "No Changes",
-          description: "No API keys were modified.",
+          description: "No environment settings were modified.",
           duration: 3000,
         });
         return;
@@ -184,8 +198,8 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose }) => 
       
       if (data.success) {
         toast({
-          title: "API Keys Updated",
-          description: data.message || `Updated ${data.updated_keys?.length || 0} API keys successfully.`,
+          title: "Settings Updated",
+          description: data.message || `Updated ${data.updated_keys?.length || 0} environment settings successfully.`,
           duration: 3000,
         });
 
@@ -199,10 +213,10 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose }) => 
         throw new Error(data.error || 'Failed to update API keys');
       }
     } catch (error) {
-      console.error('❌ Failed to update API keys:', error);
+      console.error('❌ Failed to update environment settings:', error);
       toast({
         title: "Update Failed",
-        description: `Failed to update API keys: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        description: `Failed to update environment settings: ${error instanceof Error ? error.message : 'Unknown error'}`,
         variant: "destructive",
         duration: 5000,
       });
@@ -211,26 +225,25 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose }) => 
     }
   };
 
-  const renderKeyInput = (keyConfig: typeof API_KEY_GROUPS['AI Models'][0]) => {
+  const renderKeyInput = (keyConfig: KeyConfig) => {
     const { key, label, placeholder, description } = keyConfig;
     const status = keyStatus[key];
     const currentValue = apiKeys[key] || '';
     const isVisible = showKeys[key] || false;
 
+    // Site settings keys (SITE_URL, WORKSPACE_ROOT, PORT) are plain text fields
+    const isSiteSettingKey = ['SITE_URL', 'WORKSPACE_ROOT', 'PORT'].includes(key);
+
     // Compute what to show in the input box
-    // - If the user typed something, respect that and allow toggle text/password
-    // - If nothing typed but key is set, when visible show masked_value as read-only
-    //   (so the eye toggle actually reveals something without leaking the full key)
+    // - If the user typed something, respect that (always editable)
+    // - If nothing typed but key is set and visible, show revealed/masked value (still editable to allow updates)
     // - Otherwise, keep empty and rely on placeholder
     let effectiveValue = currentValue;
-    let isReadOnly = false;
     if (!currentValue && status?.is_set) {
-      if (isVisible) {
+      if (isVisible || isSiteSettingKey) {
         effectiveValue = revealedValues[key] ?? status.masked_value ?? '';
-        isReadOnly = true; // prevent accidentally editing/saving masked text
       } else {
         effectiveValue = '';
-        isReadOnly = false;
       }
     }
 
@@ -259,27 +272,28 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose }) => 
         <div className="relative">
           <Input
             id={key}
-            type={isVisible ? "text" : "password"}
+            type={isSiteSettingKey || isVisible ? "text" : "password"}
             placeholder={status?.is_set ? status.masked_value : placeholder}
             value={effectiveValue}
-            readOnly={isReadOnly}
             autoComplete="off"
             autoCorrect="off"
             spellCheck={false}
             onChange={(e) => handleKeyChange(key, e.target.value)}
-            className="pr-10 text-sm"
+            className={isSiteSettingKey ? "text-sm" : "pr-10 text-sm"}
           />
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-            onClick={() => toggleShowKey(key)}
-            aria-label={isVisible ? `Hide ${label}` : `Show ${label}`}
-            title={isVisible ? 'Hide value' : 'Show value'}
-          >
-            {isVisible ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-          </Button>
+          {!isSiteSettingKey && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+              onClick={() => toggleShowKey(key)}
+              aria-label={isVisible ? `Hide ${label}` : `Show ${label}`}
+              title={isVisible ? 'Hide value' : 'Show value'}
+            >
+              {isVisible ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </Button>
+          )}
         </div>
         
         <p className="text-xs text-gray-500">{description}</p>
@@ -293,22 +307,27 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose }) => 
         <DialogHeader>
           <DialogTitle className="flex items-center space-x-2">
             <Key className="w-5 h-5" />
-            <span>API Key Management</span>
+            <span>Environment</span>
           </DialogTitle>
         </DialogHeader>
 
         {isLoading ? (
           <div className="flex items-center justify-center py-8">
             <RefreshCw className="w-6 h-6 animate-spin mr-2" />
-            <span>Loading API key status...</span>
+            <span>Loading environment settings...</span>
           </div>
         ) : (
           <div className="space-y-6">
-            <Tabs defaultValue="ai-models" className="w-full">
-              <TabsList className="grid w-full grid-cols-2">
+            <Tabs defaultValue="site-settings" className="w-full">
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="site-settings">Site Settings</TabsTrigger>
                 <TabsTrigger value="ai-models">AI Models</TabsTrigger>
                 <TabsTrigger value="services">Services</TabsTrigger>
               </TabsList>
+
+              <TabsContent value="site-settings" className="space-y-4 mt-6">
+                {SITE_SETTINGS_GROUP.map(renderKeyInput)}
+              </TabsContent>
 
               <TabsContent value="ai-models" className="space-y-4 mt-6">
                 {API_KEY_GROUPS['AI Models'].map(renderKeyInput)}
@@ -339,7 +358,7 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose }) => 
               ) : (
                 <>
                   <Save className="w-4 h-4 mr-2" />
-                  Save Keys
+                  Save Settings
                 </>
               )}
             </Button>
