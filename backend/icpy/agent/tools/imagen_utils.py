@@ -7,15 +7,21 @@ from __future__ import annotations
 
 from typing import Optional, Tuple, Dict
 
-# Common aspect ratio presets used by UI/tests
-# Map: label -> (recommended_width, recommended_height, token_weight)
-# Token weight is an arbitrary relative cost indicator for prompt sizing heuristics
+# Gemini API natively supported aspect ratios with their default resolutions
+# Map: label -> (width, height, token_weight)
+# These are passed directly to the API via image_config.aspect_ratio
+# Reference: https://ai.google.dev/gemini-api/docs/image-generation
 ASPECT_RATIO_SPECS: Dict[str, Tuple[int, int, float]] = {
-    "1:1": (1024, 1024, 1.0),
-    "16:9": (1920, 1080, 1.2),
-    "9:16": (1080, 1920, 1.2),
-    "4:3": (1600, 1200, 1.1),
-    "21:9": (2560, 1080, 1.3),
+    "1:1": (1024, 1024, 1.0),    # Square (default)
+    "2:3": (832, 1248, 1.1),     # Portrait
+    "3:2": (1248, 832, 1.1),     # Landscape  
+    "3:4": (864, 1184, 1.1),     # Portrait
+    "4:3": (1184, 864, 1.1),     # Landscape
+    "4:5": (896, 1152, 1.1),     # Portrait (social media)
+    "5:4": (1152, 896, 1.1),     # Landscape
+    "9:16": (768, 1344, 1.2),    # Vertical video/phone
+    "16:9": (1344, 768, 1.2),    # Widescreen
+    "21:9": (1536, 672, 1.3),    # Ultrawide/cinematic
 }
 
 

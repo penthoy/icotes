@@ -64,6 +64,8 @@ export interface ChatMessage {
     error?: boolean;  // Flag to indicate this is an error message
     // Tool call widgets supplied by backend
     toolCalls?: ToolCallMeta[];
+    // Reference to original user message for AI responses
+    reply_to?: string;
   };
 }
 

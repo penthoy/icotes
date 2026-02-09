@@ -17,7 +17,7 @@
  * - Error handling and notifications
  */
 
-import React, { useRef, useEffect, useState, useCallback, useImperativeHandle, forwardRef } from 'react';
+import React, { useRef, useEffect, useState, useCallback, useMemo, useImperativeHandle, forwardRef } from 'react';
 import { useMediaUpload } from '../../hooks/useMediaUpload';
 import { Square, Send, Paperclip, Mic, Wand2, RefreshCw, Settings } from 'lucide-react';
 import { 
@@ -148,6 +148,40 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
     // Disable hook-level auto-scroll when user has intentionally scrolled up
     autoScroll: autoScroll && !userHasScrolledUp
   });
+
+  // Precompute request timestamps for tool duration calculation.
+  // This avoids each ChatMessage doing linear scans over the full list (O(n^2) overall).
+  const requestTimestampByMessageId = useMemo(() => {
+    const normalizeTimestamp = (ts: unknown): string | undefined => {
+      if (!ts) return undefined;
+      if (ts instanceof Date) return ts.toISOString();
+      if (typeof ts === 'string') return ts;
+      return String(ts);
+    };
+
+    const userTimestampById = new Map<string, string>();
+    const lastUserTimestampAtIndex: Array<string | undefined> = [];
+    let lastUserTimestamp: string | undefined;
+
+    messages.forEach((m, idx) => {
+      const ts = normalizeTimestamp(m.timestamp);
+      if (m.sender === 'user' && ts) {
+        lastUserTimestamp = ts;
+        userTimestampById.set(m.id, ts);
+      }
+      lastUserTimestampAtIndex[idx] = lastUserTimestamp;
+    });
+
+    const result = new Map<string, string>();
+    messages.forEach((m, idx) => {
+      if (m.sender === 'user') return;
+      const replyTo = m.metadata?.reply_to;
+      const ts = (replyTo ? userTimestampById.get(replyTo) : undefined) ?? lastUserTimestampAtIndex[idx];
+      if (ts) result.set(m.id, ts);
+    });
+
+    return result;
+  }, [messages]);
 
   // Chat search hook (Ctrl+F) - context sensitive: only active when Chat has focus
   const search = useChatSearch(messages, {
@@ -807,10 +841,11 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
           <div className="space-y-4">
             {messages.map((message) => (
               <div key={message.id} data-message-id={message.id}>
-                              <ChatMessage 
+                <ChatMessage 
                   message={message}
                   className=""
                   highlightQuery={search.isOpen ? search.query : ''}
+                  requestTimestamp={requestTimestampByMessageId.get(message.id)}
                 />
               </div>
             ))}

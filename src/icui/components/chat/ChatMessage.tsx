@@ -28,6 +28,8 @@ interface ChatMessageProps {
   message: ChatMessageType;
   className?: string;
   highlightQuery?: string;
+  requestTimestamp?: string; // Optional: precomputed request timestamp for tool durations
+  allMessages?: ChatMessageType[];  // Optional: for calculating tool duration from reply_to
 }
 
 interface CodeBlockProps {
@@ -36,9 +38,42 @@ interface CodeBlockProps {
   inline?: boolean;
 }
 
-const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', highlightQuery = '' }) => {
+const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', highlightQuery = '', allMessages, requestTimestamp: requestTimestampOverride }) => {
   const { isDark } = useTheme();
   const [copiedStates, setCopiedStates] = useState<Record<string, boolean>>({});
+
+  // Calculate request timestamp from reply_to message for accurate tool duration
+  // Returns string timestamp for consistency with message.timestamp format
+  const requestTimestamp = useMemo((): string | undefined => {
+    if (requestTimestampOverride) return requestTimestampOverride;
+    if (!allMessages || message.sender === 'user') return undefined;
+
+    const normalizeTimestamp = (ts: unknown): string | undefined => {
+      if (!ts) return undefined;
+      if (ts instanceof Date) return ts.toISOString();
+      if (typeof ts === 'string') return ts;
+      return String(ts);
+    };
+
+    const replyTo = message.metadata?.reply_to;
+    if (replyTo) {
+      const userMsg = allMessages.find(m => m.id === replyTo);
+      const ts = normalizeTimestamp(userMsg?.timestamp);
+      if (ts) return ts;
+    }
+
+    // Fallback: if reply_to is missing (or cannot be resolved), use the closest
+    // preceding user message as the request start time.
+    const idx = allMessages.findIndex(m => m.id === message.id);
+    if (idx > 0) {
+      for (let i = idx - 1; i >= 0; i--) {
+        const m = allMessages[i];
+        if (m.sender === 'user') return normalizeTimestamp(m.timestamp);
+      }
+    }
+
+    return undefined;
+  }, [requestTimestampOverride, allMessages, message.id, message.sender, message.metadata?.reply_to]);
   
   // Simple highlighter for plain text (user messages)
   const renderHighlightedPlainText = useCallback((text: string, query: string) => {
@@ -255,8 +290,9 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', high
   // Use model helper for parsing tool calls - memoized to prevent unnecessary re-parsing
   const parsedResult = useMemo((): { content: string; toolCalls: ToolCallData[] } => {
     const activeHelper = getActiveModelHelper();
-    return activeHelper.parseToolCalls(message.content, message);
-  }, [message.content, message.id, message.metadata?.streamComplete]);
+    // Pass requestTimestamp for accurate tool duration calculation
+    return activeHelper.parseToolCalls(message.content, message, requestTimestamp);
+  }, [message.content, message.id, message.timestamp, message.metadata?.streamComplete, requestTimestamp]);
 
   // Parse content sequentially to interleave remarks and tool calls robustly
   const sequentialBlocks = useMemo(() => {
@@ -644,14 +680,6 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', high
             </div>
           ))}
 
-          {/* Show loading indicator for streaming tool execution */}
-          {shouldShowLoading && (
-            <div className="flex items-center gap-2 text-sm py-2" style={{ color: 'var(--icui-text-secondary)' }}>
-              <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-              <span>Processing tools...</span>
-            </div>
-          )}
-
           {/* AI Message Attachments */}
           {message.attachments && message.attachments.length > 0 && (
             <div className="mt-3">
@@ -694,6 +722,10 @@ function areEqual(prev: ChatMessageProps, next: ChatMessageProps) {
   if (fp(a) !== fp(b)) return false;
   // Highlight query affects rendering
   if (prev.highlightQuery !== next.highlightQuery) return false;
+  // Timestamp override for tool duration
+  if (prev.requestTimestamp !== next.requestTimestamp) return false;
+  // allMessages reference (used for reply_to resolution when requestTimestamp is not provided)
+  if (prev.allMessages !== next.allMessages) return false;
   return true;
 }
 

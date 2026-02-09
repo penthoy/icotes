@@ -41,14 +41,11 @@ RUN pip install --no-cache-dir uv
 
 WORKDIR /app/backend
 
-# Copy Python dependency files
-COPY backend/requirements.txt ./
+# Copy uv dependency files (for better layer caching)
+COPY backend/pyproject.toml backend/uv.lock ./
 
-# Install base Python dependencies with pip (for C++ compatibility)
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Install additional JWT dependency
-RUN pip install --no-cache-dir python-jose[cryptography]
+# Install production Python dependencies from lockfile
+RUN uv sync --frozen --no-dev --no-install-project
 
 # Stage 3: Final production image
 FROM python:3.12-slim
@@ -123,12 +120,11 @@ USER icotes
 
 WORKDIR /app
 
-# Copy Python packages from backend-base stage
-COPY --from=backend-base --chown=icotes:icotes /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
-COPY --from=backend-base --chown=icotes:icotes /usr/local/bin /usr/local/bin
-
 # Copy backend source code
 COPY --chown=icotes:icotes backend/ ./backend/
+
+# Copy Python virtualenv from backend-base stage
+COPY --from=backend-base --chown=icotes:icotes /app/backend/.venv /app/backend/.venv
 
 # Copy built frontend from frontend-builder stage
 COPY --from=frontend-builder --chown=icotes:icotes /app/dist ./dist/
@@ -143,6 +139,8 @@ COPY --chown=icotes:icotes workspace/ ./workspace/
 ENV PORT=8000 \
     AUTH_MODE=standalone \
     NODE_ENV=production \
+  VIRTUAL_ENV=/app/backend/.venv \
+  PATH="/app/backend/.venv/bin:$PATH" \
     WORKSPACE_ROOT=/app/workspace \
     VITE_WORKSPACE_ROOT=/app/workspace \
     LANG=en_US.UTF-8 \
@@ -168,4 +166,4 @@ WORKDIR /app/backend
 # TERMINAL FIX: Use privileged mode for PTY support
 # Use tini as init system and start the application
 ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--log-config", "logging.conf"]
+CMD ["/app/backend/.venv/bin/python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--log-config", "logging.conf"]

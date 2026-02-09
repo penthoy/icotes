@@ -20,6 +20,7 @@ from datetime import datetime
 
 from .base_tool import BaseTool, ToolResult
 from .context_helpers import get_contextual_filesystem, get_current_context
+from .generation_output_checks import verify_output_file
 
 # Lazy import ElevenLabs SDK to avoid loading at startup
 ELEVENLABS_AVAILABLE = False
@@ -334,13 +335,40 @@ class ElevenLabsMusicTool(BaseTool):
                 
                 if save_result:
                     relative_path, absolute_path = save_result
+                    # Verify file really exists (local or remote) before claiming success
+                    try:
+                        filesystem_service = await get_contextual_filesystem()
+                        ok, debug = await verify_output_file(
+                            filesystem_service,
+                            absolute_path,
+                            min_size=1,
+                        )
+                    except Exception as e:
+                        ok = False
+                        debug = {"exception": f"{type(e).__name__}: {e}", "absolute_path": absolute_path}
+
+                    if not ok:
+                        logger.error(
+                            "[ElevenLabsMusic] Save verification failed for %s | debug=%s",
+                            absolute_path,
+                            debug,
+                        )
+                        response_data["saved"] = False
+                        response_data["file_path"] = relative_path
+                        response_data["absolute_path"] = absolute_path
+                        response_data["save_error"] = "Music generation succeeded but output file was not created (or was empty)"
+                        response_data["save_debug"] = debug
+                        return ToolResult(
+                            success=False,
+                            data=response_data,
+                            error="Output file verification failed: music file missing/empty after save",
+                        )
+
                     response_data["saved"] = True
                     response_data["file_path"] = relative_path
                     response_data["absolute_path"] = absolute_path
                     response_data["audio_url"] = f"file://{absolute_path}"
-                    logger.info(
-                        f"[ElevenLabsMusic] Music saved to: {absolute_path}"
-                    )
+                    logger.info(f"[ElevenLabsMusic] Music saved to: {absolute_path}")
                 else:
                     response_data["saved"] = False
                     response_data["save_error"] = "Failed to save music to workspace"

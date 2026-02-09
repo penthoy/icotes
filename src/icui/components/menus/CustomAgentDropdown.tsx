@@ -7,7 +7,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { RefreshCw, Settings } from 'lucide-react';
+import { RefreshCw, Key } from 'lucide-react';
 import { useConfiguredAgents, ConfiguredAgent } from '@/hooks/useConfiguredAgents';
 import { useAgentWebSocket } from '@/hooks/useAgentWebSocket';
 import { toast } from '@/components/ui/use-toast';
@@ -288,7 +288,7 @@ export const CustomAgentDropdown: React.FC<CustomAgentDropdownProps> = ({
         title="Configure API keys"
         onClick={() => setIsApiKeyModalOpen(true)}
       >
-        <Settings className="h-3 w-3" />
+        <Key className="h-3 w-3" />
       </Button>
       
       <ApiKeyModal 

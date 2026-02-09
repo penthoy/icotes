@@ -423,7 +423,7 @@ class RemoteFileSystemAdapter:
             logger.error(f"[RemoteFS] write_file error {path}: {e}")
             return False
 
-    async def write_file_binary(self, file_path: str, content: bytes, create_dirs: bool = True) -> bool:
+    async def write_file_binary(self, file_path: str, content: bytes, create_dirs: bool = True) -> dict:
         """
         Write binary content to a remote file (e.g., for images).
         
@@ -433,11 +433,11 @@ class RemoteFileSystemAdapter:
             create_dirs: Whether to create parent directories if they don't exist
             
         Returns:
-            True if successful, False otherwise
+            Standard service response dict: {"success": bool, "data": any, "error": str | None}
         """
         sftp = self._sftp()
         if not sftp:
-            return False
+            return {"success": False, "data": None, "error": "SFTP unavailable"}
         path = self._resolve(file_path)
         try:
             # Loop diagnostics and potential cross-loop mitigation
@@ -548,7 +548,7 @@ class RemoteFileSystemAdapter:
                                     await sftp.remove(tmp_path)
                             except Exception:
                                 pass
-                            return False
+                            return {"success": False, "data": None, "error": "remote write verification failed"}
                     # Final verification on destination
                     try:
                         if use_ephemeral:
@@ -563,12 +563,16 @@ class RemoteFileSystemAdapter:
                             logger.error(
                                 f"[RemoteFS] Dest verification failed: {path} size={size2} expected={len(content)}"
                             )
-                            return False
+                            return {"success": False, "data": None, "error": "remote write verification failed"}
                     except Exception as ver_e:
                         logger.error(f"[RemoteFS] Dest stat failed for {path}: {ver_e}")
-                        return False
+                        return {"success": False, "data": None, "error": f"dest stat failed: {type(ver_e).__name__}: {ver_e}"}
                     await self._publish('fs.file_written', {'file_path': path, 'size': len(content), 'encoding': 'binary', 'created': False, 'timestamp': time.time()})
-                    return True
+                    return {
+                        "success": True,
+                        "data": {"file_path": path, "created": False, "size": len(content)},
+                        "error": None,
+                    }
             except Exception as e1:
                 logger.error(f"[RemoteFS] Temp write path failed for {path}: {e1}")
                 try:
@@ -614,15 +618,19 @@ class RemoteFileSystemAdapter:
                 size3 = getattr(st3, 'st_size', None) or getattr(st3, 'size', 0) or 0
                 if size3 <= 0 or size3 < len(content):
                     logger.error(f"[RemoteFS] Stream write verification failed: {path} size={size3} expected={len(content)}")
-                    return False
+                    return {"success": False, "data": None, "error": "remote stream write verification failed"}
                 await self._publish('fs.file_written', {'file_path': path, 'size': len(content), 'encoding': 'binary', 'created': False, 'timestamp': time.time()})
-                return True
+                return {
+                    "success": True,
+                    "data": {"file_path": path, "created": False, "size": len(content)},
+                    "error": None,
+                }
             except Exception as e2:
                 logger.error(f"[RemoteFS] putfo/stream write failed for {path}: {e2}")
-                return False
+                return {"success": False, "data": None, "error": str(e2)}
         except Exception as e:
             logger.error(f"[RemoteFS] write_file_binary error {path}: {e}")
-            return False
+            return {"success": False, "data": None, "error": str(e)}
 
     async def create_directory(self, dir_path: str, parents: bool = True) -> bool:
         sftp = self._sftp()

@@ -260,11 +260,12 @@ class TestSpeechGeneration:
         
         with patch.object(tool, '_get_client', return_value=mock_client):
             with patch.object(tool, '_save_audio_to_workspace', return_value=("sounds/test.mp3", "/workspace/sounds/test.mp3")):
-                result = await tool.execute(
-                    text="Hello world",
-                    voice="george",
-                    model_id="eleven_multilingual_v2"
-                )
+                with patch('icpy.agent.tools.elevenlabs_tts_tool.verify_output_file', new=AsyncMock(return_value=(True, {}))):
+                    result = await tool.execute(
+                        text="Hello world",
+                        voice="george",
+                        model_id="eleven_multilingual_v2"
+                    )
         
         assert result.success is True
         assert result.data["text_length"] == 11

@@ -149,7 +149,8 @@ class TestVideoGeneration:
         
         with patch.object(tool, '_get_client', return_value=mock_client), \
              patch.object(tool, '_download_video', side_effect=mock_download), \
-             patch.object(tool, '_save_video_to_workspace', side_effect=mock_save_video):
+             patch.object(tool, '_save_video_to_workspace', side_effect=mock_save_video), \
+             patch('icpy.agent.tools.atlascloud.ttv_tool.verify_output_file', new=AsyncMock(return_value=(True, {}))):
             
             result = await tool.execute(
                 prompt="A serene sunset over mountains",
@@ -181,7 +182,8 @@ class TestVideoGeneration:
         
         with patch.object(tool, '_get_client', return_value=mock_client), \
              patch.object(tool, '_download_video', side_effect=mock_download), \
-             patch.object(tool, '_save_video_to_workspace', side_effect=mock_save_video):
+               patch.object(tool, '_save_video_to_workspace', side_effect=mock_save_video), \
+               patch('icpy.agent.tools.atlascloud.ttv_tool.verify_output_file', new=AsyncMock(return_value=(True, {}))):
             
             result = await tool.execute(
                 prompt="Test video",

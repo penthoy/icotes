@@ -918,7 +918,7 @@ export class ChatBackendClient {
           content: '',
           role: 'assistant',
           sender: 'ai',
-          timestamp: new Date(),
+          timestamp: new Date(data.timestamp || Date.now()),
           metadata: {
             agentId: data.agentId,
             agentName: data.agentName,
@@ -932,12 +932,20 @@ export class ChatBackendClient {
       }
       // Complete streaming message
       // console.log('[ChatBackendClient] Ending streaming message:', this.streamingMessage.id);
+
+      // IMPORTANT: ensure the message timestamp reflects completion time.
+      // The initial streaming message timestamp is set at stream_start, which makes
+      // downstream duration calculations look near-zero until a refresh loads the
+      // persisted final timestamp from history.
+      this.streamingMessage.timestamp = new Date(data.timestamp || Date.now());
+
       this.streamingMessage.metadata!.streamComplete = true;
       this.streamingMessage.metadata!.isStreaming = false;
       
       // Force immediate notification to ensure message appears without refresh
       const finalMessage = {
         ...this.streamingMessage!,
+        timestamp: this.streamingMessage.timestamp,
         metadata: {
           ...this.streamingMessage!.metadata!,
           isStreaming: false,

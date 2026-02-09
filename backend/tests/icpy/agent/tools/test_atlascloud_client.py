@@ -6,7 +6,7 @@ error handling, and polling logic with mocked HTTP responses.
 """
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 
 from icpy.agent.tools.atlascloud.client import AtlasCloudClient
@@ -240,7 +240,7 @@ class TestVideoGeneration:
     @pytest.mark.asyncio
     async def test_generate_video_validation_error(self, client):
         """Test validation error when neither prompt nor image provided."""
-        with pytest.raises(ValueError, match="Either 'prompt' or 'image' must be provided"):
+        with pytest.raises(ValueError, match="Either 'prompt', 'image', or 'video' must be provided"):
             await client.generate_video(model="test-model")
     
     @pytest.mark.asyncio
@@ -338,6 +338,37 @@ class TestVideoGeneration:
         assert result.id == "wrapped-request-789"
         assert result.is_complete
         assert result.video_url == "https://cdn.atlascloud.ai/wrapped/video.mp4"
+
+    @pytest.mark.asyncio
+    async def test_generate_video_retries_on_closed_handler_transport_error(self, mock_api_key):
+        """If the underlying transport gets closed (intermittent asyncio/httpx issue), client should reset and retry."""
+        client = AtlasCloudClient(api_key=mock_api_key)
+
+        mock_http_client = AsyncMock()
+        mock_http_client.aclose = AsyncMock()
+
+        ok_response = AsyncMock(spec=httpx.Response)
+        ok_response.status_code = 200
+        ok_response.json.return_value = {
+            "id": "retry-123",
+            "status": "queued",
+        }
+
+        # First request fails with the known intermittent error, second succeeds.
+        mock_http_client.post.side_effect = [
+            RuntimeError("unable to perform operation on <TCPTransport closed=True reading=False ...>; the handler is closed"),
+            ok_response,
+        ]
+
+        with patch('icpy.agent.tools.atlascloud.client.httpx.AsyncClient', return_value=mock_http_client):
+            result = await client.generate_video(
+                model="bytedance/seedance-v1-lite-t2v-480p",
+                prompt="Test retry",
+                wait_for_completion=False,
+            )
+
+        assert result.id == "retry-123"
+        assert mock_http_client.post.call_count == 2
 
 
 class TestResultPolling:

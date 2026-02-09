@@ -8,6 +8,8 @@ import os
 import re
 import logging
 import time
+import tempfile
+import contextlib
 from typing import Dict, Any
 
 from fastapi import Request, HTTPException
@@ -172,31 +174,138 @@ async def reload_environment_endpoint(request: Request):
 
 
 async def update_api_keys_endpoint(request: Request):
-    """Update API keys in environment variables with hot reload."""
+    """Update environment variables (API keys and settings) with hot reload and persistence."""
     try:
         # Check authentication in SaaS mode
         if auth_manager and auth_manager.is_saas_mode():
             user = get_optional_user(request)
             if not user:
                 raise HTTPException(status_code=401, detail="Authentication required")
-            logger.info(f"API key update requested by user: {user.get('sub', 'unknown')}")
+            logger.info(f"Environment settings update requested by user: {user.get('sub', 'unknown')}")
         else:
-            logger.info("API key update requested in standalone mode")
+            logger.info("Environment settings update requested in standalone mode")
         
         # Get request body
         body = await request.json()
         api_keys = body.get('api_keys', {})
         
         if not api_keys:
-            return {"success": False, "error": "No API keys provided"}
+            return {"success": False, "error": "No environment settings provided"}
+
+        allowed_keys = {
+            # Site settings
+            'SITE_URL',
+            'WORKSPACE_ROOT',
+            'PORT',
+            # AI keys / providers
+            'OPENROUTER_API_KEY',
+            'OPENAI_API_KEY',
+            'ANTHROPIC_API_KEY',
+            'GOOGLE_API_KEY',
+            'DEEPSEEK_API_KEY',
+            'GROQ_API_KEY',
+            'CEREBRAS_API_KEY',
+            'DASHSCOPE_API_KEY',
+            'MOONSHOT_API_KEY',
+            'OLLAMA_URL',
+            # Services
+            'ELEVENLABS_API_KEY',
+            'ATLASCLOUD_API_KEY',
+            'MAILERSEND_API_KEY',
+            'PUSHOVER_USER',
+            'PUSHOVER_TOKEN',
+            'TAVILY_API_KEY',
+            'SERPER_API_KEY',
+        }
+
+        invalid_keys = sorted([k for k in api_keys.keys() if k not in allowed_keys])
+        if invalid_keys:
+            return {
+                "success": False,
+                "error": f"Invalid environment setting keys: {', '.join(invalid_keys)}",
+            }
+
+        def _sanitize_env_value(value: str) -> str:
+            # Prevent writing multi-line values into .env
+            if "\n" in value or "\r" in value:
+                raise ValueError("Environment values must be single-line")
+            return value
         
-        # Update environment variables directly
+        # Update environment variables directly in memory
         updated_keys = {}
         for key, value in api_keys.items():
             if value and value.strip():  # Only update non-empty values
-                os.environ[key] = value.strip()
+                os.environ[key] = _sanitize_env_value(value.strip())
                 updated_keys[key] = True
                 logger.info(f"Updated environment variable: {key}")
+        
+        # Persist to .env file for Docker/production persistence
+        try:
+            # agents.py lives at: backend/icpy/api/endpoints/agents.py
+            # parents[3] => backend/, parents[4] => repo root
+            from pathlib import Path
+
+            this_file = Path(__file__).resolve()
+            backend_dir = str(this_file.parents[3])
+            repo_root = str(this_file.parents[4])
+
+            candidate_paths = [
+                os.path.join(backend_dir, ".env"),
+                os.path.join(repo_root, ".env"),
+            ]
+
+            env_file_path = next((p for p in candidate_paths if os.path.exists(p)), os.path.join(repo_root, ".env"))
+
+            existing_lines: list[str] = []
+            if os.path.exists(env_file_path):
+                with open(env_file_path, 'r', encoding='utf-8') as f:
+                    existing_lines = f.readlines()
+
+            # Replace in-place while preserving comments/blank lines.
+            # Supports lines like: KEY=..., export KEY=..., with arbitrary whitespace.
+            updates = {k: _sanitize_env_value(v.strip()) for k, v in api_keys.items() if v and v.strip()}
+
+            def _quote_env_value(v: str) -> str:
+                escaped = v.replace('\\', '\\\\').replace('"', '\\"')
+                return f'"{escaped}"'
+
+            key_to_index: dict[str, int] = {}
+            export_prefix: dict[str, str] = {}
+            pattern = re.compile(r'^\s*(export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=')
+            for idx, line in enumerate(existing_lines):
+                m = pattern.match(line)
+                if not m:
+                    continue
+                k = m.group(2)
+                if k in updates and k not in key_to_index:
+                    key_to_index[k] = idx
+                    export_prefix[k] = 'export ' if m.group(1) else ''
+
+            new_lines = list(existing_lines)
+            for k, v in updates.items():
+                new_line = f"{export_prefix.get(k, '')}{k}={_quote_env_value(v)}\n"
+                if k in key_to_index:
+                    new_lines[key_to_index[k]] = new_line
+                else:
+                    # Ensure we have a trailing newline before appending a new key
+                    if new_lines and not new_lines[-1].endswith('\n'):
+                        new_lines[-1] = new_lines[-1] + '\n'
+                    new_lines.append(new_line)
+
+            os.makedirs(os.path.dirname(env_file_path) or '.', exist_ok=True)
+            with tempfile.NamedTemporaryFile('w', delete=False, encoding='utf-8', dir=os.path.dirname(env_file_path) or None) as tmp:
+                tmp.writelines(new_lines)
+                tmp_path = tmp.name
+            try:
+                os.replace(tmp_path, env_file_path)
+            except BaseException:
+                with contextlib.suppress(OSError):
+                    os.unlink(tmp_path)
+                raise
+
+            logger.info(f"Persisted {len(updated_keys)} settings to {env_file_path}")
+        except Exception as persist_error:
+            logger.warning(f"Failed to persist settings to .env file: {persist_error}")
         
         # Reload environment for agents
         try:
@@ -204,18 +313,18 @@ async def update_api_keys_endpoint(request: Request):
         except Exception as reload_error:
             logger.warning(f"Failed to reload agent environment: {reload_error}")
         
-        logger.info(f"API keys updated: {list(updated_keys.keys())}")
+        logger.info(f"Environment settings updated: {list(updated_keys.keys())}")
         
         return {
             "success": True, 
             "updated_keys": list(updated_keys.keys()), 
-            "message": f"Updated {len(updated_keys)} API keys and reloaded environment"
+            "message": f"Updated {len(updated_keys)} environment settings and reloaded environment"
         }
         
     except HTTPException:
         raise  # Re-raise HTTP exceptions (like 401)
     except Exception as e:
-        logger.error(f"Error updating API keys: {e}")
+        logger.error(f"Error updating environment settings: {e}")
         return {"success": False, "error": str(e)}
 
 
@@ -236,12 +345,18 @@ async def get_api_keys_status_endpoint(request: Request):
 
         # Helper to build status map for given keys
         def build_status(keys):
+            # Site settings that should not be masked (visible as plain text)
+            site_settings = {'SITE_URL', 'WORKSPACE_ROOT', 'PORT'}
             status = {}
             for key in keys:
                 value = os.getenv(key)
                 if value:
-                    masked = value[:4] + '*' * (len(value) - 4) if len(value) > 4 else '*' * len(value)
-                    status[key] = {"is_set": True, "masked_value": masked, "length": len(value)}
+                    # Don't mask site settings - show actual values
+                    if key in site_settings:
+                        status[key] = {"is_set": True, "masked_value": value, "length": len(value)}
+                    else:
+                        masked = value[:4] + '*' * (len(value) - 4) if len(value) > 4 else '*' * len(value)
+                        status[key] = {"is_set": True, "masked_value": masked, "length": len(value)}
                 else:
                     status[key] = {"is_set": False, "masked_value": "", "length": 0}
             return status

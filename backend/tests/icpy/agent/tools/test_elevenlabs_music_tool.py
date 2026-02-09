@@ -92,11 +92,12 @@ class TestMusicGeneration:
                             with patch('builtins.open', create=True) as mock_open:
                                 mock_open.return_value.__enter__ = Mock(return_value=Mock(write=Mock()))
                                 mock_open.return_value.__exit__ = Mock(return_value=False)
-                                
-                                result = await music_tool.execute(
-                                    prompt="Upbeat electronic music with synth pads",
-                                    duration_seconds=5.0
-                                )
+
+                                with patch('icpy.agent.tools.elevenlabs_music_tool.verify_output_file', new=AsyncMock(return_value=(True, {}))):
+                                    result = await music_tool.execute(
+                                        prompt="Upbeat electronic music with synth pads",
+                                        duration_seconds=5.0
+                                    )
         
         assert result.success is True
         assert result.data['prompt'] == "Upbeat electronic music with synth pads"
@@ -115,11 +116,12 @@ class TestMusicGeneration:
                             with patch('builtins.open', create=True) as mock_open:
                                 mock_open.return_value.__enter__ = Mock(return_value=Mock(write=Mock()))
                                 mock_open.return_value.__exit__ = Mock(return_value=False)
-                                
-                                result = await music_tool.execute(
-                                    prompt="Short beep",
-                                    duration_seconds=0.5
-                                )
+
+                                with patch('icpy.agent.tools.elevenlabs_music_tool.verify_output_file', new=AsyncMock(return_value=(True, {}))):
+                                    result = await music_tool.execute(
+                                        prompt="Short beep",
+                                        duration_seconds=0.5
+                                    )
         
         assert result.success is True
         assert result.data['duration_ms'] == 500
@@ -207,12 +209,13 @@ class TestFileSaving:
                                 mock_file = Mock()
                                 mock_open.return_value.__enter__ = Mock(return_value=mock_file)
                                 mock_open.return_value.__exit__ = Mock(return_value=False)
-                                
-                                result = await music_tool.execute(
-                                    prompt="Test music",
-                                    duration_seconds=5.0,
-                                    filename="my_custom_music"
-                                )
+
+                                with patch('icpy.agent.tools.elevenlabs_music_tool.verify_output_file', new=AsyncMock(return_value=(True, {}))):
+                                    result = await music_tool.execute(
+                                        prompt="Test music",
+                                        duration_seconds=5.0,
+                                        filename="my_custom_music"
+                                    )
         
         assert result.success is True
         assert result.data['saved'] is True
@@ -230,11 +233,12 @@ class TestFileSaving:
                                 mock_file = Mock()
                                 mock_open.return_value.__enter__ = Mock(return_value=mock_file)
                                 mock_open.return_value.__exit__ = Mock(return_value=False)
-                                
-                                result = await music_tool.execute(
-                                    prompt="Upbeat electronic dance music",
-                                    duration_seconds=5.0
-                                )
+
+                                with patch('icpy.agent.tools.elevenlabs_music_tool.verify_output_file', new=AsyncMock(return_value=(True, {}))):
+                                    result = await music_tool.execute(
+                                        prompt="Upbeat electronic dance music",
+                                        duration_seconds=5.0
+                                    )
         
         assert result.success is True
         assert result.data['saved'] is True
@@ -253,12 +257,13 @@ class TestFileSaving:
                                 mock_file = Mock()
                                 mock_open.return_value.__enter__ = Mock(return_value=mock_file)
                                 mock_open.return_value.__exit__ = Mock(return_value=False)
-                                
-                                result = await music_tool.execute(
-                                    prompt="Test! Music@ #$%^",
-                                    duration_seconds=5.0,
-                                    filename="special!@#chars"
-                                )
+
+                                with patch('icpy.agent.tools.elevenlabs_music_tool.verify_output_file', new=AsyncMock(return_value=(True, {}))):
+                                    result = await music_tool.execute(
+                                        prompt="Test! Music@ #$%^",
+                                        duration_seconds=5.0,
+                                        filename="special!@#chars"
+                                    )
         
         assert result.success is True
         # Should sanitize special characters
@@ -384,11 +389,12 @@ class TestHopAwareSaving:
                                 mock_file = Mock()
                                 mock_open.return_value.__enter__ = Mock(return_value=mock_file)
                                 mock_open.return_value.__exit__ = Mock(return_value=False)
-                                
-                                result = await music_tool.execute(
-                                    prompt="Local music",
-                                    duration_seconds=5.0
-                                )
+
+                                with patch('icpy.agent.tools.elevenlabs_music_tool.verify_output_file', new=AsyncMock(return_value=(True, {}))):
+                                    result = await music_tool.execute(
+                                        prompt="Local music",
+                                        duration_seconds=5.0
+                                    )
         
         assert result.success is True
         assert result.data['saved'] is True
@@ -401,10 +407,11 @@ class TestHopAwareSaving:
             with patch('icpy.agent.tools.elevenlabs_music_tool.ElevenLabs', return_value=mock_elevenlabs_client):
                 with patch('icpy.agent.tools.elevenlabs_music_tool.get_current_context', return_value=mock_context_remote):
                     with patch('icpy.agent.tools.elevenlabs_music_tool.get_contextual_filesystem', return_value=mock_filesystem_service):
-                        result = await music_tool.execute(
-                            prompt="Remote music",
-                            duration_seconds=5.0
-                        )
+                        with patch('icpy.agent.tools.elevenlabs_music_tool.verify_output_file', new=AsyncMock(return_value=(True, {}))):
+                            result = await music_tool.execute(
+                                prompt="Remote music",
+                                duration_seconds=5.0
+                            )
         
         assert result.success is True
         assert result.data['saved'] is True
