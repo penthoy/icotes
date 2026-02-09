@@ -12,7 +12,7 @@
     "KimiAgent": {
       "enabled": true,
       "displayName": "Kimi K2.5",
-      "description": "Very Cheap and powerful model",
+      "description": "An affordable and powerful model",
       "category": "Built-in",
       "order": 1,
       "icon": "\ud83c\udf19"
