@@ -581,7 +581,7 @@ class RestAPI:
                 raise HTTPException(status_code=500, detail=str(e))
 
         @self.app.get("/api/files/raw")
-        async def get_file_raw(path: str, namespace: Optional[str] = None):
+        async def get_file_raw(request: Request, path: str, namespace: Optional[str] = None):
             """Return raw (binary) file bytes for previews (images, etc.).
 
             Security: Only serves files inside the configured filesystem root or workspace root.
@@ -589,7 +589,7 @@ class RestAPI:
             try:
                 import os, mimetypes, aiofiles
                 from pathlib import Path
-                from fastapi.responses import StreamingResponse
+                from fastapi.responses import StreamingResponse, Response, FileResponse
                 from typing import AsyncIterator
 
                 if not path:
@@ -653,15 +653,99 @@ class RestAPI:
                     if mime is None:
                         mime = "application/octet-stream"
 
-                    async def iter_file() -> AsyncIterator[bytes]:
-                        async with aiofiles.open(abs_path, 'rb') as f:
-                            while True:
-                                chunk = await f.read(1024 * 1024)  # 1MB chunks
-                                if not chunk:
-                                    break
-                                yield chunk
+                    file_size = os.path.getsize(abs_path)
+                    range_header = request.headers.get('range')
 
-                    return StreamingResponse(iter_file(), media_type=mime)
+                    # Important for native media controls (video/audio) to enable seeking.
+                    base_headers = {
+                        'Accept-Ranges': 'bytes',
+                    }
+
+                    def _parse_range_header(value: str, size: int) -> tuple[int, int] | None:
+                        """Parse a single HTTP Range header.
+
+                        Supports: bytes=start-end, bytes=start-, bytes=-suffix.
+                        Returns inclusive (start, end) or None if invalid/unsatisfiable.
+                        """
+                        try:
+                            if not value:
+                                return None
+                            value = value.strip().lower()
+                            if not value.startswith('bytes='):
+                                return None
+                            spec = value.split('=', 1)[1]
+                            # We only support a single range
+                            if ',' in spec:
+                                return None
+                            start_s, end_s = (spec.split('-', 1) + [''])[:2]
+
+                            if start_s == '' and end_s == '':
+                                return None
+
+                            if start_s == '':
+                                # Suffix range: last N bytes
+                                suffix_len = int(end_s)
+                                if suffix_len <= 0:
+                                    return None
+                                if suffix_len >= size:
+                                    return (0, max(0, size - 1))
+                                return (size - suffix_len, size - 1)
+
+                            start = int(start_s)
+                            if start < 0 or start >= size:
+                                return None
+
+                            if end_s == '':
+                                return (start, size - 1)
+
+                            end = int(end_s)
+                            if end < start:
+                                return None
+                            end = min(end, size - 1)
+                            return (start, end)
+                        except Exception:
+                            return None
+
+                    # If browser asks for a range, return 206 Partial Content.
+                    if range_header:
+                        parsed = _parse_range_header(range_header, file_size)
+                        if parsed is None:
+                            return Response(
+                                status_code=416,
+                                headers={
+                                    **base_headers,
+                                    'Content-Range': f'bytes */{file_size}',
+                                },
+                            )
+
+                        start, end = parsed
+                        content_length = (end - start) + 1
+
+                        async def iter_range() -> AsyncIterator[bytes]:
+                            async with aiofiles.open(abs_path, 'rb') as f:
+                                await f.seek(start)
+                                remaining = content_length
+                                while remaining > 0:
+                                    chunk = await f.read(min(1024 * 1024, remaining))
+                                    if not chunk:
+                                        break
+                                    remaining -= len(chunk)
+                                    yield chunk
+
+                        return StreamingResponse(
+                            iter_range(),
+                            status_code=206,
+                            media_type=mime,
+                            headers={
+                                **base_headers,
+                                'Content-Range': f'bytes {start}-{end}/{file_size}',
+                                'Content-Length': str(content_length),
+                            },
+                        )
+
+                    # No Range header: return full response. FileResponse supports efficient sendfile
+                    # and plays nicely with browsers for media playback.
+                    return FileResponse(abs_path, media_type=mime, headers=base_headers)
 
                 # If no local candidate found (or file is 0-byte) and remote FS is active, stream via adapter
                 if getattr(fs_service, 'is_remote', False):
