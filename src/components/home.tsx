@@ -777,8 +777,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
     // Phase 4/5: Load initial layout based on device type and last-used preference
     const loadInitialLayout = async () => {
       try {
-        console.log('[MOBILE-DEBUG] Starting layout load. isMobile:', isMobile, 'layoutDir:', layoutConfigService.layoutDir);
-
+        // Phase 4/5: Device-aware layout loading with auto-healing
         const resolveMobilePanelIds = async (): Promise<string[]> => {
           // Prefer mobile_settings.yaml enabled+order.
           try {
@@ -803,14 +802,12 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
         // 1. Check device type
         if (isMobile) {
           const mobilePath = `${layoutConfigService.layoutDir}/mobile.yaml`;
-          console.log('[MOBILE-DEBUG] Loading mobile layout from:', mobilePath);
           const result = await layoutConfigService.loadFromFile(mobilePath);
-          console.log('[MOBILE-DEBUG] Mobile layout load result:', { ok: result.ok, errors: result.errors, layoutMode: result.layout?.layoutMode });
           if (result.ok && result.layout) {
             const mobileArea = result.layout.areas?.main || result.layout.areas?.center;
             const panelIds = mobileArea?.panelIds || [];
             if (panelIds.length === 0) {
-              console.warn('[MOBILE-DEBUG] Mobile layout has no panels; repairing from settings/defaults');
+              // Auto-heal: empty mobile.yaml from user edit/corruption
               const repairedPanelIds = await resolveMobilePanelIds();
               const repairedLayout: ICUILayoutConfig = {
                 name: 'Mobile',
@@ -835,23 +832,21 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
               try {
                 await layoutConfigService.saveToFile(repairedLayout, mobilePath);
               } catch (e) {
-                console.warn('[MOBILE-DEBUG] Failed to persist repaired mobile.yaml:', e);
+                console.warn('Failed to persist repaired mobile layout:', e);
               }
               return;
             }
-            console.log('[MOBILE-DEBUG] Setting mobile layout with layoutMode:', result.layout.layoutMode);
             setLayout(result.layout);
             setCurrentLayoutId('mobile');
             return;
           } else {
-            console.warn('[MOBILE-DEBUG] Failed to load mobile layout:', result.errors);
+            console.warn('Failed to load mobile layout:', result.errors);
           }
         }
         
         // 2. Check localStorage for last-used layout
         const lastUsed = localStorage.getItem('icui-last-layout-id');
         if (lastUsed) {
-          console.log('[MOBILE-DEBUG] Loading last-used layout:', lastUsed);
           try {
             const result = await layoutConfigService.loadFromFile(`${layoutConfigService.layoutDir}/${lastUsed}.yaml`);
             if (result.ok && result.layout) {
@@ -865,7 +860,6 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
         }
         
         // 3. Fallback to default H layout
-        console.log('[MOBILE-DEBUG] Loading default H layout');
         const result = await layoutConfigService.loadFromFile(`${layoutConfigService.layoutDir}/H.yaml`);
         if (result.ok && result.layout) {
           setLayout(result.layout);
@@ -1135,7 +1129,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
   // Handle mobile settings save
   const handleMobileSettingsSave = useCallback(async (panels: MobilePanelConfig[]) => {
     if (!panels || panels.length === 0) {
-      console.warn('[MOBILE-SETTINGS] Refusing to save empty panel list');
+      console.warn('Refusing to save empty mobile panel list');
       return;
     }
 
@@ -1205,7 +1199,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
         setLayout(mobileLayout);
       }
       
-      console.log('[MOBILE-SETTINGS] Saved mobile layout configuration:', panelIds);
+      // Mobile settings saved successfully
     } catch (error) {
       console.error('[MOBILE-SETTINGS] Failed to save mobile layout:', error);
     }

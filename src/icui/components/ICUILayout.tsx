@@ -331,9 +331,6 @@ export const ICUILayout: React.FC<ICUILayoutProps> = ({
     const sanitized = sanitizeLayout(layout);
     const sanitizedCenterActive = sanitized.areas?.center?.activePanelId;
     
-    // Debug mobile layout mode
-    console.log('[MOBILE-DEBUG] ICUILayout received layout with mode:', layout.layoutMode, 'sanitized mode:', sanitized.layoutMode);
-    
     if (layoutDebugEnabled) {
       console.log(`[LAYOUT-PROP-DEBUG] Sanitized center.activePanelId="${sanitizedCenterActive}"`);
     }
@@ -896,7 +893,7 @@ export const ICUILayout: React.FC<ICUILayoutProps> = ({
         {currentLayout.layoutMode === 'h-layout' 
           ? renderHLayout() 
           : currentLayout.layoutMode === 'mobile'
-          ? (console.log('[MOBILE-DEBUG] Rendering mobile layout'), renderMobileLayout())
+          ? renderMobileLayout()
           : renderStandardLayout()}
       </ICUIFrameContainer>
     </div>
