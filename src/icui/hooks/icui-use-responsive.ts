@@ -24,13 +24,34 @@ export function useICUIResponsive(): ICUIResponsiveConfig & {
   isBreakpoint: (breakpoint: ICUIBreakpoint) => boolean;
   isMinBreakpoint: (breakpoint: ICUIBreakpoint) => boolean;
 } {
-  const [viewport, setViewport] = useState<ICUIViewport>({
-    width: 0,
-    height: 0,
-    isMobile: false,
-    isTablet: false,
-    isDesktop: false,
-  });
+  // Initialize viewport with actual window dimensions to avoid SSR/hydration mismatch
+  const getInitialViewport = (): ICUIViewport => {
+    if (typeof window === 'undefined') {
+      return {
+        width: 0,
+        height: 0,
+        isMobile: false,
+        isTablet: false,
+        isDesktop: false,
+      };
+    }
+    
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    const isMobile = width < ICUI_BREAKPOINTS.md;
+    const isTablet = width >= ICUI_BREAKPOINTS.md && width < ICUI_BREAKPOINTS.lg;
+    const isDesktop = width >= ICUI_BREAKPOINTS.lg;
+    
+    return {
+      width,
+      height,
+      isMobile,
+      isTablet,
+      isDesktop,
+    };
+  };
+  
+  const [viewport, setViewport] = useState<ICUIViewport>(getInitialViewport());
 
   const [currentBreakpoint, setCurrentBreakpoint] = useState<ICUIBreakpoint>('xs');
 

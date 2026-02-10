@@ -959,6 +959,14 @@ export class ICUIBackendService extends EventEmitter {
         } catch (e) {
           console.warn('[ICUIBackendService] Failed to process hop_event:', e);
         }
+      } else if (message.type === 'layout') {
+        // Layout control events from agent UI tool
+        // Example: { type: 'layout', action: 'switch', data: { name: 'H' } }
+        try {
+          this.emit('layout_event', { action: message.action, data: message.data });
+        } catch (e) {
+          console.warn('[ICUIBackendService] Failed to process layout event:', e);
+        }
       } else if (message.type === 'subscribed') {
         log.debug('ICUIBackendService', '[BE] Subscription confirmed', { topics: message.topics });
         // Reduced debug: console.log('[ICUIBackendService] Subscription confirmed:', message.topics);

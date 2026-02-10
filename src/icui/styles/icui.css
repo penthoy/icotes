@@ -10,6 +10,7 @@
 @import './icui-editor.css';
 @import './codemirror-theme.css';
 @import './icui-composer.css';
+@import './icui-mobile.css';
 
 /* Frame Container Base Styles */
 .icui-frame-container {

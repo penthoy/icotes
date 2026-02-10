@@ -14,6 +14,10 @@ export { ICUIPanelContent } from './components/ICUIPanelContent';
 export { ICUIPanelArea } from './components/ICUIPanelArea';
 export { default as ICUITabContainer } from './components/ICUITabContainer';
 export { ICUILayout } from './components/ICUILayout';
+export { ICUIMobileTabBar } from './components/ICUIMobileTabBar';
+export type { MobileTab, ICUIMobileTabBarProps } from './components/ICUIMobileTabBar';
+export { SaveLayoutDialog } from './components/dialogs/SaveLayoutDialog';
+export { LoadLayoutDialog } from './components/dialogs/LoadLayoutDialog';
 // Core Components (Main ICUI interface components) - moved to panels
 export { default as ICUIChat } from './components/panels/ICUIChat';
 export { default as ICUITerminal } from './components/panels/ICUITerminal';
@@ -64,6 +68,8 @@ export * from './types/chatTypes';
 // Services
 export { ChatBackendClient } from './services/chatBackendClient';
 export { notificationService, useNotifications } from './services/notificationService';
+export { layoutConfigService, LayoutConfigService } from './services/layoutConfigService';
+export { layoutEventBus } from './services/layoutEventBus';
 export type { 
   NotificationType, 
   NotificationOptions, 

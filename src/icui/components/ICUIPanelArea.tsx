@@ -34,6 +34,7 @@ export interface ICUIPanelAreaProps {
   emptyMessage?: string;
   orientation?: 'horizontal' | 'vertical';
   enableDragDrop?: boolean; // Add this prop to control drag/drop behavior
+  showTabs?: boolean; // Control whether to show tab bar (default: true)
   // New props for panel selector
   availablePanelTypes?: ICUIPanelType[];
   onPanelAdd?: (panelType: ICUIPanelType) => void;
@@ -54,6 +55,7 @@ export const ICUIPanelArea: React.FC<ICUIPanelAreaProps> = ({
   emptyMessage = 'Drop panels here',
   orientation = 'horizontal',
   enableDragDrop = true, // Default to true
+  showTabs = true, // Default to showing tabs
   // New props for panel selector
   availablePanelTypes,
   onPanelAdd,
@@ -308,8 +310,8 @@ export const ICUIPanelArea: React.FC<ICUIPanelAreaProps> = ({
     );
   }
 
-  // Render with tabs if multiple panels OR if drag/drop is enabled (to show drag handles)
-  if (panels.length > 1 || (enableDragDrop && panels.length === 1)) {
+  // Render with tabs if showTabs is true AND (multiple panels OR drag/drop is enabled)
+  if (showTabs && (panels.length > 1 || (enableDragDrop && panels.length === 1))) {
     return (
       <div
         className={`
@@ -340,8 +342,16 @@ export const ICUIPanelArea: React.FC<ICUIPanelAreaProps> = ({
     );
   }
 
-  // Render single panel
-  const singlePanel = panels[0];
+  // Render active panel without tabs (used when showTabs=false or single panel)
+  const currentActivePanel = panels.find(p => p.id === localActiveTabId) || panels[0];
+  if (!currentActivePanel) {
+    return (
+      <div className={`icui-enhanced-panel-area h-full flex items-center justify-center ${className}`}>
+        <div className="text-center text-gray-500">No panel selected</div>
+      </div>
+    );
+  }
+  
   return (
     <div
       className={`
@@ -354,34 +364,36 @@ export const ICUIPanelArea: React.FC<ICUIPanelAreaProps> = ({
       onDragOver={handleDragOver}
       onDrop={handleDrop}
     >
-      {/* Single Panel Header */}
-      <div className="flex items-center justify-between px-3 py-1 border-b" style={{ backgroundColor: 'var(--icui-bg-secondary)', borderBottomColor: 'var(--icui-border-subtle)', color: 'var(--icui-text-primary)' }}>
-        <div className="flex items-center space-x-2">
-          {singlePanel.icon && (
-            <span className="text-sm">{singlePanel.icon}</span>
+      {/* Panel Header (shown only if showTabs is true for single panels) */}
+      {showTabs && panels.length === 1 && (
+        <div className="flex items-center justify-between px-3 py-1 border-b" style={{ backgroundColor: 'var(--icui-bg-secondary)', borderBottomColor: 'var(--icui-border-subtle)', color: 'var(--icui-text-primary)' }}>
+          <div className="flex items-center space-x-2">
+            {currentActivePanel.icon && (
+              <span className="text-sm">{currentActivePanel.icon}</span>
+            )}
+            <span className="text-sm font-medium">
+              {currentActivePanel.title}
+              {currentActivePanel.modified && <span className="ml-1" style={{ color: 'var(--icui-warning)' }}>●</span>}
+              {currentActivePanel.status === 'connected' && <span className="ml-1 text-green-500">●</span>}
+              {currentActivePanel.status === 'disconnected' && <span className="ml-1 text-red-500">●</span>}
+            </span>
+          </div>
+          {currentActivePanel.closable && onPanelClose && (
+            <button
+              className="text-sm hover:opacity-80 transition-opacity"
+              style={{ color: 'var(--icui-text-secondary)' }}
+              onClick={() => onPanelClose(currentActivePanel.id)}
+              title="Close panel"
+            >
+              ×
+            </button>
           )}
-          <span className="text-sm font-medium">
-            {singlePanel.title}
-            {singlePanel.modified && <span className="ml-1" style={{ color: 'var(--icui-warning)' }}>●</span>}
-            {singlePanel.status === 'connected' && <span className="ml-1 text-green-500">●</span>}
-            {singlePanel.status === 'disconnected' && <span className="ml-1 text-red-500">●</span>}
-          </span>
         </div>
-        {singlePanel.closable && onPanelClose && (
-          <button
-            className="text-sm hover:opacity-80 transition-opacity"
-            style={{ color: 'var(--icui-text-secondary)' }}
-            onClick={() => onPanelClose(singlePanel.id)}
-            title="Close panel"
-          >
-            ×
-          </button>
-        )}
-      </div>
+      )}
 
-      {/* Single Panel Content */}
+      {/* Panel Content */}
       <div className="flex-1 min-h-0 overflow-hidden" style={{ backgroundColor: 'var(--icui-bg-primary)' }}>
-        {singlePanel.content}
+        {currentActivePanel.content}
       </div>
     </div>
   );

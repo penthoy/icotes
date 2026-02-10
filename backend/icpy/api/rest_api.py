@@ -541,9 +541,13 @@ class RestAPI:
                 raise HTTPException(status_code=500, detail=str(e))
         
         @self.app.get("/api/files/content")
-        async def get_file_content(path: str, namespace: Optional[str] = None):
+        async def get_file_content(path: str, namespace: Optional[str] = None, response: Response = None):
             """Get file content."""
             try:
+                # Prevent clients/proxies from caching file content.
+                if response is not None:
+                    response.headers["Cache-Control"] = "no-store"
+                    response.headers["Pragma"] = "no-cache"
                 fs = self.filesystem_service
                 if self.context_router is not None:
                     try:

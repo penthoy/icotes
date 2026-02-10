@@ -14,13 +14,20 @@ import {
   ICUIChatHistory,
   ICUIExplorer,
   ICUIGit,
-  ICUIPreview
+  ICUIPreview,
+  useICUIResponsive,
+  layoutConfigService
 } from '../icui';
 import { ICUIHop } from '../icui/components/panels';
 import type { ICUIEditorRef, ICUIPreviewRef } from '../icui';
 import { globalCommandRegistry } from '../icui/lib/commandRegistry';
 import ICUIBaseHeader from '../icui/components/ICUIBaseHeader';
 import ICUIBaseFooter from '../icui/components/ICUIBaseFooter';
+import { SaveLayoutDialog } from '../icui/components/dialogs/SaveLayoutDialog';
+import { LoadLayoutDialog } from '../icui/components/dialogs/LoadLayoutDialog';
+import { MobileLayoutSettingsDialog, type MobilePanelConfig } from '../icui/components/dialogs/MobileLayoutSettingsDialog';
+import { layoutEventBus } from '../icui/services/layoutEventBus';
+import { icuiBackendService } from '../icui/services/backend-service-impl';
 
 import type { ICUILayoutConfig } from '../icui/components/ICUILayout';
 import type { ICUIPanel } from '../icui/components/ICUIPanelArea';
@@ -82,6 +89,16 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
   // Remove local file management - let ICUIEditor handle its own files
   const [currentTheme, setCurrentTheme] = useState<string>('github-dark');
   const [panels, setPanels] = useState<ICUIPanel[]>([]);
+  
+  // Dialog state for Phase 2
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+  const [loadDialogOpen, setLoadDialogOpen] = useState(false);
+  const [mobileSettingsOpen, setMobileSettingsOpen] = useState(false);
+  const [currentLayoutId, setCurrentLayoutId] = useState<string>('default-h');
+  
+  // Responsive detection for mobile layout
+  const responsive = useICUIResponsive();
+  const isMobile = responsive.viewport.isMobile;
 
   // Real connection status from ICUIEditor
   const [editorConnectionStatus, setEditorConnectionStatus] = useState<{connected: boolean; error?: string; timestamp?: number}>({ connected: false });
@@ -189,10 +206,26 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
 
   // Handle file selection from Explorer - VS Code-like temporary file opening
   const handleFileSelect = useCallback((file: any) => {
-    if (file.type === 'file' && editorRef.current) {
-      // Single click opens file temporarily (will be replaced by next single click)
+    if (file.type !== 'file') return;
+
+    // Track current file for status bar, even if editor isn't mounted (mobile).
+    setCurrentFile(file);
+
+    // Single click opens file temporarily (will be replaced by next single click)
+    if (editorRef.current) {
       editorRef.current.openFileTemporary(file.path);
-      setCurrentFile(file);
+      return;
+    }
+
+    // Mobile layout often unmounts the editor when not active.
+    // Persist the intent so the editor can open it when it mounts.
+    try {
+      sessionStorage.setItem(
+        'icui-pending-open-file',
+        JSON.stringify({ path: file.path, mode: 'temporary', ts: Date.now() })
+      );
+    } catch {
+      // ignore
     }
   }, []);
 
@@ -201,13 +234,27 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
     if (process.env.NODE_ENV === 'development') {
       console.log('[Home] handleFileDoubleClick called with file:', file.name, 'at path:', file.path);
     }
-    if (file.type === 'file' && editorRef.current) {
-      // Double click opens file permanently (will not be replaced by single clicks)
+
+    if (file.type !== 'file') return;
+
+    setCurrentFile(file);
+
+    // Double click opens file permanently (will not be replaced by single clicks)
+    if (editorRef.current) {
       editorRef.current.openFilePermanent(file.path);
-      setCurrentFile(file);
-    } else {
-      console.warn('[Home] Cannot open file:', { isFile: file.type === 'file', hasEditorRef: !!editorRef.current });
+      return;
     }
+
+    try {
+      sessionStorage.setItem(
+        'icui-pending-open-file',
+        JSON.stringify({ path: file.path, mode: 'permanent', ts: Date.now() })
+      );
+    } catch {
+      // ignore
+    }
+
+    console.warn('[Home] Editor not mounted; queued file open for when editor tab is activated');
   }, []);
 
   const handleTogglePanel = useCallback((panelType: string) => {
@@ -266,6 +313,27 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
         break;
       case 'layout':
         switch (itemId) {
+          case 'h-layout':
+            layoutEventBus.emitLayoutSwitch('H');
+            break;
+          case 'ide-layout':
+            layoutEventBus.emitLayoutSwitch('IDE');
+            break;
+          case 'mobile-layout':
+            layoutEventBus.emitLayoutSwitch('mobile');
+            break;
+          case 'save-custom':
+            setSaveDialogOpen(true);
+            break;
+          case 'load-custom':
+            setLoadDialogOpen(true);
+            break;
+          case 'mobile-settings':
+            setMobileSettingsOpen(true);
+            break;
+          case 'reset-layout':
+            layoutEventBus.emitLayoutSwitch('H');
+            break;
           case 'toggle-explorer':
             handleTogglePanel('Explorer');
             break;
@@ -339,6 +407,199 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
     }).catch(err => {
       console.error('Failed to initialize Explorer file operations:', err);
     });
+  }, []);
+  
+  // Subscribe to layout event bus (Phase 3)
+  useEffect(() => {
+    const handleLayoutSwitch = async (layoutId: string) => {
+      try {
+        const filePath = `${layoutConfigService.layoutDir}/${layoutId}.yaml`;
+        const result = await layoutConfigService.loadFromFile(filePath);
+        if (result.ok && result.layout) {
+          setLayout(result.layout);
+          setCurrentLayoutId(layoutId);
+        }
+      } catch (error) {
+        console.error('Failed to switch layout:', error);
+      }
+    };
+    
+    const handlePanelActivate = ({ areaId, panelId }: { areaId: string; panelId: string }) => {
+      setLayout(prev => ({
+        ...prev,
+        areas: {
+          ...prev.areas,
+          [areaId]: {
+            ...prev.areas[areaId],
+            activePanelId: panelId,
+          }
+        }
+      }));
+    };
+    
+    const handleAreaToggle = ({ areaId, visible }: { areaId: string; visible: boolean }) => {
+      setLayout(prev => ({
+        ...prev,
+        areas: {
+          ...prev.areas,
+          [areaId]: {
+            ...prev.areas[areaId],
+            visible,
+          }
+        }
+      }));
+    };
+    
+    const handleSplitUpdate = ({ splitKey, percentage }: { splitKey: string; percentage: number }) => {
+      setLayout(prev => ({
+        ...prev,
+        splitConfig: {
+          ...prev.splitConfig,
+          [splitKey]: percentage,
+        }
+      }));
+    };
+
+    const handleAreaResize = ({ areaId, size }: { areaId: string; size: number }) => {
+      setLayout(prev => {
+        const area = prev.areas?.[areaId];
+        if (!area) return prev;
+        return {
+          ...prev,
+          areas: {
+            ...prev.areas,
+            [areaId]: {
+              ...area,
+              size,
+            }
+          }
+        };
+      });
+    };
+
+    const handlePanelAddEvent = ({ panelType, areaId, index }: { panelType: string; areaId: string; index?: number }) => {
+      // Minimal implementation: move an existing base panel (id === panelType) into the target area.
+      // If we don't already have a panel instance for that id, we can't safely materialize content here.
+      setLayout(prev => {
+        const targetArea = prev.areas?.[areaId];
+        if (!targetArea) return prev;
+
+        const panelId = panelType;
+        const nextAreas: Record<string, any> = { ...prev.areas };
+
+        // Remove from all areas first (avoid duplicates)
+        for (const [aid, a] of Object.entries(nextAreas)) {
+          if (!a?.panelIds) continue;
+          if (a.panelIds.includes(panelId)) {
+            const filtered = a.panelIds.filter((pid: string) => pid !== panelId);
+            nextAreas[aid] = {
+              ...a,
+              panelIds: filtered,
+              activePanelId: a.activePanelId === panelId ? (filtered[0] ?? a.activePanelId) : a.activePanelId,
+            };
+          }
+        }
+
+        const targetPanelIds = nextAreas[areaId]?.panelIds ? [...nextAreas[areaId].panelIds] : [];
+        if (!targetPanelIds.includes(panelId)) {
+          if (typeof index === 'number' && index >= 0 && index <= targetPanelIds.length) {
+            targetPanelIds.splice(index, 0, panelId);
+          } else {
+            targetPanelIds.push(panelId);
+          }
+        }
+
+        nextAreas[areaId] = {
+          ...nextAreas[areaId],
+          panelIds: targetPanelIds,
+          activePanelId: panelId,
+        };
+
+        return {
+          ...prev,
+          areas: nextAreas,
+        };
+      });
+    };
+
+    const handlePanelRemoveEvent = ({ panelId }: { panelId: string }) => {
+      setLayout(prev => {
+        const nextAreas: Record<string, any> = { ...prev.areas };
+        for (const [aid, a] of Object.entries(nextAreas)) {
+          if (!a?.panelIds) continue;
+          if (a.panelIds.includes(panelId)) {
+            const filtered = a.panelIds.filter((pid: string) => pid !== panelId);
+            nextAreas[aid] = {
+              ...a,
+              panelIds: filtered,
+              activePanelId: a.activePanelId === panelId ? (filtered[0] ?? a.activePanelId) : a.activePanelId,
+            };
+          }
+        }
+        return { ...prev, areas: nextAreas };
+      });
+
+      // If this was a dynamically-created panel, also remove the instance.
+      const builtInIds = new Set(['explorer', 'git', 'editor', 'preview', 'hop', 'terminal', 'chat', 'chat-history']);
+      if (!builtInIds.has(panelId)) {
+        setPanels(prev => prev.filter(p => p.id !== panelId));
+      }
+    };
+    
+    layoutEventBus.on('layout:switch', handleLayoutSwitch);
+    layoutEventBus.on('layout:panel:activate', handlePanelActivate);
+    layoutEventBus.on('layout:area:toggle', handleAreaToggle);
+    layoutEventBus.on('layout:split:update', handleSplitUpdate);
+    layoutEventBus.on('layout:area:resize', handleAreaResize);
+    layoutEventBus.on('layout:panel:add', handlePanelAddEvent);
+    layoutEventBus.on('layout:panel:remove', handlePanelRemoveEvent);
+    
+    return () => {
+      layoutEventBus.off('layout:switch', handleLayoutSwitch);
+      layoutEventBus.off('layout:panel:activate', handlePanelActivate);
+      layoutEventBus.off('layout:area:toggle', handleAreaToggle);
+      layoutEventBus.off('layout:split:update', handleSplitUpdate);
+      layoutEventBus.off('layout:area:resize', handleAreaResize);
+      layoutEventBus.off('layout:panel:add', handlePanelAddEvent);
+      layoutEventBus.off('layout:panel:remove', handlePanelRemoveEvent);
+    };
+  }, []);
+
+  // Bridge backend WebSocket layout events to layoutEventBus (Phase 3 - Agent Control)
+  useEffect(() => {
+    const handleBackendLayoutEvent = ({ action, data }: { action: string; data: any }) => {
+      switch (action) {
+        case 'switch':
+          layoutEventBus.emitLayoutSwitch(data.name);
+          break;
+        case 'activate_panel':
+          layoutEventBus.emitPanelActivate(data.areaId, data.panelId);
+          break;
+        case 'toggle_area':
+          layoutEventBus.emitAreaToggle(data.areaId, data.visible);
+          break;
+        case 'resize_area':
+          layoutEventBus.emitAreaResize(data.areaId, data.size);
+          break;
+        case 'add_panel':
+          layoutEventBus.emitPanelAdd(data.panelType, data.areaId);
+          break;
+        case 'remove_panel':
+          layoutEventBus.emitPanelRemove(data.panelId);
+          break;
+        case 'set_split':
+          layoutEventBus.emitSplitUpdate(data.splitKey, data.percentage);
+          break;
+        default:
+          console.warn('[Home] Unknown layout action from backend:', action);
+      }
+    };
+
+    icuiBackendService.on('layout_event', handleBackendLayoutEvent);
+    
+    return () => {
+      icuiBackendService.off('layout_event', handleBackendLayoutEvent);
+    };
   }, []);
 
   // Handle connection status changes from ICUIEditor
@@ -513,6 +774,111 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
 
   // Initialize panels on mount (run once)
   useEffect(() => {
+    // Phase 4/5: Load initial layout based on device type and last-used preference
+    const loadInitialLayout = async () => {
+      try {
+        console.log('[MOBILE-DEBUG] Starting layout load. isMobile:', isMobile, 'layoutDir:', layoutConfigService.layoutDir);
+
+        const resolveMobilePanelIds = async (): Promise<string[]> => {
+          // Prefer mobile_settings.yaml enabled+order.
+          try {
+            const settingsPath = `${layoutConfigService.layoutDir}/mobile_settings.yaml`;
+            const settingsResult = await layoutConfigService.loadFromFile(settingsPath);
+            const panels = settingsResult.ok && settingsResult.layout ? (settingsResult.layout.panels || []) : [];
+            if (Array.isArray(panels) && panels.length > 0) {
+              const enabledIds = panels
+                .filter((p: any) => (p?.enabled ?? p?.config?.enabled) === true)
+                .map((p: any) => p.id)
+                .filter((id: any) => typeof id === 'string');
+              if (enabledIds.length > 0) return enabledIds;
+            }
+          } catch {
+            // ignore
+          }
+
+          // Fall back to defaults.
+          return ['editor', 'preview', 'hop', 'chat-history'];
+        };
+        
+        // 1. Check device type
+        if (isMobile) {
+          const mobilePath = `${layoutConfigService.layoutDir}/mobile.yaml`;
+          console.log('[MOBILE-DEBUG] Loading mobile layout from:', mobilePath);
+          const result = await layoutConfigService.loadFromFile(mobilePath);
+          console.log('[MOBILE-DEBUG] Mobile layout load result:', { ok: result.ok, errors: result.errors, layoutMode: result.layout?.layoutMode });
+          if (result.ok && result.layout) {
+            const mobileArea = result.layout.areas?.main || result.layout.areas?.center;
+            const panelIds = mobileArea?.panelIds || [];
+            if (panelIds.length === 0) {
+              console.warn('[MOBILE-DEBUG] Mobile layout has no panels; repairing from settings/defaults');
+              const repairedPanelIds = await resolveMobilePanelIds();
+              const repairedLayout: ICUILayoutConfig = {
+                name: 'Mobile',
+                id: 'mobile',
+                version: 1,
+                deviceTarget: 'mobile',
+                layoutMode: 'mobile',
+                areas: {
+                  main: {
+                    id: 'main',
+                    name: 'Main',
+                    panelIds: repairedPanelIds,
+                    activePanelId: repairedPanelIds[0],
+                    size: 100,
+                    visible: true,
+                  },
+                },
+                splitConfig: {},
+              };
+              setLayout(repairedLayout);
+              setCurrentLayoutId('mobile');
+              try {
+                await layoutConfigService.saveToFile(repairedLayout, mobilePath);
+              } catch (e) {
+                console.warn('[MOBILE-DEBUG] Failed to persist repaired mobile.yaml:', e);
+              }
+              return;
+            }
+            console.log('[MOBILE-DEBUG] Setting mobile layout with layoutMode:', result.layout.layoutMode);
+            setLayout(result.layout);
+            setCurrentLayoutId('mobile');
+            return;
+          } else {
+            console.warn('[MOBILE-DEBUG] Failed to load mobile layout:', result.errors);
+          }
+        }
+        
+        // 2. Check localStorage for last-used layout
+        const lastUsed = localStorage.getItem('icui-last-layout-id');
+        if (lastUsed) {
+          console.log('[MOBILE-DEBUG] Loading last-used layout:', lastUsed);
+          try {
+            const result = await layoutConfigService.loadFromFile(`${layoutConfigService.layoutDir}/${lastUsed}.yaml`);
+            if (result.ok && result.layout) {
+              setLayout(result.layout);
+              setCurrentLayoutId(lastUsed);
+              return;
+            }
+          } catch {
+            // Fall through to default
+          }
+        }
+        
+        // 3. Fallback to default H layout
+        console.log('[MOBILE-DEBUG] Loading default H layout');
+        const result = await layoutConfigService.loadFromFile(`${layoutConfigService.layoutDir}/H.yaml`);
+        if (result.ok && result.layout) {
+          setLayout(result.layout);
+          setCurrentLayoutId('default-h');
+        }
+      } catch (error) {
+        console.warn('Failed to load YAML layout, using hardcoded default:', error);
+        // Final fallback: use hardcoded defaultLayout
+      }
+    };
+    
+    loadInitialLayout();
+    
     const initialPanels: ICUIPanel[] = [
       {
         id: 'explorer',
@@ -656,6 +1022,195 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
   // Get current theme info
   const currentThemeInfo = THEME_OPTIONS.find(t => t.id === currentTheme) || THEME_OPTIONS[0];
 
+  // Handle layout loading from dialog
+  const handleLayoutLoad = useCallback((newLayout: ICUILayoutConfig) => {
+    setLayout(newLayout);
+    if (newLayout.id) {
+      setCurrentLayoutId(newLayout.id);
+      localStorage.setItem('icui-last-layout-id', newLayout.id);
+    }
+  }, []);
+  
+  // Persist layout ID changes
+  useEffect(() => {
+    if (currentLayoutId) {
+      localStorage.setItem('icui-last-layout-id', currentLayoutId);
+    }
+  }, [currentLayoutId]);
+
+  // Mobile panel configuration state
+  const [mobilePanelConfig, setMobilePanelConfig] = useState<MobilePanelConfig[]>([]);
+
+  const ALL_MOBILE_PANELS: MobilePanelConfig[] = [
+    { id: 'chat', type: 'chat', title: 'Chat', icon: '💬', enabled: false },
+    { id: 'chat-history', type: 'chat-history', title: 'Chat History', icon: '📜', enabled: false },
+    { id: 'explorer', type: 'explorer', title: 'Explorer', icon: '📁', enabled: false },
+    { id: 'hop', type: 'hop', title: 'Hop', icon: '🔌', enabled: false },
+    { id: 'editor', type: 'editor', title: 'Editor', icon: '📝', enabled: false },
+    { id: 'terminal', type: 'terminal', title: 'Terminal', icon: '⌨️', enabled: false },
+    { id: 'git', type: 'git', title: 'Git', icon: '🌿', enabled: false },
+    { id: 'preview', type: 'preview', title: 'Preview', icon: '👁️', enabled: false },
+  ];
+
+  const DEFAULT_MOBILE_ENABLED_PANEL_IDS = ['editor', 'preview', 'hop', 'chat-history'];
+  
+  // Load mobile panel configuration from mobile_settings.yaml on mount
+  useEffect(() => {
+    const loadMobileSettings = async () => {
+      try {
+        const settingsPath = `${layoutConfigService.layoutDir}/mobile_settings.yaml`;
+        const result = await layoutConfigService.loadFromFile(settingsPath);
+        
+        if (!(result.ok && result.layout)) {
+          throw new Error('Settings file not found');
+        }
+
+        // Extract panel configuration from settings
+        const panels = Array.isArray(result.layout.panels) ? result.layout.panels : [];
+        if (panels.length === 0) {
+          throw new Error('Settings file invalid or empty');
+        }
+
+        // Build config from settings file panel order
+        const configPanels = panels
+          .map((p: any) => {
+            const basePanel = ALL_MOBILE_PANELS.find(ap => ap.id === p.id);
+            const enabledRaw = p?.enabled ?? p?.config?.enabled;
+            return basePanel ? { ...basePanel, enabled: enabledRaw === true } : null;
+          })
+          .filter(Boolean) as MobilePanelConfig[];
+
+        // Add any missing panels at the end (disabled)
+        const usedIds = new Set(configPanels.map(p => p.id));
+        const missingPanels = ALL_MOBILE_PANELS.filter(p => !usedIds.has(p.id));
+
+        // If everything is disabled (common when schema mismatches), apply defaults.
+        const merged = [...configPanels, ...missingPanels];
+        const enabledCount = merged.filter(p => p.enabled).length;
+        if (enabledCount === 0) {
+          setMobilePanelConfig(
+            merged.map(p => ({ ...p, enabled: DEFAULT_MOBILE_ENABLED_PANEL_IDS.includes(p.id) }))
+          );
+        } else {
+          setMobilePanelConfig(merged);
+        }
+      } catch (error) {
+        // Fallback to loading from disk mobile.yaml (not from current in-memory layout).
+        let enabledPanelIds: string[] = [];
+        try {
+          const mobilePath = `${layoutConfigService.layoutDir}/mobile.yaml`;
+          const mobileResult = await layoutConfigService.loadFromFile(mobilePath);
+          const mobileLayout = mobileResult.ok ? mobileResult.layout : undefined;
+          const mobileArea = mobileLayout?.areas?.main || mobileLayout?.areas?.center;
+          enabledPanelIds = mobileArea?.panelIds || [];
+        } catch {
+          enabledPanelIds = [];
+        }
+
+        if (enabledPanelIds.length === 0) {
+          enabledPanelIds = DEFAULT_MOBILE_ENABLED_PANEL_IDS;
+        }
+
+        const sortedPanels = ALL_MOBILE_PANELS
+          .map(panel => ({
+            ...panel,
+            enabled: enabledPanelIds.includes(panel.id),
+          }))
+          .sort((a, b) => {
+            const aIndex = enabledPanelIds.indexOf(a.id);
+            const bIndex = enabledPanelIds.indexOf(b.id);
+            if (aIndex === -1 && bIndex === -1) return 0;
+            if (aIndex === -1) return 1;
+            if (bIndex === -1) return -1;
+            return aIndex - bIndex;
+          });
+
+        setMobilePanelConfig(sortedPanels);
+      }
+    };
+    
+    loadMobileSettings();
+  }, []);
+
+  // Handle mobile settings save
+  const handleMobileSettingsSave = useCallback(async (panels: MobilePanelConfig[]) => {
+    if (!panels || panels.length === 0) {
+      console.warn('[MOBILE-SETTINGS] Refusing to save empty panel list');
+      return;
+    }
+
+    // Ensure at least one panel is enabled to avoid a blank mobile UI.
+    let nextPanels = panels;
+    let enabledPanels = nextPanels.filter(p => p.enabled);
+    if (enabledPanels.length === 0) {
+      const defaultId = nextPanels.find(p => p.id === 'editor')?.id || nextPanels[0].id;
+      nextPanels = nextPanels.map(p => ({ ...p, enabled: p.id === defaultId }));
+      enabledPanels = nextPanels.filter(p => p.enabled);
+    }
+
+    const panelIds = enabledPanels.map(p => p.id);
+    const activePanelId = panelIds[0];
+    
+    // Save mobile_settings.yaml with panel order and enabled state
+    const mobileSettings: ICUILayoutConfig = {
+      name: 'Mobile Settings',
+      id: 'mobile-settings',
+      version: 1,
+      description: 'Mobile layout panel configuration',
+      panels: nextPanels.map(p => ({
+        id: p.id,
+        type: p.type,
+        title: p.title,
+        icon: p.icon,
+        // Back-compat: older code expected top-level enabled.
+        enabled: p.enabled,
+        config: { enabled: p.enabled },
+      })),
+      areas: {},
+      splitConfig: {},
+    };
+    
+    // Update mobile.yaml with enabled panels
+    const mobileLayout: ICUILayoutConfig = {
+      name: 'Mobile',
+      id: 'mobile',
+      version: 1,
+      deviceTarget: 'mobile',
+      layoutMode: 'mobile',
+      areas: {
+        main: {
+          id: 'main',
+          name: 'Main',
+          panelIds,
+          activePanelId,
+          size: 100,
+          visible: true,
+        },
+      },
+      splitConfig: {},
+    };
+    
+    try {
+      // Save settings file
+      await layoutConfigService.saveToFile(mobileSettings, `${layoutConfigService.layoutDir}/mobile_settings.yaml`);
+      
+      // Save layout file
+      await layoutConfigService.saveToFile(mobileLayout, `${layoutConfigService.layoutDir}/mobile.yaml`);
+      
+      // Update local state
+      setMobilePanelConfig(nextPanels);
+      
+      // If currently on mobile layout, reload it
+      if (layout.layoutMode === 'mobile') {
+        setLayout(mobileLayout);
+      }
+      
+      console.log('[MOBILE-SETTINGS] Saved mobile layout configuration:', panelIds);
+    } catch (error) {
+      console.error('[MOBILE-SETTINGS] Failed to save mobile layout:', error);
+    }
+  }, [layout]);
+
   // Debug logging for connection status
   // console.log('Home render - editorConnectionStatus:', editorConnectionStatus);
   // console.log('Home render - connectionStatus:', connectionStatus);
@@ -689,6 +1244,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
           availablePanelTypes={availablePanelTypes}
           onPanelAdd={handlePanelAdd}
           showPanelSelector={true}
+          onOpenMobileSettings={() => setMobileSettingsOpen(true)}
         />
       </div>
 
@@ -697,6 +1253,24 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
         connectionStatus={connectionStatus}
         statusText={currentFile?.name ? `File: ${currentFile.name}` : 'No file open'}
         className="flex-shrink-0"
+      />
+      
+      {/* Layout Management Dialogs */}
+      <SaveLayoutDialog
+        open={saveDialogOpen}
+        onOpenChange={setSaveDialogOpen}
+        currentLayout={layout}
+      />
+      <LoadLayoutDialog
+        open={loadDialogOpen}
+        onOpenChange={setLoadDialogOpen}
+        onLayoutLoad={handleLayoutLoad}
+      />
+      <MobileLayoutSettingsDialog
+        open={mobileSettingsOpen}
+        onClose={() => setMobileSettingsOpen(false)}
+        availablePanels={mobilePanelConfig}
+        onSave={handleMobileSettingsSave}
       />
     </div>
   );

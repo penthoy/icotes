@@ -22,6 +22,7 @@ from .atlascloud.ttv_tool import AtlasCloudTextToVideoTool
 from .atlascloud.itv_tool import AtlasCloudImageToVideoTool
 from .atlascloud.v2v_sound_tool import AtlasCloudVideoToVideoSoundTool
 from .youtube_download_tool import YouTubeDownloadTool
+from .ui_layout_tool import UILayoutTool
 
 __all__ = [
     "BaseTool",
@@ -46,6 +47,7 @@ __all__ = [
     "AtlasCloudImageToVideoTool",
     "AtlasCloudVideoToVideoSoundTool",
     "YouTubeDownloadTool",
+    "UILayoutTool",
 ]
 
 # Auto-register all tools when module is imported
@@ -72,6 +74,7 @@ def _register_default_tools():
     registry.register(AtlasCloudImageToVideoTool())
     registry.register(AtlasCloudVideoToVideoSoundTool())
     registry.register(YouTubeDownloadTool())
+    registry.register(UILayoutTool())
 
 # Register tools on import
 _register_default_tools() 

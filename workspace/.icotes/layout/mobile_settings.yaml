@@ -1,0 +1,55 @@
+name: Mobile Settings
+id: mobile-settings
+description: Mobile layout panel configuration
+version: 1
+panels:
+  - id: chat
+    type: chat
+    title: Chat
+    icon: 💬
+    config:
+      enabled: true
+  - id: chat-history
+    type: chat-history
+    title: Chat History
+    icon: 📜
+    config:
+      enabled: true
+  - id: explorer
+    type: explorer
+    title: Explorer
+    icon: 📁
+    config:
+      enabled: true
+  - id: editor
+    type: editor
+    title: Editor
+    icon: 📝
+    config:
+      enabled: true
+  - id: hop
+    type: hop
+    title: Hop
+    icon: 🔌
+    config:
+      enabled: false
+  - id: terminal
+    type: terminal
+    title: Terminal
+    icon: ⌨️
+    config:
+      enabled: false
+  - id: git
+    type: git
+    title: Git
+    icon: 🌿
+    config:
+      enabled: false
+  - id: preview
+    type: preview
+    title: Preview
+    icon: 👁️
+    config:
+      enabled: false
+areas: {}
+splitConfig: {}
