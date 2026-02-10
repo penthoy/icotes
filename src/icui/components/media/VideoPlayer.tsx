@@ -32,7 +32,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ srcUrl, title }) => {
   return (
     <div className="flex-1 relative overflow-hidden">
       {!videoLoaded && !videoError && (
-        <div className="absolute inset-0 flex items-center justify-center">
+        <div className="absolute inset-0 flex items-center justify-center" style={{ pointerEvents: 'none' }}>
           <div className="text-center">
             <div className="animate-spin text-4xl mb-2">⏳</div>
             <p className="text-sm" style={{ color: 'var(--icui-text-secondary)' }}>
@@ -66,6 +66,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ srcUrl, title }) => {
         style={{ display: videoError ? 'none' : 'block', backgroundColor: 'black' }}
         controls
         preload="metadata"
+        playsInline
+        onLoadedMetadata={handleLoaded}
+        onCanPlay={handleLoaded}
         onLoadedData={handleLoaded}
         onError={handleError}
         aria-label={title}

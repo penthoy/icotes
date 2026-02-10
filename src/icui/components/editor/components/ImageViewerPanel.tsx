@@ -49,10 +49,23 @@ export const ImageViewerPanel: React.FC<ImageViewerPanelProps> = ({ filePath, fi
   // Panning interaction state
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
+
+  // Touch interaction state (used to disable transition during gestures)
+  const [isTouchInteracting, setIsTouchInteracting] = useState(false);
   
   // Refs for DOM elements
   const containerRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
+
+  // Touch gesture refs (pinch zoom + pan) for mobile
+  const touchPointersRef = useRef(new Map<number, { x: number; y: number }>());
+  const touchLastPosRef = useRef<{ x: number; y: number } | null>(null);
+  const touchPinchRef = useRef<{
+    startDistance: number;
+    startZoom: number;
+    startPan: { x: number; y: number };
+    startMid: { x: number; y: number };
+  } | null>(null);
 
   const imageUrl = `/api/files/raw?path=${encodeURIComponent(filePath)}`;
 
@@ -139,6 +152,104 @@ export const ImageViewerPanel: React.FC<ImageViewerPanelProps> = ({ filePath, fi
    */
   const handleMouseUp = useCallback(() => {
     setIsPanning(false);
+  }, []);
+
+  const clamp = useCallback((v: number, min: number, max: number) => Math.max(min, Math.min(max, v)), []);
+
+  const handleTouchPointerDown = useCallback((e: React.PointerEvent) => {
+    if (e.pointerType !== 'touch') return;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    setIsTouchInteracting(true);
+    touchPointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    const pointers = Array.from(touchPointersRef.current.values());
+    if (pointers.length === 1) {
+      touchLastPosRef.current = { x: pointers[0].x, y: pointers[0].y };
+      touchPinchRef.current = null;
+    } else if (pointers.length === 2) {
+      const [a, b] = pointers;
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const dist = Math.hypot(dx, dy) || 1;
+      const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      touchPinchRef.current = {
+        startDistance: dist,
+        startZoom: zoom,
+        startPan: { ...pan },
+        startMid: mid,
+      };
+      touchLastPosRef.current = null;
+    }
+  }, [pan, zoom]);
+
+  const handleTouchPointerMove = useCallback((e: React.PointerEvent) => {
+    if (e.pointerType !== 'touch') return;
+    const map = touchPointersRef.current;
+    if (!map.has(e.pointerId)) return;
+    map.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    const pointers = Array.from(map.values());
+    if (pointers.length === 1) {
+      const last = touchLastPosRef.current;
+      if (!last) {
+        touchLastPosRef.current = { x: pointers[0].x, y: pointers[0].y };
+        return;
+      }
+      const dx = pointers[0].x - last.x;
+      const dy = pointers[0].y - last.y;
+
+      // On mobile, always allow drag-pan regardless of tool.
+      setPan((p) => ({ x: p.x + dx, y: p.y + dy }));
+      touchLastPosRef.current = { x: pointers[0].x, y: pointers[0].y };
+      return;
+    }
+
+    if (pointers.length >= 2) {
+      const pinch = touchPinchRef.current;
+      const [a, b] = pointers;
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const dist = Math.hypot(dx, dy) || 1;
+      const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+
+      if (!pinch) {
+        touchPinchRef.current = {
+          startDistance: dist,
+          startZoom: zoom,
+          startPan: { ...pan },
+          startMid: mid,
+        };
+        return;
+      }
+
+      const ratio = dist / (pinch.startDistance || 1);
+      const nextZoom = clampZoom(pinch.startZoom * ratio);
+
+      // Keep the content under the pinch midpoint stable-ish by adjusting pan.
+      const zoomFactor = nextZoom / (pinch.startZoom || 1);
+      const panFromStart = {
+        x: pinch.startPan.x * zoomFactor,
+        y: pinch.startPan.y * zoomFactor,
+      };
+      const midDelta = { x: mid.x - pinch.startMid.x, y: mid.y - pinch.startMid.y };
+
+      setZoom(nextZoom);
+      setPan({ x: panFromStart.x + midDelta.x, y: panFromStart.y + midDelta.y });
+    }
+  }, [clampZoom, clampZoom, clamp, pan, zoom]);
+
+  const handleTouchPointerUp = useCallback((e: React.PointerEvent) => {
+    if (e.pointerType !== 'touch') return;
+    touchPointersRef.current.delete(e.pointerId);
+    const pointers = touchPointersRef.current.size;
+    if (pointers < 2) {
+      touchPinchRef.current = null;
+    }
+    if (pointers === 0) {
+      touchLastPosRef.current = null;
+      touchPinchRef.current = null;
+      setIsTouchInteracting(false);
+    }
   }, []);
 
   /**
@@ -230,21 +341,28 @@ export const ImageViewerPanel: React.FC<ImageViewerPanelProps> = ({ filePath, fi
         className="flex-1 flex items-center justify-center overflow-hidden relative"
         style={{ 
           cursor: getCursor(),
-          backgroundColor: 'var(--icui-bg-tertiary)'
+          backgroundColor: 'var(--icui-bg-tertiary)',
+          touchAction: 'none',
         }}
         onWheel={handleWheel}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
+        onPointerDown={handleTouchPointerDown}
+        onPointerMove={handleTouchPointerMove}
+        onPointerUp={handleTouchPointerUp}
+        onPointerCancel={handleTouchPointerUp}
       >
         {!imageError ? (
           <div 
             className="relative"
             style={{
-              transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+              transform: `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${zoom})`,
               transformOrigin: 'center center',
-              transition: isPanning ? 'none' : 'transform 0.1s ease-out'
+              transition: (isPanning || isTouchInteracting) ? 'none' : 'transform 0.1s ease-out',
+              willChange: 'transform',
+              backfaceVisibility: 'hidden',
             }}
           >
             <img 

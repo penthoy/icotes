@@ -118,6 +118,8 @@ const PDFPageCanvas: React.FC<PDFPageCanvasProps> = ({ pdfDocument, pageNumber, 
       style={{
         backgroundColor: '#ffffff',
         boxShadow: '0 1px 10px rgba(0,0,0,0.25)',
+        marginLeft: 'auto',
+        marginRight: 'auto',
       }}
     >
       {renderError ? (
@@ -159,6 +161,22 @@ export const PDFViewerPanel: React.FC<PDFViewerPanelProps> = ({ filePath, fileNa
   const [pdfLoaded, setPdfLoaded] = useState(false);
   const [pdfError, setPdfError] = useState(false);
   const [scale, setScale] = useState(1.25);
+  const [previewScale, setPreviewScale] = useState(1);
+
+  const previewScaleRef = useRef(1);
+  useEffect(() => {
+    previewScaleRef.current = previewScale;
+  }, [previewScale]);
+
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const touchPointersRef = useRef(new Map<number, { x: number; y: number }>());
+  const touchLastPosRef = useRef<{ x: number; y: number } | null>(null);
+  const pinchRef = useRef<{
+    startDistance: number;
+    startPreview: number;
+    contentX: number;
+    contentY: number;
+  } | null>(null);
 
   const pdfUrl = `/api/files/raw?path=${encodeURIComponent(filePath)}`;
 
@@ -207,6 +225,119 @@ export const PDFViewerPanel: React.FC<PDFViewerPanelProps> = ({ filePath, fileNa
     document.body.removeChild(link);
   }, [pdfUrl, fileName]);
 
+  const clamp = useCallback((value: number, min: number, max: number) => {
+    return Math.max(min, Math.min(max, value));
+  }, []);
+
+  const commitScale = useCallback((nextRenderScale: number) => {
+    const next = clamp(nextRenderScale, 0.5, 3);
+    setScale(next);
+    setPreviewScale(1);
+  }, [clamp]);
+
+  const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    if (e.pointerType !== 'touch') return;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    touchPointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    const pointers = Array.from(touchPointersRef.current.values());
+    if (pointers.length === 1) {
+      touchLastPosRef.current = { x: pointers[0].x, y: pointers[0].y };
+      pinchRef.current = null;
+    } else if (pointers.length === 2) {
+      const el = scrollRef.current;
+      const [a, b] = pointers;
+      const dist = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+
+      const startPreview = previewScaleRef.current;
+      if (el) {
+        const rect = el.getBoundingClientRect();
+        const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+        const midLocal = { x: mid.x - rect.left, y: mid.y - rect.top };
+        const contentX = (el.scrollLeft + midLocal.x) / startPreview;
+        const contentY = (el.scrollTop + midLocal.y) / startPreview;
+        pinchRef.current = { startDistance: dist, startPreview, contentX, contentY };
+      } else {
+        pinchRef.current = { startDistance: dist, startPreview, contentX: 0, contentY: 0 };
+      }
+      touchLastPosRef.current = null;
+    }
+  }, []);
+
+  const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    if (e.pointerType !== 'touch') return;
+    const map = touchPointersRef.current;
+    if (!map.has(e.pointerId)) return;
+    map.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    const el = scrollRef.current;
+    if (!el) return;
+
+    const pointers = Array.from(map.values());
+    if (pointers.length === 1) {
+      const last = touchLastPosRef.current;
+      if (!last) {
+        touchLastPosRef.current = { x: pointers[0].x, y: pointers[0].y };
+        return;
+      }
+      const dx = pointers[0].x - last.x;
+      const dy = pointers[0].y - last.y;
+
+      // Manual scroll (touchAction is none to allow pinch gestures)
+      el.scrollLeft -= dx;
+      el.scrollTop -= dy;
+      touchLastPosRef.current = { x: pointers[0].x, y: pointers[0].y };
+      return;
+    }
+
+    if (pointers.length >= 2) {
+      const pinch = pinchRef.current;
+      const [a, b] = pointers;
+      const dist = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+      if (!pinch) {
+        const startPreview = previewScaleRef.current;
+        const rect = el.getBoundingClientRect();
+        const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+        const midLocal = { x: mid.x - rect.left, y: mid.y - rect.top };
+        const contentX = (el.scrollLeft + midLocal.x) / startPreview;
+        const contentY = (el.scrollTop + midLocal.y) / startPreview;
+        pinchRef.current = { startDistance: dist, startPreview, contentX, contentY };
+        return;
+      }
+      const ratio = dist / (pinch.startDistance || 1);
+      const nextPreview = clamp(pinch.startPreview * ratio, 0.5 / scale, 3 / scale);
+      setPreviewScale(nextPreview);
+
+      // Keep the content under the finger midpoint stable by adjusting scroll.
+      // This mirrors the image viewer pinch behavior (midpoint-anchored zoom).
+      const rect = el.getBoundingClientRect();
+      const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      const midLocal = { x: mid.x - rect.left, y: mid.y - rect.top };
+      const nextScrollLeft = pinch.contentX * nextPreview - midLocal.x;
+      const nextScrollTop = pinch.contentY * nextPreview - midLocal.y;
+      el.scrollLeft = Math.max(0, nextScrollLeft);
+      el.scrollTop = Math.max(0, nextScrollTop);
+    }
+  }, [clamp, scale]);
+
+  const handlePointerUp = useCallback(() => {
+    const count = touchPointersRef.current.size;
+    if (count >= 2) return;
+
+    // Gesture ended: commit previewScale into render scale once.
+    if (previewScale !== 1) {
+      commitScale(scale * previewScale);
+    }
+    pinchRef.current = null;
+    touchLastPosRef.current = null;
+  }, [commitScale, previewScale, scale]);
+
+  const handlePointerEnd = useCallback((e: React.PointerEvent) => {
+    if (e.pointerType !== 'touch') return;
+    touchPointersRef.current.delete(e.pointerId);
+    handlePointerUp();
+  }, [handlePointerUp]);
+
   return (
     <div 
       className="flex flex-col h-full w-full"
@@ -229,19 +360,19 @@ export const PDFViewerPanel: React.FC<PDFViewerPanelProps> = ({ filePath, fileNa
           <button
             className="px-2 py-1 rounded text-xs"
             style={{ backgroundColor: 'var(--icui-bg-tertiary)', color: 'var(--icui-text-primary)' }}
-            onClick={() => setScale((s) => Math.max(0.5, Math.round((s - 0.1) * 100) / 100))}
+            onClick={() => commitScale(Math.round((scale - 0.1) * 100) / 100)}
             type="button"
             aria-label="Zoom out"
           >
             −
           </button>
           <div className="text-xs" style={{ color: 'var(--icui-text-secondary)', minWidth: 54, textAlign: 'center' }}>
-            {Math.round(scale * 100)}%
+            {Math.round(scale * previewScale * 100)}%
           </div>
           <button
             className="px-2 py-1 rounded text-xs"
             style={{ backgroundColor: 'var(--icui-bg-tertiary)', color: 'var(--icui-text-primary)' }}
-            onClick={() => setScale((s) => Math.min(3, Math.round((s + 0.1) * 100) / 100))}
+            onClick={() => commitScale(Math.round((scale + 0.1) * 100) / 100)}
             type="button"
             aria-label="Zoom in"
           >
@@ -304,12 +435,24 @@ export const PDFViewerPanel: React.FC<PDFViewerPanelProps> = ({ filePath, fileNa
         {/* Custom PDF renderer (themeable scrollbars & background) */}
         {!pdfError && pdfLoaded && pdfDocument && (
           <div
+            ref={scrollRef}
             className="absolute inset-0 overflow-auto"
             style={{
               backgroundColor: 'var(--icui-bg-primary)',
+              touchAction: 'none',
             }}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerEnd}
+            onPointerCancel={handlePointerEnd}
           >
-            <div className="py-6 px-4 flex flex-col items-center gap-6">
+            <div
+              className="py-6 px-4 flex flex-col items-start gap-6"
+              style={{
+                transform: previewScale !== 1 ? `scale(${previewScale})` : undefined,
+                transformOrigin: 'top left',
+              }}
+            >
               {pageNumbers.map((pageNumber) => (
                 <PDFPageCanvas
                   key={pageNumber}

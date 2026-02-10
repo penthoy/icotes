@@ -20,9 +20,16 @@ export function useExplorerContextMenu(params: {
 
   const { contextMenu, showContextMenu, hideContextMenu } = useContextMenu();
 
-  const handleContextMenu = useCallback((event: React.MouseEvent, clickedFile?: ICUIFileNode) => {
-    event.preventDefault();
-    event.stopPropagation();
+  type ContextMenuTriggerEvent = React.MouseEvent | {
+    clientX: number;
+    clientY: number;
+    preventDefault?: () => void;
+    stopPropagation?: () => void;
+  };
+
+  const handleContextMenu = useCallback((event: ContextMenuTriggerEvent, clickedFile?: ICUIFileNode) => {
+    event.preventDefault?.();
+    event.stopPropagation?.();
 
     if (clickedFile && !isSelected(clickedFile.id)) {
       handleMultiSelectClick(clickedFile, { ctrlKey: false, shiftKey: false, metaKey: false });
