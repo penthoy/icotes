@@ -206,9 +206,12 @@ export const ICUILayout: React.FC<ICUILayoutProps> = ({
             }
           });
           
+          // CRITICAL: Use provided layout's splitConfig instead of persisted one
+          // This ensures layout switches apply the correct divider positions
           const mergedLayout = {
             ...parsedLayout,
             areas: mergedAreas,
+            splitConfig: layout?.splitConfig || parsedLayout.splitConfig,
           };
           // Final sanitation in case upstream state was corrupted
           const sanitized = sanitizeLayout(mergedLayout);
@@ -851,8 +854,8 @@ export const ICUILayout: React.FC<ICUILayoutProps> = ({
 
     return (
       <div className="icui-layout-mobile h-full w-full flex flex-col">
-        {/* Main panel area fills all available space */}
-        <div className="flex-1 overflow-hidden">
+        {/* Main panel area fills all available space with bottom padding for tab bar */}
+        <div className="flex-1 overflow-hidden" style={{ paddingBottom: '20px' }}>
           <ICUIPanelArea
             id={mainArea.id}
             panels={mainPanels}

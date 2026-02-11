@@ -14,7 +14,7 @@ import type { ICUILayoutConfig } from '../ICUILayout';
 export interface LoadLayoutDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onLayoutLoad: (layout: ICUILayoutConfig) => void;
+  onLayoutLoad: (layout: ICUILayoutConfig, sourcePath: string) => void;
 }
 
 interface LayoutListItem {
@@ -97,7 +97,7 @@ export const LoadLayoutDialog: React.FC<LoadLayoutDialogProps> = ({
         console.warn('Layout warnings:', result.warnings);
       }
 
-      onLayoutLoad(result.layout!);
+      onLayoutLoad(result.layout!, path);
       notificationService.success('Layout loaded successfully');
       onOpenChange(false);
     } catch (error) {

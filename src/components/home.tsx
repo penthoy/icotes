@@ -26,6 +26,7 @@ import ICUIBaseFooter from '../icui/components/ICUIBaseFooter';
 import { SaveLayoutDialog } from '../icui/components/dialogs/SaveLayoutDialog';
 import { LoadLayoutDialog } from '../icui/components/dialogs/LoadLayoutDialog';
 import { MobileLayoutSettingsDialog, type MobilePanelConfig } from '../icui/components/dialogs/MobileLayoutSettingsDialog';
+import { ResetLayoutDialog } from '../icui/components/dialogs/ResetLayoutDialog';
 import { layoutEventBus } from '../icui/services/layoutEventBus';
 import { icuiBackendService } from '../icui/services/backend-service-impl';
 
@@ -94,7 +95,14 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [loadDialogOpen, setLoadDialogOpen] = useState(false);
   const [mobileSettingsOpen, setMobileSettingsOpen] = useState(false);
-  const [currentLayoutId, setCurrentLayoutId] = useState<string>('default-h');
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
+  const [currentLayoutId, setCurrentLayoutId] = useState<string>('H');
+  
+    const getLayoutFileBaseFromPath = useCallback((path: string): string | null => {
+      const fileName = path.split('/').pop();
+      if (!fileName) return null;
+      return fileName.replace(/\.ya?ml$/i, '');
+    }, []);
   
   // Responsive detection for mobile layout
   const responsive = useICUIResponsive();
@@ -332,7 +340,7 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
             setMobileSettingsOpen(true);
             break;
           case 'reset-layout':
-            layoutEventBus.emitLayoutSwitch('H');
+            setResetDialogOpen(true);
             break;
           case 'toggle-explorer':
             handleTogglePanel('Explorer');
@@ -350,6 +358,28 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
         break;
     }
   }, [handleTogglePanel, setLayout]);
+
+  // Handle layout reset with factory defaults
+  const handleResetLayout = useCallback(async () => {
+    try {
+      // Load the factory default H.yaml layout
+      const result = await layoutConfigService.loadBuiltinLayout('H');
+      if (result.ok && result.layout) {
+        setLayout(result.layout);
+        setCurrentLayoutId('H');
+        localStorage.removeItem(`icotes-v${LAYOUT_VERSION}`);
+        localStorage.setItem('icui-last-layout-file', 'H');
+        localStorage.setItem('icui-last-layout-id', 'H');
+      } else {
+        console.error('Failed to load H.yaml:', result.errors);
+        // Fallback to hardcoded default
+        setLayout(defaultLayout);
+      }
+    } catch (error) {
+      console.error('Error resetting layout:', error);
+      setLayout(defaultLayout);
+    }
+  }, []);
 
   // Apply theme classes to document element for proper theme detection
   useEffect(() => {
@@ -844,14 +874,24 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
           }
         }
         
-        // 2. Check localStorage for last-used layout
-        const lastUsed = localStorage.getItem('icui-last-layout-id');
-        if (lastUsed) {
+        // 2. Check localStorage for last-used layout (prefer filename base)
+        const lastUsedRaw = localStorage.getItem('icui-last-layout-file') || localStorage.getItem('icui-last-layout-id');
+        const mapLegacyToFileBase = (value: string) => {
+          if (value === 'default-h') return 'H';
+          if (value === 'default-ide') return 'IDE';
+          if (value === 'mobile') return 'mobile';
+          return value;
+        };
+
+        if (lastUsedRaw) {
+          const lastUsedFileBase = mapLegacyToFileBase(lastUsedRaw);
           try {
-            const result = await layoutConfigService.loadFromFile(`${layoutConfigService.layoutDir}/${lastUsed}.yaml`);
+            const result = await layoutConfigService.loadFromFile(`${layoutConfigService.layoutDir}/${lastUsedFileBase}.yaml`);
             if (result.ok && result.layout) {
               setLayout(result.layout);
-              setCurrentLayoutId(lastUsed);
+              setCurrentLayoutId(lastUsedFileBase);
+              localStorage.setItem('icui-last-layout-file', lastUsedFileBase);
+              localStorage.setItem('icui-last-layout-id', lastUsedFileBase);
               return;
             }
           } catch {
@@ -863,7 +903,9 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
         const result = await layoutConfigService.loadFromFile(`${layoutConfigService.layoutDir}/H.yaml`);
         if (result.ok && result.layout) {
           setLayout(result.layout);
-          setCurrentLayoutId('default-h');
+          setCurrentLayoutId('H');
+          localStorage.setItem('icui-last-layout-file', 'H');
+          localStorage.setItem('icui-last-layout-id', 'H');
         }
       } catch (error) {
         console.warn('Failed to load YAML layout, using hardcoded default:', error);
@@ -1017,17 +1059,33 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
   const currentThemeInfo = THEME_OPTIONS.find(t => t.id === currentTheme) || THEME_OPTIONS[0];
 
   // Handle layout loading from dialog
-  const handleLayoutLoad = useCallback((newLayout: ICUILayoutConfig) => {
-    setLayout(newLayout);
-    if (newLayout.id) {
-      setCurrentLayoutId(newLayout.id);
-      localStorage.setItem('icui-last-layout-id', newLayout.id);
-    }
-  }, []);
+  const handleLayoutLoad = useCallback(
+    (newLayout: ICUILayoutConfig, sourcePath: string) => {
+      setLayout(newLayout);
+
+      const fileBase = getLayoutFileBaseFromPath(sourcePath);
+      if (fileBase) {
+        setCurrentLayoutId(fileBase);
+        localStorage.setItem('icui-last-layout-file', fileBase);
+        // Back-compat: older builds used this key.
+        localStorage.setItem('icui-last-layout-id', fileBase);
+        return;
+      }
+
+      // Fallback to layout.id if we can't infer file base
+      if (newLayout.id) {
+        setCurrentLayoutId(newLayout.id);
+        localStorage.setItem('icui-last-layout-id', newLayout.id);
+      }
+    },
+    [getLayoutFileBaseFromPath]
+  );
   
   // Persist layout ID changes
   useEffect(() => {
     if (currentLayoutId) {
+      localStorage.setItem('icui-last-layout-file', currentLayoutId);
+      // Back-compat: keep the old key updated.
       localStorage.setItem('icui-last-layout-id', currentLayoutId);
     }
   }, [currentLayoutId]);
@@ -1265,6 +1323,12 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
         onClose={() => setMobileSettingsOpen(false)}
         availablePanels={mobilePanelConfig}
         onSave={handleMobileSettingsSave}
+      />
+      <ResetLayoutDialog
+        open={resetDialogOpen}
+        onOpenChange={setResetDialogOpen}
+        onConfirm={handleResetLayout}
+        layoutName="H Layout"
       />
     </div>
   );

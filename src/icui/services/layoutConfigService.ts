@@ -12,6 +12,7 @@ export interface LayoutConfigValidationResult {
 }
 
 const DEFAULT_SCHEMA_VERSION = 1;
+const CURRENT_SCHEMA_VERSION = 1; // Increment when schema changes
 const DEFAULT_LAYOUT_DIR = '/.icotes/layout';
 
 function getDefaultLayoutDir(): string {
@@ -56,15 +57,41 @@ function sanitizeArea(areaId: string, area: any): ICUILayoutArea {
   };
 }
 
+/**
+ * Migrate layout from old schema version to current version
+ */
+function migrateLayout(layout: any): any {
+  const version = layout?.version || 0;
+  
+  // No migration needed if already at current version
+  if (version >= CURRENT_SCHEMA_VERSION) {
+    return layout;
+  }
+  
+  // Example migration from version 0 to 1:
+  // if (version < 1) {
+  //   layout.newField = defaultValue;
+  //   layout.version = 1;
+  // }
+  
+  // Future migrations will go here
+  // Each migration should be idempotent and additive where possible
+  
+  return layout;
+}
+
 function sanitizeLayoutObject(raw: any): ICUILayoutConfig {
-  const areasRaw = isPlainObject(raw?.areas) ? raw.areas : {};
+  // Apply migrations first
+  const migrated = migrateLayout(raw);
+  
+  const areasRaw = isPlainObject(migrated?.areas) ? migrated.areas : {};
   const sanitizedAreas: Record<string, ICUILayoutArea> = {};
 
   Object.keys(areasRaw).forEach((areaId) => {
     sanitizedAreas[areaId] = sanitizeArea(areaId, areasRaw[areaId]);
   });
 
-  const panelsRaw = Array.isArray(raw?.panels) ? raw.panels : undefined;
+  const panelsRaw = Array.isArray(migrated?.panels) ? migrated.panels : undefined;
   const panels = panelsRaw
     ? panelsRaw
         .filter((p) => isPlainObject(p) && typeof p.id === 'string' && typeof p.type === 'string')
@@ -77,26 +104,30 @@ function sanitizeLayoutObject(raw: any): ICUILayoutConfig {
         }))
     : undefined;
 
-  const layoutMode = raw?.layoutMode;
+  const layoutMode = migrated?.layoutMode;
 
   return {
-    name: typeof raw?.name === 'string' ? raw.name : undefined,
-    id: typeof raw?.id === 'string' ? raw.id : undefined,
-    description: typeof raw?.description === 'string' ? raw.description : undefined,
-    version: typeof raw?.version === 'number' ? raw.version : DEFAULT_SCHEMA_VERSION,
+    name: typeof migrated?.name === 'string' ? migrated.name : undefined,
+    id: typeof migrated?.id === 'string' ? migrated.id : undefined,
+    description: typeof migrated?.description === 'string' ? migrated.description : undefined,
+    version: CURRENT_SCHEMA_VERSION, // Always set to current version after migration
     deviceTarget:
-      raw?.deviceTarget === 'desktop' || raw?.deviceTarget === 'mobile' || raw?.deviceTarget === 'any'
-        ? raw.deviceTarget
+      migrated?.deviceTarget === 'desktop' || migrated?.deviceTarget === 'mobile' || migrated?.deviceTarget === 'any'
+        ? migrated.deviceTarget
         : undefined,
     layoutMode: layoutMode === 'standard' || layoutMode === 'h-layout' || layoutMode === 'mobile' ? layoutMode : undefined,
     panels,
     areas: sanitizedAreas,
-    splitConfig: isPlainObject(raw?.splitConfig)
+    splitConfig: isPlainObject(migrated?.splitConfig)
       ? {
-          mainVerticalSplit: typeof raw.splitConfig.mainVerticalSplit === 'number' ? raw.splitConfig.mainVerticalSplit : undefined,
-          mainHorizontalSplit: typeof raw.splitConfig.mainHorizontalSplit === 'number' ? raw.splitConfig.mainHorizontalSplit : undefined,
-          rightVerticalSplit: typeof raw.splitConfig.rightVerticalSplit === 'number' ? raw.splitConfig.rightVerticalSplit : undefined,
-          centerVerticalSplit: typeof raw.splitConfig.centerVerticalSplit === 'number' ? raw.splitConfig.centerVerticalSplit : undefined,
+          mainVerticalSplit:
+            typeof migrated.splitConfig.mainVerticalSplit === 'number' ? migrated.splitConfig.mainVerticalSplit : undefined,
+          mainHorizontalSplit:
+            typeof migrated.splitConfig.mainHorizontalSplit === 'number' ? migrated.splitConfig.mainHorizontalSplit : undefined,
+          rightVerticalSplit:
+            typeof migrated.splitConfig.rightVerticalSplit === 'number' ? migrated.splitConfig.rightVerticalSplit : undefined,
+          centerVerticalSplit:
+            typeof migrated.splitConfig.centerVerticalSplit === 'number' ? migrated.splitConfig.centerVerticalSplit : undefined,
         }
       : undefined,
   };
@@ -257,6 +288,15 @@ export class LayoutConfigService {
       create_dirs: true,
       type: 'file',
     });
+  }
+
+  /**
+   * Load a built-in layout from the default layout directory
+   * Used for reset operations to get factory defaults
+   */
+  async loadBuiltinLayout(layoutId: string): Promise<LayoutConfigValidationResult> {
+    const path = `${this.layoutDir}/${layoutId}.yaml`;
+    return this.loadFromFile(path);
   }
 }
 
