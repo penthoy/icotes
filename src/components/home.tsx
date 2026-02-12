@@ -6,23 +6,28 @@
  */
 
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import { 
-  ICUILayout,
+import {
   ICUIChat,
-  ICUITerminal,
-  ICUIEditor,
   ICUIChatHistory,
+  ICUIEditor,
   ICUIExplorer,
+  ICUILayout,
+  ICUIPanelSelector,
+  ICUITerminal,
+  ICUIGitConnect,
   ICUIGit,
   ICUIPreview,
-  useICUIResponsive,
-  layoutConfigService
-} from '../icui';
-import { ICUIHop } from '../icui/components/panels';
-import type { ICUIEditorRef, ICUIPreviewRef } from '../icui';
-import { globalCommandRegistry } from '../icui/lib/commandRegistry';
-import ICUIBaseHeader from '../icui/components/ICUIBaseHeader';
-import ICUIBaseFooter from '../icui/components/ICUIBaseFooter';
+  ICUIHop,
+  ICUIPanelArea,
+  ICUIBasePanel,
+  ICUILayoutPresetSelector,
+  ICUIBaseHeader,
+  ICUIBaseFooter,
+} from '../icui/components';
+import type { ICUIEditorRef } from '../icui/components/panels/ICUIEditor';
+import type { ICUIPreviewRef } from '../icui/components/panels/ICUIPreview';
+import { layoutConfigService } from '../icui/services/layoutConfigService';
+import { useICUIResponsive } from '../icui/hooks/icui-use-responsive';
 import { SaveLayoutDialog } from '../icui/components/dialogs/SaveLayoutDialog';
 import { LoadLayoutDialog } from '../icui/components/dialogs/LoadLayoutDialog';
 import { MobileLayoutSettingsDialog, type MobilePanelConfig } from '../icui/components/dialogs/MobileLayoutSettingsDialog';
@@ -543,6 +548,8 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
           ...nextAreas[areaId],
           panelIds: targetPanelIds,
           activePanelId: panelId,
+          // If the target area is currently hidden, make it visible when adding a panel.
+          ...(Object.prototype.hasOwnProperty.call(nextAreas[areaId], 'visible') ? { visible: true } : {}),
         };
 
         return {
@@ -612,6 +619,8 @@ const Home: React.FC<HomeProps> = ({ className = '' }) => {
           layoutEventBus.emitAreaResize(data.areaId, data.size);
           break;
         case 'add_panel':
+          // Agent debug sidecar disabled for now
+          if (data?.panelType === 'agent-debug') break;
           layoutEventBus.emitPanelAdd(data.panelType, data.areaId);
           break;
         case 'remove_panel':
