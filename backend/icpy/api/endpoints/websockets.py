@@ -290,6 +290,28 @@ async def chat_websocket(websocket: WebSocket):
                         "session_id": session_id_to_stop,
                         "timestamp": time.time()
                     })
+
+                elif message_type == "regenerate":
+                    # Regenerate from an existing user message without appending a new user message
+                    metadata = data.get("metadata") or {}
+                    requested_session_id = data.get("session_id") or metadata.get("session_id")
+                    requested_message_index = data.get("message_index")
+                    requested_agent_type = metadata.get("agentType") or data.get("agentType")
+
+                    try:
+                        await chat_service.regenerate_from_message(
+                            connection_id,
+                            session_id=requested_session_id,
+                            message_index=requested_message_index,
+                            agent_type=requested_agent_type,
+                        )
+                    except Exception as e:
+                        logger.error(f"Regenerate request failed: {e}")
+                        await websocket.send_json({
+                            "type": "error",
+                            "message": str(e),
+                            "timestamp": time.time()
+                        })
                 
                 else:
                     logger.warning(f"Unknown chat message type: {message_type}")

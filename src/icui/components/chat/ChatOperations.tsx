@@ -227,9 +227,10 @@ export class ChatOperations {
     }
 
     try {
-      // This would typically trigger a re-generation of the AI response
-      console.log('Would regenerate response for message:', context.selectedMessage.id);
-      log.info('ChatOperations', 'Regenerated response', { 
+      if (typeof context.refreshChat === 'function') {
+        await context.refreshChat();
+      }
+      log.info('ChatOperations', 'Regenerate response requested', { 
         messageId: context.selectedMessage.id 
       });
     } catch (error) {
@@ -262,10 +263,15 @@ export class ChatOperations {
     }
 
     try {
-      await context.editMessage?.(context.selectedMessage.id, newContent.trim());
-      await context.refreshChat?.();
+      if (typeof context.editMessage === 'function') {
+        await context.editMessage(context.selectedMessage.id, newContent.trim());
+      }
+      if (typeof context.refreshChat === 'function') {
+        await context.refreshChat();
+      }
       log.info('ChatOperations', 'Edited message', { 
-        messageId: context.selectedMessage.id 
+        messageId: context.selectedMessage.id,
+        newLength: newContent.trim().length
       });
     } catch (error) {
       log.error('ChatOperations', 'Failed to edit message', { 

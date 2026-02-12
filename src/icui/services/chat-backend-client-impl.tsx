@@ -12,6 +12,7 @@ import { configService } from '../../services/config-service';
 import type { ConnectionOptions, MessageOptions } from '../../services/websocket-service-impl';
 import type { ConnectionHealth } from '../../services/connection-manager';
 import { notificationService } from './notificationService';
+import { emitSessionChange } from '../lib/eventBus';
 import { ConnectionStatus } from '../types/chatTypes';
 
 // Local types for WebSocket messages
@@ -457,6 +458,52 @@ export class ChatBackendClient {
   }
 
   /**
+   * Regenerate an AI response from an existing user message.
+   *
+   * This is used by the inline-edit flow: the user message is edited via REST
+   * (which truncates subsequent messages) and then we ask the backend to re-run
+   * the agent starting from that edited message.
+   */
+  async regenerate(options?: {
+    sessionId?: string;
+    messageIndex?: number;
+    agentType?: string;
+    streaming?: boolean;
+    timeout?: number;
+  }): Promise<void> {
+    if (!this.connectionId || !this.wsService) {
+      throw new Error('Chat service not connected');
+    }
+
+    const sessionId = options?.sessionId || this.currentSessionId;
+    if (!sessionId) {
+      throw new Error('No active session for regenerate');
+    }
+
+    const message = {
+      type: 'regenerate',
+      session_id: sessionId,
+      message_index: typeof options?.messageIndex === 'number' ? options!.messageIndex : undefined,
+      metadata: {
+        session_id: sessionId,
+        agentType: options?.agentType,
+        streaming: options?.streaming ?? true,
+        timestamp: new Date()
+      }
+    };
+
+    const messageOptions: MessageOptions = {
+      priority: 'high',
+      timeout: options?.timeout ?? 60000,
+      expectResponse: false,
+      retries: 0
+    };
+
+    await this.wsService.sendMessage(this.connectionId, JSON.stringify(message), messageOptions);
+    this.isStreaming = options?.streaming ?? true;
+  }
+
+  /**
    * Get available agents with caching
    */
   async getAgents(): Promise<AgentConfig[]> {
@@ -771,6 +818,16 @@ export class ChatBackendClient {
         data.type === 'tool_call_error'
       ) {
         this.handleToolCallEvent(data);
+      } else if (data.type === 'session_title_update') {
+        try {
+          const sessionId = String(data.session_id || data.sessionId || '');
+          const title = String(data.title || '').trim();
+          if (sessionId && title) {
+            emitSessionChange({ sessionId, action: 'rename', sessionName: title, source: 'chatBackendClient' });
+          }
+        } catch (e) {
+          console.warn('[ChatBackendClient] Failed to handle session_title_update', e);
+        }
       } else {
         // console.log('[ChatBackendClient] Unknown message type:', data.type, 'full data:', data);
       }

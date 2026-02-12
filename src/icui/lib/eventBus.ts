@@ -1,6 +1,6 @@
 // Typed event bus with simple dedupe and self-ignore support
 
-export type SessionChangeAction = 'switch' | 'create' | 'delete';
+export type SessionChangeAction = 'switch' | 'create' | 'delete' | 'rename';
 
 export interface SessionChangeEventPayload {
   sessionId: string;

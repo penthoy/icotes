@@ -41,6 +41,9 @@ class ImageReference:
     checksum: str  # SHA256 checksum for integrity/search
     context_id: Optional[str] = None  # Context ID where image was created (for hop support)
     context_host: Optional[str] = None  # Host address if created on remote hop
+    session_ids: Optional[list[str]] = None  # Sessions that referenced this image
+    file_type: Optional[str] = None  # "preview" or "output"
+    preview_paths: Optional[list[str]] = None  # On-disk preview artifacts (if any)
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization"""
@@ -95,6 +98,8 @@ class ImageReferenceService:
         only_thumbnail_if_missing: bool = True,
         context_id: Optional[str] = None,
         context_host: Optional[str] = None,
+        session_id: Optional[str] = None,
+        file_type: str = "preview",
     ) -> ImageReference:
         """
         Create an ImageReference from image data.
@@ -187,7 +192,10 @@ class ImageReferenceService:
                 timestamp=time.time(),
                 checksum=checksum,
                 context_id=context_id,
-                context_host=context_host
+                context_host=context_host,
+                session_ids=[session_id] if session_id else [],
+                file_type=file_type,
+                preview_paths=[p for p in [thumbnail_result.get('path')] if p]
             )
             
             logger.info(f"Created ImageReference: {image_id} for {filename}")
@@ -221,6 +229,140 @@ class ImageReferenceService:
             # Provide shallow copy to avoid external mutation
             current = {key: ImageReference.from_dict(value) for key, value in self._references.items()}
         return current
+
+    async def link_session(self, image_id: str, session_id: str) -> bool:
+        """Attach a session_id to an existing image reference (idempotent)."""
+        if not session_id:
+            return False
+        async with self._lock:
+            ref = self._references.get(image_id)
+            if not ref:
+                return False
+            session_ids = ref.get('session_ids') or []
+            if session_id not in session_ids:
+                session_ids.append(session_id)
+                ref['session_ids'] = session_ids
+                self._references[image_id] = ref
+                self._write_index()
+        return True
+
+    async def unlink_session(self, session_id: str) -> Dict[str, int]:
+        """Remove a session from all references and delete preview-only refs with no remaining sessions."""
+        removed_refs = 0
+        kept_refs = 0
+        if not session_id:
+            return {"removed_refs": 0, "kept_refs": 0}
+        async with self._lock:
+            updated: Dict[str, Dict[str, Any]] = {}
+            for image_id, ref in self._references.items():
+                session_ids = ref.get('session_ids') or []
+                if session_id in session_ids:
+                    session_ids = [sid for sid in session_ids if sid != session_id]
+                    ref['session_ids'] = session_ids
+                file_type = ref.get('file_type')
+                if file_type == 'preview' and session_ids == []:
+                    # Delete preview artifacts only if explicitly recorded
+                    for preview_path in ref.get('preview_paths') or []:
+                        try:
+                            if preview_path:
+                                Path(preview_path).unlink(missing_ok=True)
+                        except Exception as exc:
+                            logger.debug(f"Failed to remove preview artifact {preview_path}: {exc}")
+                    # Also remove preview source file if present
+                    try:
+                        abs_path = ref.get('absolute_path')
+                        if abs_path:
+                            Path(abs_path).unlink(missing_ok=True)
+                    except Exception as exc:
+                        logger.debug(f"Failed to remove preview file {ref.get('absolute_path')}: {exc}")
+                    removed_refs += 1
+                    continue
+                updated[image_id] = ref
+                kept_refs += 1
+            self._references = updated
+            self._write_index()
+        return {"removed_refs": removed_refs, "kept_refs": kept_refs}
+
+    async def gc(self, max_age_days: int = 90, now: Optional[float] = None) -> Dict[str, int]:
+        """Garbage collect stale or orphaned references.
+
+        Rules:
+        - Remove refs whose source file no longer exists.
+        - If session_ids present, remove refs where all sessions are gone.
+        - If session_ids missing, only remove when file missing or preview-only and older than threshold.
+        """
+        removed = 0
+        kept = 0
+        now_ts = now if now is not None else time.time()
+        threshold = now_ts - (max_age_days * 86400)
+
+        chat_history_dir = self._workspace_path_obj / ".icotes" / "chat_history"
+        async with self._lock:
+            updated: Dict[str, Dict[str, Any]] = {}
+            for image_id, ref in self._references.items():
+                abs_path = ref.get('absolute_path') or ''
+                file_type = ref.get('file_type')
+                session_ids = ref.get('session_ids')
+                timestamp = ref.get('timestamp') or 0
+
+                file_missing = True
+                try:
+                    file_missing = not (abs_path and Path(abs_path).exists())
+                except Exception:
+                    file_missing = True
+
+                should_remove = False
+
+                if file_missing:
+                    should_remove = True
+                elif isinstance(session_ids, list):
+                    if len(session_ids) == 0:
+                        # No known sessions left
+                        should_remove = (file_type == 'preview')
+                    else:
+                        # If none of the sessions exist anymore, remove preview-only refs
+                        exists_any = False
+                        for sid in session_ids:
+                            if not sid:
+                                continue
+                            if (chat_history_dir / f"{sid}.meta.json").exists() or (chat_history_dir / f"{sid}.jsonl").exists():
+                                exists_any = True
+                                break
+                            if any(chat_history_dir.glob(f"*_{sid}.jsonl")):
+                                exists_any = True
+                                break
+                        if not exists_any and file_type == 'preview':
+                            should_remove = True
+                else:
+                    # Legacy entry without session_ids
+                    if file_type == 'preview' and timestamp and timestamp < threshold:
+                        should_remove = True
+
+                if should_remove:
+                    # Delete preview artifacts only if explicitly recorded
+                    for preview_path in ref.get('preview_paths') or []:
+                        try:
+                            if preview_path:
+                                Path(preview_path).unlink(missing_ok=True)
+                        except Exception as exc:
+                            logger.debug(f"Failed to remove preview artifact {preview_path}: {exc}")
+                    if file_type == 'preview':
+                        try:
+                            abs_path = ref.get('absolute_path')
+                            if abs_path:
+                                Path(abs_path).unlink(missing_ok=True)
+                        except Exception as exc:
+                            logger.debug(f"Failed to remove preview file {ref.get('absolute_path')}: {exc}")
+                    removed += 1
+                    continue
+
+                updated[image_id] = ref
+                kept += 1
+
+            self._references = updated
+            self._write_index()
+
+        return {"removed_refs": removed, "kept_refs": kept}
 
     def _load_index(self) -> None:
         """Load reference index from disk into memory."""
@@ -373,7 +515,9 @@ async def create_image_reference(
     workspace_path: str,
     prompt: str,
     model: str,
-    mime_type: str = "image/png"
+    mime_type: str = "image/png",
+    session_id: Optional[str] = None,
+    file_type: str = "preview"
 ) -> ImageReference:
     """
     Convenience function to create an image reference.
@@ -395,7 +539,9 @@ async def create_image_reference(
         filename=filename,
         prompt=prompt,
         model=model,
-        mime_type=mime_type
+        mime_type=mime_type,
+        session_id=session_id,
+        file_type=file_type
     )
 
 

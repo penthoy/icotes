@@ -185,7 +185,14 @@ class ChatService:
         self.active_connections: Set[str] = set()
         self.websocket_connections: Dict[str, Any] = {}  # connection_id -> websocket
         self.active_tasks: Dict[str, asyncio.Task] = {}  # session_id -> task
+        # Debug/lifecycle tracking (for session debug sidecar)
+        self._stop_reasons: Dict[str, Dict[str, Any]] = {}  # session_id -> {reason, timestamp, ...}
+        self._stream_stats: Dict[str, Dict[str, Any]] = {}  # key=session_id:message_id -> stats
         self.config = ChatConfig()
+        # Per-session locks for safe JSONL rewrites (rollback/edit)
+        self._session_locks: Dict[str, asyncio.Lock] = {}
+        # Track in-flight auto-title tasks to avoid duplication
+        self._auto_title_tasks: Dict[str, asyncio.Task] = {}
         # Feature flags (env-driven) for performance tuning
         self.enable_chunk_batching: bool = os.getenv('ENABLE_CHAT_BATCHING', '0') in ('1', 'true', 'True')
         try:
@@ -354,6 +361,32 @@ class ChatService:
     def _meta_path(self, session_id: str) -> Path:
         return self.history_root / f"{session_id}.meta.json"
 
+    def _read_session_meta(self, session_id: str) -> Dict[str, Any]:
+        """Read session meta file if present; return empty dict on failure."""
+        try:
+            meta_path = self._meta_path(session_id)
+            if not meta_path.exists():
+                return {}
+            with open(meta_path, 'r', encoding='utf-8') as mf:
+                data = json.load(mf)
+            return data if isinstance(data, dict) else {}
+        except Exception:
+            return {}
+
+    def _write_session_meta(self, session_id: str, payload: Dict[str, Any]) -> None:
+        """Write session meta file atomically."""
+        meta_path = self._meta_path(session_id)
+        tmp_path = meta_path.with_suffix('.meta.json.tmp')
+        with open(tmp_path, 'w', encoding='utf-8') as mf:
+            json.dump(payload, mf, ensure_ascii=False)
+        tmp_path.replace(meta_path)
+
+    def _get_session_lock(self, session_id: str) -> asyncio.Lock:
+        """Get or create a per-session async lock."""
+        if session_id not in self._session_locks:
+            self._session_locks[session_id] = asyncio.Lock()
+        return self._session_locks[session_id]
+
     def _surgical_iterate_enabled(self) -> bool:
         return os.getenv('SURGICAL_ITERATE', '0') in ('1', 'true', 'True')
 
@@ -368,7 +401,7 @@ class ChatService:
         except Exception:
             return 'New Chat'
 
-    def _ensure_session_meta(self, session_id: str, name: Optional[str] = None) -> None:
+    def _ensure_session_meta(self, session_id: str, name: Optional[str] = None, name_source: str = "auto") -> None:
         """Ensure a session has a sidecar meta file.
 
         Some sessions are created implicitly via websocket activity (without calling
@@ -389,14 +422,192 @@ class ChatService:
                 'name': display_name,
                 'created': time.time(),
                 'updated': time.time(),
+                'title_source': name_source,
+                'auto_title_generated': False,
+                'user_renamed': name_source == 'manual',
             }
-            with open(meta_path, 'w', encoding='utf-8') as mf:
-                json.dump(payload, mf, ensure_ascii=False)
+            self._write_session_meta(session_id, payload)
             if self._surgical_iterate_enabled():
                 logger.info(f"[SURGICALITERATE] created missing meta for {session_id}: name={display_name!r}")
         except Exception as e:
             if self._surgical_iterate_enabled():
                 logger.warning(f"[SURGICALITERATE] failed creating meta for {session_id}: {e}")
+
+    def _should_auto_title(self, session_id: str) -> bool:
+        meta = self._read_session_meta(session_id)
+        if not meta:
+            logger.info(f"[AUTOTITLE] _should_auto_title({session_id}): no meta → True")
+            return True
+        if meta.get('user_renamed'):
+            logger.info(f"[AUTOTITLE] _should_auto_title({session_id}): user_renamed=True → False")
+            return False
+        if meta.get('title_source') == 'manual':
+            logger.info(f"[AUTOTITLE] _should_auto_title({session_id}): title_source=manual → False")
+            return False
+        if meta.get('auto_title_generated'):
+            logger.info(f"[AUTOTITLE] _should_auto_title({session_id}): already generated → False")
+            return False
+        logger.info(f"[AUTOTITLE] _should_auto_title({session_id}): eligible → True (meta={meta})")
+        return True
+
+    def _mark_auto_title_state(self, session_id: str, generated: bool) -> None:
+        meta = self._read_session_meta(session_id) or {
+            'id': session_id,
+            'created': time.time(),
+        }
+        meta['auto_title_generated'] = generated
+        meta['updated'] = time.time()
+        if 'title_source' not in meta:
+            meta['title_source'] = 'auto'
+        self._write_session_meta(session_id, meta)
+
+    def _set_session_title(self, session_id: str, name: str, *, source: str) -> None:
+        meta = self._read_session_meta(session_id) or {
+            'id': session_id,
+            'created': time.time(),
+        }
+        meta['name'] = name
+        meta['updated'] = time.time()
+        meta['title_source'] = source
+        if source == 'manual':
+            meta['user_renamed'] = True
+        self._write_session_meta(session_id, meta)
+
+    async def _generate_auto_title(self, session_id: str) -> Optional[str]:
+        """Generate a concise 2-6 word AI-summarized title for the session."""
+        try:
+            history = await self.get_message_history(session_id, limit=6)
+            user_msg = next((m for m in history if m.sender == MessageSender.USER), None)
+            ai_msg = next((m for m in history if m.sender == MessageSender.AI), None)
+            if not user_msg or not user_msg.content:
+                return None
+
+            # Build a snippet for the AI to summarize
+            user_text = (user_msg.content or '')[:500]
+            ai_text = ''
+            if ai_msg and ai_msg.content:
+                ai_text = (ai_msg.content or '')[:500]
+
+            # Try AI-powered title generation first
+            ai_title = await self._ai_summarize_title(user_text, ai_text)
+            if ai_title:
+                logger.info(f"[AUTOTITLE] AI-generated title for {session_id}: {ai_title!r}")
+                return ai_title
+
+            # Fallback: heuristic from user message
+            base = self._derive_default_session_name(user_msg.content)
+            base = ' '.join(base.split())[:60]
+            logger.info(f"[AUTOTITLE] Heuristic fallback title for {session_id}: {base!r}")
+            return base or None
+        except Exception as e:
+            logger.debug(f"Auto title generation failed for {session_id}: {e}")
+            return None
+
+    async def _ai_summarize_title(self, user_text: str, ai_text: str) -> Optional[str]:
+        """Call an LLM to produce a short 2-6 word title summarizing the conversation."""
+        prompt = (
+            "Generate a very short title (2-6 words) that summarizes this conversation. "
+            "Reply with ONLY the title, no quotes, no punctuation at the end, no explanation.\n\n"
+            f"User: {user_text}\n"
+        )
+        if ai_text:
+            prompt += f"Assistant: {ai_text}\n"
+
+        # Try available providers in order of preference (cheapest/fastest first)
+        providers = [
+            ('groq', 'get_groq_client', 'llama-3.1-8b-instant'),
+            ('moonshot', 'get_moonshot_client', 'moonshot-v1-8k'),
+            ('google', 'get_google_client', 'gemini-2.0-flash-lite'),
+            ('openai', 'get_openai_client', 'gpt-4o-mini'),
+            ('deepseek', 'get_deepseek_client', 'deepseek-chat'),
+            ('openrouter', 'get_openrouter_client', 'meta-llama/llama-3.1-8b-instruct:free'),
+        ]
+
+        from ..agent import clients as agent_clients
+
+        for provider_name, client_fn_name, model in providers:
+            try:
+                client_fn = getattr(agent_clients, client_fn_name, None)
+                if not client_fn:
+                    continue
+                client = client_fn()
+
+                # Run the synchronous OpenAI call in a thread to avoid blocking the event loop
+                import functools
+                loop = asyncio.get_event_loop()
+                response = await loop.run_in_executor(
+                    None,
+                    functools.partial(
+                        client.chat.completions.create,
+                        model=model,
+                        messages=[
+                            {"role": "system", "content": "You generate ultra-short chat titles (2-6 words). Reply with ONLY the title."},
+                            {"role": "user", "content": prompt},
+                        ],
+                        max_tokens=20,
+                        temperature=0.3,
+                    )
+                )
+
+                title = (response.choices[0].message.content or '').strip()
+                # Clean up: remove quotes, trailing punctuation
+                title = title.strip('"\'`').rstrip('.!?:')
+                # Validate: must be 2-60 chars
+                if 2 <= len(title) <= 60:
+                    logger.info(f"[AUTOTITLE] Provider {provider_name}/{model} produced: {title!r}")
+                    return title
+                else:
+                    logger.debug(f"[AUTOTITLE] Provider {provider_name} returned invalid title length ({len(title)}): {title!r}")
+            except Exception as e:
+                logger.debug(f"[AUTOTITLE] Provider {provider_name} failed: {e}")
+                continue
+
+        logger.info("[AUTOTITLE] All providers failed, returning None for heuristic fallback")
+        return None
+
+    def _schedule_auto_title(self, session_id: str) -> None:
+        """Schedule auto title generation (one per session)."""
+        logger.info(f"[AUTOTITLE] _schedule_auto_title called for {session_id}")
+        if not self._should_auto_title(session_id):
+            logger.info(f"[AUTOTITLE] _schedule_auto_title: skipped (not eligible)")
+            return
+        if session_id in self._auto_title_tasks and not self._auto_title_tasks[session_id].done():
+            logger.info(f"[AUTOTITLE] _schedule_auto_title: skipped (task already running)")
+            return
+        logger.info(f"[AUTOTITLE] _schedule_auto_title: creating auto-title task")
+
+        async def _task():
+            try:
+                title = await self._generate_auto_title(session_id)
+                if not title:
+                    return
+                # Guardrails: do not overwrite manual titles
+                if not self._should_auto_title(session_id):
+                    return
+                self._set_session_title(session_id, title, source='auto')
+                self._mark_auto_title_state(session_id, True)
+                # Notify connected clients about title update
+                await self._broadcast_session_title_update(session_id, title)
+            finally:
+                if session_id in self._auto_title_tasks:
+                    self._auto_title_tasks.pop(session_id, None)
+
+        self._auto_title_tasks[session_id] = asyncio.create_task(_task())
+
+    async def _broadcast_session_title_update(self, session_id: str, title: str) -> None:
+        """Broadcast session title updates to connected clients."""
+        try:
+            payload = {
+                'type': 'session_title_update',
+                'session_id': session_id,
+                'title': title,
+                'timestamp': datetime.now(timezone.utc).isoformat(),
+            }
+            for websocket_id, sid in self.chat_sessions.items():
+                if sid == session_id:
+                    await self._send_websocket_message(websocket_id, payload)
+        except Exception as e:
+            logger.debug(f"Failed to broadcast title update: {e}")
     
     def _normalize_attachments(self, raw_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Normalize various frontend attachment shapes into a standard dict.
@@ -580,6 +791,19 @@ class ChatService:
                     del self.chat_sessions[websocket_id]
         else:
             logger.warning(f"No websocket found for {websocket_id}")
+
+    def _get_debug_interceptor(self, session_id: str):
+        """Return a DebugInterceptor for the session if debug is enabled."""
+        try:
+            from icpy.agent.debug_interceptor import get_interceptor
+
+            workspace_path = getattr(self, 'workspace_root', None)
+            interceptor = get_interceptor(session_id, workspace_path=workspace_path)
+            if getattr(interceptor, 'enabled', False):
+                return interceptor
+        except Exception:
+            return None
+        return None
     
     async def handle_user_message(self, websocket_id: str, content: str, metadata: Dict[str, Any] = None) -> ChatMessage:
         """Handle a message from the user with support for agent routing"""
@@ -627,6 +851,23 @@ class ChatService:
         
         # Store message
         await self._store_message(message)
+
+        # Session debug sidecar: record inbound user message
+        try:
+            interceptor = self._get_debug_interceptor(session_id)
+            if interceptor:
+                await interceptor.log_event(
+                    "chat_user_message_stored",
+                    {
+                        "message_id": message.id,
+                        "content_len": len(content or ""),
+                        "agent_type": agent_type,
+                        "attachments_count": len(attachments or []),
+                        "websocket_id": websocket_id,
+                    },
+                )
+        except Exception:
+            pass
         
         # Don't broadcast user messages back to clients - they already have them
         # Only AI responses should be broadcasted
@@ -648,6 +889,22 @@ class ChatService:
         # and can support cancellation via stop_streaming
         async def process_task():
             logger.info(f"Starting processing task for session {session_id}")
+            start_ts = time.time()
+            interceptor = None
+            try:
+                interceptor = self._get_debug_interceptor(session_id)
+                if interceptor:
+                    await interceptor.log_event(
+                        "chat_processing_start",
+                        {
+                            "session_id": session_id,
+                            "user_message_id": message.id,
+                            "agent_type": agent_type,
+                            "is_custom_agent": bool(is_custom_agent),
+                        },
+                    )
+            except Exception:
+                interceptor = None
             try:
                 if is_custom_agent:
                     # Route to custom agent
@@ -657,10 +914,48 @@ class ChatService:
                     await self._process_with_agent(message)
             except asyncio.CancelledError:
                 logger.info(f"Processing task cancelled for session {session_id}")
+                try:
+                    if interceptor:
+                        stop_reason = self._stop_reasons.pop(session_id, None)
+                        await interceptor.log_event(
+                            "chat_processing_cancelled",
+                            {
+                                "session_id": session_id,
+                                "user_message_id": message.id,
+                                "stop_reason": stop_reason,
+                            },
+                        )
+                except Exception:
+                    pass
             except Exception as e:
                 logger.error(f"Error in processing task: {e}")
+                try:
+                    if interceptor:
+                        await interceptor.log_event(
+                            "chat_processing_error",
+                            {
+                                "session_id": session_id,
+                                "user_message_id": message.id,
+                                "error_type": type(e).__name__,
+                                "error": str(e),
+                            },
+                        )
+                except Exception:
+                    pass
             finally:
                 logger.info(f"Finished processing task for session {session_id}")
+                try:
+                    if interceptor:
+                        await interceptor.log_event(
+                            "chat_processing_end",
+                            {
+                                "session_id": session_id,
+                                "user_message_id": message.id,
+                                "duration_sec": round(time.time() - start_ts, 3),
+                            },
+                        )
+                except Exception:
+                    pass
                 # Remove from active tasks if it's the current one
                 if session_id in self.active_tasks:
                     # Only remove if it's the same task (handle race conditions)
@@ -676,8 +971,191 @@ class ChatService:
             
         task = asyncio.create_task(process_task())
         self.active_tasks[session_id] = task
+
+        # Yield once so the scheduled task can start (helps deterministic behavior in tests
+        # and ensures typing/processing signals can fire promptly).
+        await asyncio.sleep(0)
         
         return message
+
+    async def regenerate_from_message(
+        self,
+        websocket_id: str,
+        session_id: str | None = None,
+        message_index: int | None = None,
+        agent_type: str | None = None,
+    ) -> None:
+        """Regenerate an AI response from an existing user message.
+
+        This is used by inline-edit flows where the user message is edited in-place
+        (via REST) and subsequent messages are truncated. We then re-run the agent
+        starting from the edited user message without appending a new user message.
+        """
+
+        # Resolve session_id (allow explicit override for session switching)
+        if session_id:
+            self.chat_sessions[websocket_id] = str(session_id)
+            resolved_session_id = str(session_id)
+        else:
+            resolved_session_id = self.chat_sessions.get(websocket_id)
+
+        if not resolved_session_id:
+            raise ValueError("WebSocket not connected to chat session")
+
+        # Ensure we process the latest persisted state
+        if self.enable_buffered_store:
+            await self._flush_now()
+
+        raw_messages, _file_path = self._load_session_messages(resolved_session_id)
+        if not raw_messages:
+            raise ValueError("No messages to regenerate")
+
+        # Pick the target message
+        target_idx: int | None = None
+        if message_index is not None:
+            try:
+                idx = int(message_index)
+            except Exception:
+                raise ValueError("Invalid message_index")
+            if idx < 0 or idx >= len(raw_messages):
+                raise ValueError("message_index out of range")
+            target_idx = idx
+        else:
+            # Default: last user message
+            for i in range(len(raw_messages) - 1, -1, -1):
+                sender = raw_messages[i].get('sender') or raw_messages[i].get('role')
+                if sender == 'user':
+                    target_idx = i
+                    break
+
+        if target_idx is None:
+            raise ValueError("No user message found to regenerate")
+
+        target_raw = raw_messages[target_idx]
+        sender = target_raw.get('sender') or target_raw.get('role')
+        if sender != 'user':
+            raise ValueError("Can only regenerate from a user message")
+
+        user_message = ChatMessage.from_dict(target_raw)
+        if agent_type:
+            try:
+                if user_message.metadata is None:
+                    user_message.metadata = {}
+                user_message.metadata['agentType'] = agent_type
+            except Exception:
+                pass
+
+        # Route based on agent type (prefer message metadata)
+        effective_agent_type = None
+        try:
+            if user_message.metadata and isinstance(user_message.metadata, dict):
+                effective_agent_type = user_message.metadata.get('agentType')
+        except Exception:
+            effective_agent_type = None
+
+        is_custom_agent = False
+        if effective_agent_type:
+            try:
+                from icpy.agent.custom_agent import get_available_custom_agents
+                available_custom_agents = get_available_custom_agents()
+                is_custom_agent = effective_agent_type in available_custom_agents
+            except Exception as e:
+                logger.warning(f"Failed to check custom agents: {e}")
+                is_custom_agent = str(effective_agent_type).lower() in [
+                    'personalagent',
+                    'openaidemoagent',
+                    'openrouteragent',
+                    'agentcreator',
+                    'qwen3coderagent',
+                ]
+
+        async def process_task():
+            logger.info(
+                f"Starting regenerate task for session {resolved_session_id} (idx={target_idx})"
+            )
+            start_ts = time.time()
+            interceptor = None
+            try:
+                interceptor = self._get_debug_interceptor(resolved_session_id)
+                if interceptor:
+                    await interceptor.log_event(
+                        "chat_regenerate_start",
+                        {
+                            "session_id": resolved_session_id,
+                            "message_index": target_idx,
+                            "user_message_id": user_message.id,
+                            "agent_type": effective_agent_type,
+                            "is_custom_agent": bool(is_custom_agent),
+                        },
+                    )
+            except Exception:
+                interceptor = None
+            try:
+                if is_custom_agent:
+                    await self._process_with_custom_agent(user_message, effective_agent_type)
+                else:
+                    await self._process_with_agent(user_message)
+            except asyncio.CancelledError:
+                logger.info(f"Regenerate task cancelled for session {resolved_session_id}")
+                try:
+                    if interceptor:
+                        stop_reason = self._stop_reasons.pop(resolved_session_id, None)
+                        await interceptor.log_event(
+                            "chat_regenerate_cancelled",
+                            {
+                                "session_id": resolved_session_id,
+                                "message_index": target_idx,
+                                "user_message_id": user_message.id,
+                                "stop_reason": stop_reason,
+                            },
+                        )
+                except Exception:
+                    pass
+            except Exception as e:
+                logger.error(f"Error in regenerate task: {e}")
+                try:
+                    if interceptor:
+                        await interceptor.log_event(
+                            "chat_regenerate_error",
+                            {
+                                "session_id": resolved_session_id,
+                                "message_index": target_idx,
+                                "user_message_id": user_message.id,
+                                "error_type": type(e).__name__,
+                                "error": str(e),
+                            },
+                        )
+                except Exception:
+                    pass
+            finally:
+                logger.info(f"Finished regenerate task for session {resolved_session_id}")
+                try:
+                    if interceptor:
+                        await interceptor.log_event(
+                            "chat_regenerate_end",
+                            {
+                                "session_id": resolved_session_id,
+                                "message_index": target_idx,
+                                "user_message_id": user_message.id,
+                                "duration_sec": round(time.time() - start_ts, 3),
+                            },
+                        )
+                except Exception:
+                    pass
+                if resolved_session_id in self.active_tasks:
+                    if self.active_tasks.get(resolved_session_id) == asyncio.current_task():
+                        del self.active_tasks[resolved_session_id]
+
+        # Cancel any existing task for this session
+        if resolved_session_id in self.active_tasks:
+            logger.info(f"Cancelling existing task for session {resolved_session_id}")
+            self.active_tasks[resolved_session_id].cancel()
+
+        task = asyncio.create_task(process_task())
+        self.active_tasks[resolved_session_id] = task
+
+        # Yield once so the scheduled task can start promptly.
+        await asyncio.sleep(0)
     
     async def _process_with_agent(self, user_message: ChatMessage):
         """Process user message with the configured agent"""
@@ -863,6 +1341,25 @@ class ChatService:
                         metadata={'reply_to': reply_to_id, 'streaming_complete': True, 'has_error': True}
                     )
                     await self._store_message(final_message)
+
+                    # Session debug sidecar: persist summary of stored AI message
+                    try:
+                        interceptor = self._get_debug_interceptor(chat_session_id)
+                        if interceptor:
+                            payload = {
+                                "session_id": chat_session_id,
+                                "message_id": message_id,
+                                "reply_to": reply_to_id,
+                                "agent_type": "openai",
+                                "has_error": True,
+                                "content_len": len(full_content or ""),
+                            }
+                            if getattr(interceptor, 'mode', 'minimal') == 'verbose':
+                                payload["content_preview"] = (full_content or "")[:2000]
+                                payload["content_tail"] = (full_content or "")[-2000:]
+                            await interceptor.log_event("chat_ai_message_stored", payload)
+                    except Exception:
+                        pass
                     return
             
             # Flush any remaining buffered chunks before ending
@@ -894,6 +1391,25 @@ class ChatService:
             )
             await self._store_message(final_message)
             # Note: We don't broadcast this final message since frontend already has it from streaming
+
+            # Session debug sidecar: persist summary of stored AI message
+            try:
+                interceptor = self._get_debug_interceptor(chat_session_id)
+                if interceptor:
+                    payload = {
+                        "session_id": chat_session_id,
+                        "message_id": message_id,
+                        "reply_to": reply_to_id,
+                        "agent_type": "openai",
+                        "has_error": False,
+                        "content_len": len(full_content or ""),
+                    }
+                    if getattr(interceptor, 'mode', 'minimal') == 'verbose':
+                        payload["content_preview"] = (full_content or "")[:2000]
+                        payload["content_tail"] = (full_content or "")[-2000:]
+                    await interceptor.log_event("chat_ai_message_stored", payload)
+            except Exception:
+                pass
             
             # Update session status back to ready
             self.agent_service.agent_sessions[agent_session_id].status = AgentSessionStatus.READY
@@ -901,6 +1417,23 @@ class ChatService:
             
         except Exception as e:
             logger.error(f"Streaming agent task failed: {e}")
+            # Session debug sidecar
+            try:
+                interceptor = self._get_debug_interceptor(chat_session_id)
+                if interceptor:
+                    await interceptor.log_event(
+                        "chat_stream_error",
+                        {
+                            "session_id": chat_session_id,
+                            "message_id": message_id,
+                            "reply_to": reply_to_id,
+                            "agent_type": "openai",
+                            "error_type": type(e).__name__,
+                            "error": str(e),
+                        },
+                    )
+            except Exception:
+                pass
             # Handle exception during streaming by sending error as stream instead of separate message
             error_content = f"I'm sorry, I encountered an error during streaming. Error: {str(e)}"
             
@@ -942,6 +1475,24 @@ class ChatService:
                     metadata={'reply_to': reply_to_id, 'streaming_complete': True, 'has_error': True}
                 )
                 await self._store_message(final_message)
+
+                # Session debug sidecar: persist summary of stored AI message
+                try:
+                    interceptor = self._get_debug_interceptor(chat_session_id)
+                    if interceptor:
+                        payload = {
+                            "session_id": chat_session_id,
+                            "message_id": message_id,
+                            "reply_to": reply_to_id,
+                            "agent_type": "openai",
+                            "has_error": True,
+                            "content_len": len(error_content or ""),
+                        }
+                        if getattr(interceptor, 'mode', 'minimal') == 'verbose':
+                            payload["content_preview"] = (error_content or "")[:2000]
+                        await interceptor.log_event("chat_ai_message_stored", payload)
+                except Exception:
+                    pass
                 
             except Exception as stream_error:
                 # If streaming fails too, fall back to regular error response
@@ -1295,6 +1846,23 @@ class ChatService:
                 logger.error(f"Error during streaming: {e}", exc_info=True)
                 # Enhanced debug logging - log error
                 debug_logger.log_error(request_id, type(e).__name__, str(e))
+                # Session debug sidecar
+                try:
+                    interceptor = self._get_debug_interceptor(user_message.session_id)
+                    if interceptor:
+                        await interceptor.log_event(
+                            "chat_stream_error",
+                            {
+                                "session_id": user_message.session_id,
+                                "message_id": message_id,
+                                "reply_to": user_message.id,
+                                "agent_type": agent_type,
+                                "error_type": type(e).__name__,
+                                "error": str(e),
+                            },
+                        )
+                except Exception:
+                    pass
                 # Continue to store what we have
 
             # Send stream end
@@ -1334,6 +1902,25 @@ class ChatService:
                     vendor_model=vendor_metadata.get('vendor_model') if vendor_metadata else None
                 )
                 await self._store_message(final_message)
+
+                # Session debug sidecar: persist summary of stored AI message
+                try:
+                    interceptor = self._get_debug_interceptor(user_message.session_id)
+                    if interceptor:
+                        payload = {
+                            "session_id": user_message.session_id,
+                            "message_id": message_id,
+                            "reply_to": user_message.id,
+                            "agent_type": agent_type,
+                            "has_error": False,
+                            "content_len": len(full_content or ""),
+                        }
+                        if getattr(interceptor, 'mode', 'minimal') == 'verbose':
+                            payload["content_preview"] = (full_content or "")[:2000]
+                            payload["content_tail"] = (full_content or "")[-2000:]
+                        await interceptor.log_event("chat_ai_message_stored", payload)
+                except Exception:
+                    pass
             
             await self._send_typing_indicator(user_message.session_id, False)
             logger.debug(f"Custom agent {agent_type} response completed")
@@ -1356,6 +1943,40 @@ class ChatService:
             final_agent_name = agent_name or self.config.agent_name
             
             logger.debug(f"[STREAM-DEBUG] _send_streaming_start called for session {session_id}, agent_type={final_agent_type}")
+
+            # Session debug sidecar: initialize stream stats + log start
+            try:
+                stats_key = f"{session_id}:{message_id}"
+                self._stream_stats[stats_key] = {
+                    "session_id": session_id,
+                    "message_id": message_id,
+                    "reply_to": reply_to_id,
+                    "agent_type": final_agent_type,
+                    "agent_id": final_agent_id,
+                    "agent_name": final_agent_name,
+                    "started_at": time.time(),
+                    "chunk_count": 0,
+                    "char_count": 0,
+                    "first_chunk_preview": None,
+                    "last_chunk_preview": None,
+                    "logged_chunk_events": 0,
+                }
+
+                interceptor = self._get_debug_interceptor(session_id)
+                if interceptor:
+                    await interceptor.log_event(
+                        "chat_stream_start",
+                        {
+                            "session_id": session_id,
+                            "message_id": message_id,
+                            "reply_to": reply_to_id,
+                            "agent_type": final_agent_type,
+                            "agent_id": final_agent_id,
+                            "agent_name": final_agent_name,
+                        },
+                    )
+            except Exception:
+                pass
             
             streaming_message = {
                 'type': 'message_stream',
@@ -1415,6 +2036,42 @@ class ChatService:
                     'streaming': True
                 }
             }
+
+            # Session debug sidecar: update stream stats + optional chunk logging (verbose, sampled)
+            try:
+                stats_key = f"{session_id}:{message_id}"
+                stats = self._stream_stats.get(stats_key)
+                if stats is not None:
+                    chunk_text = content or ""
+                    stats["chunk_count"] = int(stats.get("chunk_count", 0)) + 1
+                    stats["char_count"] = int(stats.get("char_count", 0)) + len(chunk_text)
+
+                    if stats.get("first_chunk_preview") is None and chunk_text:
+                        stats["first_chunk_preview"] = chunk_text[:500]
+                    if chunk_text:
+                        stats["last_chunk_preview"] = chunk_text[-500:]
+
+                    interceptor = self._get_debug_interceptor(session_id)
+                    if interceptor and getattr(interceptor, 'mode', 'minimal') == 'verbose':
+                        chunk_count = int(stats.get("chunk_count", 0))
+                        logged = int(stats.get("logged_chunk_events", 0))
+                        should_log = logged < 20 or (chunk_count % 50 == 0)
+                        if should_log:
+                            await interceptor.log_event(
+                                "chat_stream_chunk",
+                                {
+                                    "session_id": session_id,
+                                    "message_id": message_id,
+                                    "reply_to": reply_to_id,
+                                    "agent_type": final_agent_type,
+                                    "chunk_index": chunk_count,
+                                    "chunk_len": len(chunk_text),
+                                    "chunk_preview": chunk_text[:500],
+                                },
+                            )
+                            stats["logged_chunk_events"] = logged + 1
+            except Exception:
+                pass
             
             # Send to all connections in this session
             for websocket_id, ws_session_id in self.chat_sessions.items():
@@ -1440,6 +2097,37 @@ class ChatService:
             logger.debug(f"[STREAM-DEBUG] _send_streaming_end called for session {session_id}, agent_type={final_agent_type}")
             
             end_ts = timestamp or datetime.now(timezone.utc).isoformat()
+
+            # Session debug sidecar: stream summary + cleanup
+            try:
+                stats_key = f"{session_id}:{message_id}"
+                stats = self._stream_stats.pop(stats_key, None)
+                interceptor = self._get_debug_interceptor(session_id)
+                if interceptor:
+                    duration_sec = None
+                    if stats and stats.get("started_at"):
+                        try:
+                            duration_sec = round(time.time() - float(stats["started_at"]), 3)
+                        except Exception:
+                            duration_sec = None
+
+                    await interceptor.log_event(
+                        "chat_stream_end",
+                        {
+                            "session_id": session_id,
+                            "message_id": message_id,
+                            "reply_to": reply_to_id,
+                            "agent_type": final_agent_type,
+                            "timestamp": end_ts,
+                            "duration_sec": duration_sec,
+                            "chunk_count": stats.get("chunk_count") if stats else None,
+                            "char_count": stats.get("char_count") if stats else None,
+                            "first_chunk_preview": stats.get("first_chunk_preview") if stats else None,
+                            "last_chunk_preview": stats.get("last_chunk_preview") if stats else None,
+                        },
+                    )
+            except Exception:
+                pass
 
             streaming_message = {
                 'type': 'message_stream',
@@ -1604,6 +2292,7 @@ class ChatService:
             # surgicaliterate: track and dedupe thumbnail/reference creation per message
             processed_images: Dict[str, Dict[str, Any]] = {}
             import hashlib
+            session_id = message_dict.get('session_id') or None
             # Check if message contains imageData in metadata
             metadata = message_dict.get('metadata', {})
             
@@ -1621,7 +2310,9 @@ class ChatService:
                     filename=filename,
                     prompt=prompt,
                     model=model,
-                    mime_type=mime_type
+                    mime_type=mime_type,
+                    session_id=session_id,
+                    file_type="preview"
                 )
                 if self.image_cache:
                     self.image_cache.put(
@@ -1640,6 +2331,12 @@ class ChatService:
                     # Skip if imageReference already exists (tool already created it)
                     if 'imageReference' in location_data:
                         logger.debug(f"Skipping reference creation - already exists in {location_name}")
+                        try:
+                            ref_id = location_data.get('imageReference', {}).get('image_id')
+                            if ref_id and session_id:
+                                await self.image_service.link_session(ref_id, session_id)
+                        except Exception:
+                            pass
                         continue
                     
                     image_data = location_data['imageData']
@@ -1692,7 +2389,9 @@ class ChatService:
                             filename=filename,
                             prompt=prompt,
                             model=model,
-                            mime_type=mime_type
+                            mime_type=mime_type,
+                            session_id=session_id,
+                            file_type="preview"
                         )
                         
                         # Cache the image data for immediate access
@@ -1742,6 +2441,12 @@ class ChatService:
                         # Skip if already has imageReference (tool provided) or duplicate by digest
                         if 'imageReference' in parsed:
                             logger.debug(f"Skipping reference creation - already exists inside parsed block in {location_name}")
+                            try:
+                                ref_id = parsed.get('imageReference', {}).get('image_id')
+                                if ref_id and session_id:
+                                    await self.image_service.link_session(ref_id, session_id)
+                            except Exception:
+                                pass
                             return parsed
                         try:
                             digest_inner = hashlib.sha256(image_data_inner.encode('utf-8')).hexdigest()
@@ -1985,7 +2690,7 @@ class ChatService:
                         meta_name = self._derive_default_session_name(str(content))
             except Exception:
                 meta_name = None
-            self._ensure_session_meta(session_id, meta_name)
+            self._ensure_session_meta(session_id, meta_name, name_source="auto")
             
             # Convert imageData to ImageReference before storage
             message_dict = await self._convert_image_data_to_reference(message.to_dict())
@@ -1999,6 +2704,20 @@ class ChatService:
                 file_path = self._resolve_session_file_for_write(session_id)
                 with open(file_path, 'a', encoding='utf-8') as f:
                     f.write(json.dumps(message_dict, ensure_ascii=False) + "\n")
+
+            # Auto-title generation: schedule after first assistant response completes
+            try:
+                logger.info(f"[AUTOTITLE] _store_message: sender={message.sender}, session={session_id}")
+                if message.sender == MessageSender.AI:
+                    meta = message.metadata or {}
+                    streaming_complete = meta.get('streaming_complete', True)
+                    logger.info(f"[AUTOTITLE] AI message stored, streaming_complete={streaming_complete}")
+                    if streaming_complete:
+                        self._schedule_auto_title(session_id)
+                else:
+                    logger.info(f"[AUTOTITLE] Not an AI message, skipping auto-title")
+            except Exception as e:
+                logger.error(f"[AUTOTITLE] Exception in auto-title trigger: {e}")
         except Exception as e:
             logger.error(f"Failed to store message (JSONL): {e}")
 
@@ -2127,6 +2846,141 @@ class ChatService:
         except Exception as e:
             logger.error(f"Failed to retrieve message history (JSONL): {e}")
             return []
+
+    def _load_session_messages(self, session_id: str) -> tuple[list[dict], Path | None]:
+        """Load raw message dicts for a session and return the file path used."""
+        file_path = None
+        try:
+            file_path = self._resolve_session_file_for_write(session_id)
+            if not file_path.exists():
+                return [], None
+            messages: list[dict] = []
+            with open(file_path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        messages.append(json.loads(line))
+                    except Exception:
+                        continue
+            return messages, file_path
+        except Exception as e:
+            logger.error(f"Failed loading session messages for {session_id}: {e}")
+            return [], file_path
+
+    def _rewrite_session_file(self, file_path: Path, messages: list[dict]) -> None:
+        """Rewrite a session JSONL file atomically with optional backup."""
+        try:
+            # Backup (keep a lightweight single .bak)
+            if file_path.exists():
+                backup_path = file_path.with_suffix(file_path.suffix + ".bak")
+                try:
+                    shutil.copy2(file_path, backup_path)
+                except Exception:
+                    pass
+            tmp_path = file_path.with_suffix(file_path.suffix + ".tmp")
+            with open(tmp_path, 'w', encoding='utf-8') as f:
+                for msg in messages:
+                    f.write(json.dumps(msg, ensure_ascii=False) + "\n")
+            tmp_path.replace(file_path)
+        except Exception as e:
+            logger.error(f"Failed rewriting session file {file_path}: {e}")
+            raise
+
+    async def search_sessions(self, query: str, limit: int = 50, max_matches: int = 5) -> List[Dict[str, Any]]:
+        """Search chat history content across sessions."""
+        query = (query or '').strip()
+        if not query:
+            return []
+        q_lower = query.lower()
+
+        results: List[Dict[str, Any]] = []
+        for file in self._iter_all_session_files():
+            try:
+                session_id = self._derive_session_id_from_file(file)
+                matches: List[Dict[str, Any]] = []
+                with open(file, 'r', encoding='utf-8') as f:
+                    for idx, line in enumerate(f):
+                        if len(matches) >= max_matches:
+                            break
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            data = json.loads(line)
+                        except Exception:
+                            continue
+                        content = str(data.get('content') or '')
+                        if q_lower in content.lower():
+                            start = max(0, content.lower().find(q_lower) - 50)
+                            end = min(len(content), start + 120)
+                            preview = content[start:end]
+                            matches.append({
+                                'role': data.get('sender') or data.get('role'),
+                                'content_preview': preview,
+                                'line_number': idx,
+                                'message_index': idx,
+                            })
+                if matches:
+                    meta = self._read_session_meta(session_id)
+                    results.append({
+                        'session_id': session_id,
+                        'session_name': meta.get('name') or session_id,
+                        'matches': matches,
+                    })
+                if len(results) >= limit:
+                    break
+            except Exception as e:
+                logger.debug(f"Search failed for {file}: {e}")
+                continue
+        return results
+
+    async def rollback_session(self, session_id: str, message_index: int) -> List[ChatMessage]:
+        """Rollback a session to a specific message index (inclusive)."""
+        lock = self._get_session_lock(session_id)
+        async with lock:
+            if self.enable_buffered_store:
+                await self._flush_now()
+            messages, file_path = self._load_session_messages(session_id)
+            if file_path is None:
+                raise ValueError("Session not found")
+
+            if message_index < -1:
+                raise ValueError("Invalid message_index")
+
+            if message_index == -1:
+                messages = []
+            else:
+                if message_index >= len(messages):
+                    raise ValueError("message_index out of range")
+                messages = messages[:message_index + 1]
+
+            self._rewrite_session_file(file_path, messages)
+            return [ChatMessage.from_dict(m) for m in messages]
+
+    async def edit_message(self, session_id: str, message_index: int, new_content: str) -> List[ChatMessage]:
+        """Edit a user message at index, truncating subsequent messages."""
+        lock = self._get_session_lock(session_id)
+        async with lock:
+            if self.enable_buffered_store:
+                await self._flush_now()
+            messages, file_path = self._load_session_messages(session_id)
+            if file_path is None:
+                raise ValueError("Session not found")
+            if message_index < 0 or message_index >= len(messages):
+                raise ValueError("message_index out of range")
+
+            target = messages[message_index]
+            sender = target.get('sender') or target.get('role')
+            if sender != 'user':
+                raise ValueError("Only user messages can be edited")
+
+            target['content'] = new_content
+            messages = messages[:message_index + 1]
+            self._rewrite_session_file(file_path, messages)
+
+            return [ChatMessage.from_dict(m) for m in messages]
     
     async def clear_message_history(self, session_id: str = None) -> bool:
         """Clear message history for a session or all sessions (JSONL)."""
@@ -2304,7 +3158,10 @@ class ChatService:
             file_path.touch()
             
             # Persist display name (always create meta so UI never falls back to raw session_id)
-            self._ensure_session_meta(session_id, name or 'New Chat')
+            if name:
+                self._ensure_session_meta(session_id, name, name_source="manual")
+            else:
+                self._ensure_session_meta(session_id, 'New Chat', name_source="auto")
             
             logger.info(f"Created new chat session: {session_id}")
             return session_id
@@ -2321,9 +3178,7 @@ class ChatService:
             if not new_path.exists() and not legacy_exists:
                 return False
             
-            meta_path = self.history_root / f"{session_id}.meta.json"
-            with open(meta_path, 'w', encoding='utf-8') as mf:
-                json.dump({'id': session_id, 'name': name}, mf, ensure_ascii=False)
+            self._set_session_title(session_id, name, source='manual')
             
             logger.info(f"Session {session_id} renamed to: {name}")
             return True
@@ -2355,11 +3210,47 @@ class ChatService:
                     meta_path.unlink()
             except Exception:
                 pass
+            # Unlink image references for this session (preview-only refs with no sessions get pruned)
+            try:
+                if self.image_service:
+                    await self.image_service.unlink_session(session_id)
+            except Exception as e:
+                logger.warning(f"Failed to unlink image references for session {session_id}: {e}")
+            # Remove debug sidecar if present
+            try:
+                debug_dir = self.history_root.parent / "debug"
+                debug_file = debug_dir / f"session_{session_id}.debug.jsonl"
+                if debug_file.exists():
+                    debug_file.unlink()
+            except Exception as e:
+                logger.warning(f"Failed to delete debug sidecar for session {session_id}: {e}")
             logger.info(f"Deleted chat session: {session_id}")
             return True
         except Exception as e:
             logger.error(f"Failed to delete session {session_id}: {e}")
             return False
+
+    def get_debug_settings(self, session_id: str) -> Dict[str, Any]:
+        """Get debug settings stored in session meta, with defaults."""
+        meta = self._read_session_meta(session_id) or {}
+        debug_cfg = meta.get('debug') or {}
+        enabled = bool(debug_cfg.get('enabled', False))
+        mode = debug_cfg.get('mode', 'minimal')
+        return {"enabled": enabled, "mode": mode}
+
+    def set_debug_settings(self, session_id: str, enabled: bool, mode: str = 'minimal') -> Dict[str, Any]:
+        """Persist debug settings in session meta."""
+        meta = self._read_session_meta(session_id) or {
+            'id': session_id,
+            'created': time.time(),
+        }
+        meta['debug'] = {
+            'enabled': bool(enabled),
+            'mode': mode if mode in ('minimal', 'verbose') else 'minimal'
+        }
+        meta['updated'] = time.time()
+        self._write_session_meta(session_id, meta)
+        return meta['debug']
     
     async def _handle_agent_status_update(self, message: Message):
         """Handle agent status updates from message broker"""
@@ -2383,6 +3274,24 @@ class ChatService:
         """Stop/interrupt current streaming response for a session"""
         try:
             logger.info(f"Stop streaming requested for session: {session_id}")
+
+            # Track stop reason for cancellation handlers + debug sidecar.
+            self._stop_reasons[session_id] = {
+                "reason": "user_stop_requested",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+            try:
+                interceptor = self._get_debug_interceptor(session_id)
+                if interceptor:
+                    await interceptor.log_event(
+                        "chat_stop_streaming_requested",
+                        {
+                            "session_id": session_id,
+                            "active_task_present": session_id in self.active_tasks,
+                        },
+                    )
+            except Exception:
+                pass
             
             stopped = False
             

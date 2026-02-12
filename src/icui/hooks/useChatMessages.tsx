@@ -466,14 +466,17 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
   const stopStreaming = useCallback(async () => {
     try {
       const client = getClient();
+      const wasStreaming = isTyping;
       await client.stopStreaming();
       setIsTyping(false);
-      notificationService.show('Streaming stopped', 'info');
+      if (wasStreaming) {
+        notificationService.show('Streaming stopped', 'info');
+      }
     } catch (error) {
       console.error('Failed to stop streaming:', error);
       notificationService.error('Failed to stop streaming');
     }
-  }, [getClient]);
+  }, [getClient, isTyping]);
 
   // Clear messages
   const clearMessages = useCallback(async () => {
@@ -510,14 +513,48 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
       // Detect session switch: if we're loading a different session, REPLACE messages
       // instead of merging. Merge is only safe for same-session reloads (late stream updates).
       const isSessionSwitch = effectiveSessionId !== currentSessionRef.current;
-      if (isSessionSwitch) {
-        // Clear streaming queue from previous session
+      const trimHistory = (msgs: ChatMessage[]) => (msgs.length > maxMessages ? msgs.slice(-maxMessages) : msgs);
+
+      // For same-session reloads, merging can keep messages that were deleted server-side
+      // (e.g. after rollback/edit). It can also keep optimistic user messages with
+      // client-generated IDs that don't exist in persisted history. Prefer REPLACE
+      // whenever we are not actively streaming.
+      const hasOptimisticUserMessages = (msgs: ChatMessage[]) =>
+        msgs.some(m => typeof (m as any)?.id === 'string' && String((m as any).id).startsWith('user_'));
+
+      const shouldReplaceSameSession =
+        !isTyping ||
+        hasOptimisticUserMessages(stateRef.current.messages) ||
+        history.length < stateRef.current.messages.length;
+
+      const shouldReplace = isSessionSwitch || shouldReplaceSameSession;
+
+      if (shouldReplace) {
+        // Clear streaming queue + any scheduled flush so we don't re-apply stale updates
         streamingQueueRef.current.clear();
-        // Replace messages entirely with new session's history
-        setMessages(history.length > maxMessages ? history.slice(-maxMessages) : history);
+        if (flushScheduledRef.current !== null) {
+          try {
+            if (typeof window !== 'undefined' && typeof window.cancelAnimationFrame === 'function') {
+              window.cancelAnimationFrame(flushScheduledRef.current as any);
+            }
+          } catch {
+            // no-op
+          }
+          try {
+            const g: any = typeof globalThis !== 'undefined' ? globalThis : undefined;
+            if (g && typeof g.clearTimeout === 'function') {
+              g.clearTimeout(flushScheduledRef.current as any);
+            }
+          } catch {
+            // no-op
+          }
+          flushScheduledRef.current = null;
+        }
+
+        setMessages(trimHistory(history));
         currentSessionRef.current = effectiveSessionId;
       } else {
-        // Same session: merge to preserve late-arriving stream updates
+        // Same session while streaming: merge to preserve late-arriving stream updates
         setMessages(prev => mergeMessagesById(history, prev, maxMessages));
       }
     } catch (error) {
@@ -526,7 +563,7 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
     } finally {
       setIsLoading(false);
     }
-  }, [getClient, maxMessages]);
+  }, [getClient, isTyping, maxMessages]);
 
   // Update configuration
   const updateConfig = useCallback(async (newConfig: Partial<ChatConfig>) => {

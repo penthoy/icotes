@@ -193,6 +193,17 @@ async def lifespan(app: FastAPI):
             # Initialize preview service
             from icpy.services import initialize_preview_service
             await initialize_preview_service()
+
+            # Optional: run lightweight image reference GC if index grows large
+            try:
+                from icpy.services.image_reference_service import get_image_reference_service
+                svc = get_image_reference_service()
+                index_path = svc._index_path
+                if index_path.exists() and index_path.stat().st_size > 5 * 1024 * 1024:
+                    logger.info("Running image reference GC (index size > 5MB)")
+                    await svc.gc(max_age_days=90)
+            except Exception as e:
+                logger.warning(f"Image reference GC skipped: {e}")
             
             logger.info("icpy services initialized successfully")
             

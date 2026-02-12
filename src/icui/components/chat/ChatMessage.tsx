@@ -15,7 +15,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { Copy, Check, Download, FileText, Play, Pause } from 'lucide-react';
+import { Copy, Check, Download, FileText, Play, Pause, Edit3 } from 'lucide-react';
 import { ChatMessage as ChatMessageType, ToolCallMeta, MediaAttachment } from '../../types/chatTypes';
 import { useTheme } from '../../hooks/useTheme';
 import { ToolCallData } from './ToolCallWidget';
@@ -30,6 +30,12 @@ interface ChatMessageProps {
   highlightQuery?: string;
   requestTimestamp?: string; // Optional: precomputed request timestamp for tool durations
   allMessages?: ChatMessageType[];  // Optional: for calculating tool duration from reply_to
+  onEditMessage?: (messageId: string) => void;
+  isEditing?: boolean;
+  editingContent?: string;
+  onEditingContentChange?: (content: string) => void;
+  onSaveEdit?: (messageId: string, content: string) => void;
+  onCancelEdit?: () => void;
 }
 
 interface CodeBlockProps {
@@ -38,7 +44,7 @@ interface CodeBlockProps {
   inline?: boolean;
 }
 
-const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', highlightQuery = '', allMessages, requestTimestamp: requestTimestampOverride }) => {
+const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', highlightQuery = '', allMessages, requestTimestamp: requestTimestampOverride, onEditMessage, isEditing = false, editingContent = '', onEditingContentChange, onSaveEdit, onCancelEdit }) => {
   const { isDark } = useTheme();
   const [copiedStates, setCopiedStates] = useState<Record<string, boolean>>({});
 
@@ -596,30 +602,114 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', high
     return (
       <div className={`flex justify-end ${className}`}>
         <div
-          className="max-w-[85%] p-3 rounded-lg text-sm rounded-br-sm"
+          className={`p-3 rounded-lg text-sm rounded-br-sm group ${isEditing ? 'w-[85%]' : 'max-w-[85%]'}`}
           style={{
             backgroundColor: 'var(--icui-bg-tertiary)',
             color: 'var(--icui-text-primary)',
             border: '1px solid var(--icui-border-subtle)'
           }}
         >
-          {/* User Message Content - Simple text, no markdown */}
-          <div className="whitespace-pre-wrap break-words">
-            {renderHighlightedPlainText(message.content, highlightQuery)}
-          </div>
-          
-          {/* User Message Attachments */}
-          {message.attachments && message.attachments.length > 0 && (
-            <div className="mt-3">
-              {message.attachments.map((attachment, index) => renderAttachment(attachment, index))}
+          {isEditing ? (
+            // Edit mode: Show textarea with Send/Cancel buttons
+            <div className="space-y-2">
+              <textarea
+                ref={(el) => {
+                  if (el) {
+                    el.style.height = 'auto';
+                    el.style.height = el.scrollHeight + 'px';
+                  }
+                }}
+                value={editingContent}
+                onChange={(e) => {
+                  onEditingContentChange?.(e.target.value);
+                  // Auto-resize on content change
+                  e.target.style.height = 'auto';
+                  e.target.style.height = e.target.scrollHeight + 'px';
+                }}
+                className="w-full p-0 rounded-none resize-none text-sm whitespace-pre-wrap break-words outline-none"
+                style={{
+                  backgroundColor: 'transparent',
+                  color: 'var(--icui-text-primary)',
+                  border: 'none',
+                  lineHeight: 'inherit',
+                  fontFamily: 'inherit',
+                  fontSize: 'inherit'
+                }}
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                    e.preventDefault();
+                    onSaveEdit?.(message.id, editingContent);
+                  } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    onCancelEdit?.();
+                  }
+                }}
+              />
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={onCancelEdit}
+                  className="px-3 py-1 rounded text-xs hover:opacity-80 transition-opacity"
+                  style={{
+                    backgroundColor: 'var(--icui-bg-secondary)',
+                    color: 'var(--icui-text-secondary)',
+                    border: '1px solid var(--icui-border-subtle)'
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => onSaveEdit?.(message.id, editingContent)}
+                  className="px-3 py-1 rounded text-xs hover:opacity-90 transition-opacity"
+                  style={{
+                    backgroundColor: '#3b82f6',
+                    color: 'white'
+                  }}
+                  disabled={!editingContent.trim()}
+                >
+                  Send
+                </button>
+              </div>
             </div>
+          ) : (
+            // View mode: Show message content with edit button
+            <>
+              {onEditMessage && (
+                <div className="flex justify-end -mt-1 mb-1">
+                  <button
+                    type="button"
+                    className="p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                    title="Edit message"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      console.log('[ChatMessage] Edit icon clicked, messageId:', message.id);
+                      onEditMessage(message.id);
+                    }}
+                  >
+                    <Edit3 size={14} style={{ color: 'var(--icui-text-secondary)' }} />
+                  </button>
+                </div>
+              )}
+              {/* User Message Content - Simple text, no markdown */}
+              <div className="whitespace-pre-wrap break-words">
+                {renderHighlightedPlainText(message.content, highlightQuery)}
+              </div>
+              
+              {/* User Message Attachments */}
+              {message.attachments && message.attachments.length > 0 && (
+                <div className="mt-3">
+                  {message.attachments.map((attachment, index) => renderAttachment(attachment, index))}
+                </div>
+              )}
+              
+              {/* User Message Metadata */}
+              <div className="flex items-center justify-end mt-2 text-xs" 
+                   style={{ color: 'var(--icui-text-secondary)' }}>
+                <span>{formatTimestamp(message.timestamp)}</span>
+              </div>
+            </>
           )}
-          
-          {/* User Message Metadata */}
-          <div className="flex items-center justify-end mt-2 text-xs" 
-               style={{ color: 'var(--icui-text-secondary)' }}>
-            <span>{formatTimestamp(message.timestamp)}</span>
-          </div>
         </div>
       </div>
     );
@@ -726,6 +816,9 @@ function areEqual(prev: ChatMessageProps, next: ChatMessageProps) {
   if (prev.requestTimestamp !== next.requestTimestamp) return false;
   // allMessages reference (used for reply_to resolution when requestTimestamp is not provided)
   if (prev.allMessages !== next.allMessages) return false;
+  // Inline edit state
+  if (prev.isEditing !== next.isEditing) return false;
+  if (prev.editingContent !== next.editingContent) return false;
   return true;
 }
 

@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { configService } from '../../services/config-service';
 import { chatBackendClient } from '../services/chat-backend-client-impl';
-import { emitSessionChange } from '../lib/eventBus';
+import { emitSessionChange, subscribeSessionChange } from '../lib/eventBus';
 
 export interface ChatSessionMeta {
   id: string;
@@ -92,7 +92,9 @@ export const ChatSessionStoreProvider: React.FC<{ children: React.ReactNode }> =
   const create = async (name?: string): Promise<string> => {
     try {
       const base = await getApiBaseUrl();
-      const res = await fetch(`${base}/api/chat/sessions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: name || 'New Chat' }) });
+      // Only send name if explicitly provided, otherwise let backend auto-title
+      const body = name ? { name } : {};
+      const res = await fetch(`${base}/api/chat/sessions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const result = await res.json();
       const id = result.data.session_id;
@@ -124,7 +126,7 @@ export const ChatSessionStoreProvider: React.FC<{ children: React.ReactNode }> =
     } catch {}
     setSessions(prev => prev.map(s => (s.id === id ? { ...s, name, updated: Date.now() } : s)));
     if (activeSessionId === id) {
-      emitSessionChange({ sessionId: id, action: 'switch', sessionName: name, source: 'chatSessionStore' });
+      emitSessionChange({ sessionId: id, action: 'rename', sessionName: name, source: 'chatSessionStore' });
     }
   };
 
@@ -162,6 +164,15 @@ export const ChatSessionStoreProvider: React.FC<{ children: React.ReactNode }> =
   };
 
   useEffect(() => { refresh(); }, []);
+
+  // Listen for external session rename events (e.g., auto-title updates)
+  useEffect(() => {
+    return subscribeSessionChange((payload) => {
+      if (payload.action !== 'rename') return;
+      if (!payload.sessionId || !payload.sessionName) return;
+      setSessions(prev => prev.map(s => (s.id === payload.sessionId ? { ...s, name: payload.sessionName, updated: Date.now() } : s)));
+    });
+  }, []);
 
   const value: StoreApi = useMemo(() => ({ sessions, activeSessionId, isLoading, refresh, create, rename, remove, switchTo }), [sessions, activeSessionId, isLoading]);
   return (

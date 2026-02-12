@@ -38,6 +38,7 @@ import { chatBackendClient } from '../../services/chat-backend-client-impl';
 import { useChatHistory } from '../../hooks/useChatHistory';
 import type { MediaAttachment as ChatMediaAttachment } from '../../types/chatTypes';
 import { mediaService } from '../../services/mediaService';
+import { configService } from '../../../services/config-service';
 // Consolidated helpers to reduce file size and prevent regressions
 import { inferMimeFromName } from '../chat/utils/mime';
 import { waitForUploadsToSettle, buildAttachmentsFromUploads, buildReferencedAttachments } from '../chat/utils/sendPipeline';
@@ -95,6 +96,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
   const chatRootRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [inputValue, setInputValue] = useState('');
   const [selectedAgent, setSelectedAgent] = useState(''); // Default agent will be set by CustomAgentDropdown
   // Theme-dependent colors are provided via CSS variables; explicit theme state not required here
@@ -106,6 +108,9 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
   const [hasNewMessages, setHasNewMessages] = useState(false);
   const [userHasScrolledUp, setUserHasScrolledUp] = useState(false);
   const lastScrollTop = useRef(0);
+  // Inline editing state
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editingContent, setEditingContent] = useState<string>('');
   // Local staged attachments (minimal Phase 4.1 test implementation)
   const [staged, setStaged] = useState<{ id: string; file: File; preview: string }[]>([]);
   // Explorer referenced files (no upload – just path references)
@@ -247,6 +252,91 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
     }
   }, [currentSessionId, tempTitle, renameSession, sessionTitle]);
 
+  const getApiBaseUrl = useCallback(async () => {
+    try {
+      const cfg = await configService.getConfig();
+      const base = cfg.api_url || cfg.base_url || '';
+      return base.endsWith('/api') ? base.slice(0, -4) : base;
+    } catch {
+      const base = (window as any).__ICUI_API_URL__ || (import.meta as any).env?.VITE_API_URL || (import.meta as any).env?.VITE_BACKEND_URL || `${window.location.protocol}//${window.location.host}`;
+      return base.endsWith('/api') ? base.slice(0, -4) : base;
+    }
+  }, []);
+
+  const rollbackSession = useCallback(async (sessionId: string, messageIndex: number) => {
+    const base = await getApiBaseUrl();
+    const res = await fetch(`${base}/api/chat/${sessionId}/rollback`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message_index: messageIndex })
+    });
+    if (!res.ok) throw new Error(`Rollback failed: ${res.status}`);
+    return res.json();
+  }, [getApiBaseUrl]);
+
+  const editSessionMessage = useCallback(async (sessionId: string, messageIndex: number, content: string) => {
+    const base = await getApiBaseUrl();
+    const res = await fetch(`${base}/api/chat/${sessionId}/messages/${messageIndex}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content })
+    });
+    if (!res.ok) throw new Error(`Edit failed: ${res.status}`);
+    return res.json();
+  }, [getApiBaseUrl]);
+
+  const handleEditMessage = useCallback(async (messageId: string) => {
+    const msg = messages.find(m => m.id === messageId);
+    if (!msg || msg.sender !== 'user') {
+      return;
+    }
+    
+    setEditingMessageId(messageId);
+    setEditingContent(msg.content);
+  }, [messages]);
+
+  const handleSaveEdit = useCallback(async (messageId: string, newContent: string) => {
+    const idx = messages.findIndex(m => m.id === messageId);
+    if (idx < 0 || !currentSessionId) return;
+
+    const trimmed = newContent.trim();
+    if (!trimmed) return;
+
+    // Preserve the agent routing from the original message when possible
+    const agentTypeFromMessage = (messages[idx] as any)?.metadata?.agentType as string | undefined;
+
+    try {
+      await stopStreaming();
+    } catch {
+      // best-effort stop
+    }
+
+    try {
+      // Edit in-place (backend truncates subsequent messages)
+      await editSessionMessage(currentSessionId, idx, trimmed);
+      await reloadMessages(currentSessionId);
+
+      // Clear edit mode
+      setEditingMessageId(null);
+      setEditingContent('');
+
+      // Trigger regeneration from the edited message without appending a new user message
+      await chatBackendClient.regenerate({
+        sessionId: currentSessionId,
+        messageIndex: idx,
+        agentType: agentTypeFromMessage
+      });
+    } catch (error) {
+      console.error('Failed to edit and resend message:', error);
+      notificationService.error('Failed to edit message');
+    }
+  }, [messages, currentSessionId, editSessionMessage, reloadMessages, stopStreaming]);
+
+  const handleCancelEdit = useCallback(() => {
+    setEditingMessageId(null);
+    setEditingContent('');
+  }, []);
+
   // Get available custom agents
   const { agents: configuredAgents, isLoading: agentsLoading, error: agentsError } = useConfiguredAgents();
   const customAgents = configuredAgents.map(agent => agent.name);
@@ -361,6 +451,12 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
       if (process.env.NODE_ENV === 'development') {
         console.log(`[${componentId.current}] Session change event:`, { sessionId, action, sessionName });
       }
+      if (action === 'rename') {
+        if (sessionId === currentSessionId && sessionName) {
+          setCurrentSessionName(sessionName);
+        }
+        return;
+      }
       if (action === 'switch' || action === 'create') {
         if (sessionId !== currentSessionId) {
           setCurrentSessionId(sessionId);
@@ -424,9 +520,9 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
     try {
       // Auto-create session if none exists
       if (!currentSessionId && sessions.length === 0) {
-        // Create session with explicit name, matching manual button behavior
-        const newSessionId = await createSession('New Chat');
-        // Set the name immediately - don't rely on async session state updates
+        // Create session without an explicit name so backend can auto-title later.
+        const newSessionId = await createSession();
+        // Set a temporary name immediately; backend will rename via auto-title.
         const createdName = 'New Chat';
         setCurrentSessionId(newSessionId);
         setCurrentSessionName(createdName);
@@ -550,6 +646,35 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
       inputRef.current.focus();
     }
   }, []);
+
+  // Handle file upload button click
+  const handleUploadClick = useCallback(() => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  }, []);
+
+  // Handle file selection from input
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      const fileArray = Array.from(files);
+      // Add to upload queue
+      uploadApi.addFiles(fileArray, { context: 'chat' });
+      // Create staging previews
+      fileArray.forEach(file => {
+        const tempId = `staged-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        if (file.type.startsWith('image/')) {
+          const preview = URL.createObjectURL(file);
+          setStaged(prev => [...prev, { id: tempId, file, preview }]);
+        } else {
+          setStaged(prev => [...prev, { id: tempId, file, preview: '' }]);
+        }
+      });
+      // Reset input so same file can be selected again
+      e.target.value = '';
+    }
+  }, [uploadApi]);
 
 
 
@@ -770,6 +895,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
 
         {/* Actions */}
         <div className="flex items-center space-x-2">
+          {/* Debug sidecar disabled for now */}
           {/* New Chat Button */}
           <button
       onClick={async () => {
@@ -846,6 +972,12 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
                   className=""
                   highlightQuery={search.isOpen ? search.query : ''}
                   requestTimestamp={requestTimestampByMessageId.get(message.id)}
+                  onEditMessage={handleEditMessage}
+                  isEditing={editingMessageId === message.id}
+                  editingContent={editingMessageId === message.id ? editingContent : undefined}
+                  onEditingContentChange={setEditingContent}
+                  onSaveEdit={handleSaveEdit}
+                  onCancelEdit={handleCancelEdit}
                 />
               </div>
             ))}
@@ -927,11 +1059,12 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
             </div>
           )}
 
-          <div className="space-y-2">
+          <div className="space-y-0">
             {/* Modern Composer - preserves previous layout (textarea on top, controls at bottom) */}
             <div ref={setComposerEl} className={`icui-composer ${isDragActive ? 'ring-2 ring-blue-400 rounded-md transition-colors' : ''}`} data-chat-composer>
-              {(referenced.length > 0 || staged.length > 0) && (
-                <div className="flex flex-wrap gap-2 mb-2 items-center" data-chat-attachments>
+              {/* Always show attachments area to display upload button */}
+              {(referenced.length > 0 || staged.length > 0 || isConnected) && (
+                <div className="flex flex-wrap gap-1 mb-0 items-center px-3 py-3" data-chat-attachments>
                   {referenced.map(ref => {
                     const mime = inferMimeFromName(ref.name);
                     const isImage = mime.startsWith('image/');
@@ -1078,6 +1211,16 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
                       >×</button>
                     </div>
                   ))}
+                  {/* Add upload button tile */}
+                  <button
+                    onClick={handleUploadClick}
+                    className="w-8 h-8 border-2 border-dashed rounded flex items-center justify-center hover:bg-opacity-10 hover:bg-white transition cursor-pointer"
+                    style={{ borderColor: 'var(--icui-border-subtle)', color: 'var(--icui-text-secondary)' }}
+                    title="Upload files (images, videos, documents)"
+                    disabled={!isConnected}
+                  >
+                    <span className="text-xl leading-none">+</span>
+                  </button>
                 </div>
               )}
               {/* Body: textarea */}
@@ -1095,9 +1238,19 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
                   rows={1}
                   disabled={!isConnected}
                 />
+                {/* Hidden file input for mobile upload */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept="image/*,video/*,audio/*,.pdf,.txt,.md,.json,.csv"
+                  onChange={handleFileSelect}
+                  className="hidden"
+                  aria-label="Upload files"
+                />
               </div>
 
-              {/* Bottom controls row - dropdown + refresh + settings + send */}
+              {/* Bottom controls row - dropdown + send */}
               <div className="icui-composer__controls">
                 <div className="flex items-center gap-2 min-w-0">
                   <CustomAgentDropdown

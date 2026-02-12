@@ -15,6 +15,7 @@ const PANEL_TYPE_ICONS: Record<ICUIPanelType, string> = {
   properties: '⚙️',
   timeline: '⏱️',
   inspector: '🔍',
+  'agent-debug': '🐞',
   custom: '📋',
 };
 
@@ -27,6 +28,7 @@ const PANEL_TYPE_LABELS: Record<ICUIPanelType, string> = {
   properties: 'Properties',
   timeline: 'Timeline',
   inspector: 'Inspector',
+  'agent-debug': 'Agent Debug',
   custom: 'Custom',
 };
 

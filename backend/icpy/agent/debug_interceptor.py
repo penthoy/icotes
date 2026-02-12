@@ -29,7 +29,10 @@ class DebugInterceptor:
         self.session_id = session_id
         self.workspace_path = workspace_path or os.getenv('WORKSPACE_ROOT', '/tmp')
         self.debug_file_path = self._get_debug_file_path()
-        self.enabled = os.getenv('ICOTES_DEBUG_AGENT', '').lower() in ('1', 'true', 'yes')
+        settings = get_debug_settings(session_id)
+        env_enabled = os.getenv('ICOTES_DEBUG_AGENT', '').lower() in ('1', 'true', 'yes')
+        self.enabled = settings.get('enabled', env_enabled)
+        self.mode = settings.get('mode', 'minimal')
         
         if self.enabled:
             logger.info(f"[DebugInterceptor] Enabled for session {session_id} -> {self.debug_file_path}")
@@ -83,30 +86,45 @@ class DebugInterceptor:
         if not self.enabled:
             return
         
-        entry = {
-            "type": "openai_request",
-            "timestamp": datetime.now().isoformat(),
-            "api_params": {
-                "model": api_params.get('model'),
-                "messages": api_params.get('messages', []),
-                "tools": [
-                    {
-                        "type": t.get('type'),
-                        "function": {
-                            "name": t.get('function', {}).get('name'),
-                            "description": t.get('function', {}).get('description', '')[:100] + '...'
+        if self.mode == 'minimal':
+            entry = {
+                "type": "openai_request",
+                "timestamp": datetime.now().isoformat(),
+                "api_params": {
+                    "model": api_params.get('model'),
+                    "message_count": len(api_params.get('messages', [])),
+                    "tools": [t.get('function', {}).get('name') for t in api_params.get('tools', [])],
+                    "temperature": api_params.get('temperature'),
+                    "max_tokens": api_params.get('max_tokens') or api_params.get('max_completion_tokens'),
+                    "stream": api_params.get('stream'),
+                },
+                "context": context_info or {}
+            }
+        else:
+            entry = {
+                "type": "openai_request",
+                "timestamp": datetime.now().isoformat(),
+                "api_params": {
+                    "model": api_params.get('model'),
+                    "messages": api_params.get('messages', []),
+                    "tools": [
+                        {
+                            "type": t.get('type'),
+                            "function": {
+                                "name": t.get('function', {}).get('name'),
+                                "description": t.get('function', {}).get('description', '')[:100] + '...'
+                            }
                         }
-                    }
-                    for t in api_params.get('tools', [])
-                ],
-                "temperature": api_params.get('temperature'),
-                "max_tokens": api_params.get('max_tokens') or api_params.get('max_completion_tokens'),
-                "stream": api_params.get('stream'),
-                "other_params": {k: v for k, v in api_params.items() 
-                               if k not in ['model', 'messages', 'tools', 'temperature', 'max_tokens', 'max_completion_tokens', 'stream']}
-            },
-            "context": context_info or {}
-        }
+                        for t in api_params.get('tools', [])
+                    ],
+                    "temperature": api_params.get('temperature'),
+                    "max_tokens": api_params.get('max_tokens') or api_params.get('max_completion_tokens'),
+                    "stream": api_params.get('stream'),
+                    "other_params": {k: v for k, v in api_params.items() 
+                                   if k not in ['model', 'messages', 'tools', 'temperature', 'max_tokens', 'max_completion_tokens', 'stream']}
+                },
+                "context": context_info or {}
+            }
         self._write_entry(entry)
     
     async def log_openai_response(self, response_data: Any, finish_reason: Optional[str] = None):
@@ -120,12 +138,20 @@ class DebugInterceptor:
         if not self.enabled:
             return
         
-        entry = {
-            "type": "openai_response",
-            "timestamp": datetime.now().isoformat(),
-            "finish_reason": finish_reason,
-            "response": str(response_data)[:5000] if response_data else None  # Truncate long responses
-        }
+        if self.mode == 'minimal':
+            entry = {
+                "type": "openai_response",
+                "timestamp": datetime.now().isoformat(),
+                "finish_reason": finish_reason,
+                "response_preview": str(response_data)[:500] if response_data else None
+            }
+        else:
+            entry = {
+                "type": "openai_response",
+                "timestamp": datetime.now().isoformat(),
+                "finish_reason": finish_reason,
+                "response": str(response_data)[:5000] if response_data else None  # Truncate long responses
+            }
         self._write_entry(entry)
     
     async def log_tool_execution(self, tool_name: str, arguments: Dict[str, Any], result: Dict[str, Any]):
@@ -140,17 +166,29 @@ class DebugInterceptor:
         if not self.enabled:
             return
         
-        entry = {
-            "type": "tool_execution",
-            "timestamp": datetime.now().isoformat(),
-            "tool_name": tool_name,
-            "arguments": arguments,
-            "result": {
-                "success": result.get('success'),
-                "error": result.get('error'),
-                "data_preview": str(result.get('data'))[:1000] if result.get('data') else None
+        if self.mode == 'minimal':
+            entry = {
+                "type": "tool_execution",
+                "timestamp": datetime.now().isoformat(),
+                "tool_name": tool_name,
+                "arguments": {"keys": list(arguments.keys()) if isinstance(arguments, dict) else None},
+                "result": {
+                    "success": result.get('success'),
+                    "error": result.get('error'),
+                }
             }
-        }
+        else:
+            entry = {
+                "type": "tool_execution",
+                "timestamp": datetime.now().isoformat(),
+                "tool_name": tool_name,
+                "arguments": arguments,
+                "result": {
+                    "success": result.get('success'),
+                    "error": result.get('error'),
+                    "data_preview": str(result.get('data'))[:1000] if result.get('data') else None
+                }
+            }
         self._write_entry(entry)
     
     async def log_context_state(self, context_info: Dict[str, Any]):
@@ -167,6 +205,24 @@ class DebugInterceptor:
             "type": "context_state",
             "timestamp": datetime.now().isoformat(),
             "context": context_info
+        }
+        self._write_entry(entry)
+
+    async def log_event(self, event_type: str, data: Optional[Dict[str, Any]] = None):
+        """Log a generic debug event for the current session.
+
+        This is used for chat/session lifecycle events that are not specific to
+        OpenAI API calls (e.g., stream start/end, cancellations, stop reasons).
+        """
+        if not self.enabled:
+            return
+
+        entry = {
+            "type": event_type,
+            "timestamp": datetime.now().isoformat(),
+            "session_id": self.session_id,
+            "mode": self.mode,
+            "data": data or {},
         }
         self._write_entry(entry)
     
@@ -191,9 +247,51 @@ class DebugInterceptor:
         }
         self._write_entry(entry)
 
+    def set_enabled(self, enabled: bool) -> None:
+        self.enabled = bool(enabled)
+        if self.enabled and not self.debug_file_path.exists():
+            self._write_header()
+
+    def set_mode(self, mode: str) -> None:
+        if mode in ("minimal", "verbose"):
+            self.mode = mode
+
 
 # Global registry of interceptors per session
 _interceptors: Dict[str, DebugInterceptor] = {}
+_debug_settings: Dict[str, Dict[str, Any]] = {}
+
+def get_debug_settings(session_id: str) -> Dict[str, Any]:
+    """Get debug settings for a session with env defaults."""
+    env_enabled = os.getenv('ICOTES_DEBUG_AGENT', '').lower() in ('1', 'true', 'yes')
+    settings = _debug_settings.get(session_id, {})
+
+    # Load persisted settings from session meta if available
+    try:
+        workspace = os.getenv('WORKSPACE_ROOT', '/tmp')
+        meta_path = Path(workspace) / '.icotes' / 'chat_history' / f"{session_id}.meta.json"
+        if meta_path.exists():
+            with open(meta_path, 'r', encoding='utf-8') as mf:
+                meta = json.load(mf)
+            debug_cfg = (meta or {}).get('debug') or {}
+            settings = {**settings, **debug_cfg}
+    except Exception:
+        pass
+    return {
+        "enabled": settings.get('enabled', env_enabled),
+        "mode": settings.get('mode', 'minimal')
+    }
+
+def set_debug_settings(session_id: str, enabled: bool, mode: str = "minimal") -> None:
+    """Set debug settings for a session and update live interceptors."""
+    _debug_settings[session_id] = {
+        "enabled": bool(enabled),
+        "mode": mode if mode in ("minimal", "verbose") else "minimal",
+    }
+    if session_id in _interceptors:
+        interceptor = _interceptors[session_id]
+        interceptor.set_enabled(bool(enabled))
+        interceptor.set_mode(_debug_settings[session_id]["mode"])
 
 def get_interceptor(session_id: str, workspace_path: Optional[str] = None) -> DebugInterceptor:
     """Get or create a debug interceptor for a session"""
@@ -205,6 +303,30 @@ def clear_interceptor(session_id: str):
     """Clear an interceptor from the registry"""
     if session_id in _interceptors:
         del _interceptors[session_id]
+
+def _get_debug_file_path(session_id: str, workspace_path: Optional[str] = None) -> Path:
+    """Resolve debug file path for a session."""
+    workspace = workspace_path or os.getenv('WORKSPACE_ROOT', '/tmp')
+    debug_dir = Path(workspace) / '.icotes' / 'debug'
+    debug_dir.mkdir(parents=True, exist_ok=True)
+    return debug_dir / f"session_{session_id}.debug.jsonl"
+
+def read_debug_entries(session_id: str, workspace_path: Optional[str] = None) -> list[Dict[str, Any]]:
+    """Read debug entries for a session, skipping comment lines."""
+    path = _get_debug_file_path(session_id, workspace_path)
+    if not path.exists():
+        raise FileNotFoundError(str(path))
+    entries: list[Dict[str, Any]] = []
+    with open(path, 'r', encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            try:
+                entries.append(json.loads(line))
+            except Exception:
+                continue
+    return entries
 
 
 async def get_context_snapshot() -> Dict[str, Any]:

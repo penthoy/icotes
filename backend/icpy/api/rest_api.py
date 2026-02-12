@@ -202,6 +202,33 @@ class ChatSessionUpdateRequest(BaseModel):
     name: str = Field(..., description="New session name")
 
 
+class ChatRollbackRequest(BaseModel):
+    """Request body for rolling back a chat session."""
+    message_index: int = Field(..., description="0-based index to roll back to (inclusive). Use -1 to clear.")
+
+
+class ChatEditMessageRequest(BaseModel):
+    """Request body for editing a user message."""
+    content: str = Field(..., description="New message content")
+
+
+class ChatGenerateTitleRequest(BaseModel):
+    """Request body for manually triggering title generation."""
+    session_id: str = Field(..., description="Session ID")
+
+
+class DebugToggleRequest(BaseModel):
+    """Request body to toggle debug sidecar logging for a session."""
+    session_id: str = Field(..., description="Session ID")
+    enabled: bool = Field(..., description="Enable debug logging")
+    mode: Optional[str] = Field("minimal", description="Logging mode: minimal|verbose")
+
+
+class ImageGcRequest(BaseModel):
+    """Request body for image reference GC."""
+    max_age_days: Optional[int] = Field(90, description="Max age in days for legacy preview cleanup")
+
+
 class RestAPI:
     """HTTP REST API for icpy Backend.
     
@@ -1739,6 +1766,120 @@ class RestAPI:
                 logger.error(f"Failed to get chat stats: {e}")
                 raise HTTPException(status_code=500, detail=str(e))
 
+        # Search chat history content
+        @self.app.get("/api/chat/search")
+        async def search_chat_history(q: str, limit: int = 50, max_matches: int = 5):
+            """Search chat history content across sessions."""
+            try:
+                results = await self.chat_service.search_sessions(q, limit=limit, max_matches=max_matches)
+                return SuccessResponse(data=results, message=f"Found {len(results)} sessions")
+            except Exception as e:
+                logger.error(f"Failed to search chat history: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+
+        # Rollback a session to a message index
+        @self.app.post("/api/chat/{session_id}/rollback")
+        async def rollback_chat_session(session_id: str, request: ChatRollbackRequest):
+            """Rollback a chat session to a specific message index."""
+            try:
+                messages = await self.chat_service.rollback_session(session_id, request.message_index)
+                return SuccessResponse(
+                    data=[m.to_dict() for m in messages],
+                    message="Session rolled back"
+                )
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
+            except Exception as e:
+                logger.error(f"Failed to rollback session {session_id}: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+
+        # Edit a user message in a session
+        @self.app.put("/api/chat/{session_id}/messages/{message_index}")
+        async def edit_chat_message(session_id: str, message_index: int, request: ChatEditMessageRequest):
+            """Edit a user message and truncate subsequent messages."""
+            try:
+                messages = await self.chat_service.edit_message(session_id, message_index, request.content)
+                return SuccessResponse(
+                    data=[m.to_dict() for m in messages],
+                    message="Message updated"
+                )
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
+            except Exception as e:
+                logger.error(f"Failed to edit message {message_index} in {session_id}: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+
+        # Manually trigger title generation
+        @self.app.post("/api/chat/{session_id}/generate-title")
+        async def generate_chat_title(session_id: str):
+            """Generate a title for a chat session."""
+            try:
+                title = await self.chat_service._generate_auto_title(session_id)
+                if not title:
+                    raise HTTPException(status_code=404, detail="No title could be generated")
+                if self.chat_service._should_auto_title(session_id):
+                    self.chat_service._set_session_title(session_id, title, source='auto')
+                    self.chat_service._mark_auto_title_state(session_id, True)
+                    await self.chat_service._broadcast_session_title_update(session_id, title)
+                return SuccessResponse(data={"title": title}, message="Title generated")
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error(f"Failed to generate title for {session_id}: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+
+        # Debug sidecar access
+        @self.app.get("/api/chat/{session_id}/debug")
+        async def get_chat_debug(session_id: str):
+            """Get debug sidecar entries for a session."""
+            try:
+                from icpy.agent.debug_interceptor import read_debug_entries
+                entries = read_debug_entries(session_id)
+                return SuccessResponse(data=entries, message=f"Retrieved {len(entries)} debug entries")
+            except FileNotFoundError:
+                return SuccessResponse(data=[], message="No debug entries")
+            except Exception as e:
+                logger.error(f"Failed to read debug sidecar for {session_id}: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+
+        @self.app.get("/api/debug/status")
+        async def get_debug_status(session_id: str):
+            """Get debug status for a session."""
+            try:
+                from icpy.agent.debug_interceptor import get_debug_settings
+                stored = self.chat_service.get_debug_settings(session_id)
+                current = get_debug_settings(session_id)
+                settings = {**current, **stored}
+                return SuccessResponse(data=settings, message="Debug status retrieved")
+            except Exception as e:
+                logger.error(f"Failed to get debug status for {session_id}: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+
+        @self.app.post("/api/debug/toggle")
+        async def toggle_debug(request: DebugToggleRequest):
+            """Toggle debug logging for a session."""
+            try:
+                from icpy.agent.debug_interceptor import set_debug_settings
+                stored = self.chat_service.set_debug_settings(request.session_id, request.enabled, request.mode or 'minimal')
+                set_debug_settings(request.session_id, stored.get('enabled', request.enabled), stored.get('mode', request.mode or 'minimal'))
+                return SuccessResponse(data={"session_id": request.session_id, **stored}, message="Debug settings updated")
+            except Exception as e:
+                logger.error(f"Failed to toggle debug for {request.session_id}: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+
+        # Image reference GC
+        @self.app.post("/api/images/gc")
+        async def gc_image_references(request: ImageGcRequest):
+            """Run image reference garbage collection."""
+            try:
+                from icpy.services.image_reference_service import get_image_reference_service
+                svc = get_image_reference_service()
+                result = await svc.gc(max_age_days=request.max_age_days or 90)
+                return SuccessResponse(data=result, message="Image reference GC complete")
+            except Exception as e:
+                logger.error(f"Failed to run image GC: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+
     def _register_scm_routes(self):
         """Register source control (SCM) routes."""
         logger.info("[REST] Registering SCM routes...")
@@ -1928,8 +2069,11 @@ class RestAPI:
             """Create a new chat session."""
             try:
                 session_id = await self.chat_service.create_session(request.name)
+                # Get the actual session name from meta (may be 'New Chat' if name not provided)
+                meta = self.chat_service._read_session_meta(session_id)
+                session_name = meta.get('name', 'New Chat') if meta else (request.name or 'New Chat')
                 return SuccessResponse(
-                    data={"session_id": session_id, "name": request.name},
+                    data={"session_id": session_id, "name": session_name},
                     message="Chat session created successfully"
                 )
             except Exception as e:
