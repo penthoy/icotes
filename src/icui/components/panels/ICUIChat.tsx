@@ -146,8 +146,9 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
     hasMessages,
     scrollToBottom
   } = useChatMessages({
-    // Avoid auto-connecting before a session is known to prevent generating orphan sessions
-    autoConnect: !!(typeof window !== 'undefined' && (localStorage.getItem('icui.chat.active_session') || chatBackendClient.currentSession)) && autoConnect,
+    // Always auto-connect the WebSocket transport — it's independent of session existence.
+    // Sessions are created via REST API, not by the WS connection itself.
+    autoConnect,
     maxMessages,
     persistence,
     // Disable hook-level auto-scroll when user has intentionally scrolled up
@@ -188,18 +189,8 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
     return result;
   }, [messages]);
 
-  // Chat search hook (Ctrl+F) - context sensitive: only active when Chat has focus
-  const search = useChatSearch(messages, {
-    isActive: () => {
-      try {
-        const root = chatRootRef.current;
-        const activeEl = typeof document !== 'undefined' ? document.activeElement : null;
-        return !!(root && activeEl && root.contains(activeEl));
-      } catch {
-        return true; // fallback to previous behavior
-      }
-    }
-  });
+  // Chat search hook (Ctrl+F) — keyboard handler is scoped to chatRootRef
+  const search = useChatSearch(messages, chatRootRef);
 
   // Session synchronization
   const { onSessionChange, emitSessionChange } = useChatSessionSync('ICUIChat');
@@ -832,11 +823,13 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
   return (
     <div 
       ref={chatRootRef}
+      tabIndex={-1}
       className={`icui-chat h-full flex flex-col relative ${className}`} 
       style={{ 
         backgroundColor: 'var(--icui-bg-primary)', 
   color: 'var(--icui-text-primary)',
-  overflowX: 'hidden'
+  overflowX: 'hidden',
+  outline: 'none',
       }}
     >
       {/* No inline drop zone overlay; chat paste still supported */}
@@ -941,13 +934,100 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
       </div>
 
       <div className="icui-chat-drop-scope flex-1 relative flex flex-col" style={{ minHeight:0 }}>
+        {/* Floating search bar — VS Code-style, pinned to top-right of messages area */}
+        {search.isOpen && (
+          <div
+            className="absolute top-2 right-4 z-20 flex items-center gap-1.5 rounded-md shadow-lg px-2 py-1.5"
+            style={{
+              backgroundColor: 'var(--icui-bg-secondary)',
+              border: '1px solid var(--icui-border)',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+              maxWidth: 'calc(100% - 2rem)',
+            }}
+          >
+            <input
+              ref={search.searchInputRef}
+              value={search.query}
+              onChange={e => search.setQuery(e.target.value)}
+              placeholder="Find in chat…"
+              className="text-sm px-2 py-1 rounded outline-none"
+              style={{
+                color: 'var(--icui-text-primary)',
+                backgroundColor: 'var(--icui-bg-tertiary)',
+                border: '1px solid var(--icui-border-subtle)',
+                width: '180px',
+                minWidth: '120px',
+              }}
+              autoFocus
+            />
+            {/* Match counter */}
+            <span className="text-xs whitespace-nowrap tabular-nums" style={{ color: 'var(--icui-text-secondary)', minWidth: '36px', textAlign: 'center' }}>
+              {search.results.length === 0
+                ? (search.query ? 'No results' : '')
+                : `${search.activeIdx + 1}/${search.results.length}`}
+            </span>
+            {/* Navigation buttons */}
+            <button
+              className="p-1 rounded hover:opacity-80 transition-opacity"
+              onClick={search.prev}
+              disabled={search.results.length === 0}
+              title="Previous match (Shift+Enter)"
+              style={{ color: 'var(--icui-text-secondary)', opacity: search.results.length === 0 ? 0.3 : 1 }}
+            >
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 4l-4 4h8z"/></svg>
+            </button>
+            <button
+              className="p-1 rounded hover:opacity-80 transition-opacity"
+              onClick={search.next}
+              disabled={search.results.length === 0}
+              title="Next match (Enter)"
+              style={{ color: 'var(--icui-text-secondary)', opacity: search.results.length === 0 ? 0.3 : 1 }}
+            >
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 12l4-4H4z"/></svg>
+            </button>
+            {/* Options toggles */}
+            <button
+              className="text-xs px-1.5 py-0.5 rounded transition-colors"
+              onClick={search.toggleCaseSensitive}
+              title="Match Case"
+              style={{
+                color: search.options.caseSensitive ? 'var(--icui-text-primary)' : 'var(--icui-text-muted)',
+                backgroundColor: search.options.caseSensitive ? 'var(--icui-bg-tertiary)' : 'transparent',
+                border: search.options.caseSensitive ? '1px solid var(--icui-border)' : '1px solid transparent',
+              }}
+            >
+              Aa
+            </button>
+            <button
+              className="text-xs px-1.5 py-0.5 rounded transition-colors"
+              onClick={search.toggleRegex}
+              title="Use Regex"
+              style={{
+                color: search.options.useRegex ? 'var(--icui-text-primary)' : 'var(--icui-text-muted)',
+                backgroundColor: search.options.useRegex ? 'var(--icui-bg-tertiary)' : 'transparent',
+                border: search.options.useRegex ? '1px solid var(--icui-border)' : '1px solid transparent',
+              }}
+            >
+              .*
+            </button>
+            {/* Close */}
+            <button
+              className="p-1 rounded hover:opacity-80 transition-opacity"
+              onClick={search.close}
+              title="Close (Esc)"
+              style={{ color: 'var(--icui-text-secondary)' }}
+            >
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 8.7L3.3 13.4 2.6 12.7 7.3 8 2.6 3.3 3.3 2.6 8 7.3l4.7-4.7.7.7L8.7 8l4.7 4.7-.7.7z"/></svg>
+            </button>
+          </div>
+        )}
+
         {/* Messages Container */}
         <div 
           ref={chatContainerRef}
           className="flex-1 overflow-y-auto p-3 relative"
           style={{ backgroundColor: 'var(--icui-bg-primary)', overflowX: 'hidden' }}
         >
-        {/* Search overlay moved below in toolbar */}
         {isLoading ? (
           <div className="flex items-center justify-center h-full">
             <div className="flex items-center space-x-2" style={{ color: 'var(--icui-text-muted)' }}>
@@ -996,7 +1076,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
         )}
         </div>
 
-        {/* Bottom Toolbar: Search + Input */}
+        {/* Bottom Toolbar: Input */}
         <div 
           className="p-3 space-y-2" 
           style={{ 
@@ -1005,59 +1085,6 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
             overflowX: 'hidden'
           }}
         >
-          {/* Search bar pinned above input */}
-          {search.isOpen && (
-            <div className="flex items-center gap-2 border rounded p-2" style={{ borderColor: 'var(--icui-border)', backgroundColor: 'var(--icui-bg-secondary)' }}>
-              <input
-                value={search.query}
-                onChange={e => search.setQuery(e.target.value)}
-                placeholder="Search..."
-                className="text-sm px-2 py-1 rounded outline-none flex-1"
-                style={{ 
-                  color: 'var(--icui-text-primary)',
-                  backgroundColor: 'var(--icui-bg-tertiary)',
-                  border: '1px solid var(--icui-border-subtle)'
-                }}
-                autoFocus
-              />
-              <span className="text-xs whitespace-nowrap" style={{ color: 'var(--icui-text-secondary)' }}>
-                {search.results.length === 0 ? '0/0' : `${search.activeIdx + 1}/${search.results.length}`}
-              </span>
-              <button 
-                className="text-xs px-2 py-1 rounded hover:opacity-80 whitespace-nowrap" 
-                onClick={search.prev}
-                style={{ 
-                  color: 'var(--icui-text-primary)',
-                  backgroundColor: 'var(--icui-bg-tertiary)',
-                  border: '1px solid var(--icui-border-subtle)'
-                }}
-              >
-                Prev
-              </button>
-              <button 
-                className="text-xs px-2 py-1 rounded hover:opacity-80 whitespace-nowrap" 
-                onClick={search.next}
-                style={{ 
-                  color: 'var(--icui-text-primary)',
-                  backgroundColor: 'var(--icui-bg-tertiary)',
-                  border: '1px solid var(--icui-border-subtle)'
-                }}
-              >
-                Next
-              </button>
-              <button 
-                className="text-xs px-2 py-1 rounded hover:opacity-80 whitespace-nowrap" 
-                onClick={() => search.setIsOpen(false)}
-                style={{ 
-                  color: 'var(--icui-text-primary)',
-                  backgroundColor: 'var(--icui-bg-tertiary)',
-                  border: '1px solid var(--icui-border-subtle)'
-                }}
-              >
-                Close
-              </button>
-            </div>
-          )}
 
           <div className="space-y-0">
             {/* Modern Composer - preserves previous layout (textarea on top, controls at bottom) */}

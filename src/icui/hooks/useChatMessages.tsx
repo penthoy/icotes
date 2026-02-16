@@ -299,8 +299,9 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
       const chatConfig = await client.getChatConfig();
       setConfig(chatConfig);
       
-      // Load message history if persistence is enabled
-      if (persistence) {
+      // Load message history if persistence is enabled AND there's an active session.
+      // When no sessions exist yet (fresh install), skip history loading gracefully.
+      if (persistence && client.currentSession) {
         const history = await client.getMessageHistory(maxMessages, client.currentSession);
         // Track current session for proper session-switch detection
         currentSessionRef.current = client.currentSession;
