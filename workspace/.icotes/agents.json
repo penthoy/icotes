@@ -1,14 +1,6 @@
 {
   "version": "1.0",
   "agents": {
-    "OpenAIAgent": {
-      "enabled": true,
-      "displayName": "OpenAIAgent",
-      "description": "gpt-5.2",
-      "category": "Built-in",
-      "order": 2,
-      "modelName": "gpt-5.2"
-    },
     "KimiAgent": {
       "enabled": true,
       "displayName": "Kimi K2.5",
@@ -16,6 +8,14 @@
       "category": "Built-in",
       "order": 1,
       "icon": "\ud83c\udf19"
+    },
+    "OpenAIAgent": {
+      "enabled": true,
+      "displayName": "OpenAIAgent",
+      "description": "gpt-5.2",
+      "category": "Built-in",
+      "order": 2,
+      "modelName": "gpt-5.2"
     },
     "AnthropicAgent": {
       "enabled": true,
@@ -59,7 +59,7 @@
     },
     "GroqKimiAgent": {
       "enabled": true,
-      "displayName": "GroqKimiAgent",
+      "displayName": "Groq kimi k2",
       "description": "Very fast coding agent",
       "category": "Built-in",
       "order": 8
