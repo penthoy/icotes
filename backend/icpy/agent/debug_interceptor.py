@@ -29,7 +29,7 @@ class DebugInterceptor:
         self.session_id = session_id
         self.workspace_path = workspace_path or os.getenv('WORKSPACE_ROOT', '/tmp')
         self.debug_file_path = self._get_debug_file_path()
-        settings = get_debug_settings(session_id)
+        settings = get_debug_settings(session_id, workspace_path=self.workspace_path)
         env_enabled = os.getenv('ICOTES_DEBUG_AGENT', '').lower() in ('1', 'true', 'yes')
         self.enabled = settings.get('enabled', env_enabled)
         self.mode = settings.get('mode', 'minimal')
@@ -262,14 +262,14 @@ class DebugInterceptor:
 _interceptors: Dict[str, DebugInterceptor] = {}
 _debug_settings: Dict[str, Dict[str, Any]] = {}
 
-def get_debug_settings(session_id: str) -> Dict[str, Any]:
+def get_debug_settings(session_id: str, workspace_path: Optional[str] = None) -> Dict[str, Any]:
     """Get debug settings for a session with env defaults."""
     env_enabled = os.getenv('ICOTES_DEBUG_AGENT', '').lower() in ('1', 'true', 'yes')
     settings = _debug_settings.get(session_id, {})
 
     # Load persisted settings from session meta if available
     try:
-        workspace = os.getenv('WORKSPACE_ROOT', '/tmp')
+        workspace = workspace_path or os.getenv('WORKSPACE_ROOT', '/tmp')
         meta_path = Path(workspace) / '.icotes' / 'chat_history' / f"{session_id}.meta.json"
         if meta_path.exists():
             with open(meta_path, 'r', encoding='utf-8') as mf:

@@ -26,6 +26,14 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional
 
+
+def _mask_phone(value: str) -> str:
+    """Mask phone numbers for log output, keeping last 4 digits."""
+    if not value:
+        return value
+    visible = value[-4:] if len(value) > 4 else value
+    return f"***{visible}"
+
 logger = logging.getLogger(__name__)
 
 # Singleton instance
@@ -471,11 +479,12 @@ class WhatsAppBotService:
             if handled:
                 return
 
+        masked = self._mask_phone(sender_e164 or sender)
         logger.info(
-            f"WhatsApp message: sender={sender_e164 or sender}, "
+            f"WhatsApp message: sender={masked}, "
             f"group={is_group}, text={text[:80]}"
         )
-        print(f"💬 Message from {sender_e164 or sender}: {text[:100]}", flush=True)
+        print(f"💬 Message from {masked}: {text[:100]}", flush=True)
 
         # Route through chat service
         await self._process_through_chat(
@@ -694,10 +703,23 @@ class WhatsAppBotService:
 
         except Exception as e:
             logger.error(f"Error processing WhatsApp message: {e}", exc_info=True)
+            await self._disconnect_virtual_ws(wa_ws_id)
             await self._send_command("send", {
                 "jid": chat_jid,
                 "text": f"⚠️ Error processing message: {str(e)}",
             })
+
+    @staticmethod
+    def _mask_phone(value: str) -> str:
+        """Mask phone numbers for log output."""
+        return _mask_phone(value)
+
+    async def _disconnect_virtual_ws(self, websocket_id: str) -> None:
+        """Disconnect a virtual WebSocket to prevent connection-manager leaks."""
+        try:
+            await self.chat_service.disconnect_websocket(websocket_id)
+        except Exception:
+            pass  # Best-effort cleanup
 
     # ─── Response interception (same pattern as Discord) ─────
 
@@ -729,6 +751,7 @@ class WhatsAppBotService:
                     # Cleanup
                     self._wa_response_chunks.pop(websocket_id, None)
                     self._wa_pending_messages.pop(websocket_id, None)
+                    await self._disconnect_virtual_ws(websocket_id)
 
             elif msg_type == "message":
                 # Non-streaming response
@@ -738,6 +761,7 @@ class WhatsAppBotService:
                     await self._send_formatted_response(pending["chat_jid"], content)
                 self._wa_response_chunks.pop(websocket_id, None)
                 self._wa_pending_messages.pop(websocket_id, None)
+                await self._disconnect_virtual_ws(websocket_id)
 
             elif msg_type == "error":
                 error_msg = message_data.get("message", "An error occurred")
@@ -749,6 +773,7 @@ class WhatsAppBotService:
                     })
                 self._wa_response_chunks.pop(websocket_id, None)
                 self._wa_pending_messages.pop(websocket_id, None)
+                await self._disconnect_virtual_ws(websocket_id)
 
             return  # Don't pass WhatsApp messages to original handler
 

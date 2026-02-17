@@ -193,7 +193,7 @@ const ICUIChatHistory: React.FC<ICUIChatHistoryProps> = ({
       } catch (err) {
         if (!abortController.signal.aborted) {
           console.warn('Chat history search failed:', err);
-          setSearchResults([]);
+          setSearchResults(null);
         }
       } finally {
         if (!abortController.signal.aborted) {
