@@ -228,15 +228,19 @@ async def call_custom_agent_stream(agent_name: str, message: str, history: List[
     if hasattr(chat_function, '__call__'):
         # Run sync generator in thread pool to avoid blocking event loop
         import asyncio
+        import contextvars
         loop = asyncio.get_event_loop()
-        
-        # Create sync generator
-        gen = chat_function(message, history)
+
+        # Capture current async context (includes ContextVars like platform context)
+        current_ctx = contextvars.copy_context()
+
+        # Create sync generator inside the captured context
+        gen = current_ctx.run(chat_function, message, history)
         
         # Helper function to get next chunk - must be a proper function, not lambda
         def get_next_chunk():
             try:
-                return next(gen), False
+                return current_ctx.run(next, gen), False
             except StopIteration:
                 return None, True
         

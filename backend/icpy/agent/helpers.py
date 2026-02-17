@@ -19,6 +19,8 @@ import concurrent.futures
 import copy
 import os
 import platform
+import re
+import uuid
 from contextvars import ContextVar
 from datetime import datetime, timezone
 from typing import Dict, List, Any, AsyncGenerator, Optional, Tuple, Callable
@@ -49,6 +51,35 @@ def get_vendor_metadata() -> Optional[Dict[str, Any]]:
 def clear_vendor_metadata():
     """Clear vendor-specific metadata from context."""
     _vendor_metadata.set(None)
+
+
+# Platform context: tracks which messaging platform (WhatsApp, Discord, Web) the current request originates from.
+# Propagates automatically to child asyncio tasks via ContextVar copy.
+_platform_context: ContextVar[Optional[Dict[str, Any]]] = ContextVar('platform_context', default=None)
+
+
+def set_platform_context(context: Optional[Dict[str, Any]]):
+    """Store platform context for the current async task.
+
+    Platform context tells the agent which messaging platform it's communicating on
+    (WhatsApp, Discord, Web UI), providing self-awareness about its identity and
+    capabilities on that platform.
+
+    Args:
+        context: Dict with keys: 'channel' (whatsapp|discord|web), 'bot_name',
+                 'is_group', 'group_name', 'sender_name', etc.
+    """
+    _platform_context.set(context)
+
+
+def get_platform_context() -> Optional[Dict[str, Any]]:
+    """Retrieve platform context for the current async task."""
+    return _platform_context.get()
+
+
+def clear_platform_context():
+    """Clear platform context."""
+    _platform_context.set(None)
 
 
 def get_openai_token_param(model_name: str, max_tokens: int) -> dict:
@@ -111,6 +142,10 @@ __all__ = [
     'set_vendor_metadata',
     'get_vendor_metadata',
     'clear_vendor_metadata',
+    # Platform context (cross-platform awareness)
+    'set_platform_context',
+    'get_platform_context',
+    'clear_platform_context',
 ]
 
 logger = logging.getLogger(__name__)
@@ -163,6 +198,8 @@ BASE_SYSTEM_PROMPT_TEMPLATE = """You are {AGENT_NAME}, a helpful and versatile A
 - Use web_search to find current information from the web
 - Use generate_image for image generation. default to 1:1 (square) aspect ratio unless the user explicitly requests a different format or the content clearly requires a specific orientation (e.g., wide landscape, tall portrait)
 - When you use tools, do not narrate detailed steps. If helpful, you may add a one-line summary of the action, but prefer letting results speak for themselves.
+- Never fabricate tool execution logs or success payloads in plain text (e.g., "🔧 Executing tools", "✅ Success") unless the tool was actually called by the runtime.
+- If a tool was not called, respond normally and do not pretend a tool ran.
 
 **Absolute paths are REQUIRED for all tools that accept file paths:**
 - Never pass a relative path like `tool_tests/test.txt` or `./file.png`.
@@ -312,10 +349,20 @@ class ToolExecutor:
     """
     Helper class for executing tools in agents with proper error handling
     and async support.
+    
+    Uses lazy registry access to avoid loading all tools until actually needed.
     """
     
     def __init__(self):
-        self.registry = get_tool_registry()
+        # Don't load registry in __init__ - delay until first tool execution
+        self._registry = None
+    
+    @property
+    def registry(self):
+        """Lazy-load the tool registry only when first accessed."""
+        if self._registry is None:
+            self._registry = get_tool_registry()
+        return self._registry
     
     async def execute_tool_call(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -393,10 +440,20 @@ class ToolExecutor:
 class ToolDefinitionLoader:
     """
     Helper class for loading tool definitions in OpenAI function calling format.
+    
+    Uses lazy registry access to avoid loading all tools until actually needed.
     """
     
     def __init__(self):
-        self.registry = get_tool_registry()
+        # Don't load registry in __init__ - delay until first tool access
+        self._registry = None
+    
+    @property
+    def registry(self):
+        """Lazy-load the tool registry only when first accessed."""
+        if self._registry is None:
+            self._registry = get_tool_registry()
+        return self._registry
     
     def get_openai_tools(self, exclude_tools: List[str] = None) -> List[Dict[str, Any]]:
         """
@@ -848,6 +905,44 @@ class OpenAIStreamingHandler:
                         break
                     continue
 
+                # Fallback: Some providers occasionally emit markdown that *looks* like
+                # tool execution logs but never return structured tool_calls.
+                # Parse the markdown and execute the real tool call for safe media-generation tools.
+                response_text = "".join(collected_chunks) if collected_chunks else ""
+                if self._contains_simulated_tool_block(response_text):
+                    parsed_calls = self._extract_tool_args_from_simulated_blocks(response_text)
+                    safe_tools = {
+                        "generate_image",
+                        "text_to_video",
+                        "image_to_video",
+                        "video_to_video_with_sound",
+                        "text_to_speech",
+                        "generate_sound_effect",
+                        "generate_music",
+                    }
+                    fallback_calls = [
+                        self._build_tool_call_entry(name, args)
+                        for name, args in parsed_calls
+                        if name in safe_tools
+                    ]
+
+                    if fallback_calls:
+                        tool_loop_count += 1
+                        logger.warning(
+                            "OpenAIStreamingHandler: Simulated tool block detected without tool_calls; executing fallback calls=%s",
+                            [tc["function"]["name"] for tc in fallback_calls],
+                        )
+                        yield "\n⚠️ Detected simulated tool output without real runtime tool calls. Executing real tools now...\n"
+                        yield from self._handle_tool_calls(conv, collected_chunks, fallback_calls)
+                        yield "\n🔧 **Tool execution complete. Continuing...**\n\n"
+                        if max_tool_loops is not None and tool_loop_count >= max_tool_loops:
+                            logger.warning(
+                                f"OpenAIStreamingHandler: Reached max tool-call loops ({max_tool_loops}) after simulated fallback."
+                            )
+                            yield "\n⚠️ Reached maximum tool-call attempts. Stopping to prevent a loop.\n"
+                            break
+                        continue
+
                 # For non-tool responses, append assistant content to the conversation
                 if collected_chunks:
                     conv.append({"role": "assistant", "content": "".join(collected_chunks)})
@@ -1027,6 +1122,89 @@ class OpenAIStreamingHandler:
         )
         
         return collected_chunks, tool_calls_list, finish_reason, vendor_parts
+
+    @staticmethod
+    def _contains_simulated_tool_block(response_text: str) -> bool:
+        if not response_text:
+            return False
+        return "🔧 **Executing tools...**" in response_text and "📋 **" in response_text
+
+    @staticmethod
+    def _extract_tool_args_from_simulated_blocks(response_text: str) -> List[Tuple[str, Dict[str, Any]]]:
+        """Extract tool invocations from simulated markdown tool blocks.
+
+        Expected pattern: `📋 **tool_name**: {json}`
+        """
+        if not response_text or "📋 **" not in response_text:
+            return []
+
+        extracted: List[Tuple[str, Dict[str, Any]]] = []
+        header_pattern = re.compile(r"📋\s*\*\*([^:]+)\*\*:\s*")
+
+        for header_match in header_pattern.finditer(response_text):
+            tool_name = (header_match.group(1) or "").strip()
+            if not tool_name:
+                continue
+
+            args_start = response_text.find("{", header_match.end())
+            if args_start == -1:
+                continue
+
+            depth = 0
+            in_string = False
+            escaped = False
+            args_end = -1
+
+            for idx in range(args_start, len(response_text)):
+                ch = response_text[idx]
+
+                if escaped:
+                    escaped = False
+                    continue
+
+                if ch == "\\":
+                    escaped = True
+                    continue
+
+                if ch == '"':
+                    in_string = not in_string
+                    continue
+
+                if in_string:
+                    continue
+
+                if ch == "{":
+                    depth += 1
+                elif ch == "}":
+                    depth -= 1
+                    if depth == 0:
+                        args_end = idx
+                        break
+
+            if args_end == -1:
+                continue
+
+            args_text = response_text[args_start:args_end + 1]
+            try:
+                parsed_args = json.loads(args_text)
+            except Exception:
+                continue
+
+            if isinstance(parsed_args, dict):
+                extracted.append((tool_name, parsed_args))
+
+        return extracted
+
+    @staticmethod
+    def _build_tool_call_entry(tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            "id": f"simulated_{uuid.uuid4().hex[:12]}",
+            "type": "function",
+            "function": {
+                "name": tool_name,
+                "arguments": json.dumps(arguments),
+            },
+        }
     
     def _sanitize_tool_result_for_llm(self, tool_name: str, result: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -1626,7 +1804,10 @@ def create_agent_context(workspace_root: Optional[str] = None) -> Dict[str, Any]
         
         # Context metadata
         "context_generated_at": now.isoformat(),
-        "context_version": "1.0.0"
+        "context_version": "1.0.0",
+        
+        # Platform context (WhatsApp, Discord, Web — set via set_platform_context())
+        "platform": get_platform_context(),
     }
     
     return context
@@ -1733,6 +1914,55 @@ def _get_directory_size(directory: str) -> int:
         return 0
 
 
+def _format_platform_context(platform_ctx: Optional[Dict[str, Any]]) -> str:
+    """Format platform context into a system prompt section for agent self-awareness."""
+    if not platform_ctx:
+        return ""
+
+    channel = platform_ctx.get('channel', 'web')
+    lines = ["\n## Platform Context\n"]
+
+    if channel == 'whatsapp':
+        bot_name = platform_ctx.get('bot_name', 'Icotes')
+        lines.append(f"**Message Source**: WhatsApp")
+        lines.append(f"- You are communicating via WhatsApp. Your name on this platform is **{bot_name}**.")
+        lines.append(f"- When users @mention \"{bot_name}\" or \"@{bot_name}\", they are addressing YOU — you are {bot_name}.")
+        lines.append(f"- You do NOT have access to Discord or other platforms from this context.")
+        lines.append(f"- Ignore Discord-style numeric mentions (e.g., @1234567890) — those are not valid here.")
+
+        if platform_ctx.get('is_group'):
+            group_name = platform_ctx.get('group_name', 'unknown group')
+            lines.append(f"- This is a **group chat**: \"{group_name}\"")
+            lines.append(f"- You were @mentioned to trigger this response.")
+        else:
+            lines.append(f"- This is a **direct message**.")
+
+        sender_name = platform_ctx.get('sender_name')
+        if sender_name:
+            lines.append(f"- Sender: {sender_name}")
+
+        lines.append(f"- Capabilities: send text, receive text & images, send generated images/media")
+        lines.append(f"- Formatting: WhatsApp supports *bold*, _italic_, ~strikethrough~, ```code```. No markdown links or HTML.")
+
+    elif channel == 'discord':
+        bot_name = platform_ctx.get('bot_name', 'Icotes')
+        lines.append(f"**Message Source**: Discord")
+        lines.append(f"- You are communicating via Discord as **{bot_name}**.")
+        if platform_ctx.get('is_dm'):
+            lines.append(f"- This is a **direct message**.")
+        else:
+            channel_name = platform_ctx.get('channel_name')
+            if channel_name:
+                lines.append(f"- Channel: #{channel_name}")
+        lines.append(f"- Capabilities: send text, images, rich embeds")
+
+    else:
+        # Web UI or default — no extra context needed
+        return ""
+
+    return "\n".join(lines)
+
+
 def format_agent_context_for_prompt(context: Dict[str, Any]) -> str:
     """
     Format the agent context dictionary into a human-readable string 
@@ -1765,6 +1995,8 @@ def format_agent_context_for_prompt(context: Dict[str, Any]) -> str:
     # Include hop context if present
     hop_context_str = context.get('hop_context', '')
     
+    platform_section = _format_platform_context(context.get('platform'))
+
     return f"""
 ## Agent Context Information
 
@@ -1779,6 +2011,7 @@ def format_agent_context_for_prompt(context: Dict[str, Any]) -> str:
 {system_info}
 
 **Environment**: ICOTES Agent Framework with OpenAI API {"✓ configured" if context['icotes']['openai_api_configured'] else "✗ not configured"}
+{platform_section}
 """
 
 

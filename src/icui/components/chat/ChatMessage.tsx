@@ -378,6 +378,105 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', high
     return blocks;
   }, [parsedResult, message.content]);
 
+  // Build filename -> absolute path index from parsed tool outputs (helps resolve markdown image links like ![](white_hair_edit.png))
+  const generatedImagePathIndex = useMemo(() => {
+    const index = new Map<string, string>();
+
+    const addPath = (candidate?: unknown) => {
+      if (!candidate || typeof candidate !== 'string') return;
+      const cleaned = candidate.trim();
+      if (!cleaned) return;
+
+      // Keep filename index for lookups from markdown basenames
+      const withoutFilePrefix = cleaned.startsWith('file://') ? cleaned.slice(7) : cleaned;
+      const base = withoutFilePrefix.split('/').pop();
+      if (base) {
+        index.set(base, cleaned);
+      }
+
+      // Also index full candidate for exact matches
+      index.set(cleaned, cleaned);
+    };
+
+    for (const tc of parsedResult.toolCalls || []) {
+      if (tc.toolName !== 'generate_image') continue;
+
+      let out: any = tc.output;
+      if (typeof out === 'string') {
+        try {
+          out = JSON.parse(out);
+        } catch {
+          out = null;
+        }
+      }
+      if (!out || typeof out !== 'object') continue;
+
+      // Accept both wrapped and unwrapped shapes
+      const data = out.data && typeof out.data === 'object' ? out.data : out;
+      addPath(data.absolutePath);
+      addPath(data.filePath);
+      addPath(data.imageUrl);
+      if (data.imageReference && typeof data.imageReference === 'object') {
+        addPath(data.imageReference.absolute_path);
+      }
+    }
+
+    return index;
+  }, [parsedResult.toolCalls]);
+
+  const resolveMarkdownImageSrc = useCallback((src?: string): string | undefined => {
+    if (!src) return src;
+    const raw = src.trim();
+    if (!raw) return raw;
+
+    // Keep already-resolved URLs untouched
+    if (
+      raw.startsWith('http://') ||
+      raw.startsWith('https://') ||
+      raw.startsWith('data:') ||
+      raw.startsWith('blob:') ||
+      raw.startsWith('/api/')
+    ) {
+      return raw;
+    }
+
+    const toRawApiUrl = (filePath: string) => {
+      const p = filePath.startsWith('file://') ? filePath.slice(7) : filePath;
+      return `/api/files/raw?path=${encodeURIComponent(p)}`;
+    };
+
+    // file:// absolute paths
+    if (raw.startsWith('file://')) {
+      return toRawApiUrl(raw);
+    }
+
+    // Unix absolute paths
+    if (raw.startsWith('/')) {
+      return toRawApiUrl(raw);
+    }
+
+    // Windows absolute paths
+    if (/^[a-zA-Z]:[\\/]/.test(raw)) {
+      return toRawApiUrl(raw);
+    }
+
+    // Relative/basename: try to map using generate_image tool output in same message
+    const base = raw.split('/').pop() || raw;
+    const mapped = generatedImagePathIndex.get(raw) || generatedImagePathIndex.get(base);
+    if (mapped) {
+      if (mapped.startsWith('http://') || mapped.startsWith('https://') || mapped.startsWith('data:')) {
+        return mapped;
+      }
+      if (mapped.startsWith('/api/')) {
+        return mapped;
+      }
+      return toRawApiUrl(mapped);
+    }
+
+    // Fallback: leave untouched (no regression for existing valid relative assets)
+    return raw;
+  }, [generatedImagePathIndex]);
+
   // Format timestamp helper
   const formatTimestamp = useCallback((timestamp: string | Date) => {
     const date = typeof timestamp === 'string' ? new Date(timestamp) : timestamp;
@@ -594,8 +693,35 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', high
       <p className="mb-3 leading-relaxed" style={{ color: 'var(--icui-text-primary)' }}>
         {children}
       </p>
-    )
-  }), [isDark, handleCopy, copiedStates, message.id]);
+    ),
+
+    img: ({ src, alt }: { src?: string; alt?: string }) => {
+      const resolvedSrc = resolveMarkdownImageSrc(src);
+      if (!resolvedSrc) return null;
+
+      return (
+        <img
+          src={resolvedSrc}
+          alt={alt || 'Image'}
+          className="rounded-md border shadow-sm hover:shadow-md transition-shadow my-2"
+          style={{
+            border: '1px solid var(--icui-border-subtle)',
+            backgroundColor: 'var(--icui-bg-secondary)',
+            maxWidth: '320px',
+            maxHeight: '320px',
+            objectFit: 'contain'
+          }}
+          loading="lazy"
+          onClick={() => window.open(resolvedSrc, '_blank')}
+          onError={(e) => {
+            // Hide broken markdown images instead of showing broken icon (widget/attachments still render)
+            const el = e.currentTarget;
+            el.style.display = 'none';
+          }}
+        />
+      );
+    }
+  }), [isDark, handleCopy, copiedStates, message.id, resolveMarkdownImageSrc]);
 
   if (message.sender === 'user') {
     // User messages: Keep chat bubble style (modern chat style)

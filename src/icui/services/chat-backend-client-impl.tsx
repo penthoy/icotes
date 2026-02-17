@@ -47,6 +47,14 @@ export interface ChatMessage {
   content: string;
   timestamp: Date;
   sender: 'user' | 'ai' | 'system';
+  attachments?: Array<{
+    id: string;
+    kind: 'image' | 'audio' | 'file';
+    path: string;
+    mime: string;
+    size: number;
+    meta?: Record<string, any>;
+  }>;
   metadata?: {
     // Session correlation (used for replay buffering + history merge)
     session_id?: string;
@@ -596,22 +604,7 @@ export class ChatBackendClient {
         timestamp: new Date(msg.timestamp),
         sender: msg.sender,
         // Map attachments if present (backend stores as list of dicts)
-        attachments: Array.isArray(msg.attachments) ? msg.attachments.map((a: any) => ({
-          id: a.id || a.attachment_id || a.rel_path || a.path || String(Math.random()),
-          kind: a.kind === 'images' ? 'image' : (a.kind === 'audio' ? 'audio' : 'file'),
-          path: a.relative_path || a.rel_path || a.path || a.url || '',
-          mime: a.mime_type || a.mime || 'application/octet-stream',
-          size: a.size_bytes || a.size || 0,
-          meta: (() => {
-            const m = a.meta && typeof a.meta === 'object' ? { ...a.meta } : {};
-            if (a.filename && !m.filename) m.filename = a.filename;
-            // Mark explorer refs by id/path heuristics
-            if (typeof (a.id || '') === 'string' && String(a.id).startsWith('explorer-')) {
-              (m as any).source = 'explorer';
-            }
-            return Object.keys(m).length ? m : undefined;
-          })()
-        })) : undefined,
+        attachments: Array.isArray(msg.attachments) ? msg.attachments.map((a: any) => this.mapBackendAttachment(a)) : undefined,
         metadata: {
           agentId: msg.agentId,
           agentName: msg.agentName,
@@ -851,6 +844,9 @@ export class ChatBackendClient {
       content: data.content || '',
       timestamp: new Date(data.timestamp || Date.now()),
       sender: data.role === 'user' ? 'user' : 'ai', // Map role to sender
+      attachments: Array.isArray(data.attachments)
+        ? data.attachments.map((a: any) => this.mapBackendAttachment(a))
+        : undefined,
       metadata: {
         agentId: data.agentId,
         agentName: data.agentName,
@@ -878,6 +874,24 @@ export class ChatBackendClient {
     
     this.notifyMessage(message);
     this.isStreaming = false;
+  }
+
+  private mapBackendAttachment(a: any): any {
+    const id = a?.id || a?.attachment_id || '';
+    const kind = a?.kind === 'images' ? 'image' : (a?.kind === 'audio' ? 'audio' : 'file');
+    const path = a?.relative_path || a?.rel_path || a?.path || a?.url || '';
+    const mime = a?.mime_type || a?.mime || 'application/octet-stream';
+    const size = a?.size_bytes || a?.size || 0;
+    const meta = (() => {
+      const m = a?.meta && typeof a.meta === 'object' ? { ...a.meta } : {};
+      if (a?.filename && !m.filename) m.filename = a.filename;
+      if (typeof (a?.id || '') === 'string' && String(a.id).startsWith('explorer-')) {
+        (m as any).source = 'explorer';
+      }
+      return Object.keys(m).length ? m : undefined;
+    })();
+
+    return { id, kind, path, mime, size, meta };
   }
 
   private handleStreamingMessage(data: any): void {

@@ -1,0 +1,18 @@
+{
+  "name": "icotes-whatsapp-bridge",
+  "version": "1.0.0",
+  "description": "WhatsApp bridge for icotes using Baileys",
+  "type": "module",
+  "main": "bridge.js",
+  "scripts": {
+    "start": "node bridge.js",
+    "dev": "node --watch bridge.js"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "^7.0.0-rc.9",
+    "qrcode-terminal": "^0.12.0",
+    "qrcode": "^1.5.4",
+    "pino": "^9.0.0",
+    "node-cache": "^5.1.2"
+  }
+}
