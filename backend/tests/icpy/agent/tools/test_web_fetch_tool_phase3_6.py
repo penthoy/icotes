@@ -143,6 +143,71 @@ class TestWebFetchToolYouTube:
             assert result.data['metadata']['video_id'] == 'test123'
             assert 'Test video' in result.data['content']
 
+    @pytest.mark.asyncio
+    async def test_execute_youtube_no_transcript_returns_explicit_message(self, tool):
+        """Test YouTube videos without transcript return explicit no-transcript response."""
+        with patch.object(tool, '_fetch_youtube_transcript', new=AsyncMock(return_value=(False, None, 'No transcript found for this video'))), \
+             patch.object(tool, '_fetch_youtube_video_title', new=AsyncMock(return_value='Robot Dance Demo')):
+            result = await tool.execute(url="https://youtube.com/watch?v=test123")
+
+            assert result.success is True
+            assert result.data['metadata']['type'] == 'youtube_no_transcript'
+            assert result.data['metadata']['transcript_available'] is False
+            assert result.data['metadata']['transcript_error'] == 'No transcript found for this video'
+            assert 'No transcript is available' in result.data['content']
+            assert result.data['title'] == 'Robot Dance Demo'
+
+    @pytest.mark.asyncio
+    async def test_execute_youtube_no_transcript_does_not_fallback_to_html_fetch(self, tool):
+        """Test no-transcript path never calls generic HTML fetch for YouTube URLs."""
+        with patch.object(tool, '_fetch_youtube_transcript', new=AsyncMock(return_value=(False, None, 'Transcripts are disabled for this video'))), \
+             patch.object(tool, '_fetch_youtube_video_title', new=AsyncMock(return_value=None)), \
+             patch.object(tool, '_fetch_via_hop', new=AsyncMock()) as mock_fetch_via_hop:
+            result = await tool.execute(url="https://youtu.be/test123")
+
+            assert result.success is True
+            assert result.data['metadata']['type'] == 'youtube_no_transcript'
+            assert 'transcript' in result.data['content'].lower()
+            mock_fetch_via_hop.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_fetch_youtube_transcript_repetitive_content_rejected(self, tool):
+        """Test repetitive low-information transcript is rejected as unreliable."""
+        class Entry:
+            def __init__(self, text: str, start: float, duration: float):
+                self.text = text
+                self.start = start
+                self.duration = duration
+
+        class FakeFetchedTranscript:
+            language = 'en'
+            is_generated = True
+
+            def __iter__(self):
+                return iter([
+                    Entry('Heat', 0.0, 1.0),
+                    Entry('Heat', 1.0, 1.0),
+                    Entry('Heat', 2.0, 1.0),
+                    Entry('Heat', 3.0, 1.0),
+                    Entry('Heat', 4.0, 1.0),
+                    Entry('Heat', 5.0, 1.0),
+                    Entry('Heat', 6.0, 1.0),
+                    Entry('Heat', 7.0, 1.0),
+                    Entry('Heat', 8.0, 1.0),
+                    Entry('Heat', 9.0, 1.0),
+                    Entry('Heat', 10.0, 1.0),
+                    Entry('Heat', 11.0, 1.0),
+                ])
+
+        with patch('icpy.agent.tools.web_fetch_tool.YouTubeTranscriptApi') as mock_api:
+            mock_api.return_value.fetch.return_value = FakeFetchedTranscript()
+
+            success, data, error = await tool._fetch_youtube_transcript("https://youtube.com/watch?v=test123")
+
+            assert success is False
+            assert data is None
+            assert 'repetitive' in error.lower() or 'low-information' in error.lower()
+
 
 class TestWebFetchToolCaching:
     """Test Phase 4: Caching functionality"""

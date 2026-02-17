@@ -59,7 +59,7 @@ export const WebFetchWidget: React.FC<WebFetchWidgetProps> = ({
 
   const statusInfo = getStatusInfo();
   const displayTitle = title || metadata?.title || 'Web Page';
-  const isYouTube = metadata?.type === 'youtube_transcript';
+  const isYouTube = metadata?.type === 'youtube_transcript' || metadata?.type === 'youtube_no_transcript';
 
   const handleCopy = async () => {
     try {
