@@ -22,6 +22,10 @@ export { default as ICUIExplorer } from './panels/ICUIExplorer';
 export { default as ICUITerminal } from './panels/ICUITerminal';
 export { default as ICUIChat } from './panels/ICUIChat';
 export { default as ICUIChatHistory } from './panels/ICUIChatHistory';
+export { default as DebugSidecarPanel } from './panels/DebugSidecarPanel';
+export { default as ICUIPreview } from './panels/ICUIPreview';
+export { default as ICUIHop } from './panels/ICUIHop';
+export { default as ICUIGit } from './panels/ICUIGit';
 export { default as ICUIGitConnect } from './ICUIGitConnect';
 
 // Menu Components

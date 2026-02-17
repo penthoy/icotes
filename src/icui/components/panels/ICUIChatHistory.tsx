@@ -8,6 +8,7 @@ import { registerChatHistoryCommands } from '../chat/ChatHistoryOperations';
 import { confirmService } from '../../services/confirmService';
 import { promptService } from '../../services/promptService';
 import { debugLogger } from '../../utils/debugLogger';
+import { configService } from '../../../services/config-service';
 
 interface ICUIChatHistoryProps {
   className?: string;
@@ -32,6 +33,8 @@ const ICUIChatHistory: React.FC<ICUIChatHistoryProps> = ({
   const [tempName, setTempName] = useState<string>('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [searchResults, setSearchResults] = useState<Array<{ session_id: string; session_name: string; matches: Array<{ role?: string; content_preview: string; message_index?: number }> }> | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
   
   // Multi-select state
   const [selectedSessions, setSelectedSessions] = useState<Set<string>>(new Set());
@@ -131,17 +134,80 @@ const ICUIChatHistory: React.FC<ICUIChatHistoryProps> = ({
 
   // Filter and sort sessions based on search query
   const filteredAndSortedSessions = useMemo(() => {
+    const query = searchQuery.trim();
+    // searchResults !== null means a backend search was performed
+    if (query && searchResults !== null) {
+      if (searchResults.length === 0) {
+        // Backend searched but found nothing — show empty list
+        return [];
+      }
+      const byId = new Map(sessions.map(s => [s.id, s]));
+      const merged = searchResults.map(result => {
+        const meta = byId.get(result.session_id);
+        return {
+          id: result.session_id,
+          name: result.session_name || meta?.name || 'Untitled',
+          created: meta?.created || Date.now(),
+          updated: meta?.updated || Date.now(),
+          message_count: meta?.message_count,
+          last_message_time: meta?.last_message_time,
+          __matches: result.matches
+        };
+      });
+      return merged.slice().sort((a, b) => b.updated - a.updated);
+    }
+
     let filtered = sessions;
-    
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      filtered = sessions.filter(session => 
-        (session.name || 'Untitled').toLowerCase().includes(query)
+    if (query) {
+      const qLower = query.toLowerCase();
+      filtered = sessions.filter(session =>
+        (session.name || 'Untitled').toLowerCase().includes(qLower)
       );
     }
-    
+
     return filtered.slice().sort((a, b) => b.updated - a.updated);
-  }, [sessions, searchQuery]);
+  }, [sessions, searchQuery, searchResults]);
+
+  // Debounced backend content search with abort to prevent stale responses
+  useEffect(() => {
+    let timer: number | undefined;
+    const abortController = new AbortController();
+    const query = searchQuery.trim();
+    if (!query) {
+      setSearchResults(null);
+      return;
+    }
+
+    const run = async () => {
+      try {
+        setIsSearching(true);
+        const cfg = await configService.getConfig();
+        const base = (cfg.api_url || cfg.base_url || '').replace(/\/api$/, '');
+        const url = `${base || window.location.origin}/api/chat/search?q=${encodeURIComponent(query)}&limit=50&max_matches=3`;
+        const res = await fetch(url, { signal: abortController.signal });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        if (!abortController.signal.aborted) {
+          setSearchResults(Array.isArray(json.data) ? json.data : []);
+        }
+      } catch (err) {
+        if (!abortController.signal.aborted) {
+          console.warn('Chat history search failed:', err);
+          setSearchResults(null);
+        }
+      } finally {
+        if (!abortController.signal.aborted) {
+          setIsSearching(false);
+        }
+      }
+    };
+
+    timer = window.setTimeout(run, 300);
+    return () => {
+      if (timer) window.clearTimeout(timer);
+      abortController.abort();
+    };
+  }, [searchQuery]);
 
   // Session management handlers
   const handleCreateNew = useCallback(async () => {
@@ -291,9 +357,9 @@ const ICUIChatHistory: React.FC<ICUIChatHistoryProps> = ({
       (async () => {
         const ok = await confirmService.confirm({ title: 'Delete Sessions', message: confirmMessage, danger: true, confirmText: 'Delete' });
         if (ok) {
-          selectedSessionObjects.forEach(session => {
-            deleteSession(session.id);
-          });
+          await Promise.all(selectedSessionObjects.map(session =>
+            deleteSession(session.id).catch(err => console.error(`Failed to delete session ${session.id}:`, err))
+          ));
           setSelectedSessions(new Set());
         }
       })();
@@ -439,9 +505,9 @@ const ICUIChatHistory: React.FC<ICUIChatHistoryProps> = ({
                   (async () => {
                     const ok = await confirmService.confirm({ title: 'Delete Sessions', message: confirmMessage, danger: true, confirmText: 'Delete' });
                     if (ok) {
-                      selectedSessionObjects.forEach(session => {
-                        deleteSession(session.id);
-                      });
+                      await Promise.all(selectedSessionObjects.map(s =>
+                        deleteSession(s.id).catch(err => console.error(`Failed to delete session ${s.id}:`, err))
+                      ));
                       setSelectedSessions(new Set());
                     }
                   })();
@@ -491,7 +557,7 @@ const ICUIChatHistory: React.FC<ICUIChatHistoryProps> = ({
         </div>
         {searchQuery && (
           <div className="mt-2 text-xs" style={{ color: 'var(--icui-text-secondary)' }}>
-            {filteredAndSortedSessions.length} session{filteredAndSortedSessions.length === 1 ? '' : 's'} found
+            {isSearching ? 'Searching…' : `${filteredAndSortedSessions.length} session${filteredAndSortedSessions.length === 1 ? '' : 's'} found`}
           </div>
         )}
       </div>
@@ -594,6 +660,11 @@ const ICUIChatHistory: React.FC<ICUIChatHistoryProps> = ({
                         <Clock className="w-3 h-3" />
                         <span>{formatRelativeTime(session.updated)}</span>
                       </div>
+                      {Array.isArray((session as any).__matches) && (session as any).__matches.length > 0 && (
+                        <div className="mt-1 text-xs line-clamp-2" style={{ color: 'var(--icui-text-muted)' }}>
+                          {(session as any).__matches[0]?.content_preview || ''}
+                        </div>
+                      )}
                     </div>
 
                     {/* Per-item hover actions removed to simplify UI */}

@@ -96,6 +96,7 @@ export function useICUIPanels(): ICUIPanelHookResult {
       properties: {},
       timeline: {},
       inspector: {},
+      'agent-debug': {},
       custom: {},
     },
   });

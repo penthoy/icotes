@@ -38,6 +38,7 @@ import { chatBackendClient } from '../../services/chat-backend-client-impl';
 import { useChatHistory } from '../../hooks/useChatHistory';
 import type { MediaAttachment as ChatMediaAttachment } from '../../types/chatTypes';
 import { mediaService } from '../../services/mediaService';
+import { configService } from '../../../services/config-service';
 // Consolidated helpers to reduce file size and prevent regressions
 import { inferMimeFromName } from '../chat/utils/mime';
 import { waitForUploadsToSettle, buildAttachmentsFromUploads, buildReferencedAttachments } from '../chat/utils/sendPipeline';
@@ -95,6 +96,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
   const chatRootRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [inputValue, setInputValue] = useState('');
   const [selectedAgent, setSelectedAgent] = useState(''); // Default agent will be set by CustomAgentDropdown
   // Theme-dependent colors are provided via CSS variables; explicit theme state not required here
@@ -106,6 +108,9 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
   const [hasNewMessages, setHasNewMessages] = useState(false);
   const [userHasScrolledUp, setUserHasScrolledUp] = useState(false);
   const lastScrollTop = useRef(0);
+  // Inline editing state
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editingContent, setEditingContent] = useState<string>('');
   // Local staged attachments (minimal Phase 4.1 test implementation)
   const [staged, setStaged] = useState<{ id: string; file: File; preview: string }[]>([]);
   // Explorer referenced files (no upload – just path references)
@@ -141,8 +146,9 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
     hasMessages,
     scrollToBottom
   } = useChatMessages({
-    // Avoid auto-connecting before a session is known to prevent generating orphan sessions
-    autoConnect: !!(typeof window !== 'undefined' && (localStorage.getItem('icui.chat.active_session') || chatBackendClient.currentSession)) && autoConnect,
+    // Always auto-connect the WebSocket transport — it's independent of session existence.
+    // Sessions are created via REST API, not by the WS connection itself.
+    autoConnect,
     maxMessages,
     persistence,
     // Disable hook-level auto-scroll when user has intentionally scrolled up
@@ -183,18 +189,8 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
     return result;
   }, [messages]);
 
-  // Chat search hook (Ctrl+F) - context sensitive: only active when Chat has focus
-  const search = useChatSearch(messages, {
-    isActive: () => {
-      try {
-        const root = chatRootRef.current;
-        const activeEl = typeof document !== 'undefined' ? document.activeElement : null;
-        return !!(root && activeEl && root.contains(activeEl));
-      } catch {
-        return true; // fallback to previous behavior
-      }
-    }
-  });
+  // Chat search hook (Ctrl+F) — keyboard handler is scoped to chatRootRef
+  const search = useChatSearch(messages, chatRootRef);
 
   // Session synchronization
   const { onSessionChange, emitSessionChange } = useChatSessionSync('ICUIChat');
@@ -246,6 +242,91 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
       setTempTitle('');
     }
   }, [currentSessionId, tempTitle, renameSession, sessionTitle]);
+
+  const getApiBaseUrl = useCallback(async () => {
+    try {
+      const cfg = await configService.getConfig();
+      const base = cfg.api_url || cfg.base_url || '';
+      return base.endsWith('/api') ? base.slice(0, -4) : base;
+    } catch {
+      const base = (window as any).__ICUI_API_URL__ || (import.meta as any).env?.VITE_API_URL || (import.meta as any).env?.VITE_BACKEND_URL || `${window.location.protocol}//${window.location.host}`;
+      return base.endsWith('/api') ? base.slice(0, -4) : base;
+    }
+  }, []);
+
+  const rollbackSession = useCallback(async (sessionId: string, messageIndex: number) => {
+    const base = await getApiBaseUrl();
+    const res = await fetch(`${base}/api/chat/${sessionId}/rollback`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message_index: messageIndex })
+    });
+    if (!res.ok) throw new Error(`Rollback failed: ${res.status}`);
+    return res.json();
+  }, [getApiBaseUrl]);
+
+  const editSessionMessage = useCallback(async (sessionId: string, messageIndex: number, content: string) => {
+    const base = await getApiBaseUrl();
+    const res = await fetch(`${base}/api/chat/${sessionId}/messages/${messageIndex}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content })
+    });
+    if (!res.ok) throw new Error(`Edit failed: ${res.status}`);
+    return res.json();
+  }, [getApiBaseUrl]);
+
+  const handleEditMessage = useCallback(async (messageId: string) => {
+    const msg = messages.find(m => m.id === messageId);
+    if (!msg || msg.sender !== 'user') {
+      return;
+    }
+    
+    setEditingMessageId(messageId);
+    setEditingContent(msg.content);
+  }, [messages]);
+
+  const handleSaveEdit = useCallback(async (messageId: string, newContent: string) => {
+    const idx = messages.findIndex(m => m.id === messageId);
+    if (idx < 0 || !currentSessionId) return;
+
+    const trimmed = newContent.trim();
+    if (!trimmed) return;
+
+    // Preserve the agent routing from the original message when possible
+    const agentTypeFromMessage = (messages[idx] as any)?.metadata?.agentType as string | undefined;
+
+    try {
+      await stopStreaming();
+    } catch {
+      // best-effort stop
+    }
+
+    try {
+      // Edit in-place (backend truncates subsequent messages)
+      await editSessionMessage(currentSessionId, idx, trimmed);
+      await reloadMessages(currentSessionId);
+
+      // Clear edit mode
+      setEditingMessageId(null);
+      setEditingContent('');
+
+      // Trigger regeneration from the edited message without appending a new user message
+      await chatBackendClient.regenerate({
+        sessionId: currentSessionId,
+        messageIndex: idx,
+        agentType: agentTypeFromMessage
+      });
+    } catch (error) {
+      console.error('Failed to edit and resend message:', error);
+      notificationService.error('Failed to edit message');
+    }
+  }, [messages, currentSessionId, editSessionMessage, reloadMessages, stopStreaming]);
+
+  const handleCancelEdit = useCallback(() => {
+    setEditingMessageId(null);
+    setEditingContent('');
+  }, []);
 
   // Get available custom agents
   const { agents: configuredAgents, isLoading: agentsLoading, error: agentsError } = useConfiguredAgents();
@@ -361,6 +442,12 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
       if (process.env.NODE_ENV === 'development') {
         console.log(`[${componentId.current}] Session change event:`, { sessionId, action, sessionName });
       }
+      if (action === 'rename') {
+        if (sessionId === currentSessionId && sessionName) {
+          setCurrentSessionName(sessionName);
+        }
+        return;
+      }
       if (action === 'switch' || action === 'create') {
         if (sessionId !== currentSessionId) {
           setCurrentSessionId(sessionId);
@@ -424,9 +511,9 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
     try {
       // Auto-create session if none exists
       if (!currentSessionId && sessions.length === 0) {
-        // Create session with explicit name, matching manual button behavior
-        const newSessionId = await createSession('New Chat');
-        // Set the name immediately - don't rely on async session state updates
+        // Create session without an explicit name so backend can auto-title later.
+        const newSessionId = await createSession();
+        // Set a temporary name immediately; backend will rename via auto-title.
         const createdName = 'New Chat';
         setCurrentSessionId(newSessionId);
         setCurrentSessionName(createdName);
@@ -550,6 +637,35 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
       inputRef.current.focus();
     }
   }, []);
+
+  // Handle file upload button click
+  const handleUploadClick = useCallback(() => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  }, []);
+
+  // Handle file selection from input
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      const fileArray = Array.from(files);
+      // Add to upload queue
+      uploadApi.addFiles(fileArray, { context: 'chat' });
+      // Create staging previews
+      fileArray.forEach(file => {
+        const tempId = `staged-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        if (file.type.startsWith('image/')) {
+          const preview = URL.createObjectURL(file);
+          setStaged(prev => [...prev, { id: tempId, file, preview }]);
+        } else {
+          setStaged(prev => [...prev, { id: tempId, file, preview: '' }]);
+        }
+      });
+      // Reset input so same file can be selected again
+      e.target.value = '';
+    }
+  }, [uploadApi]);
 
 
 
@@ -707,11 +823,13 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
   return (
     <div 
       ref={chatRootRef}
+      tabIndex={-1}
       className={`icui-chat h-full flex flex-col relative ${className}`} 
       style={{ 
         backgroundColor: 'var(--icui-bg-primary)', 
   color: 'var(--icui-text-primary)',
-  overflowX: 'hidden'
+  overflowX: 'hidden',
+  outline: 'none',
       }}
     >
       {/* No inline drop zone overlay; chat paste still supported */}
@@ -770,6 +888,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
 
         {/* Actions */}
         <div className="flex items-center space-x-2">
+          {/* Debug sidecar disabled for now */}
           {/* New Chat Button */}
           <button
       onClick={async () => {
@@ -815,13 +934,100 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
       </div>
 
       <div className="icui-chat-drop-scope flex-1 relative flex flex-col" style={{ minHeight:0 }}>
+        {/* Floating search bar — VS Code-style, pinned to top-right of messages area */}
+        {search.isOpen && (
+          <div
+            className="absolute top-2 right-4 z-20 flex items-center gap-1.5 rounded-md shadow-lg px-2 py-1.5"
+            style={{
+              backgroundColor: 'var(--icui-bg-secondary)',
+              border: '1px solid var(--icui-border)',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+              maxWidth: 'calc(100% - 2rem)',
+            }}
+          >
+            <input
+              ref={search.searchInputRef}
+              value={search.query}
+              onChange={e => search.setQuery(e.target.value)}
+              placeholder="Find in chat…"
+              className="text-sm px-2 py-1 rounded outline-none"
+              style={{
+                color: 'var(--icui-text-primary)',
+                backgroundColor: 'var(--icui-bg-tertiary)',
+                border: '1px solid var(--icui-border-subtle)',
+                width: '180px',
+                minWidth: '120px',
+              }}
+              autoFocus
+            />
+            {/* Match counter */}
+            <span className="text-xs whitespace-nowrap tabular-nums" style={{ color: 'var(--icui-text-secondary)', minWidth: '36px', textAlign: 'center' }}>
+              {search.results.length === 0
+                ? (search.query ? 'No results' : '')
+                : `${search.activeIdx + 1}/${search.results.length}`}
+            </span>
+            {/* Navigation buttons */}
+            <button
+              className="p-1 rounded hover:opacity-80 transition-opacity"
+              onClick={search.prev}
+              disabled={search.results.length === 0}
+              title="Previous match (Shift+Enter)"
+              style={{ color: 'var(--icui-text-secondary)', opacity: search.results.length === 0 ? 0.3 : 1 }}
+            >
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 4l-4 4h8z"/></svg>
+            </button>
+            <button
+              className="p-1 rounded hover:opacity-80 transition-opacity"
+              onClick={search.next}
+              disabled={search.results.length === 0}
+              title="Next match (Enter)"
+              style={{ color: 'var(--icui-text-secondary)', opacity: search.results.length === 0 ? 0.3 : 1 }}
+            >
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 12l4-4H4z"/></svg>
+            </button>
+            {/* Options toggles */}
+            <button
+              className="text-xs px-1.5 py-0.5 rounded transition-colors"
+              onClick={search.toggleCaseSensitive}
+              title="Match Case"
+              style={{
+                color: search.options.caseSensitive ? 'var(--icui-text-primary)' : 'var(--icui-text-muted)',
+                backgroundColor: search.options.caseSensitive ? 'var(--icui-bg-tertiary)' : 'transparent',
+                border: search.options.caseSensitive ? '1px solid var(--icui-border)' : '1px solid transparent',
+              }}
+            >
+              Aa
+            </button>
+            <button
+              className="text-xs px-1.5 py-0.5 rounded transition-colors"
+              onClick={search.toggleRegex}
+              title="Use Regex"
+              style={{
+                color: search.options.useRegex ? 'var(--icui-text-primary)' : 'var(--icui-text-muted)',
+                backgroundColor: search.options.useRegex ? 'var(--icui-bg-tertiary)' : 'transparent',
+                border: search.options.useRegex ? '1px solid var(--icui-border)' : '1px solid transparent',
+              }}
+            >
+              .*
+            </button>
+            {/* Close */}
+            <button
+              className="p-1 rounded hover:opacity-80 transition-opacity"
+              onClick={search.close}
+              title="Close (Esc)"
+              style={{ color: 'var(--icui-text-secondary)' }}
+            >
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 8.7L3.3 13.4 2.6 12.7 7.3 8 2.6 3.3 3.3 2.6 8 7.3l4.7-4.7.7.7L8.7 8l4.7 4.7-.7.7z"/></svg>
+            </button>
+          </div>
+        )}
+
         {/* Messages Container */}
         <div 
           ref={chatContainerRef}
           className="flex-1 overflow-y-auto p-3 relative"
           style={{ backgroundColor: 'var(--icui-bg-primary)', overflowX: 'hidden' }}
         >
-        {/* Search overlay moved below in toolbar */}
         {isLoading ? (
           <div className="flex items-center justify-center h-full">
             <div className="flex items-center space-x-2" style={{ color: 'var(--icui-text-muted)' }}>
@@ -846,6 +1052,12 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
                   className=""
                   highlightQuery={search.isOpen ? search.query : ''}
                   requestTimestamp={requestTimestampByMessageId.get(message.id)}
+                  onEditMessage={handleEditMessage}
+                  isEditing={editingMessageId === message.id}
+                  editingContent={editingMessageId === message.id ? editingContent : undefined}
+                  onEditingContentChange={setEditingContent}
+                  onSaveEdit={handleSaveEdit}
+                  onCancelEdit={handleCancelEdit}
                 />
               </div>
             ))}
@@ -864,7 +1076,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
         )}
         </div>
 
-        {/* Bottom Toolbar: Search + Input */}
+        {/* Bottom Toolbar: Input */}
         <div 
           className="p-3 space-y-2" 
           style={{ 
@@ -873,65 +1085,13 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
             overflowX: 'hidden'
           }}
         >
-          {/* Search bar pinned above input */}
-          {search.isOpen && (
-            <div className="flex items-center gap-2 border rounded p-2" style={{ borderColor: 'var(--icui-border)', backgroundColor: 'var(--icui-bg-secondary)' }}>
-              <input
-                value={search.query}
-                onChange={e => search.setQuery(e.target.value)}
-                placeholder="Search..."
-                className="text-sm px-2 py-1 rounded outline-none flex-1"
-                style={{ 
-                  color: 'var(--icui-text-primary)',
-                  backgroundColor: 'var(--icui-bg-tertiary)',
-                  border: '1px solid var(--icui-border-subtle)'
-                }}
-                autoFocus
-              />
-              <span className="text-xs whitespace-nowrap" style={{ color: 'var(--icui-text-secondary)' }}>
-                {search.results.length === 0 ? '0/0' : `${search.activeIdx + 1}/${search.results.length}`}
-              </span>
-              <button 
-                className="text-xs px-2 py-1 rounded hover:opacity-80 whitespace-nowrap" 
-                onClick={search.prev}
-                style={{ 
-                  color: 'var(--icui-text-primary)',
-                  backgroundColor: 'var(--icui-bg-tertiary)',
-                  border: '1px solid var(--icui-border-subtle)'
-                }}
-              >
-                Prev
-              </button>
-              <button 
-                className="text-xs px-2 py-1 rounded hover:opacity-80 whitespace-nowrap" 
-                onClick={search.next}
-                style={{ 
-                  color: 'var(--icui-text-primary)',
-                  backgroundColor: 'var(--icui-bg-tertiary)',
-                  border: '1px solid var(--icui-border-subtle)'
-                }}
-              >
-                Next
-              </button>
-              <button 
-                className="text-xs px-2 py-1 rounded hover:opacity-80 whitespace-nowrap" 
-                onClick={() => search.setIsOpen(false)}
-                style={{ 
-                  color: 'var(--icui-text-primary)',
-                  backgroundColor: 'var(--icui-bg-tertiary)',
-                  border: '1px solid var(--icui-border-subtle)'
-                }}
-              >
-                Close
-              </button>
-            </div>
-          )}
 
-          <div className="space-y-2">
+          <div className="space-y-0">
             {/* Modern Composer - preserves previous layout (textarea on top, controls at bottom) */}
             <div ref={setComposerEl} className={`icui-composer ${isDragActive ? 'ring-2 ring-blue-400 rounded-md transition-colors' : ''}`} data-chat-composer>
-              {(referenced.length > 0 || staged.length > 0) && (
-                <div className="flex flex-wrap gap-2 mb-2 items-center" data-chat-attachments>
+              {/* Always show attachments area to display upload button */}
+              {(referenced.length > 0 || staged.length > 0 || isConnected) && (
+                <div className="flex flex-wrap gap-1 mb-0 items-center px-3 py-3" data-chat-attachments>
                   {referenced.map(ref => {
                     const mime = inferMimeFromName(ref.name);
                     const isImage = mime.startsWith('image/');
@@ -1078,6 +1238,16 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
                       >×</button>
                     </div>
                   ))}
+                  {/* Add upload button tile */}
+                  <button
+                    onClick={handleUploadClick}
+                    className="w-8 h-8 border-2 border-dashed rounded flex items-center justify-center hover:bg-opacity-10 hover:bg-white transition cursor-pointer"
+                    style={{ borderColor: 'var(--icui-border-subtle)', color: 'var(--icui-text-secondary)' }}
+                    title="Upload files (images, videos, documents)"
+                    disabled={!isConnected}
+                  >
+                    <span className="text-xl leading-none">+</span>
+                  </button>
                 </div>
               )}
               {/* Body: textarea */}
@@ -1095,9 +1265,19 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
                   rows={1}
                   disabled={!isConnected}
                 />
+                {/* Hidden file input for mobile upload */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept="image/*,video/*,audio/*,.pdf,.txt,.md,.json,.csv"
+                  onChange={handleFileSelect}
+                  className="hidden"
+                  aria-label="Upload files"
+                />
               </div>
 
-              {/* Bottom controls row - dropdown + refresh + settings + send */}
+              {/* Bottom controls row - dropdown + send */}
               <div className="icui-composer__controls">
                 <div className="flex items-center gap-2 min-w-0">
                   <CustomAgentDropdown

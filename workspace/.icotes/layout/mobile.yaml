@@ -1,0 +1,18 @@
+name: Mobile
+id: mobile
+version: 1
+deviceTarget: mobile
+layoutMode: mobile
+areas:
+  main:
+    id: main
+    name: Main
+    panelIds:
+      - chat
+      - chat-history
+      - explorer
+      - editor
+    activePanelId: chat
+    size: 100
+    visible: true
+splitConfig: {}

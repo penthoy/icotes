@@ -115,7 +115,13 @@ export const ICUIBaseHeader: React.FC<ICUIBaseHeaderProps> = ({
       items: [
         { id: 'h-layout', label: 'H Layout' },
         { id: 'ide-layout', label: 'IDE Layout' },
+        { id: 'mobile-layout', label: 'Mobile Layout' },
         { id: 'separator1', label: '', separator: true },
+        { id: 'save-custom', label: 'Save Custom Layout...' },
+        { id: 'load-custom', label: 'Load Layout...' },
+        { id: 'separator2', label: '', separator: true },
+        { id: 'mobile-settings', label: 'Mobile Settings...' },
+        { id: 'separator3', label: '', separator: true },
         { id: 'reset-layout', label: 'Reset Layout' },
       ],
     },

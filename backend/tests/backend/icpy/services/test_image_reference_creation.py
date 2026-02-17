@@ -61,7 +61,10 @@ class TestImageReferenceCreation:
             prompt="test prompt",
             model="test-model",
             timestamp=1234567890.0,
-            checksum="abc123"
+            checksum="abc123",
+            session_ids=["session-1"],
+            file_type="preview",
+            preview_paths=["/workspace/.icotes/thumbnails/test-123.webp"]
         )
         
         assert ref.image_id == "test-123"
@@ -77,6 +80,8 @@ class TestImageReferenceCreation:
         assert ref.model == "test-model"
         assert ref.timestamp == 1234567890.0
         assert ref.checksum == "abc123"
+        assert ref.session_ids == ["session-1"]
+        assert ref.file_type == "preview"
     
     def test_image_reference_to_dict(self):
         """Test ImageReference serialization to dict"""
@@ -93,7 +98,9 @@ class TestImageReferenceCreation:
             prompt="test prompt",
             model="test-model",
             timestamp=1234567890.0,
-            checksum="abc123"
+            checksum="abc123",
+            session_ids=["session-1"],
+            file_type="preview"
         )
         
         ref_dict = ref.to_dict()
@@ -118,7 +125,9 @@ class TestImageReferenceCreation:
             'prompt': "test prompt",
             'model': "test-model",
             'timestamp': 1234567890.0,
-            'checksum': "abc123"
+            'checksum': "abc123",
+            'session_ids': ["session-1"],
+            'file_type': "preview"
         }
         
         ref = ImageReference.from_dict(data)
@@ -126,6 +135,8 @@ class TestImageReferenceCreation:
         assert ref.image_id == "test-123"
         assert ref.original_filename == "test.png"
         assert ref.prompt == "test prompt"
+        assert ref.session_ids == ["session-1"]
+        assert ref.file_type == "preview"
     
     @pytest.mark.asyncio
     async def test_create_image_reference_from_base64(self, workspace_dir, sample_image_base64):
@@ -164,6 +175,7 @@ class TestImageReferenceCreation:
         assert ref.timestamp > 0
         assert ref.checksum is not None
         assert len(ref.checksum) == 64  # SHA256 hex length
+        assert isinstance(ref.session_ids, list)
     
     @pytest.mark.asyncio
     async def test_create_image_reference_generates_thumbnail(self, workspace_dir, sample_image_base64):
@@ -219,6 +231,60 @@ class TestImageReferenceCreation:
         )
         
         assert ref.checksum == ref2.checksum
+
+    @pytest.mark.asyncio
+    async def test_link_and_unlink_session(self, workspace_dir, sample_image_base64):
+        """Test linking and unlinking session IDs in the reference index"""
+        service = ImageReferenceService(workspace_path=str(workspace_dir))
+        ref = await service.create_reference(
+            image_data=sample_image_base64,
+            filename="linked.png",
+            prompt="test",
+            model="test",
+            session_id="session-a",
+            file_type="preview"
+        )
+
+        ok = await service.link_session(ref.image_id, "session-b")
+        assert ok is True
+        loaded = await service.get_reference(ref.image_id)
+        assert loaded is not None
+        assert set(loaded.session_ids or []) == {"session-a", "session-b"}
+
+        result = await service.unlink_session("session-a")
+        assert result["kept_refs"] >= 1
+        loaded = await service.get_reference(ref.image_id)
+        assert loaded is not None
+        assert loaded.session_ids == ["session-b"]
+
+    @pytest.mark.asyncio
+    async def test_gc_removes_stale_preview_refs(self, workspace_dir):
+        """Test garbage collection removes stale preview refs"""
+        service = ImageReferenceService(workspace_path=str(workspace_dir))
+
+        image_id = "stale-1"
+        service._references[image_id] = {
+            "image_id": image_id,
+            "original_filename": "missing.png",
+            "current_filename": "missing.png",
+            "relative_path": "missing.png",
+            "absolute_path": str(workspace_dir / "missing.png"),
+            "mime_type": "image/png",
+            "size_bytes": 0,
+            "thumbnail_base64": "",
+            "thumbnail_path": "",
+            "prompt": "",
+            "model": "",
+            "timestamp": 0,
+            "checksum": "",
+            "file_type": "preview",
+            "session_ids": ["session-x"],
+        }
+        service._write_index()
+
+        result = await service.gc(max_age_days=1, now=1000)
+        assert result["removed_refs"] == 1
+        assert image_id not in service._references
     
     @pytest.mark.asyncio
     async def test_image_reference_service_initialization(self, workspace_dir):

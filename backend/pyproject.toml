@@ -47,6 +47,8 @@ dependencies = [
     # Text-to-speech
     "elevenlabs>=1.0.0",
     "reportlab>=4.4.9",
+    "anthropic>=0.79.0",
+    "discord-py>=2.3.0",
 ]
 
 [project.optional-dependencies]

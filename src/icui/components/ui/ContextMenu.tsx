@@ -282,7 +282,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   useEffect(() => {
     if (!visible) return;
 
-    const handleClickOutside = (e: MouseEvent) => {
+    const handleClickOutside = (e: Event) => {
       const target = e.target as Node;
       // Check if click is on any context menu (including submenus rendered in portals)
       const isOnMenu = target instanceof Element && target.closest('.icui-context-menu');
@@ -297,11 +297,17 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
       }
     };
 
-    document.addEventListener('mousedown', handleClickOutside);
+    // Use pointer events when available to avoid iOS firing a synthetic `mousedown`
+    // on touchend (which can instantly close a menu opened via long-press).
+    const closeEvent: 'pointerdown' | 'mousedown' = (typeof window !== 'undefined' && 'PointerEvent' in window)
+      ? 'pointerdown'
+      : 'mousedown';
+
+    document.addEventListener(closeEvent, handleClickOutside);
     document.addEventListener('keydown', handleEscape);
 
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener(closeEvent, handleClickOutside);
       document.removeEventListener('keydown', handleEscape);
     };
   }, [visible, onClose]);
@@ -398,13 +404,20 @@ export function useContextMenu() {
     position: { x: number; y: number };
   } | null>(null);
 
+  type ContextMenuTriggerEvent = React.MouseEvent | {
+    clientX: number;
+    clientY: number;
+    preventDefault?: () => void;
+    stopPropagation?: () => void;
+  };
+
   const showContextMenu = useCallback((
-    event: React.MouseEvent,
+    event: ContextMenuTriggerEvent,
     schema: MenuSchema,
     context: MenuContext
   ) => {
-    event.preventDefault();
-    event.stopPropagation();
+    event.preventDefault?.();
+    event.stopPropagation?.();
     
     setContextMenu({
       schema,

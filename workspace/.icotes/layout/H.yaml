@@ -1,0 +1,38 @@
+name: "H Layout"
+id: "default-h"
+version: 1
+deviceTarget: desktop
+layoutMode: h-layout
+
+areas:
+  left:
+    id: left
+    name: Explorer
+    panelIds: [explorer, git]
+    activePanelId: explorer
+    size: 20
+    visible: true
+  center:
+    id: center
+    name: Editor
+    panelIds: [editor, preview, hop, chat-history]
+    activePanelId: editor
+    size: 40
+  right:
+    id: right
+    name: Assistant
+    panelIds: [chat]
+    activePanelId: chat
+    size: 40
+    visible: true
+  bottom:
+    id: bottom
+    name: Terminal
+    panelIds: [terminal]
+    activePanelId: terminal
+    size: 40
+
+splitConfig:
+  mainHorizontalSplit: 20
+  rightVerticalSplit: 50
+  centerVerticalSplit: 70

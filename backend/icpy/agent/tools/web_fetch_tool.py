@@ -12,6 +12,7 @@ import logging
 import re
 import time
 import hashlib
+from collections import Counter
 from typing import Dict, Any, Optional, List, Tuple
 from urllib.parse import urlparse, parse_qs
 from datetime import datetime, timedelta
@@ -498,6 +499,42 @@ class WebFetchTool(BaseTool):
                 return query_params['v'][0]
         
         return None
+
+    async def _fetch_youtube_video_title(self, video_id: str, url: str, timeout: int = 10) -> Optional[str]:
+        """Fetch YouTube video title via oEmbed endpoint (best-effort)."""
+        try:
+            oembed_url = "https://www.youtube.com/oembed"
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                response = await client.get(oembed_url, params={"url": url, "format": "json"})
+                if response.status_code >= 400:
+                    return None
+
+                payload = response.json()
+                title = payload.get('title')
+                if isinstance(title, str) and title.strip():
+                    return title.strip()
+        except Exception as e:
+            logger.debug(f"Failed to fetch YouTube video title for {video_id}: {e}")
+
+        return None
+
+    def _is_low_information_transcript(self, transcript_entries: List[Any]) -> bool:
+        """Detect empty or highly repetitive transcripts that are unreliable for summarization."""
+        combined_text = ' '.join(
+            entry.text.strip() for entry in transcript_entries if getattr(entry, 'text', '').strip()
+        )
+        if not combined_text:
+            return True
+
+        tokens = re.findall(r"[A-Za-z0-9']+", combined_text.lower())
+        if len(tokens) < 5:
+            return True
+
+        unique_ratio = len(set(tokens)) / len(tokens)
+        top_word_count = Counter(tokens).most_common(1)[0][1]
+        top_word_ratio = top_word_count / len(tokens)
+
+        return len(tokens) >= 12 and (unique_ratio < 0.2 or top_word_ratio > 0.65)
     
     async def _fetch_youtube_transcript(self, url: str) -> Tuple[bool, Optional[Dict[str, Any]], Optional[str]]:
         """
@@ -527,6 +564,13 @@ class WebFetchTool(BaseTool):
             
             # Build full transcript text with timestamps
             transcript_entries = list(fetched_transcript)
+
+            if not transcript_entries:
+                return False, None, "Transcript is empty for this video"
+
+            if self._is_low_information_transcript(transcript_entries):
+                return False, None, "Transcript is too repetitive or low-information to summarize reliably"
+
             full_text = '\n'.join([
                 f"[{entry.start:.2f}s] {entry.text}" 
                 for entry in transcript_entries
@@ -741,6 +785,7 @@ class WebFetchTool(BaseTool):
         # Phase 3: Check if this is a YouTube URL
         if self._is_youtube_url(url):
             logger.info(f"Detected YouTube URL: {url}")
+            youtube_video_id = self._extract_youtube_video_id(url)
             
             # Check cache first for YouTube too
             cache_key = self._get_cache_key(url, format=format_type, section=None)
@@ -777,8 +822,34 @@ class WebFetchTool(BaseTool):
                 
                 return ToolResult(success=True, data=result_data)
             else:
-                # Fall through to regular fetch if transcript fails
-                logger.warning(f"YouTube transcript fetch failed: {error}, falling back to regular fetch")
+                # Do NOT fall through to regular HTML fetch for YouTube URLs.
+                # HTML fallback can yield noisy/non-transcript text that encourages hallucinated summaries.
+                logger.warning(f"YouTube transcript fetch failed: {error}, returning explicit no-transcript response")
+
+                title = None
+                if youtube_video_id:
+                    title = await self._fetch_youtube_video_title(youtube_video_id, url)
+
+                no_transcript_data = {
+                    'url': url,
+                    'title': title or (f"YouTube Video: {youtube_video_id}" if youtube_video_id else "YouTube Video"),
+                    'content': (
+                        "No transcript is available for this video. "
+                        "I can’t provide a transcript-based summary without transcript text."
+                    ),
+                    'metadata': {
+                        'video_id': youtube_video_id,
+                        'type': 'youtube_no_transcript',
+                        'transcript_available': False,
+                        'transcript_error': error,
+                        'cache_hit': False
+                    },
+                    'timestamps': [],
+                    'was_truncated': False
+                }
+
+                self._store_in_cache(cache_key, no_transcript_data)
+                return ToolResult(success=True, data=no_transcript_data)
         
         # Phase 4: Check cache
         cache_key = self._get_cache_key(url, format=format_type, section=section)

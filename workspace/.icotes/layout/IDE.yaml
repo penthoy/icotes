@@ -1,0 +1,38 @@
+name: "IDE Layout"
+id: "default-ide"
+version: 1
+deviceTarget: desktop
+layoutMode: standard
+
+areas:
+  left:
+    id: left
+    name: Explorer
+    panelIds: [explorer, git]
+    activePanelId: explorer
+    size: 25
+    visible: true
+  center:
+    id: center
+    name: Editor
+    panelIds: [editor]
+    activePanelId: editor
+    size: 50
+  right:
+    id: right
+    name: Assistant
+    panelIds: [chat]
+    activePanelId: chat
+    size: 25
+    visible: true
+  bottom:
+    id: bottom
+    name: Terminal
+    panelIds: [terminal]
+    activePanelId: terminal
+    size: 30
+
+splitConfig:
+  mainVerticalSplit: 70
+  mainHorizontalSplit: 25
+  rightVerticalSplit: 75

@@ -9,6 +9,8 @@ import { ICUIFrameContainer } from './ICUIFrameContainer';
 import { ICUISplitPanel } from './ICUISplitPanel';
 import { ICUIPanelArea, ICUIPanel } from './ICUIPanelArea';
 import { ICUIPanelType } from './ICUIPanelSelector';
+import { ICUIMobileTabBar } from './ICUIMobileTabBar';
+import type { MobileTab } from './ICUIMobileTabBar';
 
 export interface ICUILayoutArea {
   id: string;
@@ -25,7 +27,25 @@ export interface ICUILayoutArea {
 }
 
 export interface ICUILayoutConfig {
-  layoutMode?: 'standard' | 'h-layout';
+  // Runtime layout mode
+  layoutMode?: 'standard' | 'h-layout' | 'mobile';
+
+  // Optional metadata (used by YAML presets and future migrations)
+  name?: string;
+  id?: string;
+  description?: string;
+  version?: number;
+  deviceTarget?: 'desktop' | 'mobile' | 'any';
+
+  // Optional declarative panel instance list (bridge from YAML to runtime ICUIPanel[])
+  panels?: Array<{
+    id: string;
+    type: string;
+    title?: string;
+    icon?: string;
+    config?: Record<string, any>;
+  }>;
+
   areas: Record<string, ICUILayoutArea>;
   splitConfig?: {
     mainVerticalSplit?: number;
@@ -49,6 +69,7 @@ export interface ICUILayoutProps {
   // New props for panel selector
   availablePanelTypes?: ICUIPanelType[];
   onPanelAdd?: (panelType: ICUIPanelType, areaId: string) => void;
+  onOpenMobileSettings?: () => void;
   showPanelSelector?: boolean;
 }
 
@@ -82,6 +103,7 @@ export const ICUILayout: React.FC<ICUILayoutProps> = ({
   availablePanelTypes,
   onPanelAdd,
   showPanelSelector = false,
+  onOpenMobileSettings,
 }) => {
   const [currentLayout, setCurrentLayout] = useState<ICUILayoutConfig>(layout || defaultLayout);
 
@@ -184,9 +206,12 @@ export const ICUILayout: React.FC<ICUILayoutProps> = ({
             }
           });
           
+          // CRITICAL: Use provided layout's splitConfig instead of persisted one
+          // This ensures layout switches apply the correct divider positions
           const mergedLayout = {
             ...parsedLayout,
             areas: mergedAreas,
+            splitConfig: layout?.splitConfig || parsedLayout.splitConfig,
           };
           // Final sanitation in case upstream state was corrupted
           const sanitized = sanitizeLayout(mergedLayout);
@@ -229,32 +254,62 @@ export const ICUILayout: React.FC<ICUILayoutProps> = ({
       // ignore
     }
 
+    // If the incoming layout is a different preset (id/name/layoutMode), accept it even if
+    // activePanelId values differ. This enables agent-driven layout switches.
+    const isExplicitSwitch = (() => {
+      const incomingId = layout.id || layout.name;
+      const currentId = currentLayout.id || currentLayout.name;
+      if (incomingId && currentId && incomingId !== currentId) return true;
+      if (layout.layoutMode && currentLayout.layoutMode && layout.layoutMode !== currentLayout.layoutMode) return true;
+
+      // If the panel composition/order changes, this is an intentional update (e.g. mobile settings)
+      // and should not be blocked by the activePanelId guardrail.
+      try {
+        const areaIds = new Set([
+          ...Object.keys(layout.areas || {}),
+          ...Object.keys(currentLayout.areas || {}),
+        ]);
+        for (const areaId of areaIds) {
+          const incomingPanelIds = layout.areas?.[areaId]?.panelIds || [];
+          const currentPanelIds = currentLayout.areas?.[areaId]?.panelIds || [];
+          if (JSON.stringify(incomingPanelIds) !== JSON.stringify(currentPanelIds)) {
+            return true;
+          }
+        }
+      } catch {
+        // ignore
+      }
+      return false;
+    })();
+
     // HARD GUARDRAIL (ALL AREAS): If the incoming prop's activePanelId for any area conflicts
     // with our currentLayout's activePanelId, prefer the currentLayout and ignore this prop.
     // This breaks parent<->child feedback loops where the parent echoes stale active ids.
-    const conflictingAreas: string[] = [];
-    Object.keys(layout.areas || {}).forEach(areaId => {
-      const incomingArea = layout.areas[areaId];
-      const currentArea = currentLayout.areas[areaId];
-      if (!incomingArea || !currentArea) return;
+    if (!isExplicitSwitch) {
+      const conflictingAreas: string[] = [];
+      Object.keys(layout.areas || {}).forEach(areaId => {
+        const incomingArea = layout.areas[areaId];
+        const currentArea = currentLayout.areas[areaId];
+        if (!incomingArea || !currentArea) return;
 
-      const incomingActive = incomingArea.activePanelId;
-      const currentActive = currentArea.activePanelId;
+        const incomingActive = incomingArea.activePanelId;
+        const currentActive = currentArea.activePanelId;
 
-      if (incomingActive && currentActive && incomingActive !== currentActive) {
-        conflictingAreas.push(areaId);
+        if (incomingActive && currentActive && incomingActive !== currentActive) {
+          conflictingAreas.push(areaId);
+        }
+      });
+
+      if (conflictingAreas.length > 0) {
+        if (layoutDebugEnabled) {
+          console.warn(
+            `[LAYOUT-PROP-GUARD] Ignoring layout prop for areas=${JSON.stringify(conflictingAreas)} ` +
+            `because currentLayout has different activePanelId values and is treated as source-of-truth`
+          );
+        }
+        lastLayoutPropRef.current = layout;
+        return;
       }
-    });
-
-    if (conflictingAreas.length > 0) {
-      if (layoutDebugEnabled) {
-        console.warn(
-          `[LAYOUT-PROP-GUARD] Ignoring layout prop for areas=${JSON.stringify(conflictingAreas)} ` +
-          `because currentLayout has different activePanelId values and is treated as source-of-truth`
-        );
-      }
-      lastLayoutPropRef.current = layout;
-      return;
     }
 
     // Check if this is the same prop object we already processed
@@ -278,6 +333,7 @@ export const ICUILayout: React.FC<ICUILayoutProps> = ({
     // New prop value that differs from current state - sanitize and apply
     const sanitized = sanitizeLayout(layout);
     const sanitizedCenterActive = sanitized.areas?.center?.activePanelId;
+    
     if (layoutDebugEnabled) {
       console.log(`[LAYOUT-PROP-DEBUG] Sanitized center.activePanelId="${sanitizedCenterActive}"`);
     }
@@ -779,6 +835,51 @@ export const ICUILayout: React.FC<ICUILayoutProps> = ({
     />
   );
 
+  // Render Mobile Layout structure - single full-screen panel with bottom tab bar
+  const renderMobileLayout = () => {
+    const mainArea = currentLayout.areas.main || currentLayout.areas.center || Object.values(currentLayout.areas)[0];
+    if (!mainArea) {
+      return <div className="flex items-center justify-center h-full text-muted-foreground">No panels configured</div>;
+    }
+
+    const mainPanels = getPanelsForArea(mainArea.id);
+    const activePanelId = mainArea.activePanelId || mainPanels[0]?.id;
+
+    // Create mobile tabs from panel IDs
+    const mobileTabs: MobileTab[] = mainPanels.map((panel) => ({
+      id: panel.id,
+      icon: panel.icon || '📄',
+      label: panel.title || panel.type,
+    }));
+
+    return (
+      <div className="icui-layout-mobile h-full w-full flex flex-col">
+        {/* Main panel area fills all available space with bottom padding for tab bar */}
+        <div className="flex-1 overflow-hidden" style={{ paddingBottom: '20px' }}>
+          <ICUIPanelArea
+            id={mainArea.id}
+            panels={mainPanels}
+            activePanelId={activePanelId}
+            onPanelActivate={(panelId) => handlePanelActivate(mainArea.id, panelId)}
+            onPanelClose={(panelId) => handlePanelClose(mainArea.id, panelId)}
+            enableDragDrop={false}
+            showPanelSelector={false}
+            showTabs={false}
+            className="h-full"
+          />
+        </div>
+        
+        {/* Mobile tab bar at bottom */}
+        <ICUIMobileTabBar
+          tabs={mobileTabs}
+          activeTabId={activePanelId}
+          onTabChange={(tabId) => handlePanelActivate(mainArea.id, tabId)}
+          onOpenMobileSettings={onOpenMobileSettings}
+        />
+      </div>
+    );
+  };
+
   return (
     <div className={`icui-enhanced-layout w-full h-full min-h-0 flex flex-col ${className}`}>
       <ICUIFrameContainer
@@ -792,7 +893,11 @@ export const ICUILayout: React.FC<ICUILayoutProps> = ({
         }}
         className="w-full h-full flex-1"
       >
-        {currentLayout.layoutMode === 'h-layout' ? renderHLayout() : renderStandardLayout()}
+        {currentLayout.layoutMode === 'h-layout' 
+          ? renderHLayout() 
+          : currentLayout.layoutMode === 'mobile'
+          ? renderMobileLayout()
+          : renderStandardLayout()}
       </ICUIFrameContainer>
     </div>
   );

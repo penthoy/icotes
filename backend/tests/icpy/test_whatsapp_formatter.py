@@ -1,0 +1,128 @@
+"""
+Tests for WhatsApp Message Formatter.
+
+Tests the text cleaning, tool marker stripping, and media path extraction
+from AI agent output.
+"""
+
+import json
+import pytest
+
+from icpy.services.whatsapp.whatsapp_bot_service import WhatsAppMessageFormatter
+
+
+class TestCleanForWhatsApp:
+    """Tests for cleaning AI output for WhatsApp display."""
+
+    def test_plain_text_unchanged(self):
+        text = "Hello, how can I help you today?"
+        assert WhatsAppMessageFormatter.clean_for_whatsapp(text) == text
+
+    def test_strips_tool_start_markers(self):
+        text = "📋 **generate_image**: {\"prompt\": \"a cat\"}\nHere is your image!"
+        cleaned = WhatsAppMessageFormatter.clean_for_whatsapp(text)
+        assert "📋" not in cleaned
+        assert "generate_image" not in cleaned
+        assert "Here is your image!" in cleaned
+
+    def test_strips_tool_success_markers(self):
+        text = '✅ **Success**: {"absolutePath": "/tmp/test.png"}\nDone!'
+        cleaned = WhatsAppMessageFormatter.clean_for_whatsapp(text)
+        assert "✅" not in cleaned
+        assert "absolutePath" not in cleaned
+        assert "Done!" in cleaned
+
+    def test_strips_tool_error_markers(self):
+        text = "❌ **Error**: Something went wrong\nSorry about that."
+        cleaned = WhatsAppMessageFormatter.clean_for_whatsapp(text)
+        assert "❌" not in cleaned
+        assert "Something went wrong" not in cleaned
+        assert "Sorry about that." in cleaned
+
+    def test_strips_status_markers(self):
+        text = "🔧 **Executing tools...**\nProcessing your request.\n🔧 **Tool execution complete. Continuing...**\nDone."
+        cleaned = WhatsAppMessageFormatter.clean_for_whatsapp(text)
+        assert "🔧" not in cleaned
+        assert "Executing tools" not in cleaned
+        assert "Done." in cleaned
+
+    def test_strips_markdown_image_links(self):
+        text = "Here is the result:\n![Generated image](file:///tmp/image.png)\nEnjoy!"
+        cleaned = WhatsAppMessageFormatter.clean_for_whatsapp(text)
+        assert "![" not in cleaned
+        assert "file:///" not in cleaned
+        assert "Enjoy!" in cleaned
+
+    def test_collapses_excessive_newlines(self):
+        text = "Line 1\n\n\n\n\nLine 2"
+        cleaned = WhatsAppMessageFormatter.clean_for_whatsapp(text)
+        assert "\n\n\n" not in cleaned
+        assert "Line 1" in cleaned
+        assert "Line 2" in cleaned
+
+
+class TestExtractMediaPaths:
+    """Tests for extracting media file paths from tool call output."""
+
+    def test_extract_image_path(self):
+        text = (
+            '📋 **generate_image**: {"prompt": "a cute cat"}\n'
+            '✅ **Success**: {"absolutePath": "/tmp/images/cat.png", "model": "dall-e-3"}\n'
+        )
+        media = WhatsAppMessageFormatter.extract_media_paths(text)
+        assert len(media) == 1
+        assert media[0]["type"] == "image"
+        assert media[0]["path"] == "/tmp/images/cat.png"
+
+    def test_extract_image_with_image_reference(self):
+        text = (
+            '📋 **generate_image**: {"prompt": "sunset"}\n'
+            '✅ **Success**: {"imageReference": {"absolute_path": "/tmp/sunset.jpg"}, "model": "dall-e-3"}\n'
+        )
+        media = WhatsAppMessageFormatter.extract_media_paths(text)
+        assert len(media) == 1
+        assert media[0]["path"] == "/tmp/sunset.jpg"
+
+    def test_extract_video_path(self):
+        text = (
+            '📋 **image_to_video**: {"prompt": "animate the cat"}\n'
+            '✅ **Success**: {"absolute_path": "/tmp/videos/cat.mp4", "model": "minimax"}\n'
+        )
+        media = WhatsAppMessageFormatter.extract_media_paths(text)
+        assert len(media) == 1
+        assert media[0]["type"] == "video"
+        assert media[0]["path"] == "/tmp/videos/cat.mp4"
+
+    def test_strips_file_protocol(self):
+        text = (
+            '📋 **generate_image**: {"prompt": "test"}\n'
+            '✅ **Success**: {"absolutePath": "file:///tmp/test.png"}\n'
+        )
+        media = WhatsAppMessageFormatter.extract_media_paths(text)
+        assert len(media) == 1
+        assert media[0]["path"] == "/tmp/test.png"
+
+    def test_no_media_in_plain_text(self):
+        text = "Just some regular text with no tool calls."
+        media = WhatsAppMessageFormatter.extract_media_paths(text)
+        assert len(media) == 0
+
+    def test_non_media_tool_ignored(self):
+        text = (
+            '📋 **web_search**: {"query": "weather"}\n'
+            '✅ **Success**: {"results": "sunny"}\n'
+        )
+        media = WhatsAppMessageFormatter.extract_media_paths(text)
+        assert len(media) == 0
+
+    def test_multiple_media(self):
+        text = (
+            '📋 **generate_image**: {"prompt": "cat"}\n'
+            '✅ **Success**: {"absolutePath": "/tmp/cat.png"}\n'
+            '📋 **generate_image**: {"prompt": "dog"}\n'
+            '✅ **Success**: {"absolutePath": "/tmp/dog.png"}\n'
+        )
+        media = WhatsAppMessageFormatter.extract_media_paths(text)
+        assert len(media) == 2
+        assert media[0]["path"] == "/tmp/cat.png"
+        assert media[1]["path"] == "/tmp/dog.png"

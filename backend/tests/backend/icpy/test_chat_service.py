@@ -313,6 +313,102 @@ class TestChatService:
         messages = await chat_service.get_message_history(session_id, limit=3, offset=3)
         assert len(messages) == 2
         assert messages[0].content == "Message 3"
+
+    @pytest.mark.asyncio
+    async def test_search_sessions(self, chat_service):
+        """Test searching chat history content"""
+        session_id = "session-search"
+        msg = ChatMessage(
+            id="msg-search",
+            content="Find the needle in this haystack",
+            sender=MessageSender.USER,
+            timestamp="2025-01-01T00:00:00Z",
+            session_id=session_id
+        )
+        await chat_service._store_message(msg)
+
+        results = await chat_service.search_sessions("needle")
+        assert len(results) >= 1
+        assert results[0]['session_id'] == session_id
+        assert len(results[0]['matches']) >= 1
+
+    @pytest.mark.asyncio
+    async def test_rollback_session(self, chat_service):
+        """Test rolling back a session to a specific message index"""
+        session_id = "session-rollback"
+        for i in range(3):
+            message = ChatMessage(
+                id=f"msg-{i}",
+                content=f"Message {i}",
+                sender=MessageSender.USER,
+                timestamp=f"2025-01-01T00:0{i}:00Z",
+                session_id=session_id
+            )
+            await chat_service._store_message(message)
+
+        rolled = await chat_service.rollback_session(session_id, 1)
+        assert len(rolled) == 2
+        assert rolled[-1].content == "Message 1"
+
+    @pytest.mark.asyncio
+    async def test_edit_message_truncates(self, chat_service):
+        """Test editing a user message and truncating subsequent messages"""
+        session_id = "session-edit"
+        user_msg = ChatMessage(
+            id="msg-u",
+            content="Original",
+            sender=MessageSender.USER,
+            timestamp="2025-01-01T00:00:00Z",
+            session_id=session_id
+        )
+        ai_msg = ChatMessage(
+            id="msg-a",
+            content="Response",
+            sender=MessageSender.AI,
+            timestamp="2025-01-01T00:00:01Z",
+            session_id=session_id
+        )
+        await chat_service._store_message(user_msg)
+        await chat_service._store_message(ai_msg)
+
+        edited = await chat_service.edit_message(session_id, 0, "Updated")
+        assert len(edited) == 1
+        assert edited[0].content == "Updated"
+
+    @pytest.mark.asyncio
+    async def test_auto_title_scheduled_on_ai_message(self, chat_service):
+        """Test that auto-title scheduling happens after AI message"""
+        session_id = "session-title"
+        user_msg = ChatMessage(
+            id="msg-u",
+            content="Write a parser",
+            sender=MessageSender.USER,
+            timestamp="2025-01-01T00:00:00Z",
+            session_id=session_id
+        )
+        ai_msg = ChatMessage(
+            id="msg-a",
+            content="Here is a parser",
+            sender=MessageSender.AI,
+            timestamp="2025-01-01T00:00:01Z",
+            session_id=session_id,
+            metadata={"streaming_complete": True}
+        )
+        await chat_service._store_message(user_msg)
+        with patch.object(chat_service, '_schedule_auto_title') as mock_schedule:
+            await chat_service._store_message(ai_msg)
+            mock_schedule.assert_called_once_with(session_id)
+
+    @pytest.mark.asyncio
+    async def test_delete_session_unlinks_images(self, chat_service):
+        """Test deleting session invokes image reference unlink"""
+        session_id = await chat_service.create_session("To Delete")
+        chat_service.image_service = Mock()
+        chat_service.image_service.unlink_session = AsyncMock(return_value={"removed_refs": 0, "kept_refs": 0})
+
+        ok = await chat_service.delete_session(session_id)
+        assert ok is True
+        chat_service.image_service.unlink_session.assert_called_once_with(session_id)
     
     @pytest.mark.asyncio
     async def test_clear_message_history(self, chat_service):

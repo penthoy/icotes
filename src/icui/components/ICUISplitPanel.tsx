@@ -163,6 +163,14 @@ export const ICUISplitPanel: React.FC<ICUISplitPanelProps> = ({
     });
   }, [onPanelCollapse]);
 
+  // Effect to update split position when initialSplit changes (e.g., layout switch)
+  useEffect(() => {
+    const newSplit = splitConfig.initialSplit;
+    setSplitState(prev => ({ ...prev, splitPercentage: newSplit }));
+    setSplitHandle(prev => ({ ...prev, position: newSplit }));
+    lastSplitRef.current = newSplit;
+  }, [splitConfig.initialSplit]);
+
   // Effect for mouse events during drag
   useEffect(() => {
     if (splitState.isDragging) {

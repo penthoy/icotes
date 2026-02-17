@@ -1,0 +1,12 @@
+# WhatsApp auth credentials (Signal protocol keys — NEVER commit)
+auth_store/
+
+# Access control data (contains phone numbers)
+data/
+
+# Node.js dependencies (installed via npm install)
+node_modules/
+package-lock.json
+
+# Downloaded media cache (WhatsApp images/videos)
+media_cache/

@@ -22,7 +22,7 @@ export interface ExplorerTreeProps {
   // clicks
   handleItemClick: (node: ICUIFileNode, e: React.MouseEvent) => void;
   handleItemDoubleClick: (node: ICUIFileNode, e: React.MouseEvent) => void;
-  handleContextMenu: (e: React.MouseEvent, node?: ICUIFileNode) => void;
+  handleContextMenu: (e: React.MouseEvent | { clientX: number; clientY: number; preventDefault?: () => void; stopPropagation?: () => void }, node?: ICUIFileNode) => void;
   // rename
   handleRenameKeyDown: (e: React.KeyboardEvent) => void;
   confirmRename: () => void;
@@ -55,6 +55,65 @@ export const ExplorerTree: React.FC<ExplorerTreeProps> = ({
   parentPath,
 }) => {
   const items: React.ReactNode[] = [];
+
+  const longPressStateRef = React.useRef<{
+    timeoutId: number | null;
+    pointerId: number | null;
+    startX: number;
+    startY: number;
+  }>({ timeoutId: null, pointerId: null, startX: 0, startY: 0 });
+
+  const suppressNextClickRef = React.useRef(false);
+
+  const clearLongPress = React.useCallback(() => {
+    if (longPressStateRef.current.timeoutId != null) {
+      window.clearTimeout(longPressStateRef.current.timeoutId);
+    }
+    longPressStateRef.current.timeoutId = null;
+    longPressStateRef.current.pointerId = null;
+  }, []);
+
+  const startLongPress = React.useCallback((e: React.PointerEvent, node: ICUIFileNode) => {
+    if (e.pointerType !== 'touch') return;
+    if (renamingFileId === node.path) return;
+
+    clearLongPress();
+
+    longPressStateRef.current.pointerId = e.pointerId;
+    longPressStateRef.current.startX = e.clientX;
+    longPressStateRef.current.startY = e.clientY;
+
+    // Typical mobile long-press threshold
+    const timeoutId = window.setTimeout(() => {
+      suppressNextClickRef.current = true;
+
+      handleContextMenu(
+        {
+          clientX: longPressStateRef.current.startX,
+          clientY: longPressStateRef.current.startY,
+          preventDefault: () => {},
+          stopPropagation: () => {},
+        },
+        node
+      );
+
+      clearLongPress();
+    }, 550);
+
+    longPressStateRef.current.timeoutId = timeoutId;
+  }, [clearLongPress, handleContextMenu, renamingFileId]);
+
+  const maybeCancelLongPressOnMove = React.useCallback((e: React.PointerEvent) => {
+    if (e.pointerType !== 'touch') return;
+    if (longPressStateRef.current.pointerId !== e.pointerId) return;
+
+    const dx = e.clientX - longPressStateRef.current.startX;
+    const dy = e.clientY - longPressStateRef.current.startY;
+    const distance = Math.hypot(dx, dy);
+    if (distance > 10) {
+      clearLongPress();
+    }
+  }, [clearLongPress]);
 
   // Top-level ".." parent navigation when unlocked OR when directory is empty (at any level)
   const shouldShowParent = level === 0 && parentPath && (nodes.length === 0 || !isPathLocked);
@@ -95,9 +154,22 @@ export const ExplorerTree: React.FC<ExplorerTreeProps> = ({
           onDragEnter={(e) => handleItemDragOver(e, node)}
           onDragLeave={(e) => handleItemDragLeave(e, node)}
           onDrop={(e) => handleItemDrop(e, node)}
-          onClick={(e) => handleItemClick(node, e)}
+          onClick={(e) => {
+            if (suppressNextClickRef.current) {
+              suppressNextClickRef.current = false;
+              e.preventDefault();
+              e.stopPropagation();
+              return;
+            }
+            handleItemClick(node, e);
+          }}
           onDoubleClick={(e) => handleItemDoubleClick(node, e)}
           onContextMenu={(e) => handleContextMenu(e, node)}
+          onPointerDown={(e) => startLongPress(e, node)}
+          onPointerMove={maybeCancelLongPressOnMove}
+          onPointerUp={clearLongPress}
+          onPointerCancel={clearLongPress}
+          onPointerLeave={clearLongPress}
           onMouseEnter={(e) => { if (!isSelected(node.id)) e.currentTarget.style.backgroundColor = 'var(--icui-bg-secondary)'; }}
           onMouseLeave={(e) => { if (!isSelected(node.id)) e.currentTarget.style.backgroundColor = 'transparent'; }}
         >

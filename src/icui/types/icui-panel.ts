@@ -11,6 +11,7 @@ export type ICUIPanelType =
   | 'properties' 
   | 'timeline' 
   | 'inspector'
+  | 'agent-debug'
   | 'custom';
 
 export type ICUIPanelState = 'normal' | 'minimized' | 'maximized' | 'closed';

@@ -15,7 +15,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { Copy, Check, Download, FileText, Play, Pause } from 'lucide-react';
+import { Copy, Check, Download, FileText, Play, Pause, Edit3 } from 'lucide-react';
 import { ChatMessage as ChatMessageType, ToolCallMeta, MediaAttachment } from '../../types/chatTypes';
 import { useTheme } from '../../hooks/useTheme';
 import { ToolCallData } from './ToolCallWidget';
@@ -30,6 +30,12 @@ interface ChatMessageProps {
   highlightQuery?: string;
   requestTimestamp?: string; // Optional: precomputed request timestamp for tool durations
   allMessages?: ChatMessageType[];  // Optional: for calculating tool duration from reply_to
+  onEditMessage?: (messageId: string) => void;
+  isEditing?: boolean;
+  editingContent?: string;
+  onEditingContentChange?: (content: string) => void;
+  onSaveEdit?: (messageId: string, content: string) => void;
+  onCancelEdit?: () => void;
 }
 
 interface CodeBlockProps {
@@ -38,7 +44,7 @@ interface CodeBlockProps {
   inline?: boolean;
 }
 
-const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', highlightQuery = '', allMessages, requestTimestamp: requestTimestampOverride }) => {
+const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', highlightQuery = '', allMessages, requestTimestamp: requestTimestampOverride, onEditMessage, isEditing = false, editingContent = '', onEditingContentChange, onSaveEdit, onCancelEdit }) => {
   const { isDark } = useTheme();
   const [copiedStates, setCopiedStates] = useState<Record<string, boolean>>({});
 
@@ -372,6 +378,105 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', high
     return blocks;
   }, [parsedResult, message.content]);
 
+  // Build filename -> absolute path index from parsed tool outputs (helps resolve markdown image links like ![](white_hair_edit.png))
+  const generatedImagePathIndex = useMemo(() => {
+    const index = new Map<string, string>();
+
+    const addPath = (candidate?: unknown) => {
+      if (!candidate || typeof candidate !== 'string') return;
+      const cleaned = candidate.trim();
+      if (!cleaned) return;
+
+      // Keep filename index for lookups from markdown basenames
+      const withoutFilePrefix = cleaned.startsWith('file://') ? cleaned.slice(7) : cleaned;
+      const base = withoutFilePrefix.split('/').pop();
+      if (base) {
+        index.set(base, cleaned);
+      }
+
+      // Also index full candidate for exact matches
+      index.set(cleaned, cleaned);
+    };
+
+    for (const tc of parsedResult.toolCalls || []) {
+      if (tc.toolName !== 'generate_image') continue;
+
+      let out: any = tc.output;
+      if (typeof out === 'string') {
+        try {
+          out = JSON.parse(out);
+        } catch {
+          out = null;
+        }
+      }
+      if (!out || typeof out !== 'object') continue;
+
+      // Accept both wrapped and unwrapped shapes
+      const data = out.data && typeof out.data === 'object' ? out.data : out;
+      addPath(data.absolutePath);
+      addPath(data.filePath);
+      addPath(data.imageUrl);
+      if (data.imageReference && typeof data.imageReference === 'object') {
+        addPath(data.imageReference.absolute_path);
+      }
+    }
+
+    return index;
+  }, [parsedResult.toolCalls]);
+
+  const resolveMarkdownImageSrc = useCallback((src?: string): string | undefined => {
+    if (!src) return src;
+    const raw = src.trim();
+    if (!raw) return raw;
+
+    // Keep already-resolved URLs untouched
+    if (
+      raw.startsWith('http://') ||
+      raw.startsWith('https://') ||
+      raw.startsWith('data:') ||
+      raw.startsWith('blob:') ||
+      raw.startsWith('/api/')
+    ) {
+      return raw;
+    }
+
+    const toRawApiUrl = (filePath: string) => {
+      const p = filePath.startsWith('file://') ? filePath.slice(7) : filePath;
+      return `/api/files/raw?path=${encodeURIComponent(p)}`;
+    };
+
+    // file:// absolute paths
+    if (raw.startsWith('file://')) {
+      return toRawApiUrl(raw);
+    }
+
+    // Unix absolute paths
+    if (raw.startsWith('/')) {
+      return toRawApiUrl(raw);
+    }
+
+    // Windows absolute paths
+    if (/^[a-zA-Z]:[\\/]/.test(raw)) {
+      return toRawApiUrl(raw);
+    }
+
+    // Relative/basename: try to map using generate_image tool output in same message
+    const base = raw.split('/').pop() || raw;
+    const mapped = generatedImagePathIndex.get(raw) || generatedImagePathIndex.get(base);
+    if (mapped) {
+      if (mapped.startsWith('http://') || mapped.startsWith('https://') || mapped.startsWith('data:')) {
+        return mapped;
+      }
+      if (mapped.startsWith('/api/')) {
+        return mapped;
+      }
+      return toRawApiUrl(mapped);
+    }
+
+    // Fallback: leave untouched (no regression for existing valid relative assets)
+    return raw;
+  }, [generatedImagePathIndex]);
+
   // Format timestamp helper
   const formatTimestamp = useCallback((timestamp: string | Date) => {
     const date = typeof timestamp === 'string' ? new Date(timestamp) : timestamp;
@@ -588,38 +693,149 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, className = '', high
       <p className="mb-3 leading-relaxed" style={{ color: 'var(--icui-text-primary)' }}>
         {children}
       </p>
-    )
-  }), [isDark, handleCopy, copiedStates, message.id]);
+    ),
+
+    img: ({ src, alt }: { src?: string; alt?: string }) => {
+      const resolvedSrc = resolveMarkdownImageSrc(src);
+      if (!resolvedSrc) return null;
+
+      return (
+        <img
+          src={resolvedSrc}
+          alt={alt || 'Image'}
+          className="rounded-md border shadow-sm hover:shadow-md transition-shadow my-2"
+          style={{
+            border: '1px solid var(--icui-border-subtle)',
+            backgroundColor: 'var(--icui-bg-secondary)',
+            maxWidth: '320px',
+            maxHeight: '320px',
+            objectFit: 'contain'
+          }}
+          loading="lazy"
+          onClick={() => window.open(resolvedSrc, '_blank')}
+          onError={(e) => {
+            // Hide broken markdown images instead of showing broken icon (widget/attachments still render)
+            const el = e.currentTarget;
+            el.style.display = 'none';
+          }}
+        />
+      );
+    }
+  }), [isDark, handleCopy, copiedStates, message.id, resolveMarkdownImageSrc]);
 
   if (message.sender === 'user') {
     // User messages: Keep chat bubble style (modern chat style)
     return (
       <div className={`flex justify-end ${className}`}>
         <div
-          className="max-w-[85%] p-3 rounded-lg text-sm rounded-br-sm"
+          className={`p-3 rounded-lg text-sm rounded-br-sm group ${isEditing ? 'w-[85%]' : 'max-w-[85%]'}`}
           style={{
             backgroundColor: 'var(--icui-bg-tertiary)',
             color: 'var(--icui-text-primary)',
             border: '1px solid var(--icui-border-subtle)'
           }}
         >
-          {/* User Message Content - Simple text, no markdown */}
-          <div className="whitespace-pre-wrap break-words">
-            {renderHighlightedPlainText(message.content, highlightQuery)}
-          </div>
-          
-          {/* User Message Attachments */}
-          {message.attachments && message.attachments.length > 0 && (
-            <div className="mt-3">
-              {message.attachments.map((attachment, index) => renderAttachment(attachment, index))}
+          {isEditing ? (
+            // Edit mode: Show textarea with Send/Cancel buttons
+            <div className="space-y-2">
+              <textarea
+                ref={(el) => {
+                  if (el) {
+                    el.style.height = 'auto';
+                    el.style.height = el.scrollHeight + 'px';
+                  }
+                }}
+                value={editingContent}
+                onChange={(e) => {
+                  onEditingContentChange?.(e.target.value);
+                  // Auto-resize on content change
+                  e.target.style.height = 'auto';
+                  e.target.style.height = e.target.scrollHeight + 'px';
+                }}
+                className="w-full p-0 rounded-none resize-none text-sm whitespace-pre-wrap break-words outline-none"
+                style={{
+                  backgroundColor: 'transparent',
+                  color: 'var(--icui-text-primary)',
+                  border: 'none',
+                  lineHeight: 'inherit',
+                  fontFamily: 'inherit',
+                  fontSize: 'inherit'
+                }}
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                    e.preventDefault();
+                    onSaveEdit?.(message.id, editingContent);
+                  } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    onCancelEdit?.();
+                  }
+                }}
+              />
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={onCancelEdit}
+                  className="px-3 py-1 rounded text-xs hover:opacity-80 transition-opacity"
+                  style={{
+                    backgroundColor: 'var(--icui-bg-secondary)',
+                    color: 'var(--icui-text-secondary)',
+                    border: '1px solid var(--icui-border-subtle)'
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => onSaveEdit?.(message.id, editingContent)}
+                  className="px-3 py-1 rounded text-xs hover:opacity-90 transition-opacity"
+                  style={{
+                    backgroundColor: '#3b82f6',
+                    color: 'white'
+                  }}
+                  disabled={!editingContent.trim()}
+                >
+                  Send
+                </button>
+              </div>
             </div>
+          ) : (
+            // View mode: Show message content with edit button
+            <>
+              {onEditMessage && (
+                <div className="flex justify-end -mt-1 mb-1">
+                  <button
+                    type="button"
+                    className="p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                    title="Edit message"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      console.log('[ChatMessage] Edit icon clicked, messageId:', message.id);
+                      onEditMessage(message.id);
+                    }}
+                  >
+                    <Edit3 size={14} style={{ color: 'var(--icui-text-secondary)' }} />
+                  </button>
+                </div>
+              )}
+              {/* User Message Content - Simple text, no markdown */}
+              <div className="whitespace-pre-wrap break-words">
+                {renderHighlightedPlainText(message.content, highlightQuery)}
+              </div>
+              
+              {/* User Message Attachments */}
+              {message.attachments && message.attachments.length > 0 && (
+                <div className="mt-3">
+                  {message.attachments.map((attachment, index) => renderAttachment(attachment, index))}
+                </div>
+              )}
+              
+              {/* User Message Metadata */}
+              <div className="flex items-center justify-end mt-2 text-xs" 
+                   style={{ color: 'var(--icui-text-secondary)' }}>
+                <span>{formatTimestamp(message.timestamp)}</span>
+              </div>
+            </>
           )}
-          
-          {/* User Message Metadata */}
-          <div className="flex items-center justify-end mt-2 text-xs" 
-               style={{ color: 'var(--icui-text-secondary)' }}>
-            <span>{formatTimestamp(message.timestamp)}</span>
-          </div>
         </div>
       </div>
     );
@@ -726,6 +942,9 @@ function areEqual(prev: ChatMessageProps, next: ChatMessageProps) {
   if (prev.requestTimestamp !== next.requestTimestamp) return false;
   // allMessages reference (used for reply_to resolution when requestTimestamp is not provided)
   if (prev.allMessages !== next.allMessages) return false;
+  // Inline edit state
+  if (prev.isEditing !== next.isEditing) return false;
+  if (prev.editingContent !== next.editingContent) return false;
   return true;
 }
 

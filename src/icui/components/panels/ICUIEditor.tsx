@@ -315,6 +315,30 @@ const ICUIEditor = forwardRef<ICUIEditorRef, ICUIEditorProps>(({
     await openFile(filePath);
   }, [openFile]);
 
+  // Mobile layout can unmount the editor while browsing in Explorer.
+  // If a file-open intent was queued, apply it as soon as the editor mounts.
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem('icui-pending-open-file');
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      const path = parsed?.path;
+      const mode = parsed?.mode;
+      if (typeof path !== 'string') return;
+
+      // Clear first to avoid loops if open fails.
+      sessionStorage.removeItem('icui-pending-open-file');
+
+      if (mode === 'temporary') {
+        openFileTemporary(path);
+      } else {
+        openFilePermanent(path);
+      }
+    } catch {
+      // ignore
+    }
+  }, [openFileTemporary, openFilePermanent]);
+
   // Open synthetic diff (for untracked files)
   const openSyntheticDiff = useCallback(async (filePath: string, patch: string) => {
     console.log('[ICUIEditor] openSyntheticDiff called for:', filePath);

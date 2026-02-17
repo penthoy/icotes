@@ -206,9 +206,42 @@ class MediaService {
    * Get file URL from attachment
    */
   getAttachmentUrl(attachment: MediaAttachment): string {
-    // Use the attachment ID to get file via the backend API
+    // Prefer attachment ID endpoint when available
     const url = this.apiUrl || this.getFallbackApiUrl();
-    return `${url}/media/file/${attachment.id}`;
+    const attachmentId = (attachment?.id || '').toString().trim();
+    if (attachmentId) {
+      return `${url}/media/file/${attachmentId}`;
+    }
+
+    // Fallback for id-less attachments (e.g., WhatsApp inbound media)
+    const rawPath = (attachment?.path || '').toString().trim();
+    if (!rawPath) {
+      return `${url}/media/file/`;
+    }
+
+    // Absolute/file paths -> stream through files/raw
+    const pathNoFilePrefix = rawPath.startsWith('file://') ? rawPath.slice(7) : rawPath;
+    if (
+      rawPath.startsWith('file://') ||
+      rawPath.startsWith('/') ||
+      /^[a-zA-Z]:[\\/]/.test(rawPath)
+    ) {
+      return `${url}/files/raw?path=${encodeURIComponent(pathNoFilePrefix)}`;
+    }
+
+    // Relative media storage path: <type>/<filename>
+    // Example: files/wa_123_image.jpg -> /api/media/files/wa_123_image.jpg
+    const slashIndex = rawPath.indexOf('/');
+    if (slashIndex > 0) {
+      const folder = rawPath.slice(0, slashIndex);
+      const filename = rawPath.slice(slashIndex + 1);
+      if (folder && filename) {
+        return `${url}/media/${encodeURIComponent(folder)}/${encodeURIComponent(filename)}`;
+      }
+    }
+
+    // Last fallback: try direct media path under files
+    return `${url}/media/files/${encodeURIComponent(rawPath)}`;
   }
 
   /**

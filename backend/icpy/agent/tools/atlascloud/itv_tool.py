@@ -206,8 +206,14 @@ class AtlasCloudImageToVideoTool(BaseTool):
         # Otherwise, treat as workspace file path
         logger.info(f"Reading image from workspace: {image}")
         
-        # Strip local: prefix if present
-        clean_image = image.replace('local:', '') if image.startswith('local:') else image
+        # Strip URI scheme prefixes (file://, local:)
+        clean_image = image
+        if clean_image.startswith('file:///'):
+            clean_image = clean_image[len('file://'):]
+        elif clean_image.startswith('file://'):
+            clean_image = clean_image[len('file://'):]
+        if clean_image.startswith('local:'):
+            clean_image = clean_image[len('local:'):]
         
         # Get context-aware filesystem and current context
         filesystem_service = await get_contextual_filesystem()
