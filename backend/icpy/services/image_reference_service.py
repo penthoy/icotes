@@ -332,7 +332,11 @@ class ImageReferenceService:
                                 exists_any = True
                                 break
                         if not exists_any and file_type == 'preview':
-                            should_remove = True
+                            # Apply grace period: only remove if the reference is
+                            # older than the threshold to avoid racing with
+                            # in-progress session writes that haven't persisted yet.
+                            if timestamp and timestamp < threshold:
+                                should_remove = True
                 else:
                     # Legacy entry without session_ids
                     if file_type == 'preview' and timestamp and timestamp < threshold:

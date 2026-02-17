@@ -436,18 +436,18 @@ class ChatService:
     def _should_auto_title(self, session_id: str) -> bool:
         meta = self._read_session_meta(session_id)
         if not meta:
-            logger.info(f"[AUTOTITLE] _should_auto_title({session_id}): no meta → True")
+            logger.debug(f"[AUTOTITLE] _should_auto_title({session_id}): no meta → True")
             return True
         if meta.get('user_renamed'):
-            logger.info(f"[AUTOTITLE] _should_auto_title({session_id}): user_renamed=True → False")
+            logger.debug(f"[AUTOTITLE] _should_auto_title({session_id}): user_renamed=True → False")
             return False
         if meta.get('title_source') == 'manual':
-            logger.info(f"[AUTOTITLE] _should_auto_title({session_id}): title_source=manual → False")
+            logger.debug(f"[AUTOTITLE] _should_auto_title({session_id}): title_source=manual → False")
             return False
         if meta.get('auto_title_generated'):
-            logger.info(f"[AUTOTITLE] _should_auto_title({session_id}): already generated → False")
+            logger.debug(f"[AUTOTITLE] _should_auto_title({session_id}): already generated → False")
             return False
-        logger.info(f"[AUTOTITLE] _should_auto_title({session_id}): eligible → True (meta={meta})")
+        logger.debug(f"[AUTOTITLE] _should_auto_title({session_id}): eligible → True (meta={meta})")
         return True
 
     def _mark_auto_title_state(self, session_id: str, generated: bool) -> None:
@@ -2335,8 +2335,10 @@ class ChatService:
                             ref_id = location_data.get('imageReference', {}).get('image_id')
                             if ref_id and session_id:
                                 await self.image_service.link_session(ref_id, session_id)
-                        except Exception:
-                            pass
+                        except asyncio.CancelledError:
+                            raise
+                        except Exception as e:
+                            logger.debug(f"Failed to link session for existing ref in {location_name}: {e}")
                         continue
                     
                     image_data = location_data['imageData']
@@ -2445,8 +2447,10 @@ class ChatService:
                                 ref_id = parsed.get('imageReference', {}).get('image_id')
                                 if ref_id and session_id:
                                     await self.image_service.link_session(ref_id, session_id)
-                            except Exception:
-                                pass
+                            except asyncio.CancelledError:
+                                raise
+                            except Exception as e:
+                                logger.debug(f"Failed to link session for parsed block ref in {location_name}: {e}")
                             return parsed
                         try:
                             digest_inner = hashlib.sha256(image_data_inner.encode('utf-8')).hexdigest()
@@ -3217,9 +3221,10 @@ class ChatService:
             except Exception as e:
                 logger.warning(f"Failed to unlink image references for session {session_id}: {e}")
             # Remove debug sidecar if present
+            # NOTE: session_id already has "session_" prefix from create_session()
             try:
                 debug_dir = self.history_root.parent / "debug"
-                debug_file = debug_dir / f"session_{session_id}.debug.jsonl"
+                debug_file = debug_dir / f"{session_id}.debug.jsonl"
                 if debug_file.exists():
                     debug_file.unlink()
             except Exception as e:
@@ -3335,6 +3340,13 @@ class ChatService:
             
             # Also send typing indicator to stop
             await self._send_typing_indicator(session_id, False)
+            
+            # Clean up any leaked _stream_stats entries for this session.
+            # If a stream was cancelled mid-flight, _send_streaming_end() may
+            # never have been called, leaving orphaned stats entries.
+            leaked_keys = [k for k in self._stream_stats if k.startswith(f"{session_id}:")]
+            for k in leaked_keys:
+                self._stream_stats.pop(k, None)
             
             return stopped
             

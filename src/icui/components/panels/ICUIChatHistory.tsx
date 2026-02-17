@@ -344,9 +344,9 @@ const ICUIChatHistory: React.FC<ICUIChatHistoryProps> = ({
       (async () => {
         const ok = await confirmService.confirm({ title: 'Delete Sessions', message: confirmMessage, danger: true, confirmText: 'Delete' });
         if (ok) {
-          selectedSessionObjects.forEach(session => {
-            deleteSession(session.id);
-          });
+          await Promise.all(selectedSessionObjects.map(session =>
+            deleteSession(session.id).catch(err => console.error(`Failed to delete session ${session.id}:`, err))
+          ));
           setSelectedSessions(new Set());
         }
       })();
@@ -492,9 +492,9 @@ const ICUIChatHistory: React.FC<ICUIChatHistoryProps> = ({
                   (async () => {
                     const ok = await confirmService.confirm({ title: 'Delete Sessions', message: confirmMessage, danger: true, confirmText: 'Delete' });
                     if (ok) {
-                      selectedSessionObjects.forEach(session => {
-                        deleteSession(session.id);
-                      });
+                      await Promise.all(selectedSessionObjects.map(s =>
+                        deleteSession(s.id).catch(err => console.error(`Failed to delete session ${s.id}:`, err))
+                      ));
                       setSelectedSessions(new Set());
                     }
                   })();

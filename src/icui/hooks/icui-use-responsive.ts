@@ -65,15 +65,16 @@ export function useICUIResponsive(): ICUIResponsiveConfig & {
       const isTablet = width >= ICUI_BREAKPOINTS.md && width < ICUI_BREAKPOINTS.lg;
       const isDesktop = width >= ICUI_BREAKPOINTS.lg;
 
-      // Determine current breakpoint
+      // Determine current breakpoint — iterate from largest (2xl) down to
+      // smallest (xs) and stop at the first match so we pick the biggest
+      // breakpoint whose min-width is satisfied.
       let newBreakpoint: ICUIBreakpoint = 'xs';
-      Object.entries(ICUI_BREAKPOINTS)
-        .reverse()
-        .forEach(([bp, minWidth]) => {
-          if (width >= minWidth) {
-            newBreakpoint = bp as ICUIBreakpoint;
-          }
-        });
+      for (const [bp, minWidth] of Object.entries(ICUI_BREAKPOINTS).reverse()) {
+        if (width >= minWidth) {
+          newBreakpoint = bp as ICUIBreakpoint;
+          break;
+        }
+      }
 
       // Only update if values actually changed
       setViewport(prev => {

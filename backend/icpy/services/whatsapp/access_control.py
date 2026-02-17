@@ -10,6 +10,11 @@ Modes:
   - "pairing"   : Unknown numbers must be approved via pairing code
   - "allowlist"  : Only pre-approved numbers can interact
   - "disabled"  : WhatsApp channel is off
+
+Security Note:
+  Phone numbers are currently stored in plaintext JSON files on disk.
+  This is acceptable for the experimental POC stage. For production
+  deployment, consider encrypting PII at rest or using a secrets manager.
 """
 
 import asyncio

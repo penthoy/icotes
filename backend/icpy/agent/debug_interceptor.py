@@ -309,7 +309,8 @@ def _get_debug_file_path(session_id: str, workspace_path: Optional[str] = None) 
     workspace = workspace_path or os.getenv('WORKSPACE_ROOT', '/tmp')
     debug_dir = Path(workspace) / '.icotes' / 'debug'
     debug_dir.mkdir(parents=True, exist_ok=True)
-    return debug_dir / f"session_{session_id}.debug.jsonl"
+    # session_id already has "session_" prefix from create_session()
+    return debug_dir / f"{session_id}.debug.jsonl"
 
 def read_debug_entries(session_id: str, workspace_path: Optional[str] = None) -> list[Dict[str, Any]]:
     """Read debug entries for a session, skipping comment lines."""

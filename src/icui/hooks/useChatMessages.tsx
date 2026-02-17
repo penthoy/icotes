@@ -520,6 +520,11 @@ export const useChatMessages = (options: UseChatMessagesOptions = {}): UseChatMe
       // (e.g. after rollback/edit). It can also keep optimistic user messages with
       // client-generated IDs that don't exist in persisted history. Prefer REPLACE
       // whenever we are not actively streaming.
+      //
+      // Optimistic user messages are created on the client with IDs prefixed 'user_'
+      // before the server assigns a permanent ID. If any such messages remain in
+      // state, it signals the server history has superseded them and we should
+      // replace rather than merge to avoid duplicates.
       const hasOptimisticUserMessages = (msgs: ChatMessage[]) =>
         msgs.some(m => typeof (m as any)?.id === 'string' && String((m as any).id).startsWith('user_'));
 
