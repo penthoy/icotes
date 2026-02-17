@@ -532,7 +532,7 @@ class WhatsAppBotService:
             return True
 
         elif cmd == "/pending":
-            pending = self.access_control.list_pending()
+            pending = await self.access_control.list_pending()
             if pending:
                 lines = ["📋 *Pending pairing requests:*\n"]
                 for p in pending:

@@ -377,9 +377,13 @@ class ChatService:
         """Write session meta file atomically."""
         meta_path = self._meta_path(session_id)
         tmp_path = meta_path.with_suffix('.meta.json.tmp')
-        with open(tmp_path, 'w', encoding='utf-8') as mf:
-            json.dump(payload, mf, ensure_ascii=False)
-        tmp_path.replace(meta_path)
+        try:
+            with open(tmp_path, 'w', encoding='utf-8') as mf:
+                json.dump(payload, mf, ensure_ascii=False)
+            tmp_path.replace(meta_path)
+        except Exception:
+            tmp_path.unlink(missing_ok=True)
+            raise
 
     def _get_session_lock(self, session_id: str) -> asyncio.Lock:
         """Get or create a per-session async lock."""
@@ -534,7 +538,7 @@ class ChatService:
 
                 # Run the synchronous OpenAI call in a thread to avoid blocking the event loop
                 import functools
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 response = await loop.run_in_executor(
                     None,
                     functools.partial(
@@ -562,19 +566,19 @@ class ChatService:
                 logger.debug(f"[AUTOTITLE] Provider {provider_name} failed: {e}")
                 continue
 
-        logger.info("[AUTOTITLE] All providers failed, returning None for heuristic fallback")
+        logger.debug("[AUTOTITLE] All providers failed, returning None for heuristic fallback")
         return None
 
     def _schedule_auto_title(self, session_id: str) -> None:
         """Schedule auto title generation (one per session)."""
-        logger.info(f"[AUTOTITLE] _schedule_auto_title called for {session_id}")
+        logger.debug(f"[AUTOTITLE] _schedule_auto_title called for {session_id}")
         if not self._should_auto_title(session_id):
-            logger.info(f"[AUTOTITLE] _schedule_auto_title: skipped (not eligible)")
+            logger.debug("[AUTOTITLE] _schedule_auto_title: skipped (not eligible)")
             return
         if session_id in self._auto_title_tasks and not self._auto_title_tasks[session_id].done():
-            logger.info(f"[AUTOTITLE] _schedule_auto_title: skipped (task already running)")
+            logger.debug("[AUTOTITLE] _schedule_auto_title: skipped (task already running)")
             return
-        logger.info(f"[AUTOTITLE] _schedule_auto_title: creating auto-title task")
+        logger.debug("[AUTOTITLE] _schedule_auto_title: creating auto-title task")
 
         async def _task():
             try:
@@ -3357,6 +3361,16 @@ class ChatService:
     async def cleanup(self):
         """Clean up temporary workspace directories and files created by this instance"""
         try:
+            # Cancel any pending auto-title tasks
+            for sid, task in list(self._auto_title_tasks.items()):
+                if not task.done():
+                    task.cancel()
+                    try:
+                        await task
+                    except (asyncio.CancelledError, Exception):
+                        pass
+            self._auto_title_tasks.clear()
+
             # Stop any pending persist tasks
             if self._persist_task and not self._persist_task.done():
                 self._persist_task.cancel()

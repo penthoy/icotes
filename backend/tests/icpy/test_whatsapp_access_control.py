@@ -186,7 +186,7 @@ class TestPairingCodes:
     async def test_list_pending(self, access_pairing):
         await access_pairing.generate_pairing_code("+16047193142")
         await access_pairing.generate_pairing_code("+447898114104")
-        pending = access_pairing.list_pending()
+        pending = await access_pairing.list_pending()
         assert len(pending) == 2
         phones = {p["phone"] for p in pending}
         assert "+16047193142" in phones

@@ -35,6 +35,13 @@ MAX_PENDING = 5
 CODE_TTL_SECONDS = 3600  # 1 hour
 
 
+def _mask_phone(phone: str) -> str:
+    """Mask a phone number for logging (show last 4 digits only)."""
+    if len(phone) <= 4:
+        return "****"
+    return "*" * (len(phone) - 4) + phone[-4:]
+
+
 class PairingRequest:
     """A pending pairing request from an unknown phone number."""
 
@@ -175,7 +182,7 @@ class WhatsAppAccessControl:
 
             self.pending[code] = PairingRequest(phone_e164, code)
             await self._save_pending()
-            logger.info(f"Generated pairing code {code} for {phone_e164}")
+            logger.info(f"Generated pairing code for {_mask_phone(phone_e164)}")
             return code
 
     async def approve(self, code: str) -> Optional[str]:
@@ -195,7 +202,7 @@ class WhatsAppAccessControl:
             self.allowlist.add(req.phone_e164)
             await self._save_allowlist()
             await self._save_pending()
-            logger.info(f"Approved pairing for {req.phone_e164}")
+            logger.info(f"Approved pairing for {_mask_phone(req.phone_e164)}")
             return req.phone_e164
 
     async def revoke(self, phone_e164: str) -> bool:
@@ -204,7 +211,7 @@ class WhatsAppAccessControl:
             if phone_e164 in self.allowlist:
                 self.allowlist.discard(phone_e164)
                 await self._save_allowlist()
-                logger.info(f"Revoked access for {phone_e164}")
+                logger.info(f"Revoked access for {_mask_phone(phone_e164)}")
                 return True
             return False
 
@@ -214,13 +221,14 @@ class WhatsAppAccessControl:
             self.allowlist.add(phone_e164)
             await self._save_allowlist()
 
-    def list_pending(self) -> list:
+    async def list_pending(self) -> list:
         """List all pending pairing requests."""
-        self._clean_expired()
-        return [
-            {"phone": r.phone_e164, "code": r.code, "created_at": r.created_at}
-            for r in self.pending.values()
-        ]
+        async with self._lock:
+            self._clean_expired()
+            return [
+                {"phone": r.phone_e164, "code": r.code, "created_at": r.created_at}
+                for r in self.pending.values()
+            ]
 
     # ─── Internal ─────────────────────────────────────────────
 

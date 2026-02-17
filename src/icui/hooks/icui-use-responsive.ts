@@ -51,9 +51,18 @@ export function useICUIResponsive(): ICUIResponsiveConfig & {
     };
   };
   
-  const [viewport, setViewport] = useState<ICUIViewport>(getInitialViewport());
+  const [viewport, setViewport] = useState<ICUIViewport>(getInitialViewport);
 
-  const [currentBreakpoint, setCurrentBreakpoint] = useState<ICUIBreakpoint>('xs');
+  // Derive initial breakpoint from window width so first render matches viewport
+  const getInitialBreakpoint = (): ICUIBreakpoint => {
+    if (typeof window === 'undefined') return 'xs';
+    const w = window.innerWidth;
+    for (const [bp, minWidth] of Object.entries(ICUI_BREAKPOINTS).reverse()) {
+      if (w >= minWidth) return bp as ICUIBreakpoint;
+    }
+    return 'xs';
+  };
+  const [currentBreakpoint, setCurrentBreakpoint] = useState<ICUIBreakpoint>(getInitialBreakpoint);
 
   useEffect(() => {
     const updateViewport = () => {

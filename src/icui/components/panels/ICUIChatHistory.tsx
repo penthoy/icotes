@@ -33,7 +33,7 @@ const ICUIChatHistory: React.FC<ICUIChatHistoryProps> = ({
   const [tempName, setTempName] = useState<string>('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [searchResults, setSearchResults] = useState<Array<{ session_id: string; session_name: string; matches: Array<{ role?: string; content_preview: string; message_index?: number }> }>>([]);
+  const [searchResults, setSearchResults] = useState<Array<{ session_id: string; session_name: string; matches: Array<{ role?: string; content_preview: string; message_index?: number }> }> | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   
   // Multi-select state
@@ -135,7 +135,12 @@ const ICUIChatHistory: React.FC<ICUIChatHistoryProps> = ({
   // Filter and sort sessions based on search query
   const filteredAndSortedSessions = useMemo(() => {
     const query = searchQuery.trim();
-    if (query && searchResults.length > 0) {
+    // searchResults !== null means a backend search was performed
+    if (query && searchResults !== null) {
+      if (searchResults.length === 0) {
+        // Backend searched but found nothing — show empty list
+        return [];
+      }
       const byId = new Map(sessions.map(s => [s.id, s]));
       const merged = searchResults.map(result => {
         const meta = byId.get(result.session_id);
@@ -163,12 +168,13 @@ const ICUIChatHistory: React.FC<ICUIChatHistoryProps> = ({
     return filtered.slice().sort((a, b) => b.updated - a.updated);
   }, [sessions, searchQuery, searchResults]);
 
-  // Debounced backend content search
+  // Debounced backend content search with abort to prevent stale responses
   useEffect(() => {
     let timer: number | undefined;
+    const abortController = new AbortController();
     const query = searchQuery.trim();
     if (!query) {
-      setSearchResults([]);
+      setSearchResults(null);
       return;
     }
 
@@ -178,21 +184,28 @@ const ICUIChatHistory: React.FC<ICUIChatHistoryProps> = ({
         const cfg = await configService.getConfig();
         const base = (cfg.api_url || cfg.base_url || '').replace(/\/api$/, '');
         const url = `${base || window.location.origin}/api/chat/search?q=${encodeURIComponent(query)}&limit=50&max_matches=3`;
-        const res = await fetch(url);
+        const res = await fetch(url, { signal: abortController.signal });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json = await res.json();
-        setSearchResults(Array.isArray(json.data) ? json.data : []);
+        if (!abortController.signal.aborted) {
+          setSearchResults(Array.isArray(json.data) ? json.data : []);
+        }
       } catch (err) {
-        console.warn('Chat history search failed:', err);
-        setSearchResults([]);
+        if (!abortController.signal.aborted) {
+          console.warn('Chat history search failed:', err);
+          setSearchResults([]);
+        }
       } finally {
-        setIsSearching(false);
+        if (!abortController.signal.aborted) {
+          setIsSearching(false);
+        }
       }
     };
 
     timer = window.setTimeout(run, 300);
     return () => {
       if (timer) window.clearTimeout(timer);
+      abortController.abort();
     };
   }, [searchQuery]);
 

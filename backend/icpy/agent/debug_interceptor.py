@@ -41,9 +41,10 @@ class DebugInterceptor:
     def _get_debug_file_path(self) -> Path:
         """Construct the path for the debug.jsonl file"""
         # Store in .icotes/debug/ directory
+        # session_id already carries the "session_" prefix from create_session()
         debug_dir = Path(self.workspace_path) / '.icotes' / 'debug'
         debug_dir.mkdir(parents=True, exist_ok=True)
-        return debug_dir / f"session_{self.session_id}.debug.jsonl"
+        return debug_dir / f"{self.session_id}.debug.jsonl"
     
     def _write_header(self):
         """Write header information to the debug file"""
