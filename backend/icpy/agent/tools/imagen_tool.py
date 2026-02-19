@@ -4,7 +4,7 @@ Imagen Tool - Image Generation using Google's Gemini 2.5 Flash Image Preview
 This tool allows any agent to generate images using Google's native Gemini model
 that generates images directly in its response.
 
-Requires: GOOGLE_API_KEY environment variable
+Requires: GOOGLE_API_KEY or Route proxy (ICOTES_ROUTE_URL + ICOTES_ROUTE_KEY)
 
 Phase 7 Update: Added hop support, resolution control, and custom filenames
 Phase 8 Update: Added aspect ratio presets and parameter support
@@ -21,10 +21,14 @@ import asyncio
 from typing import Any, Dict, Optional, Tuple
 from datetime import datetime
 
+import httpx
+
 from .base_tool import BaseTool, ToolResult
 from .context_helpers import get_contextual_filesystem, get_current_context
 from .generation_output_checks import verify_output_file
 from .imagen_utils import ASPECT_RATIO_SPECS, resolve_dimensions, guess_mime_from_ext
+from ...core.async_job_poller import AsyncJobPoller
+from ...core.payload_utils import unwrap_envelope
 
 # Import path utilities for friendly namespace names
 try:
@@ -700,6 +704,121 @@ class ImagenTool(BaseTool):
             logger.exception("[ImagenTool] _attempt error: %s", e)
             return None, str(e)
 
+    @staticmethod
+    def _unwrap_route_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Unwrap route/Atlas envelope payloads into core prediction data."""
+        return unwrap_envelope(payload)
+
+    @staticmethod
+    def _is_completed_prediction(status_payload: Dict[str, Any]) -> bool:
+        """Return True when prediction reached a completed/succeeded terminal state."""
+        status_value = str(status_payload.get("status", "")).lower()
+        return status_value in {"completed", "succeeded", "success", "done"}
+
+    @staticmethod
+    def _is_failed_prediction(status_payload: Dict[str, Any]) -> bool:
+        """Return True when prediction reached a failed terminal state."""
+        status_value = str(status_payload.get("status", "")).lower()
+        return status_value in {"failed", "error", "canceled", "cancelled", "rejected"}
+
+    def _extract_image_url_from_prediction(self, status_payload: Dict[str, Any]) -> Optional[str]:
+        """Extract a direct image URL from route prediction payload shapes."""
+        candidate_urls: list[str] = []
+
+        def _collect_from_value(value: Any) -> None:
+            if isinstance(value, str) and value.startswith(("http://", "https://")):
+                candidate_urls.append(value)
+                return
+
+            if isinstance(value, list):
+                for item in value:
+                    _collect_from_value(item)
+                return
+
+            if isinstance(value, dict):
+                for key in ("url", "download", "image", "image_url", "file", "src"):
+                    if key in value:
+                        _collect_from_value(value.get(key))
+                for nested_key in ("output", "outputs", "images", "prediction", "urls", "data", "result"):
+                    if nested_key in value:
+                        _collect_from_value(value.get(nested_key))
+
+        _collect_from_value(status_payload)
+
+        for url in candidate_urls:
+            lowered = url.lower()
+            if any(ext in lowered for ext in (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp")):
+                return url
+
+        return candidate_urls[0] if candidate_urls else None
+
+    async def _execute_route_image_generation(self, prompt: str, timeout_seconds: int) -> tuple[bytes, str, dict[str, Any]]:
+        """Generate image through route proxy and return image bytes + mime type."""
+        from ...services.route_services import get_route_service_client
+
+        route_client = get_route_service_client()
+        route_result = await route_client.generate_image(
+            prompt=str(prompt),
+            model="atlascloud/image-v1",
+        )
+
+        initial_payload = self._unwrap_route_payload(route_result if isinstance(route_result, dict) else {})
+        prediction_id = initial_payload.get("id")
+        if not prediction_id:
+            raise RuntimeError("Route image generation response did not include prediction id")
+
+        poller = AsyncJobPoller(initial_interval=2.0)
+
+        async def _fetch_status() -> Dict[str, Any]:
+            poll_data = await route_client.get_prediction(prediction_id)
+            return self._unwrap_route_payload(poll_data if isinstance(poll_data, dict) else {})
+
+        def _on_timeout() -> Exception:
+            return TimeoutError(
+                f"Image generation timed out after {timeout_seconds} seconds. Request ID: {prediction_id}"
+            )
+
+        def _on_failure(status_payload: Dict[str, Any]) -> Exception:
+            details = status_payload.get("logs") or status_payload.get("error") or status_payload.get("message")
+            return RuntimeError(f"Image generation failed: {details or 'unknown error'}")
+
+        final_payload = await poller.poll_until_terminal(
+            fetch_status=_fetch_status,
+            is_complete=self._is_completed_prediction,
+            is_failed=self._is_failed_prediction,
+            timeout_seconds=timeout_seconds,
+            on_timeout=_on_timeout,
+            on_failure=_on_failure,
+        )
+
+        image_url = self._extract_image_url_from_prediction(final_payload)
+        if not image_url:
+            raise RuntimeError("Route image generation completed but no image URL was returned")
+
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            image_response = await client.get(image_url)
+            image_response.raise_for_status()
+            image_bytes = image_response.content
+            content_type = image_response.headers.get("content-type", "")
+
+        if not image_bytes:
+            raise RuntimeError("Route image download returned empty content")
+
+        mime_type = content_type.split(";")[0].strip() if content_type else None
+        if not mime_type or not mime_type.startswith("image/"):
+            mime_type = guess_mime_from_ext(image_url) or "image/png"
+
+        attempted_models = [{"model": "atlascloud/image-v1", "error": None}]
+        return image_bytes, mime_type, {
+            "routeProxy": True,
+            "provider": "atlascloud",
+            "requestId": prediction_id,
+            "imageUrl": image_url,
+            "status": final_payload.get("status"),
+            "attemptedModels": attempted_models,
+            "raw": final_payload,
+        }
+
     async def execute(self, **kwargs) -> ToolResult:
         """
         Execute image generation using Google Gen AI SDK.
@@ -736,20 +855,30 @@ class ImagenTool(BaseTool):
                     success=False,
                     error="prompt is required and cannot be empty"
                 )
-            # Validate SDK/key availability early to avoid cryptic import errors
-            if not GENAI_AVAILABLE:
+            google_api_key = os.environ.get("GOOGLE_API_KEY")
+            route_enabled = False
+            try:
+                from ..clients import is_icotes_route_enabled
+                route_enabled = is_icotes_route_enabled()
+            except Exception:
+                route_enabled = False
+
+            route_metadata: Dict[str, Any] = {}
+            if not google_api_key and not route_enabled:
+                return ToolResult(
+                    success=False,
+                    error=(
+                        "GOOGLE_API_KEY is not set, and route proxy is not configured. "
+                        "Set GOOGLE_API_KEY or configure ICOTES_ROUTE_URL + ICOTES_ROUTE_KEY."
+                    )
+                )
+
+            if google_api_key and not GENAI_AVAILABLE:
                 return ToolResult(
                     success=False,
                     error=(
                         "Google image SDK not installed. Install 'google-genai' (preferred) or 'google-generativeai' "
                         "in backend, then restart the server."
-                    )
-                )
-            if not os.environ.get("GOOGLE_API_KEY"):
-                return ToolResult(
-                    success=False,
-                    error=(
-                        "GOOGLE_API_KEY is not set. Set it in the environment for the backend container/process and retry."
                     )
                 )
             
@@ -761,6 +890,7 @@ class ImagenTool(BaseTool):
             aspect_ratio_label = kwargs.get("aspect_ratio")
             explicit_width = kwargs.get("width")
             explicit_height = kwargs.get("height")
+            route_timeout = int(kwargs.get("timeout") or 300)
             
             # Resolve target size with helper: simpler and unit-testable
             target_width, target_height = resolve_dimensions(
@@ -799,43 +929,61 @@ class ImagenTool(BaseTool):
             
             if use_native_aspect_ratio:
                 logger.info(f"[ImagenTool] Using NATIVE API aspect_ratio={aspect_ratio_label}")
-            
             attempted = []
-            response, err = await self._attempt(content, self._primary_model, aspect_ratio=api_aspect_ratio, image_part=image_part)
-            attempted.append({"model": self._primary_model, "error": err})
-            mime_err_sig = "Unhandled generated data mime type"
-            if err and mime_err_sig in err:
-                logger.warning(f"Mime type error on primary model, trying fallbacks: {err}")
-                for fb in self._fallback_models:
-                    r, e = await self._attempt(content, fb, aspect_ratio=api_aspect_ratio, image_part=image_part)
-                    attempted.append({"model": fb, "error": e})
-                    if r and not e:
-                        response = r
-                        self._model = fb
-                        logger.info(f"Fallback model succeeded: {fb}")
-                        break
-            else:
-                self._model = self._primary_model
-
-            if response is None:
-                return ToolResult(success=False, error=f"Image generation API call failed: {err}", data={"attemptedModels": attempted})
-            
-            # Extract image data from response
-            image_bytes, mime_type = self._extract_image_from_native_response(response)
-            
-            if not image_bytes:
-                # Check if there's text content explaining why no image
-                text_content = ""
-                try:
-                    if hasattr(response, 'text') and response.text:
-                        text_content = response.text
-                except Exception:
-                    pass
-                
-                return ToolResult(
-                    success=False,
-                    error=f"No image generated. Model response: {text_content[:200]}"
+            if os.environ.get("GOOGLE_API_KEY"):
+                response, err = await self._attempt(
+                    content,
+                    self._primary_model,
+                    aspect_ratio=api_aspect_ratio,
+                    image_part=image_part,
                 )
+                attempted.append({"model": self._primary_model, "error": err})
+                mime_err_sig = "Unhandled generated data mime type"
+                if err and mime_err_sig in err:
+                    logger.warning(f"Mime type error on primary model, trying fallbacks: {err}")
+                    for fb in self._fallback_models:
+                        r, e = await self._attempt(content, fb, aspect_ratio=api_aspect_ratio, image_part=image_part)
+                        attempted.append({"model": fb, "error": e})
+                        if r and not e:
+                            response = r
+                            self._model = fb
+                            logger.info(f"Fallback model succeeded: {fb}")
+                            break
+                else:
+                    self._model = self._primary_model
+
+                if response is None:
+                    return ToolResult(success=False, error=f"Image generation API call failed: {err}", data={"attemptedModels": attempted})
+
+                image_bytes, mime_type = self._extract_image_from_native_response(response)
+
+                if not image_bytes:
+                    text_content = ""
+                    try:
+                        if hasattr(response, 'text') and response.text:
+                            text_content = response.text
+                    except Exception:
+                        pass
+
+                    return ToolResult(
+                        success=False,
+                        error=f"No image generated. Model response: {text_content[:200]}"
+                    )
+            else:
+                if image_part is not None:
+                    return ToolResult(
+                        success=False,
+                        error="Image editing currently requires GOOGLE_API_KEY. Route proxy fallback supports generation-only mode."
+                    )
+
+                logger.info("[ImagenTool] Using route proxy fallback for image generation")
+                image_bytes, mime_type, route_metadata = await self._execute_route_image_generation(
+                    prompt=str(prompt),
+                    timeout_seconds=route_timeout,
+                )
+                attempted = route_metadata.get("attemptedModels", [{"model": "atlascloud/image-v1", "error": None}])
+                self._model = "atlascloud/image-v1"
+                use_native_aspect_ratio = False
             
             logger.info(f"Successfully extracted image data ({len(image_bytes)} bytes, {mime_type})")
             
@@ -999,6 +1147,16 @@ class ImagenTool(BaseTool):
                 "context": context_name,  # Now displays friendly name (hop1, local, etc)
                 "contextHost": context.get('host')
             }
+
+            if route_metadata:
+                result_data.update(
+                    {
+                        "routeProxy": True,
+                        "provider": route_metadata.get("provider", "atlascloud"),
+                        "routeRequestId": route_metadata.get("requestId"),
+                        "routeStatus": route_metadata.get("status"),
+                    }
+                )
             
             # Add actual dimensions for widget display
             if actual_dimensions:

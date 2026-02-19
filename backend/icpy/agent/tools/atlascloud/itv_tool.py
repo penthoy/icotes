@@ -163,15 +163,16 @@ class AtlasCloudImageToVideoTool(BaseTool):
         logger.info("Atlas Cloud Image-to-Video tool initialized")
     
     def _get_client(self) -> AtlasCloudClient:
-        """Get or create Atlas Cloud client."""
+        """Get or create Atlas Cloud client.
+
+        AtlasCloudClient handles both direct API key mode and route-proxy
+        fallback (ICOTES_ROUTE_URL + ICOTES_ROUTE_KEY).
+        """
         if self._client is None:
-            api_key = os.getenv("ATLASCLOUD_API_KEY")
-            if not api_key:
-                raise AtlasCloudAuthError(
-                    "ATLASCLOUD_API_KEY environment variable not set. "
-                    "Get your API key from https://console.atlascloud.ai/settings"
-                )
-            self._client = AtlasCloudClient(api_key=api_key)
+            try:
+                self._client = AtlasCloudClient()
+            except ValueError as e:
+                raise AtlasCloudAuthError(str(e)) from e
         return self._client
     
     async def _process_image(

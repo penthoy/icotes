@@ -123,11 +123,18 @@ class ElevenLabsSoundEffectsTool(BaseTool):
         self._api_key: Optional[str] = None
     
     def _get_client(self):
-        """Get or create ElevenLabs client lazily."""
+        """Get or create ElevenLabs client lazily.
+
+        Returns None if route proxy should be used instead.
+        """
         if self._client is not None:
             return self._client
         
         if not ELEVENLABS_AVAILABLE:
+            from icpy.services.route_services import is_route_service_available
+            if is_route_service_available():
+                logger.info("ElevenLabs SDK not installed, using route proxy for SFX")
+                return None
             raise RuntimeError(
                 f"ElevenLabs SDK not available. Install with: pip install elevenlabs. "
                 f"Error: {_ELEVENLABS_IMPORT_ERROR}"
@@ -135,9 +142,13 @@ class ElevenLabsSoundEffectsTool(BaseTool):
         
         api_key = os.environ.get("ELEVENLABS_API_KEY")
         if not api_key:
+            from icpy.services.route_services import is_route_service_available
+            if is_route_service_available():
+                logger.info("ELEVENLABS_API_KEY not set, using route proxy for SFX")
+                return None
             raise RuntimeError(
-                "ELEVENLABS_API_KEY environment variable not set. "
-                "Get your API key from https://elevenlabs.io/app/settings/api-keys"
+                "ELEVENLABS_API_KEY environment variable not set and route proxy not configured. "
+                "Set ELEVENLABS_API_KEY or configure ICOTES_ROUTE_URL + ICOTES_ROUTE_KEY."
             )
         
         self._api_key = api_key
@@ -304,26 +315,44 @@ class ElevenLabsSoundEffectsTool(BaseTool):
             )
         
         try:
-            # Get client
+            # Get client (None means use route proxy)
             client = self._get_client()
             
-            logger.info(
-                f"[ElevenLabsSFX] Generating sound effect: "
-                f"duration={duration_seconds}s, influence={prompt_influence}, "
-                f"loop={loop}, text_length={len(text)}"
-            )
-            
-            # Generate sound effect using ElevenLabs Sound Effects API
-            # The convert method returns an iterator of audio bytes
-            sfx_iterator = client.text_to_sound_effects.convert(
-                text=text,
-                duration_seconds=duration_seconds,
-                prompt_influence=prompt_influence,
-                loop=loop
-            )
-            
-            # Collect all sound bytes from iterator
-            sfx_bytes = b"".join(sfx_iterator)
+            if client is None:
+                # Route proxy path
+                from icpy.services.route_services import get_route_service_client
+                route_client = get_route_service_client()
+                
+                logger.info(
+                    f"[ElevenLabsSFX] Generating sound effect via route proxy: "
+                    f"duration={duration_seconds}s, influence={prompt_influence}, "
+                    f"loop={loop}, text_length={len(text)}"
+                )
+                
+                sfx_bytes = await route_client.sfx(
+                    text=text,
+                    duration_seconds=duration_seconds,
+                    prompt_influence=prompt_influence,
+                    loop=loop,
+                )
+            else:
+                # Direct SDK path
+                logger.info(
+                    f"[ElevenLabsSFX] Generating sound effect (direct): "
+                    f"duration={duration_seconds}s, influence={prompt_influence}, "
+                    f"loop={loop}, text_length={len(text)}"
+                )
+                
+                # Generate sound effect using ElevenLabs Sound Effects API
+                sfx_iterator = client.text_to_sound_effects.convert(
+                    text=text,
+                    duration_seconds=duration_seconds,
+                    prompt_influence=prompt_influence,
+                    loop=loop
+                )
+                
+                # Collect all sound bytes from iterator
+                sfx_bytes = b"".join(sfx_iterator)
             
             if not sfx_bytes:
                 return ToolResult(

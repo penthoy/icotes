@@ -23,6 +23,7 @@ from icpy.agent.helpers import (
     create_standard_agent_metadata,
     create_environment_reload_function,
     get_available_tools_summary,
+    get_model_name_for_agent,
     ToolDefinitionLoader,
     add_context_to_agent_prompt,
     BASE_SYSTEM_PROMPT_TEMPLATE,
@@ -57,10 +58,13 @@ def chat(message: str, history: List[Dict[str, str]]) -> Generator[str, None, No
         # Prepare messages using shared utility
         safe_messages = build_safe_messages(message, history)
 
+        # Allow model override from workspace/.icotes/agents.json
+        model = get_model_name_for_agent(AGENT_NAME, MODEL_NAME)
+
         # Delegate to generalized agent using OpenRouter adapter
         adapter = OpenRouterClientAdapter()
-        ga = GeneralAgent(adapter, model=MODEL_NAME)
-        logger.info("OpenRouterAgent: Starting chat with tools using GeneralAgent")
+        ga = GeneralAgent(adapter, model=model)
+        logger.info(f"OpenRouterAgent: Starting chat with model={model} using GeneralAgent")
         # Load tool definitions and pass through
         tools = []
         try:

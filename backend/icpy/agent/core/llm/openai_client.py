@@ -4,7 +4,7 @@ from typing import Any, Dict, Iterable, List, Optional
 
 from .base import BaseLLMClient, ProviderNotConfigured
 from ...helpers import OpenAIStreamingHandler
-from ...clients import get_openai_client
+from ...client_resolver import resolve_client
 
 
 class OpenAIClientAdapter(BaseLLMClient):
@@ -23,12 +23,12 @@ class OpenAIClientAdapter(BaseLLMClient):
         max_tokens: Optional[int] = None,
     ) -> Iterable[str]:
         try:
-            client = get_openai_client()
+            client, resolved_model = resolve_client("openai", model)
         except ValueError as e:
             # Normalize to ProviderNotConfigured for runtime consistency
             raise ProviderNotConfigured(str(e)) from e
         # When tools are provided, use the handler (it builds the right request and handles loops)
-        handler = OpenAIStreamingHandler(client, model)
+        handler = OpenAIStreamingHandler(client, resolved_model)
         # OpenAIStreamingHandler expects messages with optional 'tools' loaded internally;
         # we pass tools directly to maintain flexibility while keeping compatibility.
         # It ignores None tools gracefully.

@@ -4,7 +4,7 @@ from typing import Any, Dict, Iterable, List, Optional
 
 from .base import BaseLLMClient, ProviderNotConfigured
 from ...helpers import OpenAIStreamingHandler
-from ...clients import get_openrouter_client
+from ...client_resolver import resolve_client
 
 
 class OpenRouterClientAdapter(BaseLLMClient):
@@ -17,8 +17,8 @@ class OpenRouterClientAdapter(BaseLLMClient):
         max_tokens: Optional[int] = None,
     ) -> Iterable[str]:
         try:
-            client = get_openrouter_client()
+            client, resolved_model = resolve_client("openrouter", model)
         except ValueError as e:
             raise ProviderNotConfigured(str(e)) from e
-        handler = OpenAIStreamingHandler(client, model)
+        handler = OpenAIStreamingHandler(client, resolved_model)
         return handler.stream_chat_with_tools(messages, max_tokens=max_tokens)

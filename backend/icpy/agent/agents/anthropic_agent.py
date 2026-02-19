@@ -26,9 +26,10 @@ logger = logging.getLogger(__name__)
 
 AGENT_NAME = "AnthropicAgent"
 AGENT_DESCRIPTION = "Generic AI assistant powered by Claude Opus 4.5 (Anthropic) with tool calling"
-# Default model - Updated to Claude Opus 4.5 (December 2025)
-# Available models: claude-opus-4-5, claude-sonnet-4-5, claude-haiku-4-5
-MODEL_NAME = "claude-opus-4-5-20251101"
+# Default model name — matches the route proxy registration (dot notation, no date suffix).
+# Route proxy exposes: anthropic/claude-opus-4.5
+# To use a direct ANTHROPIC_API_KEY instead, set it in .env and the resolver will bypass the proxy.
+MODEL_NAME = "claude-opus-4.5"
 
 AGENT_METADATA = create_standard_agent_metadata(
     name=AGENT_NAME,

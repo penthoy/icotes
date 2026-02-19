@@ -5,7 +5,7 @@ Generates videos from text descriptions using Atlas Cloud's unified API.
 Supports multiple video generation models (Seedance, Kling, Veo, Wan, etc.).
 Follows existing tool patterns with hop-aware workspace saving.
 
-Requires: ATLASCLOUD_API_KEY environment variable
+Requires: ATLASCLOUD_API_KEY or Route proxy (ICOTES_ROUTE_URL + ICOTES_ROUTE_KEY)
 
 References:
 - https://www.atlascloud.ai/docs/openapi-index
@@ -174,18 +174,18 @@ class AtlasCloudTextToVideoTool(BaseTool):
         self._client: Optional[AtlasCloudClient] = None
     
     def _get_client(self) -> AtlasCloudClient:
-        """Get or create Atlas Cloud client lazily."""
+        """Get or create Atlas Cloud client lazily.
+
+        AtlasCloudClient handles both direct API key mode and route-proxy
+        fallback (ICOTES_ROUTE_URL + ICOTES_ROUTE_KEY).
+        """
         if self._client is not None:
             return self._client
-        
-        api_key = os.environ.get("ATLASCLOUD_API_KEY")
-        if not api_key:
-            raise RuntimeError(
-                "ATLASCLOUD_API_KEY environment variable not set. "
-                "Get your API key from https://console.atlascloud.ai/settings"
-            )
-        
-        self._client = AtlasCloudClient(api_key=api_key)
+
+        try:
+            self._client = AtlasCloudClient()
+        except ValueError as e:
+            raise RuntimeError(str(e)) from e
         logger.info("Atlas Cloud client initialized")
         return self._client
     

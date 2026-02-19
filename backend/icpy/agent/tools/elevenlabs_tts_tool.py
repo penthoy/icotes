@@ -170,11 +170,21 @@ class ElevenLabsTTSTool(BaseTool):
         self._api_key: Optional[str] = None
     
     def _get_client(self):
-        """Get or create ElevenLabs client lazily."""
+        """Get or create ElevenLabs client lazily.
+
+        Returns None if neither direct key nor route proxy is available.
+        When route proxy is configured and no direct key, we skip the SDK
+        and use RouteServiceClient in execute() instead.
+        """
         if self._client is not None:
             return self._client
         
         if not ELEVENLABS_AVAILABLE:
+            # SDK not installed — check if route proxy is available as fallback
+            from icpy.services.route_services import is_route_service_available
+            if is_route_service_available():
+                logger.info("ElevenLabs SDK not installed, using route proxy for TTS")
+                return None
             raise RuntimeError(
                 f"ElevenLabs SDK not available. Install with: pip install elevenlabs. "
                 f"Error: {_ELEVENLABS_IMPORT_ERROR}"
@@ -182,9 +192,14 @@ class ElevenLabsTTSTool(BaseTool):
         
         api_key = os.environ.get("ELEVENLABS_API_KEY")
         if not api_key:
+            # No direct key — check route proxy fallback
+            from icpy.services.route_services import is_route_service_available
+            if is_route_service_available():
+                logger.info("ELEVENLABS_API_KEY not set, using route proxy for TTS")
+                return None
             raise RuntimeError(
-                "ELEVENLABS_API_KEY environment variable not set. "
-                "Get your API key from https://elevenlabs.io/app/settings/api-keys"
+                "ELEVENLABS_API_KEY environment variable not set and route proxy not configured. "
+                "Set ELEVENLABS_API_KEY or configure ICOTES_ROUTE_URL + ICOTES_ROUTE_KEY."
             )
         
         self._api_key = api_key
@@ -444,34 +459,55 @@ class ElevenLabsTTSTool(BaseTool):
             )
         
         try:
-            # Get client
+            # Get client (None means use route proxy)
             client = self._get_client()
             
-            # Resolve voice ID
-            resolved_voice_id = self._resolve_voice_id(voice, voice_id_param)
-            
-            logger.info(
-                f"[ElevenLabsTTS] Generating speech: "
-                f"text_length={len(text)}, voice={resolved_voice_id}, "
-                f"model={model_id}, format={output_format}"
-            )
-            
-            # Generate speech using ElevenLabs API
-            # The convert method returns an iterator of audio bytes
-            audio_iterator = client.text_to_speech.convert(
-                text=text,
-                voice_id=resolved_voice_id,
-                model_id=model_id,
-                output_format=output_format,
-                voice_settings={
-                    "stability": stability,
-                    "similarity_boost": similarity_boost,
-                    "style": style if model_id == "eleven_multilingual_v2" else 0.0,
-                }
-            )
-            
-            # Collect all audio bytes from iterator
-            audio_bytes = b"".join(audio_iterator)
+            if client is None:
+                # Route proxy path — use RouteServiceClient
+                from icpy.services.route_services import get_route_service_client
+                route_client = get_route_service_client()
+                
+                logger.info(
+                    f"[ElevenLabsTTS] Generating speech via route proxy: "
+                    f"text_length={len(text)}, voice={voice or 'default'}, "
+                    f"model={model_id}, format={output_format}"
+                )
+                
+                audio_bytes = await route_client.tts(
+                    text=text,
+                    voice=voice or "george",
+                    model_id=model_id,
+                    output_format=output_format,
+                    stability=stability,
+                    similarity_boost=similarity_boost,
+                    style=style if model_id == "eleven_multilingual_v2" else 0.0,
+                )
+            else:
+                # Direct SDK path — resolve voice and call ElevenLabs API
+                resolved_voice_id = self._resolve_voice_id(voice, voice_id_param)
+                
+                logger.info(
+                    f"[ElevenLabsTTS] Generating speech (direct): "
+                    f"text_length={len(text)}, voice={resolved_voice_id}, "
+                    f"model={model_id}, format={output_format}"
+                )
+                
+                # Generate speech using ElevenLabs API
+                # The convert method returns an iterator of audio bytes
+                audio_iterator = client.text_to_speech.convert(
+                    text=text,
+                    voice_id=resolved_voice_id,
+                    model_id=model_id,
+                    output_format=output_format,
+                    voice_settings={
+                        "stability": stability,
+                        "similarity_boost": similarity_boost,
+                        "style": style if model_id == "eleven_multilingual_v2" else 0.0,
+                    }
+                )
+                
+                # Collect all audio bytes from iterator
+                audio_bytes = b"".join(audio_iterator)
             
             if not audio_bytes:
                 return ToolResult(

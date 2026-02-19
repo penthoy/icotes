@@ -20,10 +20,10 @@
     "AnthropicAgent": {
       "enabled": true,
       "displayName": "AnthropicAgent",
-      "description": "claude haiku 4.5",
+      "description": "claude-sonnet-4.6",
       "category": "Built-in",
       "order": 3,
-      "modelName": "claude-haiku-4-5-20251001"
+      "modelName": "claude-sonnet-4-6"
     },
     "GeminiAgent": {
       "enabled": true,
@@ -31,7 +31,7 @@
       "description": "Limited Free api available: gemini-3-pro-preview",
       "category": "Built-in",
       "order": 4,
-      "modelName": "gemini-3-pro-preview"
+      "modelName": "gemini-3-pro"
     },
     "ZaiGlmAgent": {
       "enabled": true,
@@ -39,7 +39,8 @@
       "description": "Cheap and powerful and fast inference via Cerebras",
       "category": "Built-in",
       "order": 5,
-      "icon": "🤖"
+      "icon": "🤖",
+      "modelName": "gpt-oss-120b"
     },
     "GroqGptOssAgent": {
       "enabled": true,
@@ -47,7 +48,8 @@
       "description": "Fast coding agent powered by GPT OSS 120B via Groq's LPU",
       "category": "Built-in",
       "order": 6,
-      "icon": "🐧"
+      "icon": "🐧",
+      "modelName": "openai/gpt-oss-120b"
     },
     "CerebrasGptOssAgent": {
       "enabled": true,
@@ -62,20 +64,22 @@
       "displayName": "Groq kimi k2",
       "description": "Very fast coding agent",
       "category": "Built-in",
-      "order": 8
+      "order": 8,
+      "modelName": "moonshotai/kimi-k2-instruct-0905"
     },
     "OpenRouterAgent": {
       "enabled": true,
       "displayName": "OpenRouter",
-      "description": "Built-in agent: Multi-model AI agent via OpenRouter",
+      "description": "Qwen3.5 from openrouter, fast and affordable",
       "category": "Built-in",
       "order": 9,
-      "icon": "\ud83c\udf10"
+      "icon": "\ud83c\udf10",
+      "modelName": "qwen/qwen3.5-397b-a17b"
     },
     "NanoBananaAgent": {
       "enabled": true,
-      "displayName": "Nano Banana",
-      "description": "AI image generation powered by Google's Gemini 3 Pro Image",
+      "displayName": "Nano Banana Pro",
+      "description": "Gemini 3 Pro Image Professional image editor",
       "category": "Built-in",
       "order": 10,
       "icon": "\ud83c\udf4c",
@@ -122,16 +126,17 @@
       "icon": "\ud83d\udcbb"
     },
     "OpenRouterNanoBananaAgent": {
-      "enabled": true,
+      "enabled": false,
       "displayName": "OpenRouterNanoBanana",
       "description": "Auto-discovered agent: OpenRouterNanoBanana",
       "category": "Built-in",
-      "order": 999
+      "order": 999,
+      "modelName": "openai/gpt-4o-mini"
     },
     "PersonalAgent": {
-      "enabled": true,
+      "enabled": false,
       "displayName": "PersonalAgent",
-      "description": "Auto-discovered agent: PersonalAgent",
+      "description": "Custom agent",
       "category": "Built-in",
       "order": 999
     }

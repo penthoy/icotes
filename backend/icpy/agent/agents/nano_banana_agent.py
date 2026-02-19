@@ -65,8 +65,11 @@ try:
         ToolDefinitionLoader,
         OpenAIStreamingHandler,
         add_context_to_agent_prompt,
+        get_model_name_for_agent,
         get_workspace_path,
     )
+    from icpy.agent.client_resolver import resolve_client
+    from icpy.agent.clients import is_icotes_route_enabled
 
     DEPENDENCIES_AVAILABLE = True
     logger.info("All dependencies available for NanoBananaAgent")
@@ -229,17 +232,45 @@ Always be helpful, creative, and focused on creating or editing images that matc
     # Add context information to the system prompt
     system_prompt = add_context_to_agent_prompt(base_system_prompt)
 
+    # Allow model override from workspace/.icotes/agents.json
+    runtime_model = get_model_name_for_agent(AGENT_NAME, MODEL_NAME)
+
     try:
-        # Initialize native Google SDK
+        # Initialize native Google SDK (direct mode)
         api_key = os.environ.get("GOOGLE_API_KEY")
         if not api_key:
+            # Proxy-only fallback: route through OpenAI-compatible path
+            if is_icotes_route_enabled():
+                logger.info(
+                    "NanoBananaAgent: GOOGLE_API_KEY missing; falling back to route proxy with model=%s",
+                    runtime_model,
+                )
+
+                # Build minimal compatible message list
+                proxy_messages: List[Dict[str, Any]] = [{"role": "system", "content": system_prompt}]
+                if isinstance(history, list):
+                    for item in history:
+                        if isinstance(item, dict) and item.get("role") in {"user", "assistant", "system", "tool"}:
+                            proxy_messages.append({
+                                "role": item.get("role"),
+                                "content": item.get("content", ""),
+                            })
+
+                user_content = message if isinstance(message, str) else json.dumps(message)
+                proxy_messages.append({"role": "user", "content": user_content})
+
+                client, resolved_model = resolve_client("google", runtime_model)
+                handler = OpenAIStreamingHandler(client, resolved_model)
+                yield from handler.stream_chat_with_tools(proxy_messages)
+                return
+
             yield "🚫 GOOGLE_API_KEY not set. Please configure your Google API key."
             return
         
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel(MODEL_NAME)
+        model = genai.GenerativeModel(runtime_model)
         
-        logger.info(f"NanoBananaAgent: Initialized native SDK with model {MODEL_NAME}")
+        logger.info(f"NanoBananaAgent: Initialized native SDK with model {runtime_model}")
         
         # Handle JSON string history (gradio compatibility)
         if isinstance(history, str):

@@ -108,14 +108,32 @@ docs/saasplan/
 docs/fixes/
 docs/debug/
 docs/features/
-# GitHub workflows
+# GitHub
 .github/workflows/
+.github/copilot-instructions.md
 
 # workspace
 workspace/.icotes/chat_history/
 workspace/.icotes/ssh/
 workspace/.icotes/hop/config
-workspace/.icotes_tmp*/
+workspace/.icotes/debug/
+workspace/.icotes/media/
+workspace/.icotes/image_references.json
+workspace/.icotes_tmp*
+
+# workspace runtime artifacts (generated images, videos, audio, user files)
+workspace/images/
+workspace/videos/
+workspace/sounds/
+workspace/*.png
+workspace/*.jpg
+workspace/*.jpeg
+workspace/*.webp
+workspace/*.gif
+workspace/*.mp4
+workspace/*.mp3
+workspace/*.wav
+workspace/*.pdf
 
 # Playwright / E2E tests (contain internal URLs and test artifacts)
 /e2e/

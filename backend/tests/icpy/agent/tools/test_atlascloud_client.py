@@ -370,6 +370,44 @@ class TestVideoGeneration:
         assert result.id == "retry-123"
         assert mock_http_client.post.call_count == 2
 
+    @pytest.mark.asyncio
+    async def test_generate_video_route_mode_polls_until_complete(self, monkeypatch):
+        """Route mode should create prediction then poll until completed result is available."""
+        monkeypatch.delenv("ATLASCLOUD_API_KEY", raising=False)
+
+        mock_route_client = MagicMock()
+        mock_route_client.generate_video = AsyncMock(
+            return_value={"data": {"id": "route-job-123", "status": "created"}}
+        )
+        mock_route_client.get_prediction = AsyncMock(
+            side_effect=[
+                {"data": {"id": "route-job-123", "status": "processing"}},
+                {
+                    "data": {
+                        "id": "route-job-123",
+                        "status": "completed",
+                        "output": ["https://cdn.route.ai/video-route-123.mp4"],
+                    }
+                },
+            ]
+        )
+
+        with patch("icpy.services.route_services.is_route_service_available", return_value=True), \
+             patch("icpy.services.route_services.get_route_service_client", return_value=mock_route_client):
+            client = AtlasCloudClient()
+            result = await client.generate_video(
+                model="bytedance/seedance-v1-lite-t2v-480p",
+                prompt="A horse drinking chocolate",
+                wait_for_completion=True,
+                poll_interval=0.01,
+                timeout=2,
+            )
+
+        assert result.is_complete
+        assert result.video_url == "https://cdn.route.ai/video-route-123.mp4"
+        assert mock_route_client.generate_video.call_count == 1
+        assert mock_route_client.get_prediction.call_count == 2
+
 
 class TestResultPolling:
     """Test result polling and waiting logic."""

@@ -114,11 +114,18 @@ class ElevenLabsMusicTool(BaseTool):
         self._api_key: Optional[str] = None
     
     def _get_client(self):
-        """Get or create ElevenLabs client lazily."""
+        """Get or create ElevenLabs client lazily.
+
+        Returns None if route proxy should be used instead.
+        """
         if self._client is not None:
             return self._client
         
         if not ELEVENLABS_AVAILABLE:
+            from icpy.services.route_services import is_route_service_available
+            if is_route_service_available():
+                logger.info("ElevenLabs SDK not installed, using route proxy for Music")
+                return None
             raise RuntimeError(
                 f"ElevenLabs SDK not available. Install with: pip install elevenlabs. "
                 f"Error: {_ELEVENLABS_IMPORT_ERROR}"
@@ -126,9 +133,13 @@ class ElevenLabsMusicTool(BaseTool):
         
         api_key = os.environ.get("ELEVENLABS_API_KEY")
         if not api_key:
+            from icpy.services.route_services import is_route_service_available
+            if is_route_service_available():
+                logger.info("ELEVENLABS_API_KEY not set, using route proxy for Music")
+                return None
             raise RuntimeError(
-                "ELEVENLABS_API_KEY environment variable not set. "
-                "Get your API key from https://elevenlabs.io/app/settings/api-keys"
+                "ELEVENLABS_API_KEY environment variable not set and route proxy not configured. "
+                "Set ELEVENLABS_API_KEY or configure ICOTES_ROUTE_URL + ICOTES_ROUTE_KEY."
             )
         
         self._api_key = api_key
@@ -287,25 +298,39 @@ class ElevenLabsMusicTool(BaseTool):
             )
         
         try:
-            # Get client
+            # Get client (None means use route proxy)
             client = self._get_client()
             
-            logger.info(
-                f"[ElevenLabsMusic] Generating music: "
-                f"duration={duration_ms}ms, "
-                f"prompt_length={len(prompt)}"
-            )
-            
-            # Generate music using ElevenLabs Music API
-            # The compose method returns an iterator of audio bytes
-            # Note: API only accepts prompt and music_length_ms parameters
-            music_iterator = client.music.compose(
-                prompt=prompt,
-                music_length_ms=duration_ms
-            )
-            
-            # Collect all music bytes from iterator
-            music_bytes = b"".join(music_iterator)
+            if client is None:
+                # Route proxy path
+                from icpy.services.route_services import get_route_service_client
+                route_client = get_route_service_client()
+                
+                logger.info(
+                    f"[ElevenLabsMusic] Generating music via route proxy: "
+                    f"duration={duration_ms}ms, prompt_length={len(prompt)}"
+                )
+                
+                music_bytes = await route_client.music(
+                    prompt=prompt,
+                    duration_seconds=duration_seconds,
+                )
+            else:
+                # Direct SDK path
+                logger.info(
+                    f"[ElevenLabsMusic] Generating music (direct): "
+                    f"duration={duration_ms}ms, prompt_length={len(prompt)}"
+                )
+                
+                # Generate music using ElevenLabs Music API
+                # The compose method returns an iterator of audio bytes
+                music_iterator = client.music.compose(
+                    prompt=prompt,
+                    music_length_ms=duration_ms
+                )
+                
+                # Collect all music bytes from iterator
+                music_bytes = b"".join(music_iterator)
             
             if not music_bytes:
                 return ToolResult(
