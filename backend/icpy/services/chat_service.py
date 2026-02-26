@@ -35,7 +35,83 @@ except ImportError:
     call_custom_agent_stream = lambda agent, msg, hist: iter([f"Custom agent {agent} not available"])
     get_available_custom_agents = lambda: []
 
+# Raw output sidecar for debugging agent inputs/outputs
+try:
+    from ..services.raw_output_sidecar import RawOutputSidecar
+except ImportError:
+    RawOutputSidecar = None
+
+import re
+
 logger = logging.getLogger(__name__)
+
+
+class ThinkTagFilter:
+    """Streaming filter that strips <think>...</think> blocks from chunks.
+
+    Handles the case where tags span multiple streaming chunks by buffering
+    text that *might* be inside an opening or closing tag until we can decide.
+    """
+
+    _OPEN = "<think>"
+    _CLOSE = "</think>"
+
+    def __init__(self):
+        self._inside = False      # currently inside a <think> block
+        self._buf = ""            # leftover text that might contain a partial tag
+
+    def feed(self, chunk: str) -> str:
+        """Feed a chunk and return the portion that should be emitted."""
+        text = self._buf + chunk
+        self._buf = ""
+        out_parts: list[str] = []
+
+        while text:
+            if self._inside:
+                # Look for closing tag
+                idx = text.find(self._CLOSE)
+                if idx != -1:
+                    # Skip everything up to and including </think>
+                    text = text[idx + len(self._CLOSE):]
+                    self._inside = False
+                else:
+                    # Might be a partial closing tag at the end
+                    # Buffer the tail that could be a prefix of </think>
+                    for i in range(min(len(self._CLOSE) - 1, len(text)), 0, -1):
+                        if self._CLOSE.startswith(text[-i:]):
+                            self._buf = text[-i:]
+                            text = text[:-i]
+                            break
+                    # Everything remaining inside think block is discarded
+                    text = ""
+            else:
+                # Look for opening tag
+                idx = text.find(self._OPEN)
+                if idx != -1:
+                    # Emit everything before the tag
+                    out_parts.append(text[:idx])
+                    text = text[idx + len(self._OPEN):]
+                    self._inside = True
+                else:
+                    # Check for partial opening tag at the end
+                    for i in range(min(len(self._OPEN) - 1, len(text)), 0, -1):
+                        if self._OPEN.startswith(text[-i:]):
+                            self._buf = text[-i:]
+                            text = text[:-i]
+                            break
+                    out_parts.append(text)
+                    text = ""
+
+        return "".join(out_parts)
+
+    def flush(self) -> str:
+        """Flush any remaining buffered text (call at stream end)."""
+        remaining = self._buf
+        self._buf = ""
+        if self._inside:
+            # Unclosed think block — discard remaining
+            return ""
+        return remaining
 
 
 class MessageSender(Enum):
@@ -339,8 +415,12 @@ class ChatService:
         return new_path
 
     def _iter_all_session_files(self) -> List[Path]:
-        """List all JSONL files representing sessions (legacy + new)."""
-        files = [p for p in self.history_root.glob('*.jsonl') if not p.name.endswith('.meta.json')]
+        """List all JSONL files representing sessions (legacy + new).
+
+        Excludes .meta.json files and .raw.jsonl debug sidecar files.
+        """
+        files = [p for p in self.history_root.glob('*.jsonl')
+                 if not p.name.endswith('.meta.json') and '.raw.' not in p.name]
         return files
 
     def _derive_session_id_from_file(self, file: Path) -> str:
@@ -1535,6 +1615,12 @@ class ChatService:
             )
             history_list = []
             for msg in history:
+                # Skip the current user message – it was just stored and will be
+                # re-appended below with multimodal/attachment enrichment.
+                # Without this guard the same user utterance appears twice in the
+                # messages array sent to the LLM.
+                if msg.id == user_message.id:
+                    continue
                 if msg.sender == MessageSender.USER:
                     history_list.append({"role": "user", "content": msg.content})
                 elif msg.sender == MessageSender.AI:
@@ -1799,7 +1885,23 @@ class ChatService:
             
             # Get custom agent stream
             # We pass an empty live message because we've already appended the user's content (with attachments) to history
-            custom_stream = call_custom_agent_stream(agent_type, "", history_list)
+            agent_message_arg = ""  # empty because user content is in history_list
+            custom_stream = call_custom_agent_stream(agent_type, agent_message_arg, history_list)
+
+            # Start raw output sidecar recording (captures exact LLM inputs + raw output)
+            raw_recorder = None
+            try:
+                if RawOutputSidecar is not None:
+                    sidecar = RawOutputSidecar(self.history_root)
+                    raw_recorder = sidecar.start_invocation(
+                        session_id=user_message.session_id,
+                        agent_type=agent_type,
+                        user_message_id=user_message.id,
+                        message=agent_message_arg,
+                        history=history_list,
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to start raw sidecar: {e}")
             
             # CRITICAL: Send stream_start IMMEDIATELY before waiting for first chunk
             # This is especially important for Gemini 3 Pro which can spend 7-14 seconds
@@ -1818,29 +1920,52 @@ class ChatService:
             
             # Process streaming response
             chunk_count = 0
+            think_filter = ThinkTagFilter()
             try:
                 async for chunk in custom_stream:
                     # Log activity for debugging stop button issues
                     logger.debug(f"Custom agent streaming active for session {user_message.session_id}")
                     
                     if chunk:  # Only process non-empty chunks
+                        # Record raw chunk BEFORE any filtering (for debug sidecar)
+                        if raw_recorder:
+                            raw_recorder.record_chunk(chunk)
+                        # Strip <think>...</think> blocks from streaming output
+                        filtered = think_filter.feed(chunk)
+                        if not filtered:
+                            continue
                         chunk_count += 1
                         
                         # Send chunk
                         await self._send_streaming_chunk(
                             user_message.session_id,
                             message_id,
-                            chunk,
+                            filtered,
                             user_message.id,
                             agent_type=agent_type,
                             agent_id=agent_type,
                             agent_name=agent_type.title()
                         )
-                        full_content += chunk
+                        full_content += filtered
                         
                         # CRITICAL FIX: Prevent WebSocket message batching
                         await asyncio.sleep(0.01)  # 10ms delay between chunks
-                        
+
+                # Flush any remaining buffered text from the think filter
+                remaining = think_filter.flush()
+                if remaining:
+                    chunk_count += 1
+                    await self._send_streaming_chunk(
+                        user_message.session_id,
+                        message_id,
+                        remaining,
+                        user_message.id,
+                        agent_type=agent_type,
+                        agent_id=agent_type,
+                        agent_name=agent_type.title()
+                    )
+                    full_content += remaining
+
                 logger.info(f"Streaming complete: received {chunk_count} chunks, total {len(full_content)} chars")
                 
                 # Enhanced debug logging - log completion
@@ -1848,6 +1973,9 @@ class ChatService:
                 
             except Exception as e:
                 logger.error(f"Error during streaming: {e}", exc_info=True)
+                # Record error in raw sidecar
+                if raw_recorder:
+                    raw_recorder.record_error(str(e))
                 # Enhanced debug logging - log error
                 debug_logger.log_error(request_id, type(e).__name__, str(e))
                 # Session debug sidecar
@@ -1868,6 +1996,13 @@ class ChatService:
                 except Exception:
                     pass
                 # Continue to store what we have
+
+            # Finalize raw output sidecar (writes .raw.jsonl entry with full inputs + raw output)
+            try:
+                if raw_recorder:
+                    raw_recorder.finalize()
+            except Exception as e:
+                logger.warning(f"Failed to finalize raw sidecar: {e}")
 
             # Send stream end
             end_ts = datetime.now(timezone.utc).isoformat()

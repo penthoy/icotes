@@ -1,7 +1,7 @@
 """
 Route Service Client — routes non-LLM service requests through the Route Proxy.
 
-When the Route Proxy is configured (ICOTES_ROUTE_URL + ICOTES_ROUTE_KEY),
+When the Route Proxy is configured (ICOTES_ROUTE_URL + ICOTESROUTE_API_KEY),
 this client sends ElevenLabs, Tavily, Serper, and AtlasCloud requests
 through the proxy instead of calling provider APIs directly.
 
@@ -27,7 +27,7 @@ class RouteServiceClient:
         - Tavily / Serper: Web search
         - AtlasCloud: Image generation, Video generation
 
-    All requests use the same auth (Bearer ICOTES_ROUTE_KEY) and base URL.
+    All requests use the same auth (Bearer ICOTESROUTE_API_KEY) and base URL.
     """
 
     def __init__(
@@ -38,7 +38,7 @@ class RouteServiceClient:
     ):
         """Initialize with proxy URL and key from env or explicit args."""
         self.route_url = (route_url or os.getenv("ICOTES_ROUTE_URL", "")).rstrip("/")
-        self.route_key = route_key or os.getenv("ICOTES_ROUTE_KEY", "")
+        self.route_key = route_key or os.getenv("ICOTESROUTE_API_KEY", "")
         self.timeout = timeout
         self._client: Optional[httpx.AsyncClient] = None
 
@@ -103,7 +103,6 @@ class RouteServiceClient:
 
         Returns raw audio bytes.
         """
-        client = await self._ensure_client()
         payload = {
             "model": "elevenlabs/tts-v2",
             "input": text,
@@ -113,7 +112,7 @@ class RouteServiceClient:
             **kwargs,
         }
         logger.info("[RouteService] TTS request: %d chars, voice=%s", len(text), voice)
-        resp = await client.post("/v1/audio/speech", json=payload)
+        resp = await self._post_with_retry("/v1/audio/speech", payload)
         resp.raise_for_status()
         return resp.content
 
@@ -130,7 +129,6 @@ class RouteServiceClient:
 
         Returns transcription dict.
         """
-        client = await self._ensure_client()
         # Send audio as base64 in JSON body
         import base64
         payload: dict[str, Any] = {
@@ -143,7 +141,7 @@ class RouteServiceClient:
             payload["language_code"] = language_code
 
         logger.info("[RouteService] STT request: %d bytes", len(audio_data))
-        resp = await client.post("/v1/audio/transcriptions", json=payload)
+        resp = await self._post_with_retry("/v1/audio/transcriptions", payload)
         resp.raise_for_status()
         return resp.json()
 
@@ -160,7 +158,6 @@ class RouteServiceClient:
 
         Returns raw audio bytes.
         """
-        client = await self._ensure_client()
         payload = {
             "model": "elevenlabs/sfx-v1",
             "text": text,
@@ -169,7 +166,7 @@ class RouteServiceClient:
             **kwargs,
         }
         logger.info("[RouteService] SFX request: '%s', %.1fs", text[:50], duration_seconds)
-        resp = await client.post("/v1/audio/sfx", json=payload)
+        resp = await self._post_with_retry("/v1/audio/sfx", payload)
         resp.raise_for_status()
         return resp.content
 
@@ -185,7 +182,6 @@ class RouteServiceClient:
 
         Returns raw audio bytes.
         """
-        client = await self._ensure_client()
         payload = {
             "model": "elevenlabs/music-v1",
             "prompt": prompt,
@@ -193,7 +189,7 @@ class RouteServiceClient:
             **kwargs,
         }
         logger.info("[RouteService] Music request: '%s', %.1fs", prompt[:50], duration_seconds)
-        resp = await client.post("/v1/audio/music", json=payload)
+        resp = await self._post_with_retry("/v1/audio/music", payload)
         resp.raise_for_status()
         return resp.content
 
@@ -212,7 +208,6 @@ class RouteServiceClient:
 
         Returns search results dict.
         """
-        client = await self._ensure_client()
         payload: dict[str, Any] = {
             "model": f"{provider}/search",
             "query": query,
@@ -222,7 +217,7 @@ class RouteServiceClient:
             **kwargs,
         }
         logger.info("[RouteService] Search request: '%s' via %s", query[:50], provider)
-        resp = await client.post("/v1/search", json=payload)
+        resp = await self._post_with_retry("/v1/search", payload)
         resp.raise_for_status()
         return resp.json()
 
@@ -238,7 +233,6 @@ class RouteServiceClient:
 
         Returns generation result dict.
         """
-        client = await self._ensure_client()
         payload = {
             "model": model,
             "prompt": prompt,
@@ -261,7 +255,6 @@ class RouteServiceClient:
 
         Returns generation result dict (may include polling ID for async jobs).
         """
-        client = await self._ensure_client()
         payload = {
             "model": model,
             "prompt": prompt,
