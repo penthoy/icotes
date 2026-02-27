@@ -46,6 +46,81 @@ export default defineConfig(({ mode }) => {
         return acc;
       }, {} as Record<string, string>),
     },
+    build: {
+      chunkSizeWarningLimit: 600,
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            // React core
+            "vendor-react": ["react", "react-dom", "react-router", "react-router-dom"],
+            // CodeMirror editor (many packages, all heavy)
+            "vendor-codemirror": [
+              "@codemirror/autocomplete",
+              "@codemirror/commands",
+              "@codemirror/language",
+              "@codemirror/search",
+              "@codemirror/state",
+              "@codemirror/view",
+              "@codemirror/theme-one-dark",
+              "@codemirror/lang-javascript",
+              "@codemirror/lang-python",
+              "@codemirror/lang-html",
+              "@codemirror/lang-css",
+              "@codemirror/lang-json",
+              "@codemirror/lang-markdown",
+              "@codemirror/lang-cpp",
+              "@codemirror/lang-go",
+              "@codemirror/lang-rust",
+              "@codemirror/lang-yaml",
+            ],
+            // Terminal emulator
+            "vendor-xterm": ["@xterm/xterm", "@xterm/addon-fit"],
+            // Audio / waveform
+            "vendor-audio": ["wavesurfer.js"],
+            // Markdown rendering
+            "vendor-markdown": [
+              "react-markdown",
+              "react-syntax-highlighter",
+              "rehype-highlight",
+              "remark-gfm",
+            ],
+            // Radix UI components
+            "vendor-radix": [
+              "@radix-ui/react-accordion",
+              "@radix-ui/react-alert-dialog",
+              "@radix-ui/react-avatar",
+              "@radix-ui/react-checkbox",
+              "@radix-ui/react-collapsible",
+              "@radix-ui/react-context-menu",
+              "@radix-ui/react-dialog",
+              "@radix-ui/react-dropdown-menu",
+              "@radix-ui/react-hover-card",
+              "@radix-ui/react-icons",
+              "@radix-ui/react-label",
+              "@radix-ui/react-menubar",
+              "@radix-ui/react-navigation-menu",
+              "@radix-ui/react-popover",
+              "@radix-ui/react-progress",
+              "@radix-ui/react-radio-group",
+              "@radix-ui/react-scroll-area",
+              "@radix-ui/react-select",
+              "@radix-ui/react-separator",
+              "@radix-ui/react-slider",
+              "@radix-ui/react-slot",
+              "@radix-ui/react-switch",
+              "@radix-ui/react-tabs",
+              "@radix-ui/react-toast",
+              "@radix-ui/react-toggle",
+              "@radix-ui/react-tooltip",
+            ],
+            // Animation
+            "vendor-motion": ["framer-motion"],
+            // AI SDK
+            "vendor-ai": ["ai", "@ai-sdk/react"],
+          },
+        },
+      },
+    },
     server: {
       host: process.env.FRONTEND_HOST || process.env.SITE_URL || '0.0.0.0',
       port: parseInt(process.env.FRONTEND_PORT || '5173'),
