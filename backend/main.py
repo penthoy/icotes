@@ -196,6 +196,22 @@ async def lifespan(app: FastAPI):
             from icpy.services import initialize_preview_service
             await initialize_preview_service()
 
+            # Prime custom-agent config/registry at startup so non-web UI clients
+            # (e.g., WhatsApp) can route to custom agents immediately after restart.
+            try:
+                from icpy.services.agent_config_service import get_agent_config_service
+                from icpy.agent.custom_agent import reload_custom_agents
+
+                config_service = get_agent_config_service()
+                _ = config_service.load_config()
+                reloaded_agents = await reload_custom_agents()
+                logger.info(
+                    "Primed custom agents at startup: %d available",
+                    len(reloaded_agents or []),
+                )
+            except Exception as e:
+                logger.warning(f"Custom-agent priming skipped: {e}")
+
             # Optional: run lightweight image reference GC if index grows large
             try:
                 from icpy.services.image_reference_service import get_image_reference_service

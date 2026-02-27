@@ -961,8 +961,18 @@ class ChatService:
         is_custom_agent = False
         if agent_type:
             try:
-                from icpy.agent.custom_agent import get_available_custom_agents
+                from icpy.agent.custom_agent import get_available_custom_agents, reload_custom_agents
                 available_custom_agents = get_available_custom_agents()
+
+                # Startup race fix: registry may be empty right after backend restart
+                # before any web UI action triggers agent discovery.
+                if not available_custom_agents:
+                    try:
+                        await reload_custom_agents()
+                        available_custom_agents = get_available_custom_agents()
+                    except Exception as reload_err:
+                        logger.warning(f"Failed to reload custom agents on demand: {reload_err}")
+
                 is_custom_agent = agent_type in available_custom_agents
             except Exception as e:
                 logger.warning(f"Failed to check custom agents: {e}")
@@ -1140,8 +1150,17 @@ class ChatService:
         is_custom_agent = False
         if effective_agent_type:
             try:
-                from icpy.agent.custom_agent import get_available_custom_agents
+                from icpy.agent.custom_agent import get_available_custom_agents, reload_custom_agents
                 available_custom_agents = get_available_custom_agents()
+
+                # Startup race fix for regenerate path as well.
+                if not available_custom_agents:
+                    try:
+                        await reload_custom_agents()
+                        available_custom_agents = get_available_custom_agents()
+                    except Exception as reload_err:
+                        logger.warning(f"Failed to reload custom agents on regenerate: {reload_err}")
+
                 is_custom_agent = effective_agent_type in available_custom_agents
             except Exception as e:
                 logger.warning(f"Failed to check custom agents: {e}")
