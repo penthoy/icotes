@@ -18,6 +18,7 @@ import asyncio
 import concurrent.futures
 import copy
 import os
+import httpx
 import platform
 import re
 import uuid
@@ -30,6 +31,19 @@ from .debug_interceptor import get_interceptor, get_context_snapshot
 
 # Phase 2: Context variable to store vendor-specific metadata across async calls
 _vendor_metadata: ContextVar[Optional[Dict[str, Any]]] = ContextVar('vendor_metadata', default=None)
+
+
+def _format_agent_error(e: Exception) -> str:
+    """Return a user-friendly error string, with extra context when the
+    route proxy is detectably unreachable."""
+    if isinstance(e, (httpx.ConnectError, httpx.ConnectTimeout, ConnectionError)):
+        route_url = os.getenv("ICOTES_ROUTE_URL", "")
+        hint = f" ({route_url})" if route_url else ""
+        return (
+            f"Could not connect to the route proxy{hint}. "
+            "Check that icotesroute is running and reachable."
+        )
+    return str(e)
 
 
 def set_vendor_metadata(vendor_parts: Optional[List[Dict]], vendor_model: Optional[str]):
@@ -673,9 +687,9 @@ class OpenAIStreamingHandler:
         
         Args:
             messages: Conversation messages
-            max_tokens: Maximum tokens for completion (defaults from env AGENT_MAX_TOKENS or 3500)
+            max_tokens: Maximum tokens for completion (defaults from env AGENT_MAX_TOKENS or 8000)
             auto_continue: When response stops due to token limit, automatically continue (env AGENT_AUTO_CONTINUE, default True)
-            max_continue_rounds: Maximum number of auto-continue follow-ups (env AGENT_MAX_CONTINUE_ROUNDS, default 3)
+            max_continue_rounds: Maximum number of auto-continue follow-ups (env AGENT_MAX_CONTINUE_ROUNDS, default 10)
             
         Yields:
             str: Response chunks for streaming
@@ -684,9 +698,9 @@ class OpenAIStreamingHandler:
             # Resolve configuration with environment overrides
             if max_tokens is None:
                 try:
-                    max_tokens = int(os.environ.get("AGENT_MAX_TOKENS", "3500"))
+                    max_tokens = int(os.environ.get("AGENT_MAX_TOKENS", "8000"))
                 except ValueError:
-                    max_tokens = 2000
+                    max_tokens = 8000
             if auto_continue is None:
                 auto_continue = os.environ.get("AGENT_AUTO_CONTINUE", "1") not in ("0", "false", "False")
             if max_continue_rounds is None:
@@ -694,6 +708,10 @@ class OpenAIStreamingHandler:
                     max_continue_rounds = int(os.environ.get("AGENT_MAX_CONTINUE_ROUNDS", "10"))
                 except ValueError:
                     max_continue_rounds = 10
+            try:
+                max_stream_iterations = int(os.environ.get("AGENT_MAX_STREAM_ITERATIONS", "50"))
+            except ValueError:
+                max_stream_iterations = 50
 
             # Preflight: sanitize messages to avoid provider validation errors
             def _coerce_content_to_text(val: Any) -> str:
@@ -791,7 +809,17 @@ class OpenAIStreamingHandler:
             except Exception:
                 max_tool_loops = None
             tool_loop_count = 0
+            stream_iteration_count = 0
             while True:
+                stream_iteration_count += 1
+                if max_stream_iterations > 0 and stream_iteration_count > max_stream_iterations:
+                    logger.warning(
+                        "OpenAIStreamingHandler: Reached max stream iterations (%s). Aborting to prevent infinite loop.",
+                        max_stream_iterations,
+                    )
+                    yield "\n⚠️ Reached maximum stream iterations. Stopping to prevent a loop.\n"
+                    break
+
                 # Determine the correct max tokens parameter based on model
                 api_params = {
                     "model": self.model_name,
@@ -891,6 +919,20 @@ class OpenAIStreamingHandler:
                 # NOTE: Gemini's OpenAI-compat endpoint returns finish_reason="stop" even with tool calls
                 # So we check for tool_calls_list presence regardless of finish_reason
                 if tool_calls_list:
+                    if finish_reason == "length" and auto_continue:
+                        continue_round += 1
+                        logger.warning(
+                            "OpenAIStreamingHandler: Tool-call response truncated by token limit; continue_round=%s/%s",
+                            continue_round,
+                            max_continue_rounds,
+                        )
+                        if continue_round >= max_continue_rounds:
+                            logger.warning(
+                                "OpenAIStreamingHandler: Reached max continuation rounds (%s) during tool-call truncation.",
+                                max_continue_rounds,
+                            )
+                            yield "\n⚠️ Tool-call output kept getting truncated by token limits. Stopping to prevent a loop.\n"
+                            break
                     tool_loop_count += 1
                     logger.info(f"[GEMINI-DEBUG] Tool calls detected | count={len(tool_calls_list)} | finish_reason={finish_reason}")
                     # Handle tool calls
@@ -964,7 +1006,7 @@ class OpenAIStreamingHandler:
                 
         except Exception as e:
             logger.error(f"Error in OpenAI streaming with tools: {e}")
-            yield f"🚫 Error processing request: {str(e)}\n\nPlease check your configuration."
+            yield f"🚫 Error processing request: {_format_agent_error(e)}\n\nPlease check your configuration."
     
     def _process_stream(self, stream) -> Tuple[List[str], List[Dict], Optional[str], Optional[List[Dict]]]:
         """
@@ -1456,9 +1498,32 @@ def create_agent_chat_function(agent_name: str, system_prompt: str, model_name: 
                     
         except Exception as e:
             logger.error(f"Error in {agent_name} streaming: {e}")
-            yield f"🚫 Error processing request: {str(e)}\n\nPlease check your OpenAI API key configuration."
+            yield f"🚫 Error processing request: {_format_agent_error(e)}\n\nPlease check your OpenAI API key configuration."
     
     return chat
+
+
+def get_thinking_extra_params(agent_name: str) -> Optional[Dict[str, Any]]:
+    """Build extra_params for thinking mode based on agents.json config.
+
+    Reads the ``thinkingMode`` field from the agent's entry in
+    ``workspace/.icotes/agents.json`` and returns the appropriate
+    ``extra_body`` dict to pass through the adapter chain.
+
+    Returns:
+        A dict like ``{"thinking": {"type": "disabled"}}`` or None if
+        no override is configured (let the model use its default).
+    """
+    try:
+        from icpy.services.agent_config_service import get_agent_config_service
+        config_service = get_agent_config_service()
+        display_config = config_service.get_agent_display_config(agent_name)
+        thinking_mode = display_config.thinking_mode  # "enabled", "disabled", or None
+        if thinking_mode in ("enabled", "disabled"):
+            return {"thinking": {"type": thinking_mode}}
+    except Exception as e:
+        logger.warning(f"Could not read thinkingMode for {agent_name}: {e}")
+    return None
 
 
 # Convenience functions for common agent patterns
@@ -1575,9 +1640,9 @@ def create_simple_agent_chat_function(agent_name: str, system_prompt: str, model
                 # Simple streaming without tools
                 # Determine token and continuation behavior
                 try:
-                    default_max_tokens = int(os.environ.get("AGENT_MAX_TOKENS", "3500"))
+                    default_max_tokens = int(os.environ.get("AGENT_MAX_TOKENS", "8000"))
                 except ValueError:
-                    default_max_tokens = 3500
+                    default_max_tokens = 8000
 
                 # Determine the correct max tokens parameter based on model
                 api_params = {
@@ -1601,7 +1666,7 @@ def create_simple_agent_chat_function(agent_name: str, system_prompt: str, model
                     
         except Exception as e:
             logger.error(f"Error in {agent_name} streaming: {e}")
-            yield f"🚫 Error processing request: {str(e)}\n\nPlease check your configuration."
+            yield f"🚫 Error processing request: {_format_agent_error(e)}\n\nPlease check your configuration."
     
     return chat
 

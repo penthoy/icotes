@@ -63,18 +63,33 @@ class RouteServiceClient:
             await self._client.aclose()
             self._client = None
 
+    def _enrich_connection_error(self, exc: Exception, path: str) -> Exception:
+        """Re-raise ConnectError / ConnectTimeout with route URL context."""
+        if isinstance(exc, (httpx.ConnectError, httpx.ConnectTimeout)):
+            msg = (
+                f"Route proxy unreachable at {self.route_url}{path} — "
+                f"check that icotesroute is running and ICOTES_ROUTE_URL is correct. "
+                f"(original: {exc})"
+            )
+            logger.error("[RouteService] %s", msg)
+            return ConnectionError(msg)
+        return exc
+
     async def _post_with_retry(self, path: str, payload: dict[str, Any]) -> httpx.Response:
         """POST with small retry budget for transient transport failures."""
         async def _operation() -> httpx.Response:
             client = await self._ensure_client()
             return await client.post(path, json=payload)
 
-        return await retry_async_operation(
-            _operation,
-            on_retry_reset=self.close,
-            logger=logger,
-            operation_name=f"RouteService POST {path}",
-        )
+        try:
+            return await retry_async_operation(
+                _operation,
+                on_retry_reset=self.close,
+                logger=logger,
+                operation_name=f"RouteService POST {path}",
+            )
+        except Exception as exc:
+            raise self._enrich_connection_error(exc, path) from exc
 
     async def _get_with_retry(self, path: str) -> httpx.Response:
         """GET with small retry budget for transient transport failures."""
@@ -82,12 +97,15 @@ class RouteServiceClient:
             client = await self._ensure_client()
             return await client.get(path)
 
-        return await retry_async_operation(
-            _operation,
-            on_retry_reset=self.close,
-            logger=logger,
-            operation_name=f"RouteService GET {path}",
-        )
+        try:
+            return await retry_async_operation(
+                _operation,
+                on_retry_reset=self.close,
+                logger=logger,
+                operation_name=f"RouteService GET {path}",
+            )
+        except Exception as exc:
+            raise self._enrich_connection_error(exc, path) from exc
 
     # ── ElevenLabs TTS ──────────────────────────────────────────────────────
 
