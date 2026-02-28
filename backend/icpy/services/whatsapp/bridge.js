@@ -27,6 +27,7 @@
 
 import makeWASocket, {
   DisconnectReason,
+  fetchLatestBaileysVersion,
   useMultiFileAuthState,
   extractMessageContent,
   getContentType,
@@ -64,6 +65,11 @@ let selfLid = null
 
 /** Tracks if we're intentionally shutting down */
 let isShuttingDown = false
+
+/** Reconnection attempt counter — reset on successful connection */
+let reconnectAttempts = 0
+// 0 = unlimited retries (default for resilient long-running bots)
+const MAX_RECONNECT_ATTEMPTS = Number(process.env.WA_MAX_RECONNECT_ATTEMPTS || '0')
 
 /** Grace period after connection — ignore messages for 5 seconds */
 let connectionTimestamp = 0
@@ -224,9 +230,14 @@ async function startSocket() {
   // Ensure auth directory exists
   fs.mkdirSync(AUTH_DIR, { recursive: true })
 
+  // Fetch latest WA version to avoid protocol rejection (405)
+  const { version, isLatest } = await fetchLatestBaileysVersion()
+  log('info', `Using WA v${version.join('.')} (isLatest: ${isLatest})`)
+
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR)
 
   sock = makeWASocket({
+    version,
     auth: state,
     browser: ['Icotes', 'Chrome', '22.04.4'],
     logger,
@@ -261,6 +272,7 @@ async function startSocket() {
 
     if (connection === 'open') {
       connectionTimestamp = Date.now()
+      reconnectAttempts = 0  // Reset on successful connection
       const selfJid = sock.user?.id || 'unknown'
       const selfName = sock.user?.name || BOT_NAME
       selfLid = sock.user?.lid || null
@@ -291,15 +303,37 @@ async function startSocket() {
         return
       }
 
+      if (statusCode === DisconnectReason.forbidden) {
+        // Do not clear creds immediately on 403 — this can force unnecessary re-pairing
+        // for transient service-side issues. Keep session and retry with backoff.
+        log('warn', 'Forbidden (403) — keeping credentials and retrying with backoff')
+      }
+
       if (statusCode === DisconnectReason.connectionReplaced) {
         log('info', 'Connection replaced by another session — not reconnecting')
         emit('error', { message: 'Connection replaced. Another instance may be running with the same credentials.' })
         return
       }
 
-      // Auto-reconnect with backoff for transient errors
-      const delay = Math.min(3000 + Math.random() * 2000, 10000)
-      log('info', `Reconnecting in ${Math.round(delay)}ms...`)
+      if (statusCode === DisconnectReason.restartRequired) {
+        log('info', 'Restart required by WhatsApp server — reconnecting immediately')
+        setTimeout(() => startSocket(), 500)
+        return
+      }
+
+      // Auto-reconnect with exponential backoff for transient errors
+      reconnectAttempts++
+      if (MAX_RECONNECT_ATTEMPTS > 0 && reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
+        // Safety valve: cool down, then continue instead of permanently giving up
+        const cooldown = 30000
+        log('warn', `Reconnect attempts exceeded (${MAX_RECONNECT_ATTEMPTS}) — cooling down for ${cooldown}ms and continuing`)
+        reconnectAttempts = 1
+        setTimeout(() => startSocket(), cooldown)
+        return
+      }
+
+      const delay = Math.min(3000 * reconnectAttempts + Math.random() * 2000, 30000)
+      log('info', `Reconnecting in ${Math.round(delay)}ms (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`)
       setTimeout(() => startSocket(), delay)
     }
   })
@@ -499,9 +533,17 @@ async function handleSendMedia({ jid, filePath: mediaPath, caption, mediaType })
     case 'video':
       await sock.sendMessage(jid, { video: buffer, caption, mimetype: 'video/mp4' })
       break
-    case 'audio':
-      await sock.sendMessage(jid, { audio: buffer, ptt: true, mimetype: 'audio/ogg; codecs=opus' })
+    case 'audio': {
+      // Detect mimetype from file extension for proper playback
+      const ext = path.extname(mediaPath).toLowerCase()
+      const audioMime = ext === '.ogg' ? 'audio/ogg; codecs=opus'
+        : ext === '.mp3' ? 'audio/mpeg'
+        : ext === '.m4a' ? 'audio/mp4'
+        : ext === '.wav' ? 'audio/wav'
+        : 'audio/mpeg'
+      await sock.sendMessage(jid, { audio: buffer, ptt: true, mimetype: audioMime })
       break
+    }
     case 'document':
       await sock.sendMessage(jid, { document: buffer, fileName: filename, mimetype: 'application/octet-stream' })
       break
