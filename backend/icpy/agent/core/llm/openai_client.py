@@ -21,6 +21,7 @@ class OpenAIClientAdapter(BaseLLMClient):
         messages: List[Dict[str, Any]],
         tools: Optional[List[Dict[str, Any]]] = None,
         max_tokens: Optional[int] = None,
+        extra_params: Optional[Dict[str, Any]] = None,
     ) -> Iterable[str]:
         try:
             client, resolved_model = resolve_client("openai", model)
@@ -32,4 +33,4 @@ class OpenAIClientAdapter(BaseLLMClient):
         # OpenAIStreamingHandler expects messages with optional 'tools' loaded internally;
         # we pass tools directly to maintain flexibility while keeping compatibility.
         # It ignores None tools gracefully.
-        return handler.stream_chat_with_tools(messages, max_tokens=max_tokens)
+        return handler.stream_chat_with_tools(messages, max_tokens=max_tokens, extra_params=extra_params)

@@ -210,6 +210,7 @@ class GeminiNativeClientAdapter(BaseLLMClient):
         messages: List[Dict[str, Any]],
         tools: Optional[List[Dict[str, Any]]] = None,
         max_tokens: Optional[int] = None,
+        extra_params: Optional[Dict[str, Any]] = None,
     ) -> Iterable[str]:
         """
         Stream chat completions using the native Gemini SDK.

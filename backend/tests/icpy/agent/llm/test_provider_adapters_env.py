@@ -44,7 +44,7 @@ def test_gemini_native_falls_back_to_route_proxy(monkeypatch):
 
     monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
     monkeypatch.setenv("ICOTES_ROUTE_URL", "http://fake-route:9100")
-    monkeypatch.setenv("ICOTES_ROUTE_KEY", "test-key")
+    monkeypatch.setenv("ICOTESROUTE_API_KEY", "test-key")
 
     adapter = GeminiNativeClientAdapter()
 

@@ -17,17 +17,21 @@ class MoonshotClientAdapter(BaseLLMClient):
         messages: List[Dict[str, Any]],
         tools: Optional[List[Dict[str, Any]]] = None,
         max_tokens: Optional[int] = None,
+        extra_params: Optional[Dict[str, Any]] = None,
     ) -> Iterable[str]:
         try:
             client, resolved_model = resolve_client("moonshot", model)
         except ValueError as e:
             raise ProviderNotConfigured(str(e)) from e
         
+        # Merge caller-provided extra_params (e.g. thinkingMode from agents.json)
+        merged_params = dict(extra_params) if extra_params else {}
+        
         # For kimi-k2.5, disable thinking mode when using tools
+        # (unless caller already set a thinking preference)
         # Ref: https://platform.moonshot.ai/docs/guide/kimi-k2-5-quickstart#tool-use-compatibility
-        extra_params = {}
-        if "k2.5" in resolved_model.lower() and tools:
-            extra_params["thinking"] = {"type": "disabled"}
+        if "thinking" not in merged_params and "k2.5" in resolved_model.lower() and tools:
+            merged_params["thinking"] = {"type": "disabled"}
         
         handler = OpenAIStreamingHandler(client, resolved_model)
-        return handler.stream_chat_with_tools(messages, max_tokens=max_tokens, extra_params=extra_params)
+        return handler.stream_chat_with_tools(messages, max_tokens=max_tokens, extra_params=merged_params or None)

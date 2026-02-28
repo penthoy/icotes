@@ -25,7 +25,7 @@ def test_resolver_prefers_direct_key_over_route(monkeypatch):
     _clear_provider_env(monkeypatch)
     monkeypatch.setenv("OPENAI_API_KEY", "sk-direct")
     monkeypatch.setenv("ICOTES_ROUTE_URL", "http://127.0.0.1:9100")
-    monkeypatch.setenv("ICOTES_ROUTE_KEY", "route-key")
+    monkeypatch.setenv("ICOTESROUTE_API_KEY", "route-key")
 
     client, resolved_model = resolve_client("openai", "gpt-5.2")
 
@@ -37,7 +37,7 @@ def test_resolver_routes_openai_through_proxy(monkeypatch):
     """OpenAI without direct key should route through proxy with provider/model."""
     _clear_provider_env(monkeypatch)
     monkeypatch.setenv("ICOTES_ROUTE_URL", "http://127.0.0.1:9100")
-    monkeypatch.setenv("ICOTES_ROUTE_KEY", "route-key")
+    monkeypatch.setenv("ICOTESROUTE_API_KEY", "route-key")
 
     client, resolved_model = resolve_client("openai", "gpt-5.2")
 
@@ -49,7 +49,7 @@ def test_resolver_routes_anthropic_through_proxy(monkeypatch):
     """Any non-OpenAI provider without direct key should also route through proxy."""
     _clear_provider_env(monkeypatch)
     monkeypatch.setenv("ICOTES_ROUTE_URL", "http://127.0.0.1:9100")
-    monkeypatch.setenv("ICOTES_ROUTE_KEY", "route-key")
+    monkeypatch.setenv("ICOTESROUTE_API_KEY", "route-key")
 
     client, resolved_model = resolve_client("anthropic", "claude-opus-4-5-20251101")
 
@@ -61,7 +61,7 @@ def test_resolver_preserves_already_prefixed_model(monkeypatch):
     """Model already correctly prefixed with route provider should pass through unchanged."""
     _clear_provider_env(monkeypatch)
     monkeypatch.setenv("ICOTES_ROUTE_URL", "http://127.0.0.1:9100")
-    monkeypatch.setenv("ICOTES_ROUTE_KEY", "route-key")
+    monkeypatch.setenv("ICOTESROUTE_API_KEY", "route-key")
 
     _client, resolved_model = resolve_client("openai", "openai/gpt-5.2")
 
@@ -77,7 +77,7 @@ def test_resolver_prepends_provider_for_vendor_prefixed_model(monkeypatch):
     """
     _clear_provider_env(monkeypatch)
     monkeypatch.setenv("ICOTES_ROUTE_URL", "http://127.0.0.1:9100")
-    monkeypatch.setenv("ICOTES_ROUTE_KEY", "route-key")
+    monkeypatch.setenv("ICOTESROUTE_API_KEY", "route-key")
 
     _client, resolved_model = resolve_client("groq", "openai/gpt-oss-120b")
 
@@ -88,7 +88,7 @@ def test_resolver_vendor_prefix_idempotent(monkeypatch):
     """If the model is already correctly tagged with route provider, don't double-prefix."""
     _clear_provider_env(monkeypatch)
     monkeypatch.setenv("ICOTES_ROUTE_URL", "http://127.0.0.1:9100")
-    monkeypatch.setenv("ICOTES_ROUTE_KEY", "route-key")
+    monkeypatch.setenv("ICOTESROUTE_API_KEY", "route-key")
 
     _client, resolved_model = resolve_client("groq", "groq/openai/gpt-oss-120b")
 
@@ -99,7 +99,7 @@ def test_resolver_ollama_always_direct_error_without_url(monkeypatch):
     """Ollama is always direct — should error if OLLAMA_URL not set, even with route proxy."""
     _clear_provider_env(monkeypatch)
     monkeypatch.setenv("ICOTES_ROUTE_URL", "http://127.0.0.1:9100")
-    monkeypatch.setenv("ICOTES_ROUTE_KEY", "route-key")
+    monkeypatch.setenv("ICOTESROUTE_API_KEY", "route-key")
 
     with pytest.raises(ValueError, match="OLLAMA_URL is not set"):
         resolve_client("ollama", "llama3.2")
@@ -110,7 +110,7 @@ def test_resolver_ollama_direct_when_url_set(monkeypatch):
     _clear_provider_env(monkeypatch)
     monkeypatch.setenv("OLLAMA_URL", "http://localhost:11434/v1")
     monkeypatch.setenv("ICOTES_ROUTE_URL", "http://127.0.0.1:9100")
-    monkeypatch.setenv("ICOTES_ROUTE_KEY", "route-key")
+    monkeypatch.setenv("ICOTESROUTE_API_KEY", "route-key")
 
     client, resolved_model = resolve_client("ollama", "llama3.2")
 
@@ -132,7 +132,7 @@ def test_resolver_routes_all_providers_through_proxy(monkeypatch):
     """All non-Ollama providers should route through proxy when no direct keys."""
     _clear_provider_env(monkeypatch)
     monkeypatch.setenv("ICOTES_ROUTE_URL", "http://127.0.0.1:9100")
-    monkeypatch.setenv("ICOTES_ROUTE_KEY", "route-key")
+    monkeypatch.setenv("ICOTESROUTE_API_KEY", "route-key")
 
     providers_and_models = [
         ("openai", "gpt-5.2"),

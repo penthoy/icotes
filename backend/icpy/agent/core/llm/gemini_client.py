@@ -24,6 +24,7 @@ class GeminiClientAdapter(BaseLLMClient):
         messages: List[Dict[str, Any]],
         tools: Optional[List[Dict[str, Any]]] = None,
         max_tokens: Optional[int] = None,
+        extra_params: Optional[Dict[str, Any]] = None,
     ) -> Iterable[str]:
         try:
             client, resolved_model = resolve_client("google", model)
@@ -34,7 +35,7 @@ class GeminiClientAdapter(BaseLLMClient):
         transformed_messages = self._transform_messages_for_gemini(messages)
         
         handler = OpenAIStreamingHandler(client, resolved_model)
-        return handler.stream_chat_with_tools(transformed_messages, max_tokens=max_tokens)
+        return handler.stream_chat_with_tools(transformed_messages, max_tokens=max_tokens, extra_params=extra_params)
     
     def _transform_messages_for_gemini(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Transform messages for Gemini API compatibility.

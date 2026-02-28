@@ -30,6 +30,7 @@ from icpy.agent.helpers import (
     create_standard_agent_metadata,
     create_environment_reload_function,
     get_available_tools_summary,
+    get_thinking_extra_params,
     ToolDefinitionLoader,
     add_context_to_agent_prompt,
     BASE_SYSTEM_PROMPT_TEMPLATE,
@@ -83,7 +84,9 @@ def chat(message: str, history: List[Dict[str, str]]) -> Generator[str, None, No
             tools = ToolDefinitionLoader().get_openai_tools()
         except Exception:
             pass
-        yield from ga.run(system_prompt=system_prompt, messages=safe_messages, tools=tools)
+        # Read thinkingMode from agents.json config
+        extra_params = get_thinking_extra_params(AGENT_NAME)
+        yield from ga.run(system_prompt=system_prompt, messages=safe_messages, tools=tools, extra_params=extra_params)
         logger.info("KimiAgent: Chat completed successfully")
 
     except Exception as e:

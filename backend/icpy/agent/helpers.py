@@ -21,6 +21,7 @@ import os
 import httpx
 import platform
 import re
+import time
 import uuid
 from contextvars import ContextVar
 from datetime import datetime, timezone
@@ -629,11 +630,25 @@ class ToolResultFormatter:
                 return f"✅ **Success**: {json_str}\n"
             
             else:
-                # For other tools, show data as-is but truncate if too long
+                # For other tools, show data as-is but truncate if too long.
+                # For media-generating tools, always preserve the file path at the
+                # end of the output so downstream formatters (WhatsApp, Discord)
+                # can reliably extract it even from truncated text.
                 data_str = str(data)
+                path_suffix = ""
+                if isinstance(data, dict) and len(data_str) > 200:
+                    _path = (
+                        data.get("absolute_path")
+                        or data.get("absolutePath")
+                        or data.get("audio_file")
+                        or data.get("file_path")
+                        or data.get("path")
+                    )
+                    if _path:
+                        path_suffix = f"\n📁 Saved to: `local:{_path}`"
                 if len(data_str) > 200:
                     data_str = data_str[:200] + "... (truncated)"
-                return f"✅ **Success**: {data_str}\n"
+                return f"✅ **Success**: {data_str}{path_suffix}\n"
         else:
             return f"❌ **Error**: {result.get('error', 'Unknown error')}\n"
 
@@ -795,7 +810,20 @@ class OpenAIStreamingHandler:
                 tools = self.tool_loader.get_openai_tools_compact(exclude_tools=self.exclude_tools)
             else:
                 tools = self.tool_loader.get_openai_tools(exclude_tools=self.exclude_tools)
-            
+
+            # ── Record system prompt & tool schemas into raw sidecar ──
+            try:
+                from icpy.services.raw_output_sidecar import get_active_recorder as _get_rec
+                _sr = _get_rec()
+                if _sr is not None:
+                    # System prompt is the first message if role == system
+                    if conv and conv[0].get("role") == "system":
+                        _sr.record_system_prompt(conv[0].get("content", ""))
+                    if tools:
+                        _sr.record_tool_schemas(tools)
+            except Exception:
+                pass  # never block the agent
+
             # Start the conversation loop for tool calls
             continue_round = 0
             # Optional safeguard against runaway tool-call loops (only if env is set)
@@ -851,7 +879,22 @@ class OpenAIStreamingHandler:
                         asyncio.create_task(_log_request())
                     except Exception as e:
                         logger.debug(f"Failed to create log task: {e}")
-                
+
+                # ── Record LLM request summary into raw sidecar ──
+                try:
+                    from icpy.services.raw_output_sidecar import get_active_recorder as _get_rec
+                    _sr = _get_rec()
+                    if _sr is not None:
+                        _sr.record_llm_request(
+                            model=self.model_name,
+                            message_count=len(conv),
+                            tool_count=len(tools) if tools else 0,
+                            iteration=stream_iteration_count,
+                            extra_params=extra_params,
+                        )
+                except Exception:
+                    pass
+
                 # Mark request start for timing diagnostics
                 _req_start_ts = datetime.now().timestamp()
                 
@@ -1385,8 +1428,19 @@ class OpenAIStreamingHandler:
                 yield self.formatter.format_tool_call_start(tool_name, arguments)
                 
                 # Execute the tool
+                _tool_exec_start = time.monotonic()
                 result = self.tool_executor.execute_tool_call_sync(tool_name, arguments)
-                
+                _tool_exec_ms = round((time.monotonic() - _tool_exec_start) * 1000)
+
+                # ── Record full untruncated tool result into raw sidecar ──
+                try:
+                    from icpy.services.raw_output_sidecar import get_active_recorder as _get_rec
+                    _sr = _get_rec()
+                    if _sr is not None:
+                        _sr.record_tool_execution(tool_name, arguments, result, _tool_exec_ms)
+                except Exception:
+                    pass
+
                 # Log tool execution to debug interceptor (non-blocking)
                 if self.debug_interceptor:
                     try:
