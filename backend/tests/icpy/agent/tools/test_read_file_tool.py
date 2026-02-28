@@ -153,6 +153,33 @@ class TestReadFileTool:
     @pytest.mark.asyncio
     @patch('icpy.agent.tools.read_file_tool.get_workspace_service')
     @patch('icpy.agent.tools.read_file_tool.get_filesystem_service')
+    async def test_file_uri_scheme_stripped(self, mock_fs_service, mock_ws_service):
+        """Test that file:// URIs are normalised before path validation.
+
+        The agent receives paths like ``file:///workspace/.icotes/media/images/x.png``
+        from the chat service.  Previously, ``parse_namespaced_path`` extracted
+        ``//path`` (double-slash) which os.path.abspath preserves on Linux, causing
+        the workspace-root check to fail with "Path is outside workspace root".
+        """
+        mock_ws = AsyncMock()
+        mock_ws.get_workspace_root.return_value = "/workspace"
+        mock_ws_service.return_value = mock_ws
+
+        mock_fs = AsyncMock()
+        mock_fs.read_file.return_value = "hello"
+        mock_fs_service.return_value = mock_fs
+
+        tool = ReadFileTool()
+        result = await tool.execute(filePath="file:///workspace/notes.txt")
+
+        # Should not be rejected as "outside workspace root"
+        assert result.success is True
+        assert result.data == {"content": "hello"}
+        mock_fs.read_file.assert_called_once_with("/workspace/notes.txt")
+
+    @pytest.mark.asyncio
+    @patch('icpy.agent.tools.read_file_tool.get_workspace_service')
+    @patch('icpy.agent.tools.read_file_tool.get_filesystem_service')
     async def test_invalid_line_range(self, mock_fs_service, mock_ws_service):
         """Test invalid line range (start > end)"""
         # Setup mocks

@@ -62,6 +62,11 @@ class BaseTool(ABC):
         """
         if not raw_path:
             return ("local", "/")
+        # Handle RFC 8089 file:// URIs before namespace parsing
+        # file:///abs/path → /abs/path  (strip scheme + normalize slashes)
+        if raw_path.startswith('file://'):
+            normalized = '/' + raw_path[7:].lstrip('/')
+            return ("local", normalized)
         try:
             if get_context_router is None:
                 # Minimal normalization
