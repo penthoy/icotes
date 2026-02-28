@@ -166,7 +166,7 @@ class AtlasCloudImageToVideoTool(BaseTool):
         """Get or create Atlas Cloud client.
 
         AtlasCloudClient handles both direct API key mode and route-proxy
-        fallback (ICOTES_ROUTE_URL + ICOTES_ROUTE_KEY).
+        fallback (ICOTES_ROUTE_URL + ICOTESROUTE_API_KEY).
         """
         if self._client is None:
             try:

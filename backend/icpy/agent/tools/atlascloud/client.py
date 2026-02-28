@@ -3,7 +3,7 @@ Async HTTP client for Atlas Cloud API
 
 Handles video generation requests, result polling, and error handling.
 Supports text-to-video and image-to-video models.
-Falls back to Route proxy (ICOTES_ROUTE_URL + ICOTES_ROUTE_KEY) when
+Falls back to Route proxy (ICOTES_ROUTE_URL + ICOTESROUTE_API_KEY) when
 ATLASCLOUD_API_KEY is not set.
 """
 
@@ -101,7 +101,7 @@ class AtlasCloudClient:
             else:
                 raise ValueError(
                     "ATLASCLOUD_API_KEY must be provided or set as environment variable, "
-                    "or configure route proxy (ICOTES_ROUTE_URL + ICOTES_ROUTE_KEY). "
+                    "or configure route proxy (ICOTES_ROUTE_URL + ICOTESROUTE_API_KEY). "
                     "Get your API key from https://console.atlascloud.ai/settings"
                 )
         else:

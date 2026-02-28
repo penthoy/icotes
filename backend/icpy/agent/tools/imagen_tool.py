@@ -4,7 +4,7 @@ Imagen Tool - Image Generation using Google's Gemini 2.5 Flash Image Preview
 This tool allows any agent to generate images using Google's native Gemini model
 that generates images directly in its response.
 
-Requires: GOOGLE_API_KEY or Route proxy (ICOTES_ROUTE_URL + ICOTES_ROUTE_KEY)
+Requires: GOOGLE_API_KEY or Route proxy (ICOTES_ROUTE_URL + ICOTESROUTE_API_KEY)
 
 Phase 7 Update: Added hop support, resolution control, and custom filenames
 Phase 8 Update: Added aspect ratio presets and parameter support
@@ -869,7 +869,7 @@ class ImagenTool(BaseTool):
                     success=False,
                     error=(
                         "GOOGLE_API_KEY is not set, and route proxy is not configured. "
-                        "Set GOOGLE_API_KEY or configure ICOTES_ROUTE_URL + ICOTES_ROUTE_KEY."
+                        "Set GOOGLE_API_KEY or configure ICOTES_ROUTE_URL + ICOTESROUTE_API_KEY."
                     )
                 )
 

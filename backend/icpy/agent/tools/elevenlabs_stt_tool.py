@@ -186,7 +186,7 @@ class ElevenLabsSTTTool(BaseTool):
                 return None
             raise RuntimeError(
                 "ELEVENLABS_API_KEY environment variable not set and route proxy not configured. "
-                "Set ELEVENLABS_API_KEY or configure ICOTES_ROUTE_URL + ICOTES_ROUTE_KEY."
+                "Set ELEVENLABS_API_KEY or configure ICOTES_ROUTE_URL + ICOTESROUTE_API_KEY."
             )
         
         self._api_key = api_key

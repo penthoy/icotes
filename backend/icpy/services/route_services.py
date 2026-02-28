@@ -107,6 +107,32 @@ class RouteServiceClient:
         except Exception as exc:
             raise self._enrich_connection_error(exc, path) from exc
 
+    def _raise_for_status_with_context(
+        self,
+        response: httpx.Response,
+        *,
+        path: str,
+        model: Optional[str] = None,
+    ) -> None:
+        """Raise HTTP errors with route-specific context for easier debugging.
+
+        For 404s, we provide a clearer classification that this is likely a
+        route endpoint/model registration issue rather than a provider outage.
+        """
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            status_code = exc.response.status_code if exc.response is not None else None
+            if status_code == 404:
+                model_hint = f" model={model}" if model else ""
+                message = (
+                    f"Route endpoint not found (404): {self.route_url}{path}.{model_hint} "
+                    f"This likely indicates an icotesroute endpoint/model mapping issue."
+                )
+                logger.error("[RouteService] %s", message)
+                raise RuntimeError(message) from exc
+            raise
+
     # ── ElevenLabs TTS ──────────────────────────────────────────────────────
 
     async def tts(
@@ -131,7 +157,7 @@ class RouteServiceClient:
         }
         logger.info("[RouteService] TTS request: %d chars, voice=%s", len(text), voice)
         resp = await self._post_with_retry("/v1/audio/speech", payload)
-        resp.raise_for_status()
+        self._raise_for_status_with_context(resp, path="/v1/audio/speech", model=payload.get("model"))
         return resp.content
 
     # ── ElevenLabs STT ──────────────────────────────────────────────────────
@@ -160,7 +186,7 @@ class RouteServiceClient:
 
         logger.info("[RouteService] STT request: %d bytes", len(audio_data))
         resp = await self._post_with_retry("/v1/audio/transcriptions", payload)
-        resp.raise_for_status()
+        self._raise_for_status_with_context(resp, path="/v1/audio/transcriptions", model=payload.get("model"))
         return resp.json()
 
     # ── ElevenLabs SFX ──────────────────────────────────────────────────────
@@ -185,7 +211,7 @@ class RouteServiceClient:
         }
         logger.info("[RouteService] SFX request: '%s', %.1fs", text[:50], duration_seconds)
         resp = await self._post_with_retry("/v1/audio/sfx", payload)
-        resp.raise_for_status()
+        self._raise_for_status_with_context(resp, path="/v1/audio/sfx", model=payload.get("model"))
         return resp.content
 
     # ── ElevenLabs Music ────────────────────────────────────────────────────
@@ -208,7 +234,7 @@ class RouteServiceClient:
         }
         logger.info("[RouteService] Music request: '%s', %.1fs", prompt[:50], duration_seconds)
         resp = await self._post_with_retry("/v1/audio/music", payload)
-        resp.raise_for_status()
+        self._raise_for_status_with_context(resp, path="/v1/audio/music", model=payload.get("model"))
         return resp.content
 
     # ── Web Search (Tavily / Serper) ────────────────────────────────────────
@@ -236,7 +262,7 @@ class RouteServiceClient:
         }
         logger.info("[RouteService] Search request: '%s' via %s", query[:50], provider)
         resp = await self._post_with_retry("/v1/search", payload)
-        resp.raise_for_status()
+        self._raise_for_status_with_context(resp, path="/v1/search", model=payload.get("model"))
         return resp.json()
 
     # ── AtlasCloud Image Generation ─────────────────────────────────────────
@@ -258,7 +284,7 @@ class RouteServiceClient:
         }
         logger.info("[RouteService] Image generation: '%s'", prompt[:50])
         resp = await self._post_with_retry("/v1/images/generations", payload)
-        resp.raise_for_status()
+        self._raise_for_status_with_context(resp, path="/v1/images/generations", model=payload.get("model"))
         return resp.json()
 
     # ── AtlasCloud Video Generation ─────────────────────────────────────────
@@ -280,7 +306,7 @@ class RouteServiceClient:
         }
         logger.info("[RouteService] Video generation: '%s'", prompt[:50])
         resp = await self._post_with_retry("/v1/videos/generations", payload)
-        resp.raise_for_status()
+        self._raise_for_status_with_context(resp, path="/v1/videos/generations", model=payload.get("model"))
         return resp.json()
 
     async def get_prediction(self, prediction_id: str) -> dict:
@@ -289,7 +315,7 @@ class RouteServiceClient:
         This endpoint is used to complete async Atlas image/video jobs in proxy-only mode.
         """
         resp = await self._get_with_retry(f"/v1/predictions/{prediction_id}")
-        resp.raise_for_status()
+        self._raise_for_status_with_context(resp, path=f"/v1/predictions/{prediction_id}")
         return resp.json()
 
 

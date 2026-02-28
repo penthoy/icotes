@@ -118,7 +118,7 @@ class AtlasCloudVideoToVideoSoundTool(BaseTool):
         """Get or create Atlas Cloud client.
 
         AtlasCloudClient handles both direct API key mode and route-proxy
-        fallback (ICOTES_ROUTE_URL + ICOTES_ROUTE_KEY).
+        fallback (ICOTES_ROUTE_URL + ICOTESROUTE_API_KEY).
         """
         if self._client is not None:
             return self._client
@@ -601,6 +601,14 @@ class AtlasCloudVideoToVideoSoundTool(BaseTool):
                 success=False,
                 data=None,
                 error=f"Atlas Cloud API error: {str(e)}"
+            )
+
+        except RuntimeError as e:
+            logger.error(f"[AtlasCloudV2VSound] Route/runtime error: {e}")
+            return ToolResult(
+                success=False,
+                data=None,
+                error=str(e)
             )
         
         except Exception as e:

@@ -5,7 +5,7 @@ Generates videos from text descriptions using Atlas Cloud's unified API.
 Supports multiple video generation models (Seedance, Kling, Veo, Wan, etc.).
 Follows existing tool patterns with hop-aware workspace saving.
 
-Requires: ATLASCLOUD_API_KEY or Route proxy (ICOTES_ROUTE_URL + ICOTES_ROUTE_KEY)
+Requires: ATLASCLOUD_API_KEY or Route proxy (ICOTES_ROUTE_URL + ICOTESROUTE_API_KEY)
 
 References:
 - https://www.atlascloud.ai/docs/openapi-index
@@ -177,7 +177,7 @@ class AtlasCloudTextToVideoTool(BaseTool):
         """Get or create Atlas Cloud client lazily.
 
         AtlasCloudClient handles both direct API key mode and route-proxy
-        fallback (ICOTES_ROUTE_URL + ICOTES_ROUTE_KEY).
+        fallback (ICOTES_ROUTE_URL + ICOTESROUTE_API_KEY).
         """
         if self._client is not None:
             return self._client

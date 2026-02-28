@@ -3,7 +3,7 @@
 Quick connectivity test for the icotes route proxy server.
 
 Tests the proxy at a given URL (defaults to the LAN IP for local testing).
-Reads ICOTES_ROUTE_KEY from env or accepts it as a CLI argument.
+Reads ICOTESROUTE_API_KEY from env or accepts it as a CLI argument.
 
 Usage:
     uv run python tests/integration/test_route_proxy.py --key <your-key>
@@ -20,7 +20,7 @@ import httpx
 # ── default values ─────────────────────────────────────────────────────────────
 DEFAULT_URL = os.getenv("ICOTES_ROUTE_URL", "http://192.168.2.202:9100")
 # No default key — must be explicitly provided via --key or env var
-DEFAULT_KEY = os.getenv("ICOTES_ROUTE_KEY", "")
+DEFAULT_KEY = os.getenv("ICOTESROUTE_API_KEY", "")
 
 GREEN = "\033[92m"
 RED = "\033[91m"
@@ -87,7 +87,7 @@ def test_chat_completion(base_url: str, key: str) -> bool:
     """POST /v1/chat/completions (non-streaming) with a real key."""
     print("\n[3] Non-streaming chat completion")
     if not key:
-        info("ICOTES_ROUTE_KEY not set — skipping (pass --key or set env var)")
+        info("ICOTESROUTE_API_KEY not set — skipping (pass --key or set env var)")
         return True
 
     payload = {
@@ -120,7 +120,7 @@ def test_streaming_chat(base_url: str, key: str) -> bool:
     """POST /v1/chat/completions with stream=true and collect SSE chunks."""
     print("\n[4] Streaming chat completion (SSE)")
     if not key:
-        info("ICOTES_ROUTE_KEY not set — skipping")
+        info("ICOTESROUTE_API_KEY not set — skipping")
         return True
 
     payload = {
@@ -182,7 +182,7 @@ def main() -> None:
     parser.add_argument(
         "--key",
         default=DEFAULT_KEY,
-        help="Route proxy API key (default: $ICOTES_ROUTE_KEY env var)",
+        help="Route proxy API key (default: $ICOTESROUTE_API_KEY env var)",
     )
     args = parser.parse_args()
 

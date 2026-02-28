@@ -2,6 +2,7 @@
 
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
+import httpx
 
 from icpy.services.route_services import (
     RouteServiceClient,
@@ -35,7 +36,7 @@ def test_is_not_available_without_credentials(no_route_client):
 
 def test_is_route_service_available_from_env(monkeypatch):
     monkeypatch.setenv("ICOTES_ROUTE_URL", "http://127.0.0.1:9100")
-    monkeypatch.setenv("ICOTES_ROUTE_KEY", "test-key")
+    monkeypatch.setenv("ICOTESROUTE_API_KEY", "test-key")
     # Reset singleton
     import icpy.services.route_services as mod
     mod._route_service_client = None
@@ -48,7 +49,7 @@ def test_is_route_service_available_from_env(monkeypatch):
 
 def test_is_route_service_not_available_without_env(monkeypatch):
     monkeypatch.delenv("ICOTES_ROUTE_URL", raising=False)
-    monkeypatch.delenv("ICOTES_ROUTE_KEY", raising=False)
+    monkeypatch.delenv("ICOTESROUTE_API_KEY", raising=False)
     import icpy.services.route_services as mod
     mod._route_service_client = None
 
@@ -184,3 +185,47 @@ async def test_generate_image_sends_correct_payload(route_client):
     assert call_args[0][0] == "/v1/images/generations"
     payload = call_args[1]["json"]
     assert payload["model"] == "atlascloud/image-v1"
+
+
+@pytest.mark.asyncio
+async def test_tts_404_has_route_context(route_client):
+    """Route 404 should be surfaced as clear route-side endpoint issue."""
+    req = httpx.Request("POST", "http://127.0.0.1:9100/v1/audio/speech")
+    resp_404 = httpx.Response(404, request=req)
+
+    mock_response = MagicMock()
+    mock_response.raise_for_status = MagicMock(side_effect=httpx.HTTPStatusError("404", request=req, response=resp_404))
+
+    mock_client = AsyncMock()
+    mock_client.post = AsyncMock(return_value=mock_response)
+    mock_client.is_closed = False
+    route_client._client = mock_client
+
+    with pytest.raises(RuntimeError) as exc:
+        await route_client.tts(text="hello", voice="george")
+
+    assert "Route endpoint not found (404)" in str(exc.value)
+    assert "/v1/audio/speech" in str(exc.value)
+    assert "elevenlabs/tts-v2" in str(exc.value)
+
+
+@pytest.mark.asyncio
+async def test_video_404_has_route_context(route_client):
+    """Atlas route 404 should include endpoint and model for ticketing."""
+    req = httpx.Request("POST", "http://127.0.0.1:9100/v1/videos/generations")
+    resp_404 = httpx.Response(404, request=req)
+
+    mock_response = MagicMock()
+    mock_response.raise_for_status = MagicMock(side_effect=httpx.HTTPStatusError("404", request=req, response=resp_404))
+
+    mock_client = AsyncMock()
+    mock_client.post = AsyncMock(return_value=mock_response)
+    mock_client.is_closed = False
+    route_client._client = mock_client
+
+    with pytest.raises(RuntimeError) as exc:
+        await route_client.generate_video(prompt="ambient", model="atlascloud/mmaudio-v2")
+
+    assert "Route endpoint not found (404)" in str(exc.value)
+    assert "/v1/videos/generations" in str(exc.value)
+    assert "atlascloud/mmaudio-v2" in str(exc.value)
