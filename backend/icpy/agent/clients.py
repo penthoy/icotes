@@ -46,9 +46,9 @@ def get_icotes_route_client():
 
     The route server is OpenAI-compatible and currently exposes /v1/chat/completions.
     """
-    route_api_key = os.getenv("ICOTES_ROUTE_KEY")
+    route_api_key = os.getenv("ICOTESROUTE_API_KEY")
     if not route_api_key:
-        raise ValueError("ICOTES_ROUTE_KEY environment variable is not set.")
+        raise ValueError("ICOTESROUTE_API_KEY environment variable is not set.")
 
     route_url = os.getenv("ICOTES_ROUTE_URL", "https://route.icotes.com")
     base_url = _normalize_route_base_url(route_url)
@@ -225,6 +225,23 @@ def get_ollama_client():
     return OpenAI(
         api_key="ollama",  # Ollama uses a fixed API key
         base_url=ollama_url,
+    )
+
+
+def get_minimax_client():
+    """
+    Initializes and returns an OpenAI client configured for MiniMax's API.
+    
+    MiniMax provides OpenAI-compatible endpoints for their models
+    including MiniMax-M2.5.
+    """
+    minimax_api_key = os.getenv("MINIMAX_API_KEY")
+    if not minimax_api_key:
+        raise ValueError("MINIMAX_API_KEY environment variable is not set.")
+
+    return OpenAI(
+        api_key=minimax_api_key,
+        base_url="https://api.minimax.io/v1",
     )
 
 

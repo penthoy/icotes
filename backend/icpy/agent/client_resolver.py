@@ -25,6 +25,7 @@ from .clients import (
     get_google_client,
     get_groq_client,
     get_icotes_route_client,
+    get_minimax_client,
     get_moonshot_client,
     get_ollama_client,
     get_openai_client,
@@ -46,6 +47,7 @@ _DIRECT_CLIENT_GETTERS: dict[str, ProviderClientGetter] = {
     "cerebras": get_cerebras_client,
     "openrouter": get_openrouter_client,
     "alibaba": get_ali_client,
+    "minimax": get_minimax_client,
     "moonshot": get_moonshot_client,
     "ollama": get_ollama_client,
 }
@@ -61,6 +63,7 @@ _DIRECT_PROVIDER_ENV_KEYS: dict[str, str] = {
     "cerebras": "CEREBRAS_API_KEY",
     "openrouter": "OPENROUTER_API_KEY",
     "alibaba": "DASHSCOPE_API_KEY",
+    "minimax": "MINIMAX_API_KEY",
     "moonshot": "MOONSHOT_API_KEY",
     "ollama": "OLLAMA_URL",
 }
@@ -144,5 +147,5 @@ def resolve_client(provider: str, model: str) -> tuple[OpenAI, str]:
     raise ValueError(
         f"{expected_key} is not set and ICOTES_ROUTE_URL is not configured. "
         "Set a direct provider key or configure route proxy "
-        "(ICOTES_ROUTE_URL + ICOTES_ROUTE_KEY)."
+        "(ICOTES_ROUTE_URL + ICOTESROUTE_API_KEY)."
     )
