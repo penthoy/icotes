@@ -531,10 +531,19 @@ class WebFetchTool(BaseTool):
             return True
 
         unique_ratio = len(set(tokens)) / len(tokens)
-        top_word_count = Counter(tokens).most_common(1)[0][1]
+        top_word, top_word_count = Counter(tokens).most_common(1)[0]
         top_word_ratio = top_word_count / len(tokens)
 
-        return len(tokens) >= 12 and (unique_ratio < 0.2 or top_word_ratio > 0.65)
+        # Require BOTH conditions: low vocabulary diversity AND one dominant word.
+        # Using `or` caused false positives on normal long speech because Zipf's law
+        # naturally lowers unique_ratio below 0.2 for any text with 5000+ tokens.
+        is_low = len(tokens) >= 12 and (unique_ratio < 0.2 and top_word_ratio > 0.65)
+        if is_low:
+            logger.info(
+                f"Low-information transcript detected: {len(tokens)} tokens, "
+                f"unique_ratio={unique_ratio:.3f}, top_word='{top_word}' ({top_word_ratio:.3f})"
+            )
+        return is_low
     
     async def _fetch_youtube_transcript(self, url: str) -> Tuple[bool, Optional[Dict[str, Any]], Optional[str]]:
         """
