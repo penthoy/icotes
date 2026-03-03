@@ -26,6 +26,7 @@ class AgentDisplayConfig:
     order: int = 999
     icon: str = "🤖"
     model_name: Optional[str] = None  # Override model name from agents.json
+    thinking_mode: Optional[str] = None  # "enabled", "disabled", or None (use model default)
 
 @dataclass
 class CategoryConfig:
@@ -136,7 +137,8 @@ class AgentConfigService:
             category=agent_config.get("category", "General"),
             order=agent_config.get("order", 999),
             icon=agent_config.get("icon", "🤖"),
-            model_name=agent_config.get("modelName", None)  # Optional model override
+            model_name=agent_config.get("modelName", None),  # Optional model override
+            thinking_mode=agent_config.get("thinkingMode", None),  # "enabled"/"disabled"/None
         )
     
     def get_category_config(self, category_name: str) -> CategoryConfig:
