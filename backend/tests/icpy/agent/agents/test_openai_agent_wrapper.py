@@ -13,7 +13,7 @@ from icpy.agent.core.llm.openai_client import OpenAIClientAdapter
 def test_openai_agent_delegates_to_general_agent(monkeypatch):
     """Test that the OpenAI agent delegates to GeneralAgent correctly."""
     # Patch adapter.stream_chat to avoid network calls and API keys
-    def fake_stream_chat(self, *, model, messages, tools=None, max_tokens=None) -> Iterable[str]:
+    def fake_stream_chat(self, *, model, messages, tools=None, max_tokens=None, extra_params=None) -> Iterable[str]:
         yield "OK"
     monkeypatch.setattr(OpenAIClientAdapter, "stream_chat", fake_stream_chat, raising=True)
 

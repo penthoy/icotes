@@ -20,8 +20,11 @@ from typing import Dict, List, Generator
 # Configure logging
 logger = logging.getLogger(__name__)
 
-# Model ID for GPT OSS 120B on Groq (uses openai/ prefix for OpenAI-compatible API)
-MODEL_NAME = "openai/gpt-oss-120b"
+# Model ID for GPT OSS 120B on Groq.
+# Groq's vendor ID for this model is "openai/gpt-oss-120b" (openai prefix is part
+# of Groq's own naming). The route-proxy prefix "groq/" must come first so the
+# proxy routes to Groq and not to OpenAI.
+MODEL_NAME = "groq/openai/gpt-oss-120b"
 AGENT_NAME = "GroqGptOssAgent"
 AGENT_DESCRIPTION = "AI assistant powered by GPT OSS 120B via Groq with tool calling"
 
@@ -32,6 +35,7 @@ from icpy.agent.helpers import (
     create_standard_agent_metadata,
     create_environment_reload_function,
     get_available_tools_summary,
+    get_model_name_for_agent,
     ToolDefinitionLoader,
     add_context_to_agent_prompt,
     BASE_SYSTEM_PROMPT_TEMPLATE,
@@ -73,10 +77,13 @@ def chat(message: str, history: List[Dict[str, str]]) -> Generator[str, None, No
         # Prepare messages using shared utility
         safe_messages = build_safe_messages(message, history)
 
+        # Allow model override from workspace/.icotes/agents.json
+        model = get_model_name_for_agent(AGENT_NAME, MODEL_NAME)
+
         # Delegate to generalized agent using Groq adapter
         adapter = GroqClientAdapter()
-        ga = GeneralAgent(adapter, model=MODEL_NAME)
-        logger.info("GroqGptOssAgent: Starting chat with tools using GeneralAgent")
+        ga = GeneralAgent(adapter, model=model)
+        logger.info(f"GroqGptOssAgent: Starting chat with model={model} using GeneralAgent")
         # Load tool definitions and pass through
         tools = []
         try:

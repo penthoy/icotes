@@ -12,14 +12,17 @@ These helpers abstract away complex boilerplate code so that custom agents
 can focus on their specific logic and domain expertise.
 """
 
+import base64
 import json
 import logging
 import asyncio
 import concurrent.futures
 import copy
 import os
+import httpx
 import platform
 import re
+import time
 import uuid
 from contextvars import ContextVar
 from datetime import datetime, timezone
@@ -30,6 +33,19 @@ from .debug_interceptor import get_interceptor, get_context_snapshot
 
 # Phase 2: Context variable to store vendor-specific metadata across async calls
 _vendor_metadata: ContextVar[Optional[Dict[str, Any]]] = ContextVar('vendor_metadata', default=None)
+
+
+def _format_agent_error(e: Exception) -> str:
+    """Return a user-friendly error string, with extra context when the
+    route proxy is detectably unreachable."""
+    if isinstance(e, (httpx.ConnectError, httpx.ConnectTimeout, ConnectionError)):
+        route_url = os.getenv("ICOTES_ROUTE_URL", "")
+        hint = f" ({route_url})" if route_url else ""
+        return (
+            f"Could not connect to the route proxy{hint}. "
+            "Check that icotesroute is running and reachable."
+        )
+    return str(e)
 
 
 def set_vendor_metadata(vendor_parts: Optional[List[Dict]], vendor_model: Optional[str]):
@@ -615,11 +631,25 @@ class ToolResultFormatter:
                 return f"✅ **Success**: {json_str}\n"
             
             else:
-                # For other tools, show data as-is but truncate if too long
+                # For other tools, show data as-is but truncate if too long.
+                # For media-generating tools, always preserve the file path at the
+                # end of the output so downstream formatters (WhatsApp, Discord)
+                # can reliably extract it even from truncated text.
                 data_str = str(data)
+                path_suffix = ""
+                if isinstance(data, dict) and len(data_str) > 200:
+                    _path = (
+                        data.get("absolute_path")
+                        or data.get("absolutePath")
+                        or data.get("audio_file")
+                        or data.get("file_path")
+                        or data.get("path")
+                    )
+                    if _path:
+                        path_suffix = f"\n📁 Saved to: `local:{_path}`"
                 if len(data_str) > 200:
                     data_str = data_str[:200] + "... (truncated)"
-                return f"✅ **Success**: {data_str}\n"
+                return f"✅ **Success**: {data_str}{path_suffix}\n"
         else:
             return f"❌ **Error**: {result.get('error', 'Unknown error')}\n"
 
@@ -673,9 +703,9 @@ class OpenAIStreamingHandler:
         
         Args:
             messages: Conversation messages
-            max_tokens: Maximum tokens for completion (defaults from env AGENT_MAX_TOKENS or 3500)
+            max_tokens: Maximum tokens for completion (defaults from env AGENT_MAX_TOKENS or 8000)
             auto_continue: When response stops due to token limit, automatically continue (env AGENT_AUTO_CONTINUE, default True)
-            max_continue_rounds: Maximum number of auto-continue follow-ups (env AGENT_MAX_CONTINUE_ROUNDS, default 3)
+            max_continue_rounds: Maximum number of auto-continue follow-ups (env AGENT_MAX_CONTINUE_ROUNDS, default 10)
             
         Yields:
             str: Response chunks for streaming
@@ -684,9 +714,9 @@ class OpenAIStreamingHandler:
             # Resolve configuration with environment overrides
             if max_tokens is None:
                 try:
-                    max_tokens = int(os.environ.get("AGENT_MAX_TOKENS", "3500"))
+                    max_tokens = int(os.environ.get("AGENT_MAX_TOKENS", "8000"))
                 except ValueError:
-                    max_tokens = 2000
+                    max_tokens = 8000
             if auto_continue is None:
                 auto_continue = os.environ.get("AGENT_AUTO_CONTINUE", "1") not in ("0", "false", "False")
             if max_continue_rounds is None:
@@ -694,6 +724,10 @@ class OpenAIStreamingHandler:
                     max_continue_rounds = int(os.environ.get("AGENT_MAX_CONTINUE_ROUNDS", "10"))
                 except ValueError:
                     max_continue_rounds = 10
+            try:
+                max_stream_iterations = int(os.environ.get("AGENT_MAX_STREAM_ITERATIONS", "50"))
+            except ValueError:
+                max_stream_iterations = 50
 
             # Preflight: sanitize messages to avoid provider validation errors
             def _coerce_content_to_text(val: Any) -> str:
@@ -777,7 +811,20 @@ class OpenAIStreamingHandler:
                 tools = self.tool_loader.get_openai_tools_compact(exclude_tools=self.exclude_tools)
             else:
                 tools = self.tool_loader.get_openai_tools(exclude_tools=self.exclude_tools)
-            
+
+            # ── Record system prompt & tool schemas into raw sidecar ──
+            try:
+                from icpy.services.raw_output_sidecar import get_active_recorder as _get_rec
+                _sr = _get_rec()
+                if _sr is not None:
+                    # System prompt is the first message if role == system
+                    if conv and conv[0].get("role") == "system":
+                        _sr.record_system_prompt(conv[0].get("content", ""))
+                    if tools:
+                        _sr.record_tool_schemas(tools)
+            except Exception:
+                pass  # never block the agent
+
             # Start the conversation loop for tool calls
             continue_round = 0
             # Optional safeguard against runaway tool-call loops (only if env is set)
@@ -791,7 +838,17 @@ class OpenAIStreamingHandler:
             except Exception:
                 max_tool_loops = None
             tool_loop_count = 0
+            stream_iteration_count = 0
             while True:
+                stream_iteration_count += 1
+                if max_stream_iterations > 0 and stream_iteration_count > max_stream_iterations:
+                    logger.warning(
+                        "OpenAIStreamingHandler: Reached max stream iterations (%s). Aborting to prevent infinite loop.",
+                        max_stream_iterations,
+                    )
+                    yield "\n⚠️ Reached maximum stream iterations. Stopping to prevent a loop.\n"
+                    break
+
                 # Determine the correct max tokens parameter based on model
                 api_params = {
                     "model": self.model_name,
@@ -823,7 +880,22 @@ class OpenAIStreamingHandler:
                         asyncio.create_task(_log_request())
                     except Exception as e:
                         logger.debug(f"Failed to create log task: {e}")
-                
+
+                # ── Record LLM request summary into raw sidecar ──
+                try:
+                    from icpy.services.raw_output_sidecar import get_active_recorder as _get_rec
+                    _sr = _get_rec()
+                    if _sr is not None:
+                        _sr.record_llm_request(
+                            model=self.model_name,
+                            message_count=len(conv),
+                            tool_count=len(tools) if tools else 0,
+                            iteration=stream_iteration_count,
+                            extra_params=extra_params,
+                        )
+                except Exception:
+                    pass
+
                 # Mark request start for timing diagnostics
                 _req_start_ts = datetime.now().timestamp()
                 
@@ -891,6 +963,20 @@ class OpenAIStreamingHandler:
                 # NOTE: Gemini's OpenAI-compat endpoint returns finish_reason="stop" even with tool calls
                 # So we check for tool_calls_list presence regardless of finish_reason
                 if tool_calls_list:
+                    if finish_reason == "length" and auto_continue:
+                        continue_round += 1
+                        logger.warning(
+                            "OpenAIStreamingHandler: Tool-call response truncated by token limit; continue_round=%s/%s",
+                            continue_round,
+                            max_continue_rounds,
+                        )
+                        if continue_round >= max_continue_rounds:
+                            logger.warning(
+                                "OpenAIStreamingHandler: Reached max continuation rounds (%s) during tool-call truncation.",
+                                max_continue_rounds,
+                            )
+                            yield "\n⚠️ Tool-call output kept getting truncated by token limits. Stopping to prevent a loop.\n"
+                            break
                     tool_loop_count += 1
                     logger.info(f"[GEMINI-DEBUG] Tool calls detected | count={len(tool_calls_list)} | finish_reason={finish_reason}")
                     # Handle tool calls
@@ -964,7 +1050,7 @@ class OpenAIStreamingHandler:
                 
         except Exception as e:
             logger.error(f"Error in OpenAI streaming with tools: {e}")
-            yield f"🚫 Error processing request: {str(e)}\n\nPlease check your configuration."
+            yield f"🚫 Error processing request: {_format_agent_error(e)}\n\nPlease check your configuration."
     
     def _process_stream(self, stream) -> Tuple[List[str], List[Dict], Optional[str], Optional[List[Dict]]]:
         """
@@ -1030,8 +1116,72 @@ class OpenAIStreamingHandler:
             # Handle content streaming
             if chunk.choices[0].delta.content is not None:
                 content = chunk.choices[0].delta.content
-                collected_chunks.append(content)
-                yield content
+                # Handle multimodal content (list with image_url parts)
+                # Route proxy may return image data as list of content parts
+                if isinstance(content, list):
+                    for part in content:
+                        if not isinstance(part, dict):
+                            continue
+                        ptype = part.get('type', '')
+                        if ptype == 'text':
+                            text_val = part.get('text', '')
+                            if text_val:
+                                collected_chunks.append(text_val)
+                                yield text_val
+                        elif ptype == 'image_url':
+                            img_info = part.get('image_url', {})
+                            url = img_info.get('url', '') if isinstance(img_info, dict) else str(img_info)
+                            if url and url.startswith('data:image/'):
+                                # Extract mime type and base64 data from data URI
+                                try:
+                                    header, b64_data = url.split(',', 1)
+                                    # e.g. "data:image/jpeg;base64"
+                                    mime_type = header.split(':')[1].split(';')[0] if ':' in header else 'image/png'
+                                    image_bytes = base64.b64decode(b64_data)
+                                    
+                                    # Save image to workspace
+                                    saved_abs_path = None
+                                    try:
+                                        workspace_root = os.environ.get('WORKSPACE_ROOT', '')
+                                        if not workspace_root:
+                                            workspace_root = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'workspace')
+                                        media_dir = os.path.join(workspace_root, '.icotes', 'media', 'images')
+                                        os.makedirs(media_dir, exist_ok=True)
+                                        ext_map = {'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp', 'image/gif': '.gif'}
+                                        ext = ext_map.get(mime_type, '.png')
+                                        ts = int(time.time() * 1000)
+                                        import uuid as _uuid
+                                        fname = f"nano_banana_proxy_{ts}_{_uuid.uuid4().hex[:8]}{ext}"
+                                        fpath = os.path.join(media_dir, fname)
+                                        with open(fpath, 'wb') as f:
+                                            f.write(image_bytes)
+                                        saved_abs_path = fpath
+                                        logger.info(f"Saved proxy image to {fpath} ({len(image_bytes)} bytes)")
+                                    except Exception as save_err:
+                                        logger.warning(f"Failed to save proxy image: {save_err}")
+                                    
+                                    # Yield as markdown image — the frontend's resolveMarkdownImageSrc
+                                    # handles absolute paths by converting to /api/files/raw?path=...
+                                    if saved_abs_path:
+                                        md = f"\n\n![Generated Image]({saved_abs_path})\n\n"
+                                    else:
+                                        # Fallback: inline data URI (large but guaranteed to render)
+                                        md = f"\n\n![Generated Image]({url})\n\n"
+                                    collected_chunks.append(md)
+                                    yield md
+                                except Exception as img_err:
+                                    logger.error(f"Error processing multimodal image from proxy: {img_err}")
+                                    err_msg = f"\u26a0\ufe0f Error processing image from proxy: {img_err}\n"
+                                    collected_chunks.append(err_msg)
+                                    yield err_msg
+                            elif url:
+                                # Non-data URI image — yield as markdown
+                                md = f"![generated image]({url})\n"
+                                collected_chunks.append(md)
+                                yield md
+                else:
+                    collected_chunks.append(content)
+                    yield content
             
             # Handle tool calls (streaming format - they come in chunks)
             if hasattr(chunk.choices[0].delta, 'tool_calls') and chunk.choices[0].delta.tool_calls:
@@ -1343,8 +1493,19 @@ class OpenAIStreamingHandler:
                 yield self.formatter.format_tool_call_start(tool_name, arguments)
                 
                 # Execute the tool
+                _tool_exec_start = time.monotonic()
                 result = self.tool_executor.execute_tool_call_sync(tool_name, arguments)
-                
+                _tool_exec_ms = round((time.monotonic() - _tool_exec_start) * 1000)
+
+                # ── Record full untruncated tool result into raw sidecar ──
+                try:
+                    from icpy.services.raw_output_sidecar import get_active_recorder as _get_rec
+                    _sr = _get_rec()
+                    if _sr is not None:
+                        _sr.record_tool_execution(tool_name, arguments, result, _tool_exec_ms)
+                except Exception:
+                    pass
+
                 # Log tool execution to debug interceptor (non-blocking)
                 if self.debug_interceptor:
                     try:
@@ -1456,9 +1617,32 @@ def create_agent_chat_function(agent_name: str, system_prompt: str, model_name: 
                     
         except Exception as e:
             logger.error(f"Error in {agent_name} streaming: {e}")
-            yield f"🚫 Error processing request: {str(e)}\n\nPlease check your OpenAI API key configuration."
+            yield f"🚫 Error processing request: {_format_agent_error(e)}\n\nPlease check your OpenAI API key configuration."
     
     return chat
+
+
+def get_thinking_extra_params(agent_name: str) -> Optional[Dict[str, Any]]:
+    """Build extra_params for thinking mode based on agents.json config.
+
+    Reads the ``thinkingMode`` field from the agent's entry in
+    ``workspace/.icotes/agents.json`` and returns the appropriate
+    ``extra_body`` dict to pass through the adapter chain.
+
+    Returns:
+        A dict like ``{"thinking": {"type": "disabled"}}`` or None if
+        no override is configured (let the model use its default).
+    """
+    try:
+        from icpy.services.agent_config_service import get_agent_config_service
+        config_service = get_agent_config_service()
+        display_config = config_service.get_agent_display_config(agent_name)
+        thinking_mode = display_config.thinking_mode  # "enabled", "disabled", or None
+        if thinking_mode in ("enabled", "disabled"):
+            return {"thinking": {"type": thinking_mode}}
+    except Exception as e:
+        logger.warning(f"Could not read thinkingMode for {agent_name}: {e}")
+    return None
 
 
 # Convenience functions for common agent patterns
@@ -1575,9 +1759,9 @@ def create_simple_agent_chat_function(agent_name: str, system_prompt: str, model
                 # Simple streaming without tools
                 # Determine token and continuation behavior
                 try:
-                    default_max_tokens = int(os.environ.get("AGENT_MAX_TOKENS", "3500"))
+                    default_max_tokens = int(os.environ.get("AGENT_MAX_TOKENS", "8000"))
                 except ValueError:
-                    default_max_tokens = 3500
+                    default_max_tokens = 8000
 
                 # Determine the correct max tokens parameter based on model
                 api_params = {
@@ -1601,7 +1785,7 @@ def create_simple_agent_chat_function(agent_name: str, system_prompt: str, model
                     
         except Exception as e:
             logger.error(f"Error in {agent_name} streaming: {e}")
-            yield f"🚫 Error processing request: {str(e)}\n\nPlease check your configuration."
+            yield f"🚫 Error processing request: {_format_agent_error(e)}\n\nPlease check your configuration."
     
     return chat
 

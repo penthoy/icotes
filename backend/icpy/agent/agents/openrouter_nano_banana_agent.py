@@ -60,8 +60,11 @@ try:
         ToolDefinitionLoader,
         OpenAIStreamingHandler,
         add_context_to_agent_prompt,
+        get_model_name_for_agent,
         get_workspace_path,
     )
+    from icpy.agent.client_resolver import resolve_client
+    from icpy.agent.clients import is_icotes_route_enabled
 
     DEPENDENCIES_AVAILABLE = True
     logger.info("All dependencies available for OpenRouterNanoBananaAgent")
@@ -234,8 +237,34 @@ def chat(message, history):
 You can generate high-quality images directly. When the user asks for (or implies) an image, respond with the image plus concise accompanying text if helpful. Avoid re-sending huge base64 image data back in later turns."""
 
     system_prompt = add_context_to_agent_prompt(base_system_prompt)
+    runtime_model = get_model_name_for_agent(AGENT_NAME, MODEL_NAME)
 
     try:
+        use_proxy_fallback = not os.getenv("OPENROUTER_API_KEY") and is_icotes_route_enabled()
+
+        if use_proxy_fallback:
+            logger.info(
+                "OpenRouterNanoBananaAgent: OPENROUTER_API_KEY missing; falling back to route proxy with model=%s",
+                runtime_model,
+            )
+
+            proxy_messages: List[Dict[str, Any]] = [{"role": "system", "content": system_prompt}]
+            if isinstance(history, list):
+                for item in history:
+                    if isinstance(item, dict) and item.get("role") in {"user", "assistant", "system", "tool"}:
+                        proxy_messages.append({
+                            "role": item.get("role"),
+                            "content": item.get("content", ""),
+                        })
+
+            user_content = message if isinstance(message, str) else json.dumps(message)
+            proxy_messages.append({"role": "user", "content": user_content})
+
+            client, resolved_model = resolve_client("openrouter", runtime_model)
+            handler = OpenAIStreamingHandler(client, resolved_model)
+            yield from handler.stream_chat_with_tools(proxy_messages)
+            return
+
         client = get_openrouter_client()
 
         # Normalize history
@@ -289,7 +318,7 @@ You can generate high-quality images directly. When the user asks for (or implie
 
         logger.info("OpenRouterNanoBananaAgent: Starting chat with image-capable model (non-stream)")
         response = client.chat.completions.create(
-            model=MODEL_NAME,
+            model=runtime_model,
             messages=messages_for_model,
             stream=False,
         )

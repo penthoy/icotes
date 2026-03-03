@@ -23,6 +23,7 @@ import os
 import shutil
 import subprocess
 import sys
+import ast
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -55,11 +56,42 @@ class WhatsAppMessageFormatter:
     TOOL_START_RE = re.compile(r"📋\s*\*\*(\w+)\*\*:\s*(.+?)(?:\n|$)", re.DOTALL)
     TOOL_SUCCESS_RE = re.compile(r"✅\s*\*\*Success\*\*:\s*(.+?)(?:\n|$)", re.DOTALL)
     TOOL_ERROR_RE = re.compile(r"❌\s*\*\*Error\*\*:\s*(.+?)(?:\n|$)", re.DOTALL)
+    PATH_FALLBACK_RE = re.compile(
+        r"['\"](?:audio_file|absolute_path|absolutePath|file_path|path)['\"]\s*:\s*['\"]([^'\"]+)['\"]"
+    )
+    PATH_FALLBACK_TRUNCATED_RE = re.compile(
+        r"['\"](?:audio_file|absolute_path|absolutePath|file_path|path)['\"]\s*:\s*['\"]([^\n]+)$"
+    )
     STATUS_MARKERS_RE = re.compile(
         r"🔧\s*\*\*(?:Executing tools\.{3}|Tool execution complete\.\s*Continuing\.{3})\*\*\s*",
         re.DOTALL,
     )
     MD_IMAGE_RE = re.compile(r"!\[[^\]]*\]\([^)]+\)\s*")
+
+    # Matches file paths in the AI's readable text (e.g. `local:/abs/path/file.mp3`)
+    # Covers: backtick-wrapped paths, "Saved to:" lines, bare absolute paths with media extensions
+    MEDIA_EXT_RE = re.compile(
+        r"(?:local:)?(/[^\s`'\"\n]+\.(?:mp3|mp4|wav|ogg|m4a|webm|png|jpg|jpeg|gif|webp))",
+        re.IGNORECASE,
+    )
+
+    # Extension → media type mapping
+    _EXT_MEDIA_TYPE = {
+        ".mp3": "audio", ".wav": "audio", ".ogg": "audio", ".m4a": "audio",
+        ".mp4": "video", ".webm": "video",
+        ".png": "image", ".jpg": "image", ".jpeg": "image", ".gif": "image", ".webp": "image",
+    }
+
+    @classmethod
+    def _media_type_for_tool(cls, tool_name: str) -> Optional[str]:
+        """Map tool names to WhatsApp media types."""
+        if tool_name == "text_to_speech":
+            return "audio"
+        if tool_name in {"generate_image"}:
+            return "image"
+        if tool_name in {"image_to_video", "text_to_video", "generate_video"}:
+            return "video"
+        return None
 
     @classmethod
     def clean_for_whatsapp(cls, text: str) -> str:
@@ -103,12 +135,38 @@ class WhatsAppMessageFormatter:
             success_match = successes[success_idx]
             success_idx += 1
 
+            payload_raw = success_match.group(1).strip()
+
+            result_data = None
             try:
-                result_data = json.loads(success_match.group(1).strip())
+                result_data = json.loads(payload_raw)
             except (json.JSONDecodeError, ValueError):
-                continue
+                # Some tool outputs are Python-style dict repr with single quotes
+                try:
+                    parsed = ast.literal_eval(payload_raw)
+                    if isinstance(parsed, dict):
+                        result_data = parsed
+                except (ValueError, SyntaxError):
+                    result_data = None
 
             if not isinstance(result_data, dict):
+                # Last-resort path extraction for truncated/non-JSON payloads
+                fallback_match = cls.PATH_FALLBACK_RE.search(payload_raw)
+                if not fallback_match:
+                    fallback_match = cls.PATH_FALLBACK_TRUNCATED_RE.search(payload_raw)
+                if fallback_match:
+                    media_path = fallback_match.group(1).strip()
+                    if media_path.startswith("file://"):
+                        media_path = media_path[7:]
+                    # Reject paths that are clearly truncated garbage
+                    if "..." not in media_path:
+                        media_type = cls._media_type_for_tool(tool_name)
+                        if media_type:
+                            media.append({
+                                "type": media_type,
+                                "path": media_path,
+                                "prompt": start_match.group(2).strip()[:200],
+                            })
                 continue
 
             # Extract image path
@@ -140,6 +198,76 @@ class WhatsAppMessageFormatter:
                         "path": abs_path,
                         "prompt": start_match.group(2).strip()[:200],
                     })
+
+            # Extract text-to-video path
+            elif tool_name == "text_to_video":
+                abs_path = (
+                    result_data.get("absolute_path")
+                    or result_data.get("absolutePath")
+                    or result_data.get("file_path")
+                    or result_data.get("path")
+                )
+                if abs_path:
+                    if abs_path.startswith("file://"):
+                        abs_path = abs_path[7:]
+                    media.append({
+                        "type": "video",
+                        "path": abs_path,
+                        "prompt": start_match.group(2).strip()[:200],
+                    })
+
+            # Extract TTS audio path (route-proxy returns "audio_file", local tool returns "absolute_path")
+            elif tool_name == "text_to_speech":
+                abs_path = (
+                    result_data.get("audio_file")
+                    or result_data.get("absolute_path")
+                    or result_data.get("absolutePath")
+                    or result_data.get("file_path")
+                    or result_data.get("path")
+                )
+                if abs_path:
+                    if abs_path.startswith("file://"):
+                        abs_path = abs_path[7:]
+                    media.append({
+                        "type": "audio",
+                        "path": abs_path,
+                        "prompt": result_data.get("text", "")[:200],
+                    })
+
+        # ── Fallback: scan the readable response text for media paths ────
+        # When tool payloads are truncated, the AI often writes the full
+        # untruncated path in its friendly text (e.g. "Saved to: `local:/...`").
+        # Collect paths already extracted so we don't duplicate.
+        found_paths = {m["path"] for m in media}
+
+        # Build set of media-generating tool names that were detected
+        detected_tools = {s.group(1) for s in starts}
+        media_tools_detected = {
+            t for t in detected_tools if cls._media_type_for_tool(t) is not None
+        }
+
+        # Only attempt text fallback when we detected media tools but
+        # extracted fewer media items than expected
+        if len(media) < len(media_tools_detected):
+            for match in cls.MEDIA_EXT_RE.finditer(text):
+                path = match.group(1)
+                if path in found_paths:
+                    continue
+                ext = os.path.splitext(path)[1].lower()
+                media_type = cls._EXT_MEDIA_TYPE.get(ext)
+                if not media_type:
+                    continue
+                # Only add if the media type matches a detected-but-missing tool
+                needed_types = {
+                    cls._media_type_for_tool(t) for t in media_tools_detected
+                } - {m["type"] for m in media}
+                if media_type in needed_types:
+                    media.append({
+                        "type": media_type,
+                        "path": path,
+                        "prompt": "",
+                    })
+                    found_paths.add(path)
 
         return media
 
@@ -189,6 +317,9 @@ class WhatsAppBotService:
         # Debounce: coalesce rapid messages from same sender
         self._message_buffer: Dict[str, dict] = {}  # sender → { texts, timer }
         self._debounce_ms = 2.0  # seconds
+
+        # Auto-restart guard — prevents overlapping restart tasks
+        self._restart_task: Optional[asyncio.Task] = None
 
         logger.info("WhatsApp bot service initialized")
 
@@ -312,6 +443,22 @@ class WhatsAppBotService:
         """Check if the WhatsApp bot is running."""
         return self._running and self._process is not None and self._process.returncode is None
 
+    async def _auto_restart_bridge(self):
+        """Stop and restart the bridge after a terminal error (e.g. loggedOut).
+
+        This allows a fresh QR code to be generated instead of leaving the
+        bot in a permanent dead state.
+        """
+        try:
+            await asyncio.sleep(3)  # brief cooldown
+            logger.info("Auto-restart: stopping bridge...")
+            await self.stop()
+            await asyncio.sleep(2)
+            logger.info("Auto-restart: starting bridge (will present new QR)...")
+            await self.start()
+        except Exception as e:
+            logger.error(f"Auto-restart failed: {e}", exc_info=True)
+
     # ─── Bridge communication ────────────────────────────────
 
     async def _send_command(self, cmd_type: str, data: dict):
@@ -406,13 +553,36 @@ class WhatsAppBotService:
         elif event_type == "disconnected":
             self.connected = False
             reason = data.get("reason", "unknown")
-            logger.warning(f"WhatsApp disconnected: {reason}")
+            status_code = data.get("statusCode")
+            if status_code == 405:
+                logger.warning(
+                    f"WhatsApp disconnected: {reason} (code: {status_code}) — "
+                    "This is a transient server rejection; the bridge will auto-reconnect."
+                )
+            elif status_code == 403:
+                logger.error(
+                    f"WhatsApp disconnected: forbidden (403) — account may be banned or credentials rejected. "
+                    "Credentials have been cleared; restart to re-pair."
+                )
+            else:
+                logger.warning(f"WhatsApp disconnected: {reason} (code: {status_code})")
 
         elif event_type == "message":
             await self._handle_whatsapp_message(data)
 
         elif event_type == "error":
-            logger.error(f"WhatsApp bridge error: {data.get('message', 'unknown')}")
+            error_msg = data.get("message", "unknown")
+            logger.error(f"WhatsApp bridge error: {error_msg}")
+
+            # Auto-restart bridge on terminal errors so a new QR code is
+            # presented instead of leaving the bot in a permanent dead state.
+            if "logged out" in error_msg.lower() or "restart" in error_msg.lower():
+                # Guard against overlapping restart tasks
+                if self._restart_task is None or self._restart_task.done():
+                    logger.info("WhatsApp session invalidated — auto-restarting bridge for re-pairing...")
+                    self._restart_task = asyncio.create_task(self._auto_restart_bridge())
+                else:
+                    logger.info("Auto-restart already in progress — skipping duplicate")
 
         else:
             logger.debug(f"Unknown bridge event: {event_type}")
@@ -792,22 +962,65 @@ class WhatsAppBotService:
         # Extract media files to send
         media_items = fmt.extract_media_paths(full_response)
         for media in media_items:
-            media_path = media["path"]
-            if os.path.isfile(media_path):
+            media_path = self._resolve_media_path(media["path"])
+            if os.path.isfile(media_path) and self._is_allowed_media_path(media_path):
                 media_type = media["type"]
                 caption = media.get("prompt", "")
-                await self._send_command("send_media", {
+                cmd_data = {
                     "jid": chat_jid,
                     "filePath": media_path,
-                    "caption": caption,
                     "mediaType": media_type,
-                })
+                }
+                # Audio voice notes don't use caption; images/videos do
+                if media_type != "audio":
+                    cmd_data["caption"] = caption
+                await self._send_command("send_media", cmd_data)
                 await asyncio.sleep(0.3)  # Small delay between media sends
+            elif os.path.isfile(media_path):
+                logger.warning("Blocked media send outside allowed roots: %s", media_path)
 
         # Send cleaned text
         cleaned = fmt.clean_for_whatsapp(full_response)
         if cleaned:
             await self._send_command("send", {"jid": chat_jid, "text": cleaned})
+
+    def _resolve_media_path(self, media_path: str) -> str:
+        """Resolve media path to an absolute file path when possible."""
+        if not media_path:
+            return media_path
+        if os.path.isabs(media_path):
+            return media_path
+
+        # Try chat service workspace root first
+        workspace_root = getattr(self.chat_service, "workspace_root", None)
+        if workspace_root:
+            candidate = os.path.join(workspace_root, media_path)
+            if os.path.isfile(candidate):
+                return candidate
+
+        # Try current working directory fallback
+        cwd_candidate = os.path.join(os.getcwd(), media_path)
+        if os.path.isfile(cwd_candidate):
+            return cwd_candidate
+
+        # Return original path so caller can log/ignore consistently
+        return media_path
+
+    def _is_allowed_media_path(self, media_path: str) -> bool:
+        """Allow outbound media only from trusted roots (workspace or cwd)."""
+        try:
+            abs_path = os.path.abspath(media_path)
+            roots = []
+            workspace_root = getattr(self.chat_service, "workspace_root", None)
+            if workspace_root:
+                roots.append(os.path.abspath(workspace_root))
+            # Current working directory as a fallback root
+            roots.append(os.path.abspath(os.getcwd()))
+            return any(
+                os.path.commonpath([abs_path, root]) == root for root in roots
+            )
+        except Exception:
+            return False
 
     # ─── Helpers ─────────────────────────────────────────────
 

@@ -208,6 +208,8 @@ async def update_api_keys_endpoint(request: Request):
             'DASHSCOPE_API_KEY',
             'MOONSHOT_API_KEY',
             'OLLAMA_URL',
+            'ICOTESROUTE_API_KEY',
+            'ICOTES_ROUTE_URL',
             # Services
             'ELEVENLABS_API_KEY',
             'ATLASCLOUD_API_KEY',

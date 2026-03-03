@@ -192,6 +192,11 @@ if command -v uv &> /dev/null && [ -f "pyproject.toml" ]; then
         --reload-exclude "venv/*" \
         --reload-exclude "*.pyc" \
         --reload-exclude "__pycache__" \
+        --reload-exclude "*/whatsapp/auth_store/*" \
+        --reload-exclude "**/whatsapp/auth_store/**" \
+        --reload-exclude "icpy/services/whatsapp/auth_store/**" \
+        --reload-exclude "**/whatsapp/media_cache/**" \
+        --reload-exclude "icpy/services/whatsapp/media_cache/**" \
         --log-config logging.conf \
         --access-log &
 else
@@ -215,6 +220,11 @@ else
         --reload-exclude "venv/*" \
         --reload-exclude "*.pyc" \
         --reload-exclude "__pycache__" \
+        --reload-exclude "*/whatsapp/auth_store/*" \
+        --reload-exclude "**/whatsapp/auth_store/**" \
+        --reload-exclude "icpy/services/whatsapp/auth_store/**" \
+        --reload-exclude "**/whatsapp/media_cache/**" \
+        --reload-exclude "icpy/services/whatsapp/media_cache/**" \
         --log-config logging.conf \
         --access-log &
 fi

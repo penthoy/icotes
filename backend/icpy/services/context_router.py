@@ -163,6 +163,12 @@ class ContextRouter:
             # Normalize multiple slashes
             if not path.startswith('/'):
                 path = '/' + path
+            # Special case: 'file' is an RFC 8089 URI scheme (file:///abs/path),
+            # not a hop namespace. Normalize the extra leading slashes and treat
+            # the path as local (e.g. file:///home/user/x.png → /home/user/x.png).
+            if ns == 'file':
+                path = '/' + path.lstrip('/')
+                return ('local', path)
             resolved = await self.resolve_namespace_id(ns)
             return (resolved, path)
         # No namespace; use active context

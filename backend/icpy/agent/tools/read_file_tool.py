@@ -271,6 +271,13 @@ class ReadFileTool(BaseTool):
             if not file_path:
                 return ToolResult(success=False, error="filePath is required")
             
+            # Normalise RFC 8089 file:// URIs early so downstream namespace
+            # parsing and workspace-root checks work correctly.
+            # file:///abs/path  → /abs/path
+            # file://localhost/abs/path → /abs/path
+            if isinstance(file_path, str) and file_path.startswith('file://'):
+                file_path = '/' + file_path[7:].lstrip('/')
+
             # Validate line range
             range_error = self._validate_line_range(start_line, end_line)
             if range_error:

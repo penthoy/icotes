@@ -210,12 +210,32 @@ class GeminiNativeClientAdapter(BaseLLMClient):
         messages: List[Dict[str, Any]],
         tools: Optional[List[Dict[str, Any]]] = None,
         max_tokens: Optional[int] = None,
+        extra_params: Optional[Dict[str, Any]] = None,
     ) -> Iterable[str]:
         """
         Stream chat completions using the native Gemini SDK.
         
         Handles tool calling automatically with thought signature support.
+        Falls back to OpenAI-compatible route proxy when GOOGLE_API_KEY is not set.
         """
+        # --- Route proxy fallback ---
+        # The native SDK requires a direct GOOGLE_API_KEY. When it's absent
+        # but the route proxy is configured, delegate to the OpenAI-compatible
+        # GeminiClientAdapter which goes through resolve_client() → proxy.
+        if not os.getenv("GOOGLE_API_KEY"):
+            from ...clients import is_icotes_route_enabled
+            if is_icotes_route_enabled():
+                from .gemini_client import GeminiClientAdapter
+                logger.info(
+                    "[GEMINI-NATIVE] No GOOGLE_API_KEY — falling back to "
+                    "OpenAI-compatible route proxy for model=%s", model,
+                )
+                yield from GeminiClientAdapter().stream_chat(
+                    model=model, messages=messages, tools=tools, max_tokens=max_tokens,
+                    extra_params=extra_params,
+                )
+                return
+
         try:
             from google.genai import types
         except ImportError as e:

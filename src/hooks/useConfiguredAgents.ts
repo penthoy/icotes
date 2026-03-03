@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 // In-memory fetch suppression + caching to prevent duplicate log spam when
 // multiple components mount the hook simultaneously (e.g. chat + dropdown).
@@ -6,6 +6,8 @@ let cachedResponse: ConfiguredAgentsResponse | null = null;
 let inFlight: Promise<ConfiguredAgentsResponse> | null = null;
 let lastFetchTs = 0;
 const CACHE_TTL_MS = 5000; // Collapse duplicate fetches in short window
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 1000;
 
 export interface ConfiguredAgent {
   name: string;
@@ -41,18 +43,31 @@ export const useConfiguredAgents = () => {
   const [categories, setCategories] = useState<ConfiguredAgentsResponse['categories']>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const retryCount = useRef(0);
+  const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const fetchConfiguredAgents = async () => {
-    try {
-      setIsLoading(true);
+  const fetchConfiguredAgents = async (isRetry = false) => {
+    setIsLoading(true);
+    if (!isRetry) {
       setError(null);
+      retryCount.current = 0;
+    }
+
+    const scheduleRetry = () => {
+      retryCount.current += 1;
+      retryTimer.current = setTimeout(() => fetchConfiguredAgents(true), RETRY_DELAY_MS);
+      // stay in loading state — do NOT call setIsLoading(false)
+    };
+
+    try {
       const now = Date.now();
-      if (cachedResponse?.success && (now - lastFetchTs) < CACHE_TTL_MS) {
+      if (cachedResponse?.success && cachedResponse.agents.length > 0 && (now - lastFetchTs) < CACHE_TTL_MS) {
         const data = cachedResponse;
         setAgents(data.agents);
         setSettings(data.settings || {});
         setCategories(data.categories || {});
-        return; // Silent reuse – original logs only on fresh network fetch
+        setIsLoading(false);
+        return;
       }
 
       if (!inFlight) {
@@ -84,30 +99,48 @@ export const useConfiguredAgents = () => {
       }
 
       const data = await inFlight!;
-      
-      if (data.success) {
+
+      if (data.success && data.agents.length > 0) {
         setAgents(data.agents);
         setSettings(data.settings || {});
         setCategories(data.categories || {});
         if ((import.meta as any).env?.VITE_DEBUG_AGENTS === 'true') {
           console.log(`✅ Agents loaded (${data.agents.length})`, { agents: data.agents, settings: data.settings, categories: data.categories });
         }
+        setIsLoading(false);
+      } else if (retryCount.current < MAX_RETRIES) {
+        // Empty agents or failure — retry before giving up; stay in loading state
+        scheduleRetry();
       } else {
-        setError(data.error || 'Failed to fetch configured agents');
-        setAgents([]);
+        // Exhausted retries
+        if (!data.success) {
+          setError(data.error || 'Failed to fetch configured agents');
+        }
+        setAgents(data.agents ?? []);
+        setSettings(data.settings || {});
+        setCategories(data.categories || {});
+        setIsLoading(false);
       }
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch configured agents';
-      setError(errorMessage);
-      setAgents([]);
-      console.error('Exception while fetching configured agents:', err);
-    } finally {
-      setIsLoading(false);
+      if (retryCount.current < MAX_RETRIES) {
+        scheduleRetry();
+      } else {
+        const errorMessage = err instanceof Error ? err.message : 'Failed to fetch configured agents';
+        setError(errorMessage);
+        setAgents([]);
+        setSettings({});
+        setCategories({});
+        setIsLoading(false);
+        console.error('Exception while fetching configured agents:', err);
+      }
     }
   };
 
   useEffect(() => {
     fetchConfiguredAgents();
+    return () => {
+      if (retryTimer.current) clearTimeout(retryTimer.current);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // run once per mounting set; cache prevents duplicate network trips
 

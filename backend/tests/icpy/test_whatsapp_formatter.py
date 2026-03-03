@@ -126,3 +126,130 @@ class TestExtractMediaPaths:
         assert len(media) == 2
         assert media[0]["path"] == "/tmp/cat.png"
         assert media[1]["path"] == "/tmp/dog.png"
+
+    def test_extract_tts_audio_file_key(self):
+        """Route-proxy TTS tool returns audio_file key."""
+        text = (
+            '📋 **text_to_speech**: {"text": "Good morning!", "voice": "tao2"}\n'
+            '✅ **Success**: {"audio_file": "/workspace/good_morning_tao2.mp3", "voice": "tao2", "duration_seconds": 1.4}\n'
+        )
+        media = WhatsAppMessageFormatter.extract_media_paths(text)
+        assert len(media) == 1
+        assert media[0]["type"] == "audio"
+        assert media[0]["path"] == "/workspace/good_morning_tao2.mp3"
+
+    def test_extract_tts_absolute_path_key(self):
+        """Local ElevenLabs TTS tool returns absolute_path key."""
+        text = (
+            '📋 **text_to_speech**: {"text": "Hello!", "voice": "george"}\n'
+            '✅ **Success**: {"absolute_path": "/workspace/sounds/hello.mp3", "saved": true}\n'
+        )
+        media = WhatsAppMessageFormatter.extract_media_paths(text)
+        assert len(media) == 1
+        assert media[0]["type"] == "audio"
+        assert media[0]["path"] == "/workspace/sounds/hello.mp3"
+
+    def test_extract_tts_prompt_from_text_field(self):
+        """TTS audio item uses the text content as prompt."""
+        text = (
+            '📋 **text_to_speech**: {"text": "Good morning!", "voice": "tao2"}\n'
+            '✅ **Success**: {"audio_file": "/workspace/gm.mp3", "text": "Good morning!"}\n'
+        )
+        media = WhatsAppMessageFormatter.extract_media_paths(text)
+        assert len(media) == 1
+        assert media[0]["prompt"] == "Good morning!"
+
+    def test_extract_tts_python_dict_payload(self):
+        """WhatsApp stream may contain Python repr payload with single quotes."""
+        text = (
+            "📋 **text_to_speech**: {'text': 'Good morning!', 'voice': 'tao2'}\n"
+            "✅ **Success**: {'saved': True, 'file_path': 'sounds/tts_Good_morning_1772207746.mp3', 'text': 'Good morning!'}\n"
+        )
+        media = WhatsAppMessageFormatter.extract_media_paths(text)
+        assert len(media) == 1
+        assert media[0]["type"] == "audio"
+        assert media[0]["path"] == "sounds/tts_Good_morning_1772207746.mp3"
+
+    def test_extract_tts_fallback_path_from_truncated_payload(self):
+        """Truncated paths (containing '...') should be rejected so text-fallback can find the real path."""
+        text = (
+            "📋 **text_to_speech**: {'text': 'Good morning!', 'voice': 'tao2'}\n"
+            "✅ **Success**: {'saved': True, 'file_path': 'sounds/tts_Good_morning_17722077... (truncated)\n"
+        )
+        media = WhatsAppMessageFormatter.extract_media_paths(text)
+        # No readable text fallback provided, so nothing should be extracted
+        assert len(media) == 0
+
+    def test_extract_text_to_video_path(self):
+        text = (
+            '📋 **text_to_video**: {"prompt": "horse on mountain", "duration": 8}\n'
+            '✅ **Success**: {"file_path": "videos/horse_mountain_galloping.mp4", "absolute_path": "/workspace/videos/horse_mountain_galloping.mp4"}\n'
+        )
+        media = WhatsAppMessageFormatter.extract_media_paths(text)
+        assert len(media) == 1
+        assert media[0]["type"] == "video"
+        assert media[0]["path"] == "/workspace/videos/horse_mountain_galloping.mp4"
+
+    def test_extract_text_to_video_python_dict_payload(self):
+        text = (
+            "📋 **text_to_video**: {'prompt': 'horse on mountain'}\n"
+            "✅ **Success**: {'saved': True, 'file_path': 'videos/horse_mountain_galloping.mp4'}\n"
+        )
+        media = WhatsAppMessageFormatter.extract_media_paths(text)
+        assert len(media) == 1
+        assert media[0]["type"] == "video"
+        assert media[0]["path"] == "videos/horse_mountain_galloping.mp4"
+
+    def test_extract_text_to_video_fallback_from_truncated_payload(self):
+        text = (
+            "📋 **text_to_video**: {'prompt': 'horse on mountain'}\n"
+            "✅ **Success**: {'saved': True, 'file_path': 'videos/horse_mountain_galloping.mp4\n"
+        )
+        media = WhatsAppMessageFormatter.extract_media_paths(text)
+        assert len(media) == 1
+        assert media[0]["type"] == "video"
+        assert media[0]["path"] == "videos/horse_mountain_galloping.mp4"
+
+    def test_text_fallback_extracts_tts_from_saved_to_line(self):
+        """When tool payload is fully truncated, extract path from AI's readable text."""
+        text = (
+            "📋 **text_to_speech**: {'text': 'Magandang umaga', 'voice': 'tao2', 'model_id': 'eleven_multilingual_v2'}\n"
+            "✅ **Success**: {'text_length': 15, 'voice_id': 'tao2', 'model_id': 'eleven_multilingual_v2', "
+            "'output_format': 'mp3_44100_128', 'audio_size_bytes': 18016, 'saved': True, "
+            "'file_path': 'sounds/tts_Magandang_umaga_17722... (truncated)\n"
+            "\n🔧 **Tool execution complete. Continuing...**\n\n"
+            "Done! 🌅\n\n"
+            "Here's \"Magandang umaga\" (Good morning in Tagalog) with the tao2 voice:\n\n"
+            "📁 Saved to: `local:/home/penthoy/icotes/workspace/sounds/tts_Magandang_umaga_1772209701.mp3`"
+        )
+        media = WhatsAppMessageFormatter.extract_media_paths(text)
+        assert len(media) >= 1
+        audio_items = [m for m in media if m["type"] == "audio"]
+        assert len(audio_items) == 1
+        assert audio_items[0]["path"] == "/home/penthoy/icotes/workspace/sounds/tts_Magandang_umaga_1772209701.mp3"
+
+    def test_text_fallback_extracts_video_from_saved_to_line(self):
+        """When video tool payload is truncated, extract path from AI's readable text."""
+        text = (
+            "📋 **text_to_video**: {'prompt': 'monk meditating'}\n"
+            "✅ **Success**: {'file_path': 'videos/ttv_A_serene_Buddhist_monk_seedance-... (truncated)\n"
+            "\n🔧 **Tool execution complete. Continuing...**\n\n"
+            "Done! 🧘\n\n"
+            "📁 Saved to: `local:/home/penthoy/icotes/workspace/videos/ttv_monk_1772209299.mp4`"
+        )
+        media = WhatsAppMessageFormatter.extract_media_paths(text)
+        assert len(media) >= 1
+        video_items = [m for m in media if m["type"] == "video"]
+        assert len(video_items) == 1
+        assert video_items[0]["path"] == "/home/penthoy/icotes/workspace/videos/ttv_monk_1772209299.mp4"
+
+    def test_text_fallback_skips_when_tool_extraction_already_succeeded(self):
+        """When tool payload extraction succeeded, text fallback should not duplicate."""
+        text = (
+            '📋 **text_to_speech**: {"text": "Hello!", "voice": "george"}\n'
+            '✅ **Success**: {"absolute_path": "/workspace/sounds/hello.mp3", "saved": true}\n'
+            "\n🔧 **Tool execution complete. Continuing...**\n\n"
+            "Done! Saved to: `local:/workspace/sounds/hello.mp3`"
+        )
+        media = WhatsAppMessageFormatter.extract_media_paths(text)
+        assert len(media) == 1  # No duplicate

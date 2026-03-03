@@ -35,3 +35,30 @@ def test_gemini_requires_key(monkeypatch):
 def test_gemini_native_requires_key(monkeypatch):
     """Test that native Gemini SDK adapter requires API key."""
     _expect_missing_key(monkeypatch, "GOOGLE_API_KEY", GeminiNativeClientAdapter)
+
+
+def test_gemini_native_falls_back_to_route_proxy(monkeypatch):
+    """When GOOGLE_API_KEY is absent but route proxy is available,
+    GeminiNativeClientAdapter delegates to GeminiClientAdapter (OpenAI-compat)."""
+    from unittest.mock import patch
+
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    monkeypatch.setenv("ICOTES_ROUTE_URL", "http://fake-route:9100")
+    monkeypatch.setenv("ICOTESROUTE_API_KEY", "test-key")
+
+    adapter = GeminiNativeClientAdapter()
+
+    # Patch at the source module so the local import picks it up
+    with patch(
+        "icpy.agent.core.llm.gemini_client.GeminiClientAdapter.stream_chat",
+        return_value=iter(["routed response"]),
+    ) as mock_stream:
+        # Consume via yield-from (stream_chat returns an iterable)
+        chunks = []
+        for chunk in adapter.stream_chat(
+            model="gemini-3-pro-preview",
+            messages=[{"role": "user", "content": "hi"}],
+        ):
+            chunks.append(chunk)
+        mock_stream.assert_called_once()
+        assert chunks == ["routed response"]

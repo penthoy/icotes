@@ -682,6 +682,77 @@ class TestImagenToolIntegration:
             assert mock_filesystem.write_file_binary.called
 
 
+class TestImagenToolRouteFallback:
+    """Tests for route-proxy fallback behavior when GOOGLE_API_KEY is missing."""
+
+    @pytest.mark.asyncio
+    async def test_route_fallback_generates_image_success(
+        self,
+        imagen_tool,
+        sample_image_bytes,
+        mock_context,
+    ):
+        """Route fallback should return a successful generated image result."""
+        class _Ref:
+            image_id = "img_route_123"
+            absolute_path = "/tmp/img_route_123.png"
+            relative_path = "workspace/images/img_route_123.png"
+
+            def to_dict(self):
+                return {
+                    "image_id": self.image_id,
+                    "absolute_path": self.absolute_path,
+                    "relative_path": self.relative_path,
+                }
+
+        image_reference_service = AsyncMock()
+        image_reference_service.create_reference = AsyncMock(return_value=_Ref())
+        image_cache = MagicMock()
+
+        with patch.dict(os.environ, {}, clear=True), \
+               patch("icpy.agent.clients.is_icotes_route_enabled", return_value=True), \
+             patch.object(imagen_tool, "_execute_route_image_generation", new=AsyncMock(return_value=(
+                 sample_image_bytes,
+                 "image/png",
+                 {
+                     "routeProxy": True,
+                     "provider": "atlascloud",
+                     "requestId": "pred_123",
+                     "status": "completed",
+                     "attemptedModels": [{"model": "atlascloud/image-v1", "error": None}],
+                 },
+             ))), \
+             patch("icpy.agent.tools.imagen_tool.get_current_context", return_value=mock_context), \
+             patch("icpy.services.image_reference_service.get_image_reference_service", return_value=image_reference_service), \
+             patch("icpy.services.image_cache.get_image_cache", return_value=image_cache):
+            result = await imagen_tool.execute(
+                prompt="A horse drinking chocolate",
+                save_to_workspace=False,
+            )
+
+        assert result.success is True
+        assert result.data is not None
+        assert result.data.get("routeProxy") is True
+        assert result.data.get("provider") == "atlascloud"
+        assert result.data.get("routeRequestId") == "pred_123"
+
+    @pytest.mark.asyncio
+    async def test_route_fallback_edit_mode_requires_google_key(self, imagen_tool, sample_image_bytes):
+        """Route fallback currently supports generation-only, not edit mode."""
+        image_b64 = base64.b64encode(sample_image_bytes).decode("utf-8")
+        with patch.dict(os.environ, {}, clear=True), \
+             patch("icpy.agent.clients.is_icotes_route_enabled", return_value=True):
+            result = await imagen_tool.execute(
+                prompt="make it brighter",
+                image_data=f"data:image/png;base64,{image_b64}",
+                mode="edit",
+                save_to_workspace=False,
+            )
+
+        assert result.success is False
+        assert "requires GOOGLE_API_KEY" in (result.error or "")
+
+
 class TestImagenToolEditContentsStructure:
     """Tests specifically for verifying edit mode API call structure"""
     

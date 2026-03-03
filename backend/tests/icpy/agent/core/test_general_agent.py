@@ -15,6 +15,7 @@ class FakeLLM(BaseLLMClient):
         messages: List[Dict[str, Any]],
         tools: Optional[List[Dict[str, Any]]] = None,
         max_tokens: Optional[int] = None,
+        extra_params: Optional[Dict[str, Any]] = None,
     ) -> Iterable[str]:
         # Return chunks of the output for streaming behavior
         for ch in [self.output[:2], self.output[2:]]:

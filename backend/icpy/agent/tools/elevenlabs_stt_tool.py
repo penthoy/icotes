@@ -161,21 +161,32 @@ class ElevenLabsSTTTool(BaseTool):
         self._api_key: Optional[str] = None
     
     def _get_client(self):
-        """Get or create ElevenLabs client lazily."""
+        """Get or create ElevenLabs client lazily.
+
+        Returns None if route proxy should be used instead.
+        """
         if self._client is not None:
             return self._client
         
         if not ELEVENLABS_AVAILABLE:
+            from icpy.services.route_services import is_route_service_available
+            if is_route_service_available():
+                logger.info("ElevenLabs SDK not installed, using route proxy for STT")
+                return None
             raise RuntimeError(
-                f"ElevenLabs SDK not available. Install with: pip install elevenlabs. "
+                f"ElevenLabs SDK not available. Install with: uv add elevenlabs. "
                 f"Error: {_ELEVENLABS_IMPORT_ERROR}"
             )
         
         api_key = os.environ.get("ELEVENLABS_API_KEY")
         if not api_key:
+            from icpy.services.route_services import is_route_service_available
+            if is_route_service_available():
+                logger.info("ELEVENLABS_API_KEY not set, using route proxy for STT")
+                return None
             raise RuntimeError(
-                "ELEVENLABS_API_KEY environment variable not set. "
-                "Get your API key from https://elevenlabs.io/app/settings/api-keys"
+                "ELEVENLABS_API_KEY environment variable not set and route proxy not configured. "
+                "Set ELEVENLABS_API_KEY or configure ICOTES_ROUTE_URL + ICOTESROUTE_API_KEY."
             )
         
         self._api_key = api_key
@@ -420,48 +431,67 @@ class ElevenLabsSTTTool(BaseTool):
                     error=f"Failed to read audio file: {abs_path}"
                 )
             
-            # Get client
+            # Get client (None means use route proxy)
             client = self._get_client()
             
-            # Prepare audio data
-            audio_data = BytesIO(audio_bytes)
-            
-            # Get filename for the API
-            filename = os.path.basename(abs_path)
-            
-            logger.info(
-                f"[ElevenLabsSTT] Sending {len(audio_bytes)} bytes to API: "
-                f"model={model_id}, language={language_code or 'auto'}, "
-                f"diarize={diarize}, tag_events={tag_audio_events}"
-            )
-            
-            # Call ElevenLabs Speech-to-Text API
-            transcription = client.speech_to_text.convert(
-                file=audio_data,
-                model_id=model_id,
-                language_code=language_code,  # None for auto-detection
-                diarize=diarize,
-                tag_audio_events=tag_audio_events,
-            )
-            
-            logger.info("[ElevenLabsSTT] Transcription received")
-            
-            # Format response
-            if return_raw:
-                # Return raw response (convert to dict if needed)
-                if hasattr(transcription, 'model_dump'):
-                    response_data = transcription.model_dump()
-                elif hasattr(transcription, '__dict__'):
-                    response_data = transcription.__dict__
-                else:
-                    response_data = {"raw": str(transcription)}
-            else:
-                # Format nicely
-                response_data = self._format_transcription(
-                    transcription=transcription,
-                    include_timestamps=timestamps,
-                    include_speakers=diarize
+            if client is None:
+                # Route proxy path
+                from icpy.services.route_services import get_route_service_client
+                route_client = get_route_service_client()
+                
+                logger.info(
+                    f"[ElevenLabsSTT] Sending {len(audio_bytes)} bytes via route proxy: "
+                    f"model={model_id}, language={language_code or 'auto'}"
                 )
+                
+                result_data = await route_client.stt(
+                    audio_data=audio_bytes,
+                    model_id=model_id,
+                    language_code=language_code,
+                    diarize=diarize,
+                    tag_audio_events=tag_audio_events,
+                )
+                
+                response_data = result_data
+            else:
+                # Direct SDK path
+                # Prepare audio data
+                audio_data = BytesIO(audio_bytes)
+                
+                # Get filename for the API
+                filename = os.path.basename(abs_path)
+                
+                logger.info(
+                    f"[ElevenLabsSTT] Sending {len(audio_bytes)} bytes to API (direct): "
+                    f"model={model_id}, language={language_code or 'auto'}, "
+                    f"diarize={diarize}, tag_events={tag_audio_events}"
+                )
+                
+                # Call ElevenLabs Speech-to-Text API
+                transcription = client.speech_to_text.convert(
+                    file=audio_data,
+                    model_id=model_id,
+                    language_code=language_code,  # None for auto-detection
+                    diarize=diarize,
+                    tag_audio_events=tag_audio_events,
+                )
+                
+                logger.info("[ElevenLabsSTT] Transcription received")
+                
+                # Format response
+                if return_raw:
+                    if hasattr(transcription, 'model_dump'):
+                        response_data = transcription.model_dump()
+                    elif hasattr(transcription, '__dict__'):
+                        response_data = transcription.__dict__
+                    else:
+                        response_data = {"raw": str(transcription)}
+                else:
+                    response_data = self._format_transcription(
+                        transcription=transcription,
+                        include_timestamps=timestamps,
+                        include_speakers=diarize
+                    )
             
             # Add metadata
             response_data["source_file"] = abs_path

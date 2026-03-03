@@ -26,9 +26,14 @@ class BaseLLMClient(ABC):
         messages: List[Dict[str, Any]],
         tools: Optional[List[Dict[str, Any]]] = None,
         max_tokens: Optional[int] = None,
+        extra_params: Optional[Dict[str, Any]] = None,
     ) -> Iterable[str]:
         """Return an iterator/generator of response text chunks.
 
         Tool call handling is orchestrated at a higher level (runtime), not here.
+
+        Args:
+            extra_params: Optional provider-specific params (e.g. thinking mode)
+                          passed through to the API as extra_body.
         """
         raise NotImplementedError

@@ -8,8 +8,10 @@ from icpy.agent.agents import nano_banana_agent
 
 
 def test_nano_banana_agent_model_identifier():
-    """Verify the Nano Banana agent uses Gemini 3 Pro Image model identifier (December 2025)."""
-    # gemini-3-pro-image-preview is the latest image generation model
+    """Verify the Nano Banana agent uses Gemini 3 Pro Image model (Nano Banana Pro)."""
+    # gemini-3-pro-image-preview is Nano Banana Pro (ACTIVE, no deprecation announced)
+    # gemini-3-pro-preview (without -image) is the TEXT model deprecated March 9 2026
+    # gemini-3.1-pro-preview is text/reasoning only — NOT for image generation
     assert nano_banana_agent.AGENT_MODEL_ID == "gemini-3-pro-image-preview"
     assert nano_banana_agent.MODEL_NAME == "gemini-3-pro-image-preview"
 
@@ -18,7 +20,7 @@ def test_nano_banana_agent_metadata():
     """Verify agent metadata is correctly configured."""
     assert nano_banana_agent.AGENT_NAME == "NanoBananaAgent"
     assert "Gemini" in nano_banana_agent.AGENT_DESCRIPTION
-    assert nano_banana_agent.AGENT_METADATA["AGENT_VERSION"] == "1.1.0"
+    assert nano_banana_agent.AGENT_METADATA["AGENT_VERSION"] == "1.2.0"
 
 
 def test_nano_banana_dependencies_available():

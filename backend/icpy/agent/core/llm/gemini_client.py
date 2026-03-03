@@ -13,7 +13,7 @@ from typing import Any, Dict, Iterable, List, Optional
 
 from .base import BaseLLMClient, ProviderNotConfigured
 from ...helpers import OpenAIStreamingHandler
-from ...clients import get_google_client
+from ...client_resolver import resolve_client
 
 
 class GeminiClientAdapter(BaseLLMClient):
@@ -24,17 +24,18 @@ class GeminiClientAdapter(BaseLLMClient):
         messages: List[Dict[str, Any]],
         tools: Optional[List[Dict[str, Any]]] = None,
         max_tokens: Optional[int] = None,
+        extra_params: Optional[Dict[str, Any]] = None,
     ) -> Iterable[str]:
         try:
-            client = get_google_client()
+            client, resolved_model = resolve_client("google", model)
         except ValueError as e:
             raise ProviderNotConfigured(str(e)) from e
         
         # Gemini API doesn't support 'system' role - merge it into first user message
         transformed_messages = self._transform_messages_for_gemini(messages)
         
-        handler = OpenAIStreamingHandler(client, model)
-        return handler.stream_chat_with_tools(transformed_messages, max_tokens=max_tokens)
+        handler = OpenAIStreamingHandler(client, resolved_model)
+        return handler.stream_chat_with_tools(transformed_messages, max_tokens=max_tokens, extra_params=extra_params)
     
     def _transform_messages_for_gemini(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Transform messages for Gemini API compatibility.
@@ -76,8 +77,6 @@ class GeminiClientAdapter(BaseLLMClient):
                     # For now, keep vendor_parts as-is
                     # The OpenAI-compatible endpoint may or may not support replaying these
                     # We'll log for observability
-                    import logging
-                    logger = logging.getLogger(__name__)
                     logger.info(f"[GEMINI-DEBUG] Found vendor_parts in assistant message (count={len(msg['vendor_parts'])})")
                     # Note: If OpenAI-compat doesn't support vendor_parts, we'll need SDK path (Phase 4)
                 

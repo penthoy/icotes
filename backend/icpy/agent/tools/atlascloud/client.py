@@ -3,15 +3,19 @@ Async HTTP client for Atlas Cloud API
 
 Handles video generation requests, result polling, and error handling.
 Supports text-to-video and image-to-video models.
+Falls back to Route proxy (ICOTES_ROUTE_URL + ICOTESROUTE_API_KEY) when
+ATLASCLOUD_API_KEY is not set.
 """
 
 import os
-import asyncio
 import logging
 from typing import Optional
-from datetime import datetime, timedelta
 
 import httpx
+
+from icpy.core.async_job_poller import AsyncJobPoller
+from icpy.core.http_retry import retry_async_operation
+from icpy.core.payload_utils import unwrap_envelope
 
 from .models import VideoGenerationRequest, VideoGenerationResponse, VideoResult
 from .exceptions import (
@@ -24,6 +28,28 @@ from .exceptions import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _to_route_video_model(model: str) -> str:
+    """Map Atlas model IDs to route proxy video model IDs.
+
+    Route currently advertises `atlascloud/seedance-v1-lite` for video generation.
+    Atlas tool models may use upstream-specific IDs like:
+    - bytedance/seedance-v1-lite-t2v-480p
+    - bytedance/seedance-v1-lite-i2v-480p
+    """
+    normalized = (model or "").strip().lower()
+    if "seedance-v1-lite" in normalized:
+        return "atlascloud/seedance-v1-lite"
+
+    # Keep explicit route-prefixed models unchanged
+    if normalized.startswith("atlascloud/"):
+        return model
+
+    # Fallback to legacy behavior: provider/name -> atlascloud/name
+    if "/" in model:
+        return f"atlascloud/{model.split('/')[-1]}"
+    return f"atlascloud/{model}"
 
 
 class AtlasCloudClient:
@@ -65,10 +91,21 @@ class AtlasCloudClient:
         """
         self.api_key = api_key or os.getenv("ATLASCLOUD_API_KEY")
         if not self.api_key:
-            raise ValueError(
-                "ATLASCLOUD_API_KEY must be provided or set as environment variable. "
-                "Get your API key from https://console.atlascloud.ai/settings"
-            )
+            # Check if route proxy is available as fallback
+            from icpy.services.route_services import is_route_service_available
+            if is_route_service_available():
+                logger.info("ATLASCLOUD_API_KEY not set, route proxy available for video/image generation")
+                # Route mode does not use direct Atlas API auth.
+                self.api_key = None
+                self._use_route_proxy = True
+            else:
+                raise ValueError(
+                    "ATLASCLOUD_API_KEY must be provided or set as environment variable, "
+                    "or configure route proxy (ICOTES_ROUTE_URL + ICOTESROUTE_API_KEY). "
+                    "Get your API key from https://console.atlascloud.ai/settings"
+                )
+        else:
+            self._use_route_proxy = False
         
         self.base_url = base_url or self.BASE_URL
         self.timeout = timeout
@@ -87,6 +124,9 @@ class AtlasCloudClient:
     
     async def _ensure_client(self):
         """Ensure HTTP client is initialized."""
+        if getattr(self, "_use_route_proxy", False):
+            return
+
         if self._client is not None:
             # httpx.AsyncClient exposes is_closed; tolerate mocks in tests.
             is_closed = getattr(self._client, "is_closed", False)
@@ -104,56 +144,78 @@ class AtlasCloudClient:
             )
 
     @staticmethod
-    def _is_transient_transport_error(exc: Exception) -> bool:
-        """Return True for errors that are often fixed by recreating the HTTP client and retrying.
+    def _unwrap_atlas_payload(payload: dict, *, raise_on_error: bool = False) -> dict:
+        """Unwrap Atlas/Route envelope payloads into the core data object.
 
-        In practice we see intermittent asyncio/httpx transport issues like:
-        - "unable to perform operation on <TCPTransport ...>; the handler is closed"
-        These can happen when a pooled connection/transport is left in a bad state.
+        Delegates to :func:`icpy.core.payload_utils.unwrap_envelope` for the
+        common ``{..., data: {...}}`` extraction.  When *raise_on_error* is True
+        the helper also validates the ``code`` field that direct Atlas API
+        responses include (e.g. ``{code: 500, message: ...}``) **before**
+        unwrapping.
         """
-        if isinstance(exc, httpx.TransportError):
-            return True
-        if isinstance(exc, RuntimeError):
-            msg = str(exc).lower()
-            if "handler is closed" in msg or "tcptransport" in msg or "event loop is closed" in msg:
-                return True
-        return False
+        if not isinstance(payload, dict):
+            return payload
+        if raise_on_error and "data" in payload:
+            code = payload.get("code")
+            if code is not None and int(code) != 200:
+                msg = payload.get("message", "Unknown API error")
+                raise AtlasCloudError(f"API error: {msg}", status_code=int(code))
+        return unwrap_envelope(payload)
 
     async def _request_with_retry(self, method: str, url: str, **kwargs) -> httpx.Response:
         """Make an HTTP request with a small retry budget for transient transport failures."""
-        last_exc: Exception | None = None
-        # Keep this tight: we only want to smooth over known flaky transport closures.
-        for attempt in range(3):
+        async def _operation() -> httpx.Response:
             await self._ensure_client()
-            try:
-                assert self._client is not None
-                # Prefer verb-specific methods when available (works with both httpx.AsyncClient
-                # and existing unit tests that mock .get/.post).
-                verb = method.strip().lower()
-                verb_fn = getattr(self._client, verb, None)
-                if callable(verb_fn):
-                    return await verb_fn(url, **kwargs)
-                return await self._client.request(method, url, **kwargs)
-            except Exception as e:
-                last_exc = e
-                if not self._is_transient_transport_error(e) or attempt == 2:
-                    raise
+            assert self._client is not None
+            verb = method.strip().lower()
+            verb_fn = getattr(self._client, verb, None)
+            if callable(verb_fn):
+                return await verb_fn(url, **kwargs)
+            return await self._client.request(method, url, **kwargs)
 
-                logger.warning(
-                    "Transient transport error (attempt %s/3). Resetting client and retrying: %s",
-                    attempt + 1,
-                    e,
-                )
-                # Reset pooled connections/transport and retry.
-                try:
-                    await self.close()
-                except Exception:
-                    # Best effort; we are already in an error path.
-                    self._client = None
-                await asyncio.sleep(0.25 * (attempt + 1))
+        return await retry_async_operation(
+            _operation,
+            on_retry_reset=self.close,
+            logger=logger,
+            operation_name=f"AtlasCloud {method.upper()} {url}",
+        )
 
-        assert last_exc is not None
-        raise last_exc
+    async def _poll_route_result(
+        self,
+        *,
+        route_client,
+        request_id: str,
+        timeout_seconds: float,
+        poll_interval: float,
+    ) -> VideoResult:
+        """Poll route proxy prediction endpoint until terminal state."""
+        poller = AsyncJobPoller(initial_interval=poll_interval)
+
+        async def _fetch_status() -> VideoResult:
+            poll_data = await route_client.get_prediction(request_id)
+            payload = self._unwrap_atlas_payload(poll_data) if isinstance(poll_data, dict) else poll_data
+            return VideoResult(**payload)
+
+        def _on_timeout() -> Exception:
+            return AtlasCloudTimeoutError(
+                f"Video generation timed out after {timeout_seconds} seconds. Request ID: {request_id}"
+            )
+
+        def _on_failure(result: VideoResult) -> Exception:
+            error_msg = result.logs or result.error or "Unknown error"
+            return AtlasCloudError(
+                f"Video generation failed: {error_msg}",
+                response={"request_id": request_id, "status": result.status},
+            )
+
+        return await poller.poll_until_terminal(
+            fetch_status=_fetch_status,
+            is_complete=lambda result: result.is_complete,
+            is_failed=lambda result: result.is_failed,
+            timeout_seconds=timeout_seconds,
+            on_timeout=_on_timeout,
+            on_failure=_on_failure,
+        )
     
     async def close(self):
         """Close the HTTP client."""
@@ -256,6 +318,44 @@ class AtlasCloudClient:
         if not prompt and not image and not video:
             raise ValueError("Either 'prompt', 'image', or 'video' must be provided")
         
+        # Route proxy path — delegate to RouteServiceClient
+        if getattr(self, '_use_route_proxy', False):
+            from icpy.services.route_services import get_route_service_client
+            route_client = get_route_service_client()
+            route_model = _to_route_video_model(model)
+            logger.info(f"Submitting video generation via route proxy: model={model}")
+            result_data = await route_client.generate_video(
+                prompt=prompt or "",
+                model=route_model,
+                image=image,
+                video=video,
+                duration=duration,
+                aspect_ratio=aspect_ratio,
+                seed=seed,
+            )
+            result_data = self._unwrap_atlas_payload(result_data) if isinstance(result_data, dict) else result_data
+
+            initial_result = VideoResult(**result_data)
+            if not wait_for_completion:
+                return initial_result
+
+            # Poll via Route endpoint until completion/failure/timeout
+            request_id = initial_result.id
+            logger.info(
+                "Waiting for route prediction %s to complete (timeout: %ss)...",
+                request_id,
+                timeout or self.timeout,
+            )
+            result = await self._poll_route_result(
+                route_client=route_client,
+                request_id=request_id,
+                timeout_seconds=timeout or self.timeout,
+                poll_interval=poll_interval,
+            )
+            logger.info("Route video generation complete: %s", request_id)
+            return result
+
+        # Direct AtlasCloud API path
         # Build request
         request_data = VideoGenerationRequest(
             model=model,
@@ -285,16 +385,7 @@ class AtlasCloudClient:
             
             # Parse initial response (API returns wrapped response)
             response_data = response.json()
-            
-            # Handle wrapped API response
-            if 'code' in response_data and 'data' in response_data:
-                from .models import AtlasAPIResponse
-                wrapped = AtlasAPIResponse(**response_data)
-                if wrapped.code != 200:
-                    raise AtlasCloudError(f"API error: {wrapped.message}", status_code=wrapped.code)
-                actual_data = wrapped.data or {}
-            else:
-                actual_data = response_data
+            actual_data = self._unwrap_atlas_payload(response_data, raise_on_error=True)
             
             initial_response = VideoGenerationResponse(**actual_data)
             
@@ -339,17 +430,9 @@ class AtlasCloudClient:
             if response.status_code != 200:
                 self._handle_error_response(response)
             
-            # Handle wrapped API response
+            # Unwrap Atlas API {code, message, data} envelope
             response_data = response.json()
-            # AtlasCloud wraps responses in {code, message, data} structure
-            if 'code' in response_data and 'data' in response_data:
-                from .models import AtlasAPIResponse
-                wrapped = AtlasAPIResponse(**response_data)
-                if wrapped.code != 200:
-                    raise AtlasCloudError(f"API error: {wrapped.message}", status_code=wrapped.code)
-                actual_data = wrapped.data or {}
-            else:
-                actual_data = response_data
+            actual_data = self._unwrap_atlas_payload(response_data, raise_on_error=True)
             
             result = VideoResult(**actual_data)
             return result
@@ -379,60 +462,52 @@ class AtlasCloudClient:
             AtlasCloudTimeoutError: Exceeded timeout
             AtlasCloudError: Generation failed
         """
-        start_time = datetime.now()
-        max_wait = timedelta(seconds=timeout)
-        current_interval = poll_interval
-        
         logger.info(f"Waiting for video generation {request_id} to complete (timeout: {timeout}s)...")
-        
-        while True:
-            elapsed = datetime.now() - start_time
-            
-            if elapsed > max_wait:
-                raise AtlasCloudTimeoutError(
-                    f"Video generation timed out after {timeout} seconds. Request ID: {request_id}"
+
+        poller = AsyncJobPoller(initial_interval=poll_interval)
+
+        async def _fetch_status() -> VideoResult:
+            return await self.get_result(request_id)
+
+        def _on_timeout() -> Exception:
+            return AtlasCloudTimeoutError(
+                f"Video generation timed out after {timeout} seconds. Request ID: {request_id}"
+            )
+
+        def _on_failure(result: VideoResult) -> Exception:
+            error_msg = result.logs or result.error or "Unknown error"
+            logger.error(f"Video generation failed for {request_id}: {error_msg}")
+            if "unable to download or load" in error_msg.lower():
+                helpful_msg = (
+                    f"Video generation failed: {error_msg}\n\n"
+                    "⚠️ This error typically means the cloud provider cannot access your video/image URL from the internet. "
+                    "To use video conversion tools, please ensure:\n"
+                    "1. SITE_URL environment variable is set to your public domain/IP (check Environment settings)\n"
+                    "2. Your webapp is accessible from external sources (use port forwarding or tunneling service like ngrok/cloudflare tunnel)\n"
+                    "3. Test accessibility: Try visiting your SITE_URL from a different network or use online tools to verify\n"
+                    "4. If using Docker, ensure SITE_URL is set to the host's public IP/domain, not localhost or 127.0.0.1"
                 )
-            
-            # Get current status
-            result = await self.get_result(request_id)
-            
-            if result.is_complete:
-                logger.info(f"Video generation complete: {request_id}")
-                return result
-            
-            if result.is_failed:
-                # Note: result.logs may be None/empty for some failures
-                # Common failure: "Unable to download or load video" when SITE_URL is not publicly accessible
-                error_msg = result.logs or result.error or "Unknown error"
-                logger.error(f"Video generation failed for {request_id}: {error_msg}")
-                
-                # Provide helpful guidance if the error is about accessing video/image URLs
-                if "unable to download or load" in error_msg.lower():
-                    helpful_msg = (
-                        f"Video generation failed: {error_msg}\n\n"
-                        "⚠️ This error typically means the cloud provider cannot access your video/image URL from the internet. "
-                        "To use video conversion tools, please ensure:\n"
-                        "1. SITE_URL environment variable is set to your public domain/IP (check Environment settings)\n"
-                        "2. Your webapp is accessible from external sources (use port forwarding or tunneling service like ngrok/cloudflare tunnel)\n"
-                        "3. Test accessibility: Try visiting your SITE_URL from a different network or use online tools to verify\n"
-                        "4. If using Docker, ensure SITE_URL is set to the host's public IP/domain, not localhost or 127.0.0.1"
-                    )
-                    raise AtlasCloudError(
-                        helpful_msg,
-                        response={"request_id": request_id, "status": result.status}
-                    )
-                else:
-                    raise AtlasCloudError(
-                        f"Video generation failed: {error_msg}",
-                        response={"request_id": request_id, "status": result.status}
-                    )
-            
-            # Still processing - wait and retry
-            logger.debug(f"Video generation {request_id} status: {result.status}, waiting {current_interval}s...")
-            await asyncio.sleep(current_interval)
-            
-            # Exponential backoff (max 10 seconds)
-            current_interval = min(current_interval * 1.2, 10)
+                return AtlasCloudError(
+                    helpful_msg,
+                    response={"request_id": request_id, "status": result.status},
+                )
+
+            return AtlasCloudError(
+                f"Video generation failed: {error_msg}",
+                response={"request_id": request_id, "status": result.status},
+            )
+
+        result = await poller.poll_until_terminal(
+            fetch_status=_fetch_status,
+            is_complete=lambda current: current.is_complete,
+            is_failed=lambda current: current.is_failed,
+            timeout_seconds=timeout,
+            on_timeout=_on_timeout,
+            on_failure=_on_failure,
+        )
+
+        logger.info(f"Video generation complete: {request_id}")
+        return result
     
     async def generate_text_to_video(
         self,

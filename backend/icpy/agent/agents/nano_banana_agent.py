@@ -1,7 +1,7 @@
 """
 Nano Banana Agent - Image Generation and Editing AI Agent
 
-This agent uses Google's Gemini 3 Pro Image ("Nano Banana") model
+This agent uses Google's Gemini 3.1 Flash Image ("Nano Banana 2") model
 directly via Google's native API for image generation and editing.
 
 The model natively generates and edits images as part of its response - no separate
@@ -19,7 +19,7 @@ Capabilities:
 9. Grounded generation with Google Search integration
 10. Conversational editing with thought signatures
 
-Model: gemini-3-pro-image-preview (Google Native API) - Updated December 2025
+Model: gemini-3-pro-image-preview (Google Native API) - Nano Banana Pro
 """
 
 import json
@@ -32,8 +32,10 @@ from typing import Dict, Any, List
 # Configure logging
 logger = logging.getLogger(__name__)
 
-# Model configuration - using Google's latest native Gemini image model (December 2025)
-# gemini-3-pro-image-preview: Best for complex image generation with reasoning
+# Model configuration - Nano Banana Pro (active, no deprecation announced)
+# gemini-3-pro-image-preview: studio-quality image generation & editing with reasoning
+# NOTE: gemini-3-pro-preview (without -image) is the TEXT model being deprecated March 9 2026
+# NOTE: gemini-3.1-pro-preview is also text/reasoning only — do NOT use for image generation
 AGENT_MODEL_ID = "gemini-3-pro-image-preview"
 
 # Import required modules and backend helpers
@@ -65,8 +67,11 @@ try:
         ToolDefinitionLoader,
         OpenAIStreamingHandler,
         add_context_to_agent_prompt,
+        get_model_name_for_agent,
         get_workspace_path,
     )
+    from icpy.agent.client_resolver import resolve_client
+    from icpy.agent.clients import is_icotes_route_enabled
 
     DEPENDENCIES_AVAILABLE = True
     logger.info("All dependencies available for NanoBananaAgent")
@@ -74,8 +79,8 @@ try:
     # Agent metadata using helper
     AGENT_METADATA = create_standard_agent_metadata(
         name="NanoBananaAgent",
-        description="AI image generation agent powered by Google's Gemini 3 Pro Image API",
-        version="1.1.0",
+        description="AI image generation and editing agent powered by Google's Gemini 3 Pro Image API (Nano Banana Pro)",
+        version="1.2.0",
         author="ICOTES",
         model=AGENT_MODEL_ID,
     )
@@ -100,7 +105,7 @@ except ImportError as e:
     # Fallback metadata if helpers are not available
     MODEL_NAME = AGENT_MODEL_ID
     AGENT_NAME = "NanoBananaAgent"
-    AGENT_DESCRIPTION = "AI image generation agent powered by Google's Gemini native API"
+    AGENT_DESCRIPTION = "AI image generation agent powered by Google's Gemini 3 Pro Image API (Nano Banana Pro)"
     AGENT_VERSION = "1.0.0"
     AGENT_AUTHOR = "ICOTES"
 
@@ -229,17 +234,45 @@ Always be helpful, creative, and focused on creating or editing images that matc
     # Add context information to the system prompt
     system_prompt = add_context_to_agent_prompt(base_system_prompt)
 
+    # Allow model override from workspace/.icotes/agents.json
+    runtime_model = get_model_name_for_agent(AGENT_NAME, MODEL_NAME)
+
     try:
-        # Initialize native Google SDK
+        # Initialize native Google SDK (direct mode)
         api_key = os.environ.get("GOOGLE_API_KEY")
         if not api_key:
+            # Proxy-only fallback: route through OpenAI-compatible path
+            if is_icotes_route_enabled():
+                logger.info(
+                    "NanoBananaAgent: GOOGLE_API_KEY missing; falling back to route proxy with model=%s",
+                    runtime_model,
+                )
+
+                # Build minimal compatible message list
+                proxy_messages: List[Dict[str, Any]] = [{"role": "system", "content": system_prompt}]
+                if isinstance(history, list):
+                    for item in history:
+                        if isinstance(item, dict) and item.get("role") in {"user", "assistant", "system", "tool"}:
+                            proxy_messages.append({
+                                "role": item.get("role"),
+                                "content": item.get("content", ""),
+                            })
+
+                user_content = message if isinstance(message, str) else json.dumps(message)
+                proxy_messages.append({"role": "user", "content": user_content})
+
+                client, resolved_model = resolve_client("google", runtime_model)
+                handler = OpenAIStreamingHandler(client, resolved_model)
+                yield from handler.stream_chat_with_tools(proxy_messages)
+                return
+
             yield "🚫 GOOGLE_API_KEY not set. Please configure your Google API key."
             return
         
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel(MODEL_NAME)
+        model = genai.GenerativeModel(runtime_model)
         
-        logger.info(f"NanoBananaAgent: Initialized native SDK with model {MODEL_NAME}")
+        logger.info(f"NanoBananaAgent: Initialized native SDK with model {runtime_model}")
         
         # Handle JSON string history (gradio compatibility)
         if isinstance(history, str):

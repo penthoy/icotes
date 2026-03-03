@@ -265,6 +265,81 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
     return res.json();
   }, [getApiBaseUrl]);
 
+  // ── Secret debug context menu (Ctrl+Right-click on chat header) ──
+  const [debugMenu, setDebugMenu] = useState<{ x: number; y: number } | null>(null);
+  const [debugEnabled, setDebugEnabled] = useState(false);
+  const [debugMode, setDebugMode] = useState<'minimal' | 'verbose'>('minimal');
+  const debugMenuRef = useRef<HTMLDivElement>(null);
+
+  /** Fetch current debug status for the active session */
+  const fetchDebugStatus = useCallback(async (sessionId: string) => {
+    try {
+      const base = await getApiBaseUrl();
+      const res = await fetch(`${base}/api/debug/status?session_id=${encodeURIComponent(sessionId)}`);
+      if (!res.ok) return;
+      const json = await res.json();
+      setDebugEnabled(Boolean(json?.data?.enabled));
+      setDebugMode((json?.data?.mode || 'minimal') as 'minimal' | 'verbose');
+    } catch { /* silent */ }
+  }, [getApiBaseUrl]);
+
+  /** Toggle debug logging for the active session */
+  const toggleDebugForSession = useCallback(async () => {
+    if (!currentSessionId) return;
+    try {
+      const nextEnabled = !debugEnabled;
+      const base = await getApiBaseUrl();
+      const res = await fetch(`${base}/api/debug/toggle`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: currentSessionId, enabled: nextEnabled, mode: debugMode }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      setDebugEnabled(Boolean(json?.data?.enabled));
+      setDebugMode((json?.data?.mode || debugMode) as 'minimal' | 'verbose');
+      notificationService.info(`Debug ${nextEnabled ? 'enabled' : 'disabled'} (${debugMode})`);
+    } catch (e) {
+      console.error('Failed to toggle debug:', e);
+    }
+  }, [currentSessionId, debugEnabled, debugMode, getApiBaseUrl]);
+
+  /** Cycle debug mode: minimal → verbose → minimal */
+  const cycleDebugMode = useCallback(async () => {
+    if (!currentSessionId) return;
+    const nextMode = debugMode === 'minimal' ? 'verbose' : 'minimal';
+    try {
+      const base = await getApiBaseUrl();
+      await fetch(`${base}/api/debug/toggle`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: currentSessionId, enabled: debugEnabled, mode: nextMode }),
+      });
+      setDebugMode(nextMode);
+    } catch { /* silent */ }
+  }, [currentSessionId, debugEnabled, debugMode, getApiBaseUrl]);
+
+  /** Handle Ctrl+Right-click on header to open secret debug menu */
+  const handleHeaderContextMenu = useCallback((e: React.MouseEvent) => {
+    if (!e.ctrlKey) return; // Only respond to Ctrl+Right-click
+    e.preventDefault();
+    e.stopPropagation();
+    if (currentSessionId) fetchDebugStatus(currentSessionId);
+    setDebugMenu({ x: e.clientX, y: e.clientY });
+  }, [currentSessionId, fetchDebugStatus]);
+
+  // Close secret menu when clicking outside
+  useEffect(() => {
+    if (!debugMenu) return;
+    const handleClick = (e: MouseEvent) => {
+      if (debugMenuRef.current && !debugMenuRef.current.contains(e.target as Node)) {
+        setDebugMenu(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [debugMenu]);
+
   const editSessionMessage = useCallback(async (sessionId: string, messageIndex: number, content: string) => {
     const base = await getApiBaseUrl();
     const res = await fetch(`${base}/api/chat/${sessionId}/messages/${messageIndex}`, {
@@ -840,6 +915,7 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
           backgroundColor: 'var(--icui-bg-secondary)', 
           borderBottomColor: 'var(--icui-border-subtle)' 
         }}
+        onContextMenu={handleHeaderContextMenu}
       >
         <div
           className="flex items-center space-x-3 select-none"
@@ -932,6 +1008,44 @@ const ICUIChat = forwardRef<ICUIChatRef, ICUIChatProps>(({
           )}
         </div>
       </div>
+
+      {/* Secret debug context menu (Ctrl+Right-click on header) */}
+      {debugMenu && (
+        <div
+          ref={debugMenuRef}
+          className="fixed z-50 rounded-lg shadow-2xl border text-xs"
+          style={{
+            left: debugMenu.x,
+            top: debugMenu.y,
+            minWidth: 200,
+            backgroundColor: 'var(--icui-bg-secondary)',
+            borderColor: 'var(--icui-border-subtle)',
+            color: 'var(--icui-text-primary)',
+          }}
+        >
+          <div className="px-3 py-2 border-b font-semibold" style={{ borderColor: 'var(--icui-border-subtle)', opacity: 0.6 }}>
+            Debug ({currentSessionId ? currentSessionId.slice(0, 16) + '…' : 'no session'})
+          </div>
+          <button
+            className="w-full text-left px-3 py-2 hover:opacity-80 transition-opacity flex items-center justify-between"
+            style={{ backgroundColor: 'transparent' }}
+            onClick={() => { toggleDebugForSession(); setDebugMenu(null); }}
+          >
+            <span>{debugEnabled ? 'Disable debug logging' : 'Enable debug logging'}</span>
+            <span className={`w-2 h-2 rounded-full ${debugEnabled ? 'bg-green-500' : 'bg-red-500'}`} />
+          </button>
+          <button
+            className="w-full text-left px-3 py-2 hover:opacity-80 transition-opacity"
+            style={{ backgroundColor: 'transparent' }}
+            onClick={() => { cycleDebugMode(); setDebugMenu(null); }}
+          >
+            Mode: <span className="font-mono">{debugMode}</span>
+          </button>
+          <div className="px-3 py-1.5 border-t" style={{ borderColor: 'var(--icui-border-subtle)', opacity: 0.4 }}>
+            Ctrl+Right-click to open
+          </div>
+        </div>
+      )}
 
       <div className="icui-chat-drop-scope flex-1 relative flex flex-col" style={{ minHeight:0 }}>
         {/* Floating search bar — VS Code-style, pinned to top-right of messages area */}

@@ -23,11 +23,16 @@ class GeneralAgent:
         messages: List[Dict[str, Any]],
         tools: Optional[List[Dict[str, Any]]] = None,
         max_tokens: Optional[int] = None,
+        extra_params: Optional[Dict[str, Any]] = None,
     ) -> Iterable[str]:
         """Stream assistant text given system+history messages.
 
         Messages must already be normalized for the provider (preserve multimodal arrays
         for user messages when applicable).
+
+        Args:
+            extra_params: Optional provider-specific params (e.g. thinking mode)
+                          forwarded to the LLM adapter.
         """
         # Ensure system is first
         msgs: List[Dict[str, Any]] = []
@@ -40,4 +45,7 @@ class GeneralAgent:
         msgs.extend(messages)
 
         # Delegate streaming to the provider client
-        return self.llm.stream_chat(model=self.model, messages=msgs, tools=tools, max_tokens=max_tokens)
+        return self.llm.stream_chat(
+            model=self.model, messages=msgs, tools=tools,
+            max_tokens=max_tokens, extra_params=extra_params,
+        )

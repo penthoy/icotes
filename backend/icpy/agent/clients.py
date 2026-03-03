@@ -14,6 +14,51 @@ mailersend_api_key = os.environ.get('MAILERSEND_API_KEY')
 cerb_api_key = os.getenv('CEREBRAS_API_KEY')
 
 
+def _env_flag(name: str, default: bool = False) -> bool:
+    """Parse a boolean env var (supports 1/true/yes/on)."""
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def is_icotes_route_enabled() -> bool:
+    """Return True when route proxy is available.
+
+    Enabled when ICOTES_ROUTE_URL is set (presence-based)
+    OR legacy ICOTES_ROUTE_ENABLED=true flag is set.
+    """
+    if os.getenv("ICOTES_ROUTE_URL"):
+        return True
+    return _env_flag("ICOTES_ROUTE_ENABLED", False)
+
+
+def _normalize_route_base_url(route_url: str) -> str:
+    normalized = route_url.rstrip("/")
+    if normalized.endswith("/v1"):
+        return normalized
+    return f"{normalized}/v1"
+
+
+def get_icotes_route_client():
+    """
+    Initializes and returns an OpenAI client configured for icotes route proxy.
+
+    The route server is OpenAI-compatible and currently exposes /v1/chat/completions.
+    """
+    route_api_key = os.getenv("ICOTESROUTE_API_KEY")
+    if not route_api_key:
+        raise ValueError("ICOTESROUTE_API_KEY environment variable is not set.")
+
+    route_url = os.getenv("ICOTES_ROUTE_URL", "https://route.icotes.com")
+    base_url = _normalize_route_base_url(route_url)
+
+    return OpenAI(
+        api_key=route_api_key,
+        base_url=base_url,
+    )
+
+
 def get_ali_client():
     """
     Initializes and returns an OpenAI client configured for Aliyun's Dashscope API.
@@ -180,6 +225,23 @@ def get_ollama_client():
     return OpenAI(
         api_key="ollama",  # Ollama uses a fixed API key
         base_url=ollama_url,
+    )
+
+
+def get_minimax_client():
+    """
+    Initializes and returns an OpenAI client configured for MiniMax's API.
+    
+    MiniMax provides OpenAI-compatible endpoints for their models
+    including MiniMax-M2.5.
+    """
+    minimax_api_key = os.getenv("MINIMAX_API_KEY")
+    if not minimax_api_key:
+        raise ValueError("MINIMAX_API_KEY environment variable is not set.")
+
+    return OpenAI(
+        api_key=minimax_api_key,
+        base_url="https://api.minimax.io/v1",
     )
 
 

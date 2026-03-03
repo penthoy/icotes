@@ -69,8 +69,18 @@ class WebSearchTool(BaseTool):
                 return ToolResult(success=False, error="query is required and cannot be empty")
 
             api_key = self._get_api_key()
+            
+            # If no direct Tavily key, try route proxy
             if not api_key:
-                return ToolResult(success=False, error="TAVILY_API_KEY is not set in the environment")
+                from icpy.services.route_services import is_route_service_available
+                if is_route_service_available():
+                    return await self._execute_via_route(
+                        query=str(query),
+                        max_results=kwargs.get("maxResults"),
+                        depth=kwargs.get("searchDepth"),
+                        include_answer=bool(kwargs.get("includeAnswer", True)),
+                    )
+                return ToolResult(success=False, error="TAVILY_API_KEY is not set and route proxy not configured")
 
             max_results = kwargs.get("maxResults")
             depth = kwargs.get("searchDepth")
@@ -78,7 +88,7 @@ class WebSearchTool(BaseTool):
 
             payload = self._build_payload(str(query), max_results, depth, include_answer)
 
-            # Perform the request
+            # Perform the request (direct Tavily API)
             try:
                 resp = requests.post(self._endpoint, json=payload, timeout=20)
             except Exception as e:
@@ -86,7 +96,6 @@ class WebSearchTool(BaseTool):
                 return ToolResult(success=False, error=f"Request failed: {str(e)}")
 
             if resp.status_code != 200:
-                # Try to extract error message
                 try:
                     data = resp.json()
                     err = data.get("error") or data
@@ -99,23 +108,52 @@ class WebSearchTool(BaseTool):
             except ValueError:
                 return ToolResult(success=False, error="Invalid JSON response from Tavily")
 
-            # Normalize output: include answer (if any) and top results (url, title, content)
-            answer = data.get("answer") or data.get("summary")
-            results = data.get("results") or []
-            normalized = {
-                "answer": answer,
-                "results": [
-                    {
-                        "url": r.get("url"),
-                        "title": r.get("title"),
-                        "content": r.get("content") or r.get("snippet")
-                    }
-                    for r in results
-                ]
-            }
-
-            return ToolResult(success=True, data=normalized)
+            return self._normalize_response(data)
 
         except Exception as e:
             logger.error(f"WebSearchTool error: {e}")
             return ToolResult(success=False, error=str(e))
+
+    async def _execute_via_route(
+        self,
+        query: str,
+        max_results: int | None,
+        depth: str | None,
+        include_answer: bool,
+    ) -> ToolResult:
+        """Execute web search through the Route Proxy."""
+        from icpy.services.route_services import get_route_service_client
+
+        try:
+            route_client = get_route_service_client()
+            logger.info(f"[WebSearch] Using route proxy for query: {query[:50]}")
+            
+            data = await route_client.search(
+                query=query,
+                provider="tavily",
+                max_results=max(1, min(int(max_results or 5), 10)),
+                search_depth=depth or "basic",
+                include_answer=include_answer,
+            )
+            return self._normalize_response(data)
+        except Exception as e:
+            logger.error(f"WebSearch route proxy error: {e}")
+            return ToolResult(success=False, error=f"Route proxy search failed: {str(e)}")
+
+    @staticmethod
+    def _normalize_response(data: dict) -> ToolResult:
+        """Normalize search response into standard ToolResult format."""
+        answer = data.get("answer") or data.get("summary")
+        results = data.get("results") or []
+        normalized = {
+            "answer": answer,
+            "results": [
+                {
+                    "url": r.get("url"),
+                    "title": r.get("title"),
+                    "content": r.get("content") or r.get("snippet")
+                }
+                for r in results
+            ]
+        }
+        return ToolResult(success=True, data=normalized)
