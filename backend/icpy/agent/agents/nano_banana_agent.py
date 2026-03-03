@@ -1,7 +1,7 @@
 """
 Nano Banana Agent - Image Generation and Editing AI Agent
 
-This agent uses Google's Gemini 3 Pro Image ("Nano Banana") model
+This agent uses Google's Gemini 3.1 Flash Image ("Nano Banana 2") model
 directly via Google's native API for image generation and editing.
 
 The model natively generates and edits images as part of its response - no separate
@@ -19,7 +19,7 @@ Capabilities:
 9. Grounded generation with Google Search integration
 10. Conversational editing with thought signatures
 
-Model: gemini-3-pro-image-preview (Google Native API) - Updated December 2025
+Model: gemini-3-pro-image-preview (Google Native API) - Nano Banana Pro
 """
 
 import json
@@ -32,8 +32,10 @@ from typing import Dict, Any, List
 # Configure logging
 logger = logging.getLogger(__name__)
 
-# Model configuration - using Google's latest native Gemini image model (December 2025)
-# gemini-3-pro-image-preview: Best for complex image generation with reasoning
+# Model configuration - Nano Banana Pro (active, no deprecation announced)
+# gemini-3-pro-image-preview: studio-quality image generation & editing with reasoning
+# NOTE: gemini-3-pro-preview (without -image) is the TEXT model being deprecated March 9 2026
+# NOTE: gemini-3.1-pro-preview is also text/reasoning only — do NOT use for image generation
 AGENT_MODEL_ID = "gemini-3-pro-image-preview"
 
 # Import required modules and backend helpers
@@ -77,8 +79,8 @@ try:
     # Agent metadata using helper
     AGENT_METADATA = create_standard_agent_metadata(
         name="NanoBananaAgent",
-        description="AI image generation agent powered by Google's Gemini 3 Pro Image API",
-        version="1.1.0",
+        description="AI image generation and editing agent powered by Google's Gemini 3 Pro Image API (Nano Banana Pro)",
+        version="1.2.0",
         author="ICOTES",
         model=AGENT_MODEL_ID,
     )
@@ -103,7 +105,7 @@ except ImportError as e:
     # Fallback metadata if helpers are not available
     MODEL_NAME = AGENT_MODEL_ID
     AGENT_NAME = "NanoBananaAgent"
-    AGENT_DESCRIPTION = "AI image generation agent powered by Google's Gemini native API"
+    AGENT_DESCRIPTION = "AI image generation agent powered by Google's Gemini 3 Pro Image API (Nano Banana Pro)"
     AGENT_VERSION = "1.0.0"
     AGENT_AUTHOR = "ICOTES"
 

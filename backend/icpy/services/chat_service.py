@@ -60,8 +60,14 @@ class ThinkTagFilter:
         self._inside = False      # currently inside a <think> block
         self._buf = ""            # leftover text that might contain a partial tag
 
-    def feed(self, chunk: str) -> str:
-        """Feed a chunk and return the portion that should be emitted."""
+    def feed(self, chunk) -> str:
+        """Feed a chunk and return the portion that should be emitted.
+        
+        If chunk is not a string (e.g. multimodal list from proxy), pass it through as-is.
+        """
+        if not isinstance(chunk, str):
+            # Non-string content (e.g. list from multimodal response) — pass through
+            return chunk if chunk else ""
         text = self._buf + chunk
         self._buf = ""
         out_parts: list[str] = []
@@ -1919,6 +1925,10 @@ class ChatService:
                         message=agent_message_arg,
                         history=history_list,
                     )
+                    # Make the recorder available to the agent layer via ContextVar
+                    # so system prompt, tool schemas, and full tool results get logged
+                    from ..services.raw_output_sidecar import set_active_recorder
+                    set_active_recorder(raw_recorder)
             except Exception as e:
                 logger.warning(f"Failed to start raw sidecar: {e}")
             
@@ -1946,6 +1956,11 @@ class ChatService:
                     logger.debug(f"Custom agent streaming active for session {user_message.session_id}")
                     
                     if chunk:  # Only process non-empty chunks
+                        # Ensure chunk is a string (proxy may return multimodal list)
+                        if not isinstance(chunk, str):
+                            chunk = str(chunk) if chunk else ""
+                            if not chunk:
+                                continue
                         # Record raw chunk BEFORE any filtering (for debug sidecar)
                         if raw_recorder:
                             raw_recorder.record_chunk(chunk)
@@ -1965,7 +1980,11 @@ class ChatService:
                             agent_id=agent_type,
                             agent_name=agent_type.title()
                         )
-                        full_content += filtered
+                        if isinstance(filtered, str):
+                            full_content += filtered
+                        else:
+                            # Multimodal content (list) — convert to string for accumulation
+                            full_content += str(filtered) if filtered else ""
                         
                         # CRITICAL FIX: Prevent WebSocket message batching
                         await asyncio.sleep(0.01)  # 10ms delay between chunks

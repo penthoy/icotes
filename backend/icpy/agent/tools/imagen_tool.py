@@ -1,5 +1,5 @@
 """
-Imagen Tool - Image Generation using Google's Gemini 2.5 Flash Image Preview
+Imagen Tool - Image Generation using Google's Gemini 3.1 Flash Image Preview (Nano Banana 2)
 
 This tool allows any agent to generate images using Google's native Gemini model
 that generates images directly in its response.
@@ -72,7 +72,7 @@ class ImagenTool(BaseTool):
     """Generate or edit images using Google's Gemini image-capable models.
 
     Capabilities:
-        - Text-to-image generation (primary model: gemini-2.5-flash-image)
+        - Text-to-image generation (primary model: gemini-3.1-flash-image-preview / Nano Banana 2)
         - Image editing: provide an input image (data URI or base64) + prompt
         - Automatic fallback to stable models if preview model returns mime type error
     """
@@ -150,8 +150,9 @@ class ImagenTool(BaseTool):
             "required": ["prompt"]
         }
         # Primary stable model & fallbacks
-        self._primary_model = "gemini-2.5-flash-image"
+        self._primary_model = "gemini-3.1-flash-image-preview"  # Nano Banana 2
         self._fallback_models = [
+            "gemini-2.5-flash-image",
             "gemini-2.5-flash",
             "gemini-2.0-flash-exp",
             "gemini-1.5-flash"

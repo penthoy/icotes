@@ -12,6 +12,7 @@ These helpers abstract away complex boilerplate code so that custom agents
 can focus on their specific logic and domain expertise.
 """
 
+import base64
 import json
 import logging
 import asyncio
@@ -1115,8 +1116,71 @@ class OpenAIStreamingHandler:
             # Handle content streaming
             if chunk.choices[0].delta.content is not None:
                 content = chunk.choices[0].delta.content
-                collected_chunks.append(content)
-                yield content
+                # Handle multimodal content (list with image_url parts)
+                # Route proxy may return image data as list of content parts
+                if isinstance(content, list):
+                    for part in content:
+                        if not isinstance(part, dict):
+                            continue
+                        ptype = part.get('type', '')
+                        if ptype == 'text':
+                            text_val = part.get('text', '')
+                            if text_val:
+                                collected_chunks.append(text_val)
+                                yield text_val
+                        elif ptype == 'image_url':
+                            img_info = part.get('image_url', {})
+                            url = img_info.get('url', '') if isinstance(img_info, dict) else str(img_info)
+                            if url and url.startswith('data:image/'):
+                                # Extract mime type and base64 data from data URI
+                                try:
+                                    header, b64_data = url.split(',', 1)
+                                    # e.g. "data:image/jpeg;base64"
+                                    mime_type = header.split(':')[1].split(';')[0] if ':' in header else 'image/png'
+                                    image_bytes = base64.b64decode(b64_data)
+                                    
+                                    # Save image to workspace
+                                    saved_abs_path = None
+                                    try:
+                                        workspace_root = os.environ.get('WORKSPACE_ROOT', '')
+                                        if not workspace_root:
+                                            workspace_root = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'workspace')
+                                        media_dir = os.path.join(workspace_root, '.icotes', 'media', 'images')
+                                        os.makedirs(media_dir, exist_ok=True)
+                                        ext_map = {'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp', 'image/gif': '.gif'}
+                                        ext = ext_map.get(mime_type, '.png')
+                                        ts = int(time.time())
+                                        fname = f"nano_banana_proxy_{ts}{ext}"
+                                        fpath = os.path.join(media_dir, fname)
+                                        with open(fpath, 'wb') as f:
+                                            f.write(image_bytes)
+                                        saved_abs_path = fpath
+                                        logger.info(f"Saved proxy image to {fpath} ({len(image_bytes)} bytes)")
+                                    except Exception as save_err:
+                                        logger.warning(f"Failed to save proxy image: {save_err}")
+                                    
+                                    # Yield as markdown image — the frontend's resolveMarkdownImageSrc
+                                    # handles absolute paths by converting to /api/files/raw?path=...
+                                    if saved_abs_path:
+                                        md = f"\n\n![Generated Image]({saved_abs_path})\n\n"
+                                    else:
+                                        # Fallback: inline data URI (large but guaranteed to render)
+                                        md = f"\n\n![Generated Image]({url})\n\n"
+                                    collected_chunks.append(md)
+                                    yield md
+                                except Exception as img_err:
+                                    logger.error(f"Error processing multimodal image from proxy: {img_err}")
+                                    err_msg = f"\u26a0\ufe0f Error processing image from proxy: {img_err}\n"
+                                    collected_chunks.append(err_msg)
+                                    yield err_msg
+                            elif url:
+                                # Non-data URI image — yield as markdown
+                                md = f"![generated image]({url})\n"
+                                collected_chunks.append(md)
+                                yield md
+                else:
+                    collected_chunks.append(content)
+                    yield content
             
             # Handle tool calls (streaming format - they come in chunks)
             if hasattr(chunk.choices[0].delta, 'tool_calls') and chunk.choices[0].delta.tool_calls:
