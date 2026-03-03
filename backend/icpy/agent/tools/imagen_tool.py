@@ -964,7 +964,7 @@ class ImagenTool(BaseTool):
                         if hasattr(response, 'text') and response.text:
                             text_content = response.text
                     except Exception:
-                        pass
+                        logger.debug("Failed to extract text from response", exc_info=True)
 
                     return ToolResult(
                         success=False,

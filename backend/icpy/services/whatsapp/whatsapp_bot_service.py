@@ -318,6 +318,9 @@ class WhatsAppBotService:
         self._message_buffer: Dict[str, dict] = {}  # sender → { texts, timer }
         self._debounce_ms = 2.0  # seconds
 
+        # Auto-restart guard — prevents overlapping restart tasks
+        self._restart_task: Optional[asyncio.Task] = None
+
         logger.info("WhatsApp bot service initialized")
 
     # ─── Lifecycle ──────────────────────────────────────────
@@ -574,8 +577,12 @@ class WhatsAppBotService:
             # Auto-restart bridge on terminal errors so a new QR code is
             # presented instead of leaving the bot in a permanent dead state.
             if "logged out" in error_msg.lower() or "restart" in error_msg.lower():
-                logger.info("WhatsApp session invalidated — auto-restarting bridge for re-pairing...")
-                asyncio.create_task(self._auto_restart_bridge())
+                # Guard against overlapping restart tasks
+                if self._restart_task is None or self._restart_task.done():
+                    logger.info("WhatsApp session invalidated — auto-restarting bridge for re-pairing...")
+                    self._restart_task = asyncio.create_task(self._auto_restart_bridge())
+                else:
+                    logger.info("Auto-restart already in progress — skipping duplicate")
 
         else:
             logger.debug(f"Unknown bridge event: {event_type}")

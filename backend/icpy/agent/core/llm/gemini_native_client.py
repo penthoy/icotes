@@ -232,6 +232,7 @@ class GeminiNativeClientAdapter(BaseLLMClient):
                 )
                 yield from GeminiClientAdapter().stream_chat(
                     model=model, messages=messages, tools=tools, max_tokens=max_tokens,
+                    extra_params=extra_params,
                 )
                 return
 

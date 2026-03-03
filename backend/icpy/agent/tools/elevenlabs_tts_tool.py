@@ -473,7 +473,7 @@ class ElevenLabsTTSTool(BaseTool):
                     f"model={model_id}, format={output_format}"
                 )
                 
-                resolved_voice_id = voice or "george"
+                resolved_voice_id = voice_id_param or voice or "george"
                 audio_bytes = await route_client.tts(
                     text=text,
                     voice=resolved_voice_id,

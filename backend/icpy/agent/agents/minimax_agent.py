@@ -82,15 +82,15 @@ def chat(message: str, history: List[Dict[str, str]]) -> Generator[str, None, No
         tools = []
         try:
             tools = ToolDefinitionLoader().get_openai_tools()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Tool loading failed: {e}")
         # Read thinkingMode from agents.json config
         extra_params = get_thinking_extra_params(AGENT_NAME)
         yield from ga.run(system_prompt=system_prompt, messages=safe_messages, tools=tools, extra_params=extra_params)
         logger.info("MiniMaxAgent: Chat completed successfully")
 
     except Exception as e:
-        logger.error(f"Error in MiniMaxAgent streaming: {e}")
+        logger.exception("Error in MiniMaxAgent streaming")
         yield f"🚫 Error processing request: {str(e)}\n\nPlease check your MINIMAX_API_KEY or icotesroute configuration."
 
 

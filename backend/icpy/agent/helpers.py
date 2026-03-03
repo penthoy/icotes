@@ -1149,8 +1149,9 @@ class OpenAIStreamingHandler:
                                         os.makedirs(media_dir, exist_ok=True)
                                         ext_map = {'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp', 'image/gif': '.gif'}
                                         ext = ext_map.get(mime_type, '.png')
-                                        ts = int(time.time())
-                                        fname = f"nano_banana_proxy_{ts}{ext}"
+                                        ts = int(time.time() * 1000)
+                                        import uuid as _uuid
+                                        fname = f"nano_banana_proxy_{ts}_{_uuid.uuid4().hex[:8]}{ext}"
                                         fpath = os.path.join(media_dir, fname)
                                         with open(fpath, 'wb') as f:
                                             f.write(image_bytes)

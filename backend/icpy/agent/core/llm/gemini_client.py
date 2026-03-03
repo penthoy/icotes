@@ -77,8 +77,6 @@ class GeminiClientAdapter(BaseLLMClient):
                     # For now, keep vendor_parts as-is
                     # The OpenAI-compatible endpoint may or may not support replaying these
                     # We'll log for observability
-                    import logging
-                    logger = logging.getLogger(__name__)
                     logger.info(f"[GEMINI-DEBUG] Found vendor_parts in assistant message (count={len(msg['vendor_parts'])})")
                     # Note: If OpenAI-compat doesn't support vendor_parts, we'll need SDK path (Phase 4)
                 

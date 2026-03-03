@@ -128,6 +128,8 @@ export const useConfiguredAgents = () => {
         const errorMessage = err instanceof Error ? err.message : 'Failed to fetch configured agents';
         setError(errorMessage);
         setAgents([]);
+        setSettings({});
+        setCategories({});
         setIsLoading(false);
         console.error('Exception while fetching configured agents:', err);
       }

@@ -83,7 +83,7 @@ def test_auth_reject(base_url: str) -> bool:
             timeout=5,
         )
         if r.status_code == 401:
-            ok(f"POST /v1/chat/completions with bad key → 401 (correctly rejected)")
+            ok("POST /v1/chat/completions with bad key → 401 (correctly rejected)")
             return True
         else:
             fail(f"Expected 401 but got {r.status_code}: {r.text[:200]}")
@@ -202,7 +202,7 @@ def main() -> None:
     # Mask key in output — show only last 4 chars
     masked_key = f"***{key[-4:]}" if len(key) > 4 else "<not set>" if not key else "***"
 
-    print(f"\nicotes Route Proxy Test")
+    print("\nicotes Route Proxy Test")
     print(f"  URL : {base_url}")
     print(f"  Key : {masked_key}")
 

@@ -136,7 +136,7 @@ class ElevenLabsSoundEffectsTool(BaseTool):
                 logger.info("ElevenLabs SDK not installed, using route proxy for SFX")
                 return None
             raise RuntimeError(
-                f"ElevenLabs SDK not available. Install with: pip install elevenlabs. "
+                f"ElevenLabs SDK not available. Install with: uv add elevenlabs. "
                 f"Error: {_ELEVENLABS_IMPORT_ERROR}"
             )
         
