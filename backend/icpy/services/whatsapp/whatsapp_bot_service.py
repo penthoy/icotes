@@ -956,7 +956,7 @@ class WhatsAppBotService:
         media_items = fmt.extract_media_paths(full_response)
         for media in media_items:
             media_path = self._resolve_media_path(media["path"])
-            if os.path.isfile(media_path):
+            if os.path.isfile(media_path) and self._is_allowed_media_path(media_path):
                 media_type = media["type"]
                 caption = media.get("prompt", "")
                 cmd_data = {
@@ -969,6 +969,8 @@ class WhatsAppBotService:
                     cmd_data["caption"] = caption
                 await self._send_command("send_media", cmd_data)
                 await asyncio.sleep(0.3)  # Small delay between media sends
+            elif os.path.isfile(media_path):
+                logger.warning("Blocked media send outside allowed roots: %s", media_path)
 
         # Send cleaned text
         cleaned = fmt.clean_for_whatsapp(full_response)
@@ -996,6 +998,22 @@ class WhatsAppBotService:
 
         # Return original path so caller can log/ignore consistently
         return media_path
+
+    def _is_allowed_media_path(self, media_path: str) -> bool:
+        """Allow outbound media only from trusted roots (workspace or cwd)."""
+        try:
+            abs_path = os.path.abspath(media_path)
+            roots = []
+            workspace_root = getattr(self.chat_service, "workspace_root", None)
+            if workspace_root:
+                roots.append(os.path.abspath(workspace_root))
+            # Current working directory as a fallback root
+            roots.append(os.path.abspath(os.getcwd()))
+            return any(
+                os.path.commonpath([abs_path, root]) == root for root in roots
+            )
+        except Exception:
+            return False
 
     # ─── Helpers ─────────────────────────────────────────────
 

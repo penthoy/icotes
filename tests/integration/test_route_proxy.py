@@ -15,6 +15,16 @@ import json
 import os
 import sys
 import httpx
+import pytest
+
+# Guard: skip this whole module when pytest collects tests automatically.
+# These functions make real network calls to a LAN IP and require explicit opt-in.
+# To run: ICOTES_INTEGRATION_TESTS=1 pytest tests/integration/test_route_proxy.py
+if not os.getenv("ICOTES_INTEGRATION_TESTS"):
+    pytest.skip(
+        "Set ICOTES_INTEGRATION_TESTS=1 to run route-proxy network integration tests.",
+        allow_module_level=True,
+    )
 
 
 # ── default values ─────────────────────────────────────────────────────────────
