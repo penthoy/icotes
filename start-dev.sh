@@ -115,7 +115,7 @@ if ! command -v uv &> /dev/null; then
         if [ ! -f "pyproject.toml" ]; then
             uv init --no-readme --no-pin-python
         fi
-        uv sync --frozen --no-dev || uv pip install -r requirements.txt
+        uv sync --frozen --no-dev --all-extras || uv pip install -r requirements.txt
     fi
 else
     echo "✅ uv already installed"
@@ -125,7 +125,7 @@ else
     fi
     # Install dependencies with uv
     echo "📦 Installing Python dependencies with uv..."
-    uv sync --frozen --no-dev || uv pip install -r requirements.txt
+    uv sync --frozen --no-dev --all-extras || uv pip install -r requirements.txt
 fi
 
 # Start the backend server with development settings

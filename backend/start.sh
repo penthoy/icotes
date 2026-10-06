@@ -79,7 +79,7 @@ fi
 # Install dependencies if needed
 if [ -f "requirements.txt" ]; then
     echo "📦 Ensuring dependencies are installed..."
-    uv sync --frozen --no-dev || uv pip install -r requirements.txt
+    uv sync --frozen --no-dev --all-extras || uv pip install -r requirements.txt
 fi
 
 echo "🚀 Starting FastAPI backend server with uvicorn..."

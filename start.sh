@@ -276,7 +276,7 @@ fi
 echo "📦 Installing Python dependencies with uv..."
 if [ -f "requirements.txt" ]; then
     echo "   Using requirements.txt for dependency installation"
-    uv sync --frozen --no-dev || uv pip install -r requirements.txt
+    uv sync --frozen --no-dev --all-extras || uv pip install -r requirements.txt
 else
     echo "❌ Error: requirements.txt not found"
     exit 1
