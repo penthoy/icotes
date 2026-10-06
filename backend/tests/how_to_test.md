@@ -9,7 +9,7 @@ Why uv? It’s fast, creates isolated environments automatically, and avoids the
 ```bash
 cd backend
 # One-time (or when dependencies change):
-uv sync --frozen --no-dev
+uv sync --frozen --all-extras
 
 # Ensure module resolution works from backend/
 export PYTHONPATH=$(pwd)
@@ -95,6 +95,9 @@ uv run pytest tests/icpy/test_workspace_service.py::TestWorkspaceService::test_c
 uv run pytest tests/icpy/test_terminal_service.py::TestTerminalService::test_session_creation -v
 ```
 
+## Optional dependencies
+Heavy packages (document libraries, ElevenLabs/yt-dlp, discord.py, legacy Google SDK, agent frameworks) are optional extras. Tests that need them skip when they are missing, so a lean `uv sync --frozen` (dev group only) still passes; use `--all-extras` to run everything. `tests/test_lean_install.py` simulates a lean install in a subprocess.
+
 ## Troubleshooting
 
 ### Import Errors
@@ -122,7 +125,7 @@ rm -rf .pytest_cache/ tests/__pycache__/ tests/icpy/__pycache__/
 
 - Tests are isolated and use fixtures; no running server required.
 - Event loop cleanup is handled in fixtures.
-- For CI, prefer `uv sync --frozen --no-dev` then `uv run pytest`.
+- For CI, prefer `uv sync --frozen --all-extras` then `uv run pytest`.
 
 Legacy venv alternative (not recommended):
 ```bash

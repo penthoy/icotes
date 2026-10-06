@@ -123,3 +123,25 @@ Follow semantic versioning principles when manually updating the version:
 📋 Created GitHub release
 🚀 All images pushed to Docker Hub
 ```
+
+## Build arguments: lean vs full images
+
+The Dockerfile builds a **lean** image by default. Two build arguments control what is added:
+
+| Build arg | Default | Meaning |
+|-----------|---------|---------|
+| `INSTALL_EXTRAS` | empty | Comma-separated pyproject extras to install (`documents`, `media`, `discord`, `google`, `agents-frameworks`, `providers-sdk`), or `all` |
+| `ICOTES_DEV_TOOLS` | `0` | `1` adds sudo, compilers, editors, htop, locales, zip/unzip and uv to the final image |
+
+```bash
+# Lean (default, what `penthoy/icotes:latest` should be)
+docker build -t penthoy/icotes:latest .
+
+# Full: every extra plus developer tools
+docker build --build-arg INSTALL_EXTRAS=all --build-arg ICOTES_DEV_TOOLS=1 -t penthoy/icotes:full .
+```
+
+Suggested tagging for a release workflow: publish the lean image as `X.Y.Z` / `latest` and the full
+image as `X.Y.Z-full` / `full`. Note: the build scripts and workflow described earlier in this
+document are not present in this repository, so any such workflow needs to pass these build args
+itself.
