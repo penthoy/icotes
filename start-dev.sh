@@ -180,10 +180,10 @@ echo "🔧 Starting with uv (if available) or fallback to venv..."
 # Check if we're using uv or traditional venv
 if command -v uv &> /dev/null && [ -f "pyproject.toml" ]; then
     echo "✅ Using uv for execution"
-    echo "🔧 Python: $(uv run python --version)"
+    echo "🔧 Python: $(uv run --no-sync python --version)"
     
     # Use uv run for execution
-    uv run uvicorn main:app \
+    uv run --no-sync uvicorn main:app \
         --host "$BACKEND_HOST" \
         --port "$BACKEND_PORT" \
         --reload \

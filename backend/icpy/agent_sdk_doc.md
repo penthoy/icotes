@@ -769,7 +769,7 @@ cd <repository>/backend
 # Modern approach with UV (recommended)
 curl -LsSf https://astral.sh/uv/install.sh | sh
 export PATH="$HOME/.local/bin:$PATH"
-uv sync --frozen --no-dev
+uv sync --frozen --no-dev --all-extras
 
 # Alternative: Direct pip installation
 pip install -r requirements.txt

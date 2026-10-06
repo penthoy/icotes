@@ -83,7 +83,7 @@ if [ -f "requirements.txt" ]; then
 fi
 
 echo "🚀 Starting FastAPI backend server with uvicorn..."
-uv run uvicorn main:app --host "$BACKEND_HOST" --port "$BACKEND_PORT" --log-config logging.conf &
+uv run --no-sync uvicorn main:app --host "$BACKEND_HOST" --port "$BACKEND_PORT" --log-config logging.conf &
 echo $! > "$PID_FILE"
 trap 'echo; echo "🛑 Stopping backend (PID: $(cat "$PID_FILE" 2>/dev/null) )"; kill $(cat "$PID_FILE" 2>/dev/null) 2>/dev/null || true; rm -f "$PID_FILE"; exit 0' SIGINT SIGTERM
 wait $(cat "$PID_FILE")
