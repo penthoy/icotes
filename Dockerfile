@@ -33,6 +33,7 @@ FROM python:3.12-slim AS backend-base
 #   --build-arg INSTALL_EXTRAS=documents,media
 #   --build-arg INSTALL_EXTRAS=all
 # Available extras: documents, media, discord, google, agents-frameworks, providers-sdk
+# ("all" together with other extras means all.)
 ARG INSTALL_EXTRAS=""
 
 # Build tools are only needed here (compiling wheels); they are not copied to the final image
@@ -57,13 +58,13 @@ COPY backend/pyproject.toml backend/uv.lock ./
 # Install production Python dependencies from lockfile (core + selected extras)
 RUN set -eu; \
     extra_args=""; \
-    if [ "${INSTALL_EXTRAS}" = "all" ]; then \
-        extra_args="--all-extras"; \
-    elif [ -n "${INSTALL_EXTRAS}" ]; then \
-        for extra in $(echo "${INSTALL_EXTRAS}" | tr ',' ' '); do \
-            extra_args="${extra_args} --extra ${extra}"; \
-        done; \
-    fi; \
+    for extra in $(printf '%s' "${INSTALL_EXTRAS}" | tr ',' ' ' | tr '[:upper:]' '[:lower:]'); do \
+        if [ "${extra}" = "all" ]; then \
+            extra_args="--all-extras"; \
+            break; \
+        fi; \
+        extra_args="${extra_args} --extra ${extra}"; \
+    done; \
     uv sync --frozen --no-dev --no-install-project ${extra_args}; \
     find /app/backend/.venv -type d -name __pycache__ -prune -exec rm -rf {} +
 
@@ -85,16 +86,17 @@ LABEL version="${BUILD_VERSION}" \
       org.opencontainers.image.vendor="penthoy" \
       org.opencontainers.image.url="https://github.com/penthoy/icotes"
 
-# Set ICOTES_DEV_TOOLS=1 to also install developer conveniences in the image
+# Set ICOTES_DEV_TOOLS=1 (or true/yes) to also install developer conveniences in the image
 # (sudo, editors, compilers, htop, locales, uv). The default image stays lean.
 ARG ICOTES_DEV_TOOLS=0
 
 # Runtime system dependencies:
 #   tini (PID 1), procps (PTY/process support), bash (terminal), git (source control),
 #   ripgrep (semantic search), curl + ca-certificates (healthcheck, HTTPS)
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN case "$(printf '%s' "${ICOTES_DEV_TOOLS}" | tr '[:upper:]' '[:lower:]')" in 1|true|yes) dev_tools=1 ;; *) dev_tools=0 ;; esac \
+    && apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates curl tini procps bash git ripgrep \
-    && if [ "${ICOTES_DEV_TOOLS}" = "1" ]; then \
+    && if [ "${dev_tools}" = "1" ]; then \
         apt-get install -y --no-install-recommends \
             sudo bash-completion locales \
             vim nano htop less \
@@ -108,8 +110,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean
 
 # Create non-root user for security (add early so we can configure)
-RUN useradd --create-home --shell /bin/bash icotes \
-    && if [ "${ICOTES_DEV_TOOLS}" = "1" ]; then \
+RUN case "$(printf '%s' "${ICOTES_DEV_TOOLS}" | tr '[:upper:]' '[:lower:]')" in 1|true|yes) dev_tools=1 ;; *) dev_tools=0 ;; esac \
+    && useradd --create-home --shell /bin/bash icotes \
+    && if [ "${dev_tools}" = "1" ]; then \
         echo 'icotes ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/icotes \
         && chmod 440 /etc/sudoers.d/icotes; \
     fi
