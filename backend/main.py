@@ -51,8 +51,6 @@ try:
     from icpy.core.connection_manager import get_connection_manager
     from icpy.services import get_workspace_service, get_filesystem_service, get_terminal_service, get_agent_service, get_chat_service, get_code_execution_service, get_preview_service
     from icpy.services.clipboard_service import clipboard_service
-    from icpy.services.discord_bot_service import start_discord_bot, stop_discord_bot
-    from icpy.services.whatsapp import start_whatsapp_bot, stop_whatsapp_bot
     from icpy.agent.custom_agent import get_available_custom_agents, call_custom_agent, call_custom_agent_stream
     from icpy.auth import auth_manager, get_current_user, get_optional_user
     ICPY_AVAILABLE = True
@@ -73,6 +71,30 @@ except ImportError as e:
     auth_manager = MockAuthManager()
     get_current_user = lambda request: None
     get_optional_user = lambda request: None
+
+# Optional integrations: isolated so a missing optional dependency can never
+# flip ICPY_AVAILABLE and disable the whole app.
+try:
+    from icpy.services.discord_bot_service import start_discord_bot, stop_discord_bot
+except ImportError as e:
+    logger.warning(f"Discord bot service not available: {e}")
+
+    async def start_discord_bot():
+        return None
+
+    async def stop_discord_bot():
+        return None
+
+try:
+    from icpy.services.whatsapp import start_whatsapp_bot, stop_whatsapp_bot
+except ImportError as e:
+    logger.warning(f"WhatsApp bot service not available: {e}")
+
+    async def start_whatsapp_bot():
+        return None
+
+    async def stop_whatsapp_bot():
+        return None
 
 try:
     from terminal import terminal_manager

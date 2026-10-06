@@ -426,6 +426,12 @@ class CrewAIAgentWrapper(BaseAgentWrapper):
             logger.info(f"CrewAI agent '{self.config.name}' initialized")
             return True
             
+        except ImportError as e:
+            logger.error(
+                f"CrewAI framework not installed ({e}); install the 'agents-frameworks' extra "
+                "(Docker: --build-arg INSTALL_EXTRAS=agents-frameworks; uv: uv sync --extra agents-frameworks)"
+            )
+            return False
         except Exception as e:
             logger.error(f"Failed to initialize CrewAI agent: {e}")
             return False
@@ -535,6 +541,12 @@ class LangChainAgentWrapper(BaseAgentWrapper):
             logger.info(f"LangChain agent '{self.config.name}' initialized")
             return True
             
+        except ImportError as e:
+            logger.error(
+                f"LangChain framework not installed ({e}); install the 'agents-frameworks' extra "
+                "(Docker: --build-arg INSTALL_EXTRAS=agents-frameworks; uv: uv sync --extra agents-frameworks)"
+            )
+            return False
         except Exception as e:
             logger.error(f"Failed to initialize LangChain agent: {e}")
             return False
@@ -649,6 +661,12 @@ class LangGraphAgentWrapper(BaseAgentWrapper):
             logger.info(f"LangGraph agent '{self.config.name}' initialized")
             return True
             
+        except ImportError as e:
+            logger.error(
+                f"LangGraph framework not installed ({e}); install the 'agents-frameworks' extra "
+                "(Docker: --build-arg INSTALL_EXTRAS=agents-frameworks; uv: uv sync --extra agents-frameworks)"
+            )
+            return False
         except Exception as e:
             logger.error(f"Failed to initialize LangGraph agent: {e}")
             return False

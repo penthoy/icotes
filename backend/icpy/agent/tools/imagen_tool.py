@@ -879,7 +879,8 @@ class ImagenTool(BaseTool):
                     success=False,
                     error=(
                         "Google image SDK not installed. Install 'google-genai' (preferred) or 'google-generativeai' "
-                        "in backend, then restart the server."
+                        "in backend (legacy SDK: 'google' extra, Docker --build-arg INSTALL_EXTRAS=google), "
+                        "then restart the server."
                     )
                 )
             

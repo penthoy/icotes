@@ -186,7 +186,7 @@ class ElevenLabsTTSTool(BaseTool):
                 logger.info("ElevenLabs SDK not installed, using route proxy for TTS")
                 return None
             raise RuntimeError(
-                f"ElevenLabs SDK not available. Install with: pip install elevenlabs. "
+                f"ElevenLabs SDK not available. Install with: pip install elevenlabs (or install the 'media' extra: Docker --build-arg INSTALL_EXTRAS=media, uv sync --extra media). "
                 f"Error: {_ELEVENLABS_IMPORT_ERROR}"
             )
         

@@ -176,7 +176,7 @@ class ExcelHandler(DocumentHandler):
         except ImportError:
             return HandlerResult(
                 success=False,
-                error="openpyxl not installed. Install with: pip install openpyxl"
+                error="openpyxl not installed. Install with: pip install openpyxl (or install the 'documents' extra: Docker --build-arg INSTALL_EXTRAS=documents, uv sync --extra documents)"
             )
         
         xlsx_file = io.BytesIO(file_data)
@@ -268,7 +268,7 @@ class ExcelHandler(DocumentHandler):
         except ImportError:
             raise ImportError(
                 "pandas and openpyxl required for Excel creation. "
-                "Install with: pip install pandas openpyxl"
+                "Install with: pip install pandas openpyxl (or install the 'documents' extra: Docker --build-arg INSTALL_EXTRAS=documents, uv sync --extra documents)"
             )
         
         output = io.BytesIO()

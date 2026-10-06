@@ -10,14 +10,51 @@ dependencies = [
     "pydantic>=2.10.0",
     "python-multipart==0.0.6",
     "httpx>=0.28.1",
-    "pytest==7.4.3",
-    "pytest-cov==4.1.0",
-    "pytest-asyncio==0.21.1",
     "aiofiles==24.1.0",
     "watchdog==6.0.0",
     "requests==2.31.0",
     "aiohttp==3.10.11",
     "openai>=1.0.0",
+    "python-dotenv>=0.21.0",
+    "python-jose[cryptography]>=3.3.0",
+    "asyncssh>=2.14.2",
+    "google-genai>=1.60.0",
+    "Pillow>=10.0.0",
+    "beautifulsoup4>=4.12.0",
+    "markdownify>=0.11.0",
+    "lxml>=4.9.0",
+    "youtube-transcript-api>=0.6.0",
+]
+
+# Optional features. The default (lean) install only contains the core above.
+# Install with e.g. `uv sync --frozen --extra documents` or `--all-extras`.
+[project.optional-dependencies]
+# Document processing tools (read/write docx, pptx, xlsx, pdf)
+documents = [
+    "pandas>=2.2.0",
+    "pdfplumber>=0.11.0",
+    "python-docx>=1.1.0",
+    "python-pptx>=0.6.23",
+    "openpyxl>=3.1.0",
+    "reportlab>=4.4.9",
+    "xlrd>=2.0.1",
+    "pyxlsb>=1.0.10",
+]
+# YouTube download and text-to-speech tools
+media = [
+    "yt-dlp>=2024.0.0",
+    "elevenlabs>=1.0.0",
+]
+# Discord bot integration
+discord = [
+    "discord-py>=2.3.0",
+]
+# Legacy Google Generative AI SDK (imagen tool fallback, nano banana agent)
+google = [
+    "google-generativeai>=0.8.0",
+]
+# Agent framework compatibility layer (CrewAI, LangChain, LangGraph, OpenAI Agents)
+agents-frameworks = [
     "crewai==0.30.11",
     "langchain>=0.1.0",
     "langchain-community>=0.0.10",
@@ -26,37 +63,18 @@ dependencies = [
     "langsmith>=0.0.80",
     "openai-agents>=0.0.6",
     "setuptools>=80.9.0",
-    "python-dotenv>=0.21.0",
-    "python-jose[cryptography]>=3.3.0",
-    "cerebras_cloud_sdk>=1.30.0",
-    "asyncssh>=2.14.2",
-    "google-genai>=1.60.0",
-    "google-generativeai>=0.8.0",
-    "Pillow>=10.0.0",
-    "beautifulsoup4>=4.12.0",
-    "markdownify>=0.11.0",
-    "lxml>=4.9.0",
-    "youtube-transcript-api>=0.6.0",
-    "yt-dlp>=2024.0.0",
-    # Document processing dependencies
-    "openpyxl>=3.1.0",
-    "python-docx>=1.1.0",
-    "pdfplumber>=0.11.0",
-    "python-pptx>=0.6.23",
-    "pandas>=2.2.0",
-    # Text-to-speech
-    "elevenlabs>=1.0.0",
-    "reportlab>=4.4.9",
+]
+# Provider SDKs not used by the core app (available for user plugins/agents)
+providers-sdk = [
     "anthropic>=0.79.0",
-    "discord-py>=2.3.0",
+    "cerebras_cloud_sdk>=1.30.0",
 ]
 
-[project.optional-dependencies]
-# Extended document processing (PDF generation, legacy formats)
-docs-full = [
-    "reportlab>=4.2.0",
-    "xlrd>=2.0.1",
-    "pyxlsb>=1.0.10",
+[dependency-groups]
+dev = [
+    "pytest==7.4.3",
+    "pytest-cov==4.1.0",
+    "pytest-asyncio==0.21.1",
 ]
 
 [tool.pytest.ini_options]

@@ -5,6 +5,8 @@ Integrates Discord bot with the existing chat service to provide AI assistant fu
 through Discord messages. Works similar to the chat panel in the web app.
 """
 
+from __future__ import annotations
+
 import asyncio
 import json
 import logging
@@ -12,10 +14,18 @@ import os
 import re
 from pathlib import Path
 from typing import Optional, Dict, List, Any, Tuple
-import discord
-from discord.ext import commands
 
 logger = logging.getLogger(__name__)
+
+# discord.py is an optional dependency (install extra: "discord").
+try:
+    import discord
+    from discord.ext import commands
+    DISCORD_AVAILABLE = True
+except ImportError:  # pragma: no cover - exercised in lean installs
+    discord = None  # type: ignore[assignment]
+    commands = None  # type: ignore[assignment]
+    DISCORD_AVAILABLE = False
 
 # Singleton instance
 _discord_bot_service: Optional['DiscordBotService'] = None
@@ -756,6 +766,14 @@ async def get_discord_bot_service() -> Optional[DiscordBotService]:
         
         if not token:
             logger.warning("DISCORD_BOT_TOKEN not configured, Discord bot service disabled")
+            return None
+
+        if not DISCORD_AVAILABLE:
+            logger.warning(
+                "DISCORD_BOT_TOKEN is set but discord.py is not installed; Discord bot disabled. "
+                "Install the 'discord' extra (Docker: --build-arg INSTALL_EXTRAS=discord; "
+                "uv: uv sync --extra discord)."
+            )
             return None
         
         # Create and initialize service

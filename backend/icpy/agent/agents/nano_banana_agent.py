@@ -58,8 +58,12 @@ try:
     
     sys.path.append(backend_path)
 
-    # Import native Google SDK for image generation (Google Gen AI SDK)
-    import google.generativeai as genai
+    # Native Google SDK for image generation. Optional ("google" extra): when it is
+    # missing the agent can still load and use the route-proxy path.
+    try:
+        import google.generativeai as genai
+    except ImportError:
+        genai = None
     from icpy.agent.helpers import (
         create_standard_agent_metadata,
         create_environment_reload_function,
@@ -269,6 +273,14 @@ Always be helpful, creative, and focused on creating or editing images that matc
             yield "🚫 GOOGLE_API_KEY not set. Please configure your Google API key."
             return
         
+        if genai is None:
+            yield (
+                "🚫 The google-generativeai package is not installed. Install the 'google' extra "
+                "(Docker: --build-arg INSTALL_EXTRAS=google; uv: uv sync --extra google) "
+                "or configure the route proxy."
+            )
+            return
+
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel(runtime_model)
         
