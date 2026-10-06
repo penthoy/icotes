@@ -28,24 +28,44 @@ RUN bun run build
 # Stage 2: Setup Python backend dependencies
 FROM python:3.12-slim AS backend-base
 
-# Install system dependencies including build tools for compiled packages
-RUN apt-get update && apt-get install -y \
-    curl \
+# Optional Python feature sets (pyproject extras), comma separated, or "all".
+# Default is a lean install with only the core dependencies. Examples:
+#   --build-arg INSTALL_EXTRAS=documents,media
+#   --build-arg INSTALL_EXTRAS=all
+# Available extras: documents, media, discord, google, agents-frameworks, providers-sdk
+ARG INSTALL_EXTRAS=""
+
+# Build tools are only needed here (compiling wheels); they are not copied to the final image
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     gcc \
     g++ \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uv package manager
+# Install uv package manager (build stage only)
 RUN pip install --no-cache-dir uv
+
+# Copy mode avoids hardlinks into a cache that is not kept; no cache keeps the layer small
+ENV UV_LINK_MODE=copy \
+    UV_NO_CACHE=1
 
 WORKDIR /app/backend
 
 # Copy uv dependency files (for better layer caching)
 COPY backend/pyproject.toml backend/uv.lock ./
 
-# Install production Python dependencies from lockfile
-RUN uv sync --frozen --no-dev --no-install-project
+# Install production Python dependencies from lockfile (core + selected extras)
+RUN set -eu; \
+    extra_args=""; \
+    if [ "${INSTALL_EXTRAS}" = "all" ]; then \
+        extra_args="--all-extras"; \
+    elif [ -n "${INSTALL_EXTRAS}" ]; then \
+        for extra in $(echo "${INSTALL_EXTRAS}" | tr ',' ' '); do \
+            extra_args="${extra_args} --extra ${extra}"; \
+        done; \
+    fi; \
+    uv sync --frozen --no-dev --no-install-project ${extra_args}; \
+    find /app/backend/.venv -type d -name __pycache__ -prune -exec rm -rf {} +
 
 # Stage 3: Final production image
 FROM python:3.12-slim
@@ -65,36 +85,40 @@ LABEL version="${BUILD_VERSION}" \
       org.opencontainers.image.vendor="penthoy" \
       org.opencontainers.image.url="https://github.com/penthoy/icotes"
 
-# Install system dependencies and tini for proper PID 1 handling
-# CRITICAL FIX: Add procps for PTY support
-# DEV-LIKE TOOLS: Add sudo, htop, git, editors, bash-completion, locales, build tools
-# SEMANTIC SEARCH: Add ripgrep for semantic search functionality
+# Set ICOTES_DEV_TOOLS=1 to also install developer conveniences in the image
+# (sudo, editors, compilers, htop, locales, uv). The default image stays lean.
+ARG ICOTES_DEV_TOOLS=0
+
+# Runtime system dependencies:
+#   tini (PID 1), procps (PTY/process support), bash (terminal), git (source control),
+#   ripgrep (semantic search), curl + ca-certificates (healthcheck, HTTPS)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl tini procps \
-    sudo bash-completion locales \
-    git vim nano htop less \
-    build-essential gcc g++ make \
-    unzip zip tar \
-    ripgrep \
-    && sed -i 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen \
-    && locale-gen \
-    && update-locale LANG=en_US.UTF-8 \
+    ca-certificates curl tini procps bash git ripgrep \
+    && if [ "${ICOTES_DEV_TOOLS}" = "1" ]; then \
+        apt-get install -y --no-install-recommends \
+            sudo bash-completion locales \
+            vim nano htop less \
+            build-essential make \
+            unzip zip \
+        && sed -i 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen \
+        && locale-gen \
+        && pip install --no-cache-dir uv; \
+    fi \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
-# Install uv in final image
-RUN pip install --no-cache-dir uv
-
 # Create non-root user for security (add early so we can configure)
 RUN useradd --create-home --shell /bin/bash icotes \
-    && echo 'icotes ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/icotes \
-    && chmod 440 /etc/sudoers.d/icotes
+    && if [ "${ICOTES_DEV_TOOLS}" = "1" ]; then \
+        echo 'icotes ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/icotes \
+        && chmod 440 /etc/sudoers.d/icotes; \
+    fi
 
-# Provide a developer-friendly bash configuration (aliases, colors)
+# Provide a friendly bash configuration (aliases, colors) for the web terminal
 RUN cat <<'EOF' >> /home/icotes/.bashrc
-# --- iCotes dev conveniences ---
-export LANG=en_US.UTF-8
-export LC_ALL=en_US.UTF-8
+# --- iCotes terminal conveniences ---
+export LANG=C.UTF-8
+export LC_ALL=C.UTF-8
 export TERM=xterm-256color
 # Color prompt if supported
 if [ -n "$PS1" ]; then
@@ -147,8 +171,8 @@ ENV PORT=8000 \
   PATH="/app/backend/.venv/bin:$PATH" \
     WORKSPACE_ROOT=/app/workspace \
     VITE_WORKSPACE_ROOT=/app/workspace \
-    LANG=en_US.UTF-8 \
-    LC_ALL=en_US.UTF-8 \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
     TERM=xterm-256color \
     BUILD_VERSION=${BUILD_VERSION} \
     BUILD_DATE=${BUILD_DATE} \
