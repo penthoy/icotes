@@ -7,6 +7,9 @@ import pytest
 
 from icpy.agent.tools.imagen_tool import ImagenTool
 
+# These tests mock the legacy google-generativeai SDK (extra: google)
+pytest.importorskip("google.generativeai")
+
 from PIL import Image
 import io
 

@@ -790,7 +790,7 @@ async def start_discord_bot():
         await service.start()
         logger.info("Discord bot service started")
     else:
-        logger.warning("Discord bot service not available (token not configured)")
+        logger.warning("Discord bot service not available (token not configured or discord.py not installed)")
 
 
 async def stop_discord_bot():

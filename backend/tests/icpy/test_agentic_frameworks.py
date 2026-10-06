@@ -10,6 +10,10 @@ from typing import Dict, Any, Optional
 import sys
 import importlib
 
+# These tests validate the optional agent frameworks (extra: agents-frameworks).
+for _mod in ("crewai", "langchain", "langchain_community", "langchain_openai", "langgraph", "langsmith"):
+    pytest.importorskip(_mod)
+
 
 class TestAgenticFrameworks:
     """Test suite for validating agentic framework installations"""
