@@ -22,6 +22,7 @@ BLOCKED_TOP_LEVEL = [
     "langgraph", "langsmith", "agents",
     "pandas", "pdfplumber", "docx", "pptx", "openpyxl", "reportlab", "xlrd", "pyxlsb",
     "yt_dlp", "elevenlabs", "discord",
+    "anthropic", "cerebras", "cerebras_cloud_sdk", "pkg_resources",
 ]
 # Fully-qualified names only (google.genai / google.auth are core).
 BLOCKED_QUALIFIED = ["google.generativeai"]
@@ -53,7 +54,8 @@ SCRIPT = textwrap.dedent(
     # Core google packages must remain importable
     import google.genai  # noqa: F401
 
-    os.environ["WORKSPACE_ROOT"] = tempfile.mkdtemp()
+    _workspace = tempfile.TemporaryDirectory()
+    os.environ["WORKSPACE_ROOT"] = _workspace.name
     os.environ["DISCORD_BOT_TOKEN"] = "x"
 
     # 1. App imports with ICPY_AVAILABLE True
@@ -95,6 +97,7 @@ SCRIPT = textwrap.dedent(
     with TestClient(main.app) as client:
         assert client.get("/healthz").status_code == 200
 
+    _workspace.cleanup()
     print("LEAN_OK")
     """
 ).format(top=BLOCKED_TOP_LEVEL, full=BLOCKED_QUALIFIED)
