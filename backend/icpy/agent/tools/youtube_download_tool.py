@@ -219,7 +219,7 @@ class YouTubeDownloadTool(BaseTool):
                 return True, metadata, None
         
         if not YT_DLP_AVAILABLE:
-            return False, None, "yt-dlp library not available. Install via: uv add yt-dlp, or install the 'media' extra (Docker --build-arg INSTALL_EXTRAS=media, uv sync --extra media)"
+            return False, None, "yt-dlp library not available. Install the 'media' extra (Docker: rebuild with --build-arg INSTALL_EXTRAS=media; uv: uv sync --extra media)"
         
         try:
             ydl_opts = {
@@ -290,7 +290,7 @@ class YouTubeDownloadTool(BaseTool):
             (success, file_path_or_error, error_message)
         """
         if not YT_DLP_AVAILABLE:
-            return False, None, "yt-dlp library not available. Install via: uv add yt-dlp, or install the 'media' extra (Docker --build-arg INSTALL_EXTRAS=media, uv sync --extra media)"
+            return False, None, "yt-dlp library not available. Install the 'media' extra (Docker: rebuild with --build-arg INSTALL_EXTRAS=media; uv: uv sync --extra media)"
         
         try:
             # Get quality preset
