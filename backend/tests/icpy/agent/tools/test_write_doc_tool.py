@@ -9,10 +9,19 @@ Tests document writing functionality for various formats:
 - CSV/TSV
 """
 
+import importlib.util
+
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from icpy.agent.tools.write_doc_tool import WriteDocTool
 from icpy.agent.tools.base_tool import ToolResult
+
+
+def _requires(module, extra="documents"):
+    return pytest.mark.skipif(
+        importlib.util.find_spec(module) is None,
+        reason=f"requires {module} (install the '{extra}' extra)",
+    )
 
 
 class TestWriteDocTool:
@@ -223,6 +232,7 @@ class TestWriteDocToolExcel:
     """Tests specifically for Excel writing"""
     
     @pytest.mark.asyncio
+    @_requires("openpyxl")
     async def test_write_xlsx_simple(self):
         """Test writing simple Excel file"""
         tool = WriteDocTool()
@@ -250,6 +260,7 @@ class TestWriteDocToolWord:
     """Tests specifically for Word writing"""
     
     @pytest.mark.asyncio
+    @_requires("docx")
     async def test_write_docx_simple(self):
         """Test writing simple Word document"""
         tool = WriteDocTool()
@@ -274,6 +285,7 @@ class TestWriteDocToolPowerPoint:
     """Tests specifically for PowerPoint writing"""
     
     @pytest.mark.asyncio
+    @_requires("pptx")
     async def test_write_pptx_structured(self):
         """Test writing PowerPoint with structured content"""
         tool = WriteDocTool()

@@ -58,8 +58,12 @@ try:
     
     sys.path.append(backend_path)
 
-    # Import native Google SDK for image generation (Google Gen AI SDK)
-    import google.generativeai as genai
+    # Native Google SDK for image generation. Optional ("google" extra): when it is
+    # missing the agent can still load and use the route-proxy path.
+    try:
+        import google.generativeai as genai
+    except ImportError:
+        genai = None
     from icpy.agent.helpers import (
         create_standard_agent_metadata,
         create_environment_reload_function,
@@ -74,7 +78,13 @@ try:
     from icpy.agent.clients import is_icotes_route_enabled
 
     DEPENDENCIES_AVAILABLE = True
-    logger.info("All dependencies available for NanoBananaAgent")
+    if genai is None:
+        logger.info(
+            "NanoBananaAgent dependencies available; direct mode disabled because google-generativeai "
+            "is not installed (route proxy only; install the 'google' extra for direct mode)"
+        )
+    else:
+        logger.info("All dependencies available for NanoBananaAgent")
 
     # Agent metadata using helper
     AGENT_METADATA = create_standard_agent_metadata(
@@ -240,11 +250,14 @@ Always be helpful, creative, and focused on creating or editing images that matc
     try:
         # Initialize native Google SDK (direct mode)
         api_key = os.environ.get("GOOGLE_API_KEY")
-        if not api_key:
+        # Route through the proxy when no key is set, or when the legacy SDK needed for
+        # direct mode is not installed (lean image).
+        if not api_key or genai is None:
             # Proxy-only fallback: route through OpenAI-compatible path
             if is_icotes_route_enabled():
                 logger.info(
-                    "NanoBananaAgent: GOOGLE_API_KEY missing; falling back to route proxy with model=%s",
+                    "NanoBananaAgent: %s; falling back to route proxy with model=%s",
+                    "GOOGLE_API_KEY missing" if not api_key else "google-generativeai not installed",
                     runtime_model,
                 )
 
@@ -266,9 +279,16 @@ Always be helpful, creative, and focused on creating or editing images that matc
                 yield from handler.stream_chat_with_tools(proxy_messages)
                 return
 
-            yield "🚫 GOOGLE_API_KEY not set. Please configure your Google API key."
+            if genai is None:
+                yield (
+                    "🚫 The google-generativeai package is not installed, so direct Google mode is unavailable. "
+                    "Install the 'google' extra (Docker: rebuild with --build-arg INSTALL_EXTRAS=google; "
+                    "uv: uv sync --extra google), or enable the iCotes route proxy."
+                )
+            else:
+                yield "🚫 GOOGLE_API_KEY not set. Please configure your Google API key."
             return
-        
+
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel(runtime_model)
         

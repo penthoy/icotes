@@ -27,6 +27,38 @@ docker run -d -p 8000:8000 penthoy/icotes:latest
 
 ```
 
+#### Lean image and optional extras
+
+The default Docker image is **lean**: it contains the core app only (backend, frontend, terminal,
+git, ripgrep). Heavier, rarely used features are optional Python extras that you opt into at build time:
+
+```bash
+# Add document tools and media tools
+docker build --build-arg INSTALL_EXTRAS=documents,media -t icotes:custom .
+
+# Everything, plus developer tools (sudo, compilers, editors, uv) inside the container
+docker build --build-arg INSTALL_EXTRAS=all --build-arg ICOTES_DEV_TOOLS=1 -t icotes:full .
+```
+
+| Extra | Adds |
+|-------|------|
+| `documents` | Read/write Word, Excel, PowerPoint and PDF files (pandas, pdfplumber, python-docx, python-pptx, openpyxl, reportlab, xlrd, pyxlsb) |
+| `media` | YouTube download and ElevenLabs text-to-speech/music/sound-effects tools (yt-dlp, elevenlabs) |
+| `discord` | Discord bot integration (discord.py) |
+| `google` | Legacy `google-generativeai` SDK (used by the Nano Banana agent direct mode and the Imagen fallback) |
+| `agents-frameworks` | CrewAI, LangChain, LangGraph and OpenAI Agents compatibility layer |
+| `providers-sdk` | `anthropic` and `cerebras_cloud_sdk` packages for custom plugins/agents |
+| `all` | All of the above |
+
+Use a comma-separated list for several extras (`INSTALL_EXTRAS=documents,discord`). When a tool needs
+an extra that is not installed, it returns an error naming the extra to add.
+
+**Not included in the lean image:** `sudo`, compilers (`gcc`, `make`), editors (`vim`, `nano`),
+`htop`, `less`, `zip`/`unzip` and `uv`. The container user is unprivileged. Build with
+`--build-arg ICOTES_DEV_TOOLS=1` if you want them. The terminal locale is `C.UTF-8`.
+
+Bare-metal installs (`./setup.sh`, `./start.sh`) install all extras.
+
 ### One-Command Installation
 
 ```bash

@@ -50,7 +50,7 @@ class PPTXHandler(DocumentHandler):
         except ImportError:
             return HandlerResult(
                 success=False,
-                error="python-pptx not installed. Install with: pip install python-pptx"
+                error="python-pptx not installed. Install the 'documents' extra (Docker: rebuild with --build-arg INSTALL_EXTRAS=documents; uv: uv sync --extra documents)"
             )
         
         try:
@@ -203,7 +203,7 @@ class PPTXHandler(DocumentHandler):
         except ImportError:
             raise ImportError(
                 "python-pptx required for PowerPoint creation. "
-                "Install with: pip install python-pptx"
+                "Install the 'documents' extra (Docker: rebuild with --build-arg INSTALL_EXTRAS=documents; uv: uv sync --extra documents)"
             )
         
         prs = Presentation()

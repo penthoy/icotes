@@ -15,7 +15,7 @@ export PATH="$HOME/.local/bin:$PATH"
 From the `backend/` directory:
 ```bash
 # Sync dependencies declared in pyproject.toml/uv.lock
-uv sync --frozen --no-dev
+uv sync --frozen --all-extras
 
 # Ensure module discovery works
 export PYTHONPATH=$(pwd)
@@ -30,6 +30,9 @@ uv run pytest tests/ -v --tb=short
 - Pattern match: `uv run pytest tests/ -k "workspace" -v`
 - Stop on first failure: `uv run pytest tests/ -x --tb=short`
 
+## Optional dependencies
+Heavy packages (document libraries, ElevenLabs/yt-dlp, discord.py, legacy Google SDK, agent frameworks) are optional extras. Tests that need them skip when they are missing, so a lean `uv sync --frozen` (dev group only) still passes; use `--all-extras` to run everything. `tests/test_lean_install.py` simulates a lean install in a subprocess.
+
 ## Troubleshooting
 - Import errors: ensure `export PYTHONPATH=$(pwd)` while in `backend/`
 - Missing uv: install as above
@@ -38,7 +41,7 @@ uv run pytest tests/ -v --tb=short
 ## Notes
 - Tests use fixtures; no running server required
 - Some REST API tests may be skipped due to FastAPI version constraints
-- For CI, use `uv sync --frozen --no-dev` then `uv run pytest`
+- For CI, use `uv sync --frozen --all-extras` then `uv run pytest`
 # Testing Guide for icpy Backend
 
 This guide covers how to run tests using modern `uv` package manager commands.
@@ -54,7 +57,7 @@ This guide covers how to run tests using modern `uv` package manager commands.
 2. Set up the project environment:
    ```bash
    cd backend
-   uv sync --frozen --no-dev  # Install from requirements.txt
+   uv sync --frozen --all-extras  # Install from pyproject.toml/uv.lock (dev group + all extras)
    ```
 
 ## Running Tests
@@ -161,7 +164,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Set up and test
 cd backend
-uv sync --frozen --no-dev  # Install from requirements.txt
+uv sync --frozen --all-extras  # Install from pyproject.toml/uv.lock (dev group + all extras)
 uv run pytest --junitxml=test-results.xml
 ```
 

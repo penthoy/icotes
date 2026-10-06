@@ -34,3 +34,60 @@ def test_nano_banana_get_tools():
     if nano_banana_agent.DEPENDENCIES_AVAILABLE:
         tools = nano_banana_agent.get_tools()
         assert tools == []
+
+
+# --- genai is None (lean image) behavior -------------------------------------
+
+@pytest.fixture
+def no_genai(monkeypatch):
+    if not nano_banana_agent.DEPENDENCIES_AVAILABLE:
+        pytest.skip("NanoBananaAgent dependencies not available")
+    monkeypatch.setattr(nano_banana_agent, "genai", None)
+    monkeypatch.setattr(nano_banana_agent, "add_context_to_agent_prompt", lambda p: p)
+
+
+def test_nano_banana_route_proxy_used_when_genai_missing_even_with_key(no_genai, monkeypatch):
+    """With GOOGLE_API_KEY set but no legacy SDK, the route proxy path must be used."""
+    monkeypatch.setenv("GOOGLE_API_KEY", "dummy-key")
+    monkeypatch.setattr(nano_banana_agent, "is_icotes_route_enabled", lambda: True)
+    monkeypatch.setattr(
+        nano_banana_agent, "resolve_client", lambda provider, model: (object(), "resolved-model")
+    )
+    seen = {}
+
+    class FakeHandler:
+        def __init__(self, client, model):
+            seen["model"] = model
+
+        def stream_chat_with_tools(self, messages):
+            seen["messages"] = messages
+            yield "proxied"
+
+    monkeypatch.setattr(nano_banana_agent, "OpenAIStreamingHandler", FakeHandler)
+
+    out = list(nano_banana_agent.chat("draw a cat", []))
+    assert out == ["proxied"]
+    assert seen["model"] == "resolved-model"
+    assert seen["messages"][-1] == {"role": "user", "content": "draw a cat"}
+
+
+def test_nano_banana_clear_message_when_genai_missing_and_no_proxy(no_genai, monkeypatch):
+    monkeypatch.setenv("GOOGLE_API_KEY", "dummy-key")
+    monkeypatch.setattr(nano_banana_agent, "is_icotes_route_enabled", lambda: False)
+
+    out = "".join(nano_banana_agent.chat("draw a cat", []))
+    assert "'google' extra" in out
+    assert "INSTALL_EXTRAS=google" in out
+    assert "uv sync --extra google" in out
+
+
+def test_nano_banana_missing_key_message_unchanged_when_genai_present(monkeypatch):
+    if not nano_banana_agent.DEPENDENCIES_AVAILABLE:
+        pytest.skip("NanoBananaAgent dependencies not available")
+    monkeypatch.setattr(nano_banana_agent, "genai", object())
+    monkeypatch.setattr(nano_banana_agent, "add_context_to_agent_prompt", lambda p: p)
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    monkeypatch.setattr(nano_banana_agent, "is_icotes_route_enabled", lambda: False)
+
+    out = "".join(nano_banana_agent.chat("draw a cat", []))
+    assert "GOOGLE_API_KEY not set" in out

@@ -3,6 +3,8 @@ Integration tests for framework compatibility layer
 Tests unified interfaces and cross-framework functionality
 """
 
+import importlib.util
+
 import pytest
 import asyncio
 from typing import Dict, Any
@@ -14,6 +16,15 @@ from icpy.core.framework_compatibility import (
     AgentStatus,
     get_compatibility_layer
 )
+
+
+def _requires(*modules):
+    """Skip when optional agent-framework packages (extra: agents-frameworks) are missing."""
+    missing = [m for m in modules if importlib.util.find_spec(m) is None]
+    return pytest.mark.skipif(
+        bool(missing),
+        reason=f"requires {', '.join(missing)} (install the 'agents-frameworks' extra)",
+    )
 
 
 class TestFrameworkCompatibility:
@@ -60,6 +71,7 @@ class TestFrameworkCompatibility:
         await compatibility_layer.remove_agent("test_openai_agent")
         print("✓ OpenAI agent creation and execution successful")
     
+    @_requires("crewai")
     @pytest.mark.asyncio
     async def test_crewai_agent_creation(self, compatibility_layer):
         """Test CrewAI agent creation through compatibility layer"""
@@ -85,6 +97,7 @@ class TestFrameworkCompatibility:
         await compatibility_layer.remove_agent("test_crewai_agent")
         print("✓ CrewAI agent creation and execution successful")
     
+    @_requires("langchain")
     @pytest.mark.asyncio
     async def test_langchain_agent_creation(self, compatibility_layer):
         """Test LangChain agent creation through compatibility layer"""
@@ -111,6 +124,7 @@ class TestFrameworkCompatibility:
         await compatibility_layer.remove_agent("test_langchain_agent")
         print("✓ LangChain agent creation and execution successful")
     
+    @_requires("langgraph")
     @pytest.mark.asyncio
     async def test_langgraph_agent_creation(self, compatibility_layer):
         """Test LangGraph agent creation through compatibility layer"""
@@ -134,6 +148,7 @@ class TestFrameworkCompatibility:
         await compatibility_layer.remove_agent("test_langgraph_agent")
         print("✓ LangGraph agent creation and execution successful")
     
+    @_requires("crewai", "langchain", "langgraph")
     @pytest.mark.asyncio
     async def test_streaming_execution(self, compatibility_layer):
         """Test streaming execution across frameworks"""
@@ -204,6 +219,7 @@ class TestFrameworkCompatibility:
         
         print("✓ Agent lifecycle management successful")
     
+    @_requires("crewai", "langchain")
     @pytest.mark.asyncio
     async def test_multiple_agents(self, compatibility_layer):
         """Test managing multiple agents simultaneously"""

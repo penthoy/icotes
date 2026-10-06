@@ -5,6 +5,28 @@ All notable changes to the JavaScript Code Editor project will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - Slim Docker image
+
+### Changed
+- **BREAKING (Docker image)**: the default image is now lean. Optional Python features moved into
+  pyproject extras: `documents` (pandas, pdfplumber, python-docx, python-pptx, openpyxl, reportlab,
+  xlrd, pyxlsb), `media` (yt-dlp, elevenlabs), `discord` (discord.py), `google`
+  (google-generativeai), `agents-frameworks` (crewai, langchain*, langgraph, langsmith,
+  openai-agents, setuptools) and `providers-sdk` (anthropic, cerebras_cloud_sdk). Rebuild with
+  `--build-arg INSTALL_EXTRAS=...` (or `all`) to restore them.
+- Compressed image size drops from about 677 MB to about 120 MB (lean default); `INSTALL_EXTRAS=documents,media` is about 164 MB.
+- User plugins/agents that import `anthropic`, `cerebras_cloud_sdk`, `crewai` or similar packages now
+  need the corresponding extra installed.
+- The final Docker image no longer ships sudo, compilers, editors, htop, less, zip/unzip or uv unless
+  built with `--build-arg ICOTES_DEV_TOOLS=1`. The terminal locale is now `C.UTF-8`.
+- pytest and friends moved from runtime dependencies to a `dev` dependency group.
+- Bare-metal install scripts use `uv sync --frozen --no-dev --all-extras`, so local installs keep all features.
+- Tools and services that need an extra report which extra to install; a missing optional package can
+  no longer disable the whole backend (Discord/WhatsApp imports are isolated in `main.py`).
+
+### Added
+- `backend/tests/test_lean_install.py` smoke test; extra-dependent tests skip when the extra is missing.
+
 ## [1.12.0] - Add hop panel
 
 ## [1.9.0] - Agent System Improvements & Centralization

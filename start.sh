@@ -276,7 +276,7 @@ fi
 echo "📦 Installing Python dependencies with uv..."
 if [ -f "requirements.txt" ]; then
     echo "   Using requirements.txt for dependency installation"
-    uv sync --frozen --no-dev || uv pip install -r requirements.txt
+    uv sync --frozen --no-dev --all-extras || uv pip install -r requirements.txt
 else
     echo "❌ Error: requirements.txt not found"
     exit 1
@@ -284,7 +284,7 @@ fi
 
 # Check if all dependencies are installed
 echo "✅ Verifying Python dependencies..."
-uv run python3 -c "
+uv run --no-sync python3 -c "
 import sys
 required_packages = ['fastapi', 'uvicorn', 'websockets', 'pydantic']
 missing_packages = []
@@ -319,7 +319,7 @@ if [[ "$DAEMON_MODE" == "true" ]]; then
     echo ""
     
     # Start in background and save PID
-    nohup uv run python3 -m uvicorn main:app \
+    nohup uv run --no-sync python3 -m uvicorn main:app \
         --host "$BACKEND_HOST" \
         --port "$BACKEND_PORT" \
         --workers "$WORKERS" \
@@ -376,7 +376,7 @@ else
     echo ""
     
     # Start in foreground with uv
-    uv run python3 -m uvicorn main:app \
+    uv run --no-sync python3 -m uvicorn main:app \
         --host "$BACKEND_HOST" \
         --port "$BACKEND_PORT" \
         --workers "$WORKERS" \

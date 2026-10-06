@@ -36,7 +36,7 @@ A FastAPI backend for icotes that provides code execution capabilities and WebSo
 2. Set up project environment:
    ```bash
    cd backend
-   uv sync --frozen --no-dev  # Sync from pyproject/uv.lock
+   uv sync --frozen --all-extras  # Sync from pyproject/uv.lock (includes dev group and all optional extras)
    ```
 
 **Alternative manual approach (if uv is not available):**

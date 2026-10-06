@@ -155,7 +155,7 @@ setup_backend() {
             fi
             # Install/update dependencies with UV
             print_status "Installing/updating Python dependencies with UV..."
-            uv sync --frozen --no-dev || uv pip install -r requirements.txt
+            uv sync --frozen --no-dev --all-extras || uv pip install -r requirements.txt
         fi
     else
         print_status "UV already installed, updating dependencies..."
@@ -166,7 +166,7 @@ setup_backend() {
         fi
         # Install/update dependencies with UV
         print_status "Installing/updating Python dependencies with UV..."
-        uv sync --frozen --no-dev || uv pip install -r requirements.txt
+        uv sync --frozen --no-dev --all-extras || uv pip install -r requirements.txt
     fi
     
     # Ensure workspace directory exists
@@ -294,7 +294,7 @@ test_installation() {
     
     # Test with UV if available, fallback to traditional method
     if command_exists uv; then
-        timeout 10s uv run python3 -c "
+        timeout 10s uv run --no-sync python3 -c "
 import sys
 sys.path.insert(0, '.')
 try:

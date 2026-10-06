@@ -72,7 +72,7 @@ cd backend
 uv init --no-readme --no-pin-python
 
 # Install dependencies
-uv sync --frozen --no-dev
+uv sync --frozen --no-dev --all-extras
 
 cd ..
 ```
@@ -361,7 +361,7 @@ VITE_WORKSPACE_ROOT=/path/to/icotes/workspace
    # Backend
    cd backend
    uv clean
-   uv sync --frozen --no-dev
+   uv sync --frozen --no-dev --all-extras
    ```
 
 ### Verification Steps

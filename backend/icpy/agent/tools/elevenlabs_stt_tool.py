@@ -174,7 +174,7 @@ class ElevenLabsSTTTool(BaseTool):
                 logger.info("ElevenLabs SDK not installed, using route proxy for STT")
                 return None
             raise RuntimeError(
-                f"ElevenLabs SDK not available. Install with: uv add elevenlabs. "
+                f"ElevenLabs SDK not available. Install the 'media' extra (Docker: rebuild with --build-arg INSTALL_EXTRAS=media; uv: uv sync --extra media). "
                 f"Error: {_ELEVENLABS_IMPORT_ERROR}"
             )
         

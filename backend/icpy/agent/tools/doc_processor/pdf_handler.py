@@ -61,7 +61,7 @@ class PDFHandler(DocumentHandler):
         except ImportError:
             return HandlerResult(
                 success=False,
-                error="No PDF library available. Install with: pip install pdfplumber"
+                error="No PDF library available. Install the 'documents' extra (Docker: rebuild with --build-arg INSTALL_EXTRAS=documents; uv: uv sync --extra documents)"
             )
         except Exception as e:
             return HandlerResult(
@@ -256,7 +256,7 @@ class PDFHandler(DocumentHandler):
         except ImportError:
             raise ImportError(
                 "reportlab required for PDF creation. "
-                "Install with: pip install reportlab"
+                "Install the 'documents' extra (Docker: rebuild with --build-arg INSTALL_EXTRAS=documents; uv: uv sync --extra documents)"
             )
         
         output = io.BytesIO()

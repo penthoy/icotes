@@ -52,7 +52,7 @@ class WordHandler(DocumentHandler):
         except ImportError:
             return HandlerResult(
                 success=False,
-                error="python-docx not installed. Install with: pip install python-docx"
+                error="python-docx not installed. Install the 'documents' extra (Docker: rebuild with --build-arg INSTALL_EXTRAS=documents; uv: uv sync --extra documents)"
             )
         
         try:
@@ -233,7 +233,7 @@ class WordHandler(DocumentHandler):
         except ImportError:
             raise ImportError(
                 "python-docx required for Word creation. "
-                "Install with: pip install python-docx"
+                "Install the 'documents' extra (Docker: rebuild with --build-arg INSTALL_EXTRAS=documents; uv: uv sync --extra documents)"
             )
         
         doc = Document()

@@ -8,7 +8,7 @@ export PATH="$HOME/.local/bin:$PATH"
 
 # Sync dependencies quickly (no dev) if lock or pyproject present
 if [ -f "uv.lock" ] || [ -f "pyproject.toml" ]; then
-	uv sync --frozen --no-dev || true
+	uv sync --frozen --no-dev --all-extras || true
 fi
 
-uv run python main.py
+uv run --no-dev --all-extras python main.py

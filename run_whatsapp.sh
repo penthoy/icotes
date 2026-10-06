@@ -31,4 +31,4 @@ if [ ! -d "$WA_DIR/node_modules" ]; then
     (cd "$WA_DIR" && npm install --production)
 fi
 
-exec uv run python -m icpy.services.whatsapp.run
+exec uv run --no-dev --all-extras python -m icpy.services.whatsapp.run

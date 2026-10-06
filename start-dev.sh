@@ -115,7 +115,7 @@ if ! command -v uv &> /dev/null; then
         if [ ! -f "pyproject.toml" ]; then
             uv init --no-readme --no-pin-python
         fi
-        uv sync --frozen --no-dev || uv pip install -r requirements.txt
+        uv sync --frozen --no-dev --all-extras || uv pip install -r requirements.txt
     fi
 else
     echo "✅ uv already installed"
@@ -125,7 +125,7 @@ else
     fi
     # Install dependencies with uv
     echo "📦 Installing Python dependencies with uv..."
-    uv sync --frozen --no-dev || uv pip install -r requirements.txt
+    uv sync --frozen --no-dev --all-extras || uv pip install -r requirements.txt
 fi
 
 # Start the backend server with development settings
@@ -180,10 +180,10 @@ echo "🔧 Starting with uv (if available) or fallback to venv..."
 # Check if we're using uv or traditional venv
 if command -v uv &> /dev/null && [ -f "pyproject.toml" ]; then
     echo "✅ Using uv for execution"
-    echo "🔧 Python: $(uv run python --version)"
+    echo "🔧 Python: $(uv run --no-sync python --version)"
     
     # Use uv run for execution
-    uv run uvicorn main:app \
+    uv run --no-sync uvicorn main:app \
         --host "$BACKEND_HOST" \
         --port "$BACKEND_PORT" \
         --reload \

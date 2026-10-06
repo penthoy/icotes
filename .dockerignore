@@ -80,6 +80,10 @@ docs/
 # Tests (not needed in production container)
 # tests/ - commented out for now since App.tsx imports test files
 
+# Backend tests and stale backups (not needed at runtime; root tests/ is kept, see above)
+backend/tests/
+backend/main_original_backup.py
+
 # Development scripts
 *.sh
 

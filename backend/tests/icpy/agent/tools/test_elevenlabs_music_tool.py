@@ -11,6 +11,9 @@ Tests:
 """
 
 import pytest
+
+# Requires the optional ElevenLabs SDK (extra: media)
+pytest.importorskip("elevenlabs")
 import os
 from unittest.mock import AsyncMock, Mock, patch, MagicMock
 from pathlib import Path
